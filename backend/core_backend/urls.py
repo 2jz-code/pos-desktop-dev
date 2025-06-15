@@ -1,0 +1,37 @@
+"""
+URL configuration for core_backend project.
+
+The `urlpatterns` list routes URLs to views. For more information please see:
+    https://docs.djangoproject.com/en/5.1/topics/http/urls/
+Examples:
+Function views
+    1. Add an import:  from my_app import views
+    2. Add a URL to urlpatterns:  path('', views.home, name='home')
+Class-based views
+    1. Add an import:  from other_app.views import Home
+    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
+Including another URLconf
+    1. Import the include() function: from django.urls import include, path
+    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+"""
+
+from django.contrib import admin
+from django.urls import path, include
+from django.conf.urls.static import static
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("api/users/", include("users.urls")),
+    path("api/products/", include("products.urls")),
+    path("api/inventory/", include("inventory.urls")),
+    # *** IMPORTANT CHANGE HERE ***
+    # Change "api/orders/" to "api/" to avoid double-prefixing.
+    # The 'orders' app itself registers its base endpoint as 'orders'.
+    path("api/", include("orders.urls")),  # This ensures the final path is /api/orders/
+    path("api/payments/", include("payments.urls")),
+    path("api/", include("discounts.urls")),
+    path("api/settings/", include("settings.urls")),
+]
+
+# Add static and media file serving for development
+# ... existing code ...

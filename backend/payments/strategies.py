@@ -1,0 +1,325 @@
+from abc import ABC, abstractmethod
+from decimal import Decimal
+import uuid  # For simulated transaction ID
+
+import stripe
+from django.conf import settings
+from django.db import transaction
+
+from .models import Payment, PaymentTransaction
+from orders.models import Order
+from settings.models import TerminalLocation
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class PaymentStrategy(ABC):
+    """
+    The Abstract Base Class for a payment strategy.
+    Defines the common interface for all payment methods.
+    """
+
+    @abstractmethod
+    def process(self, transaction: PaymentTransaction):
+        """
+        Process the payment transaction.
+        This method must be implemented by all concrete strategies.
+        It should update the transaction's status and other details.
+        """
+        pass
+
+
+class CashPaymentStrategy(PaymentStrategy):
+    """
+    A simple strategy for handling cash payments.
+    """
+
+    def process(self, transaction: PaymentTransaction, **kwargs):
+        # For cash, we assume the payment is successful if it's recorded.
+        # No external API calls are needed.
+        transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+        transaction.save()
+        # In a real system, you might trigger a cash drawer opening here.
+        return transaction
+
+
+class TerminalPaymentStrategy(PaymentStrategy):
+    """
+    Base strategy for processing payments via a physical card terminal.
+    """
+
+    @abstractmethod
+    def get_frontend_configuration(self):
+        """
+        Returns the necessary configuration for the frontend to interact
+        with this terminal provider.
+        """
+        pass
+
+    def create_connection_token(self):
+        """Default implementation for strategies that don't need a connection token."""
+        raise NotImplementedError(
+            "This payment provider does not use connection tokens."
+        )
+
+    def create_payment_intent(self, transaction: PaymentTransaction):
+        """Default implementation for creating a payment intent."""
+        raise NotImplementedError(
+            "This payment provider does not support creating payment intents directly."
+        )
+
+    def capture_payment(self, transaction: PaymentTransaction):
+        """Default implementation for capturing a payment."""
+        raise NotImplementedError(
+            "This payment provider does not support capturing payments."
+        )
+
+    def cancel_action(self, **kwargs):
+        """Default implementation for cancelling an action."""
+        raise NotImplementedError(
+            "This payment provider does not support cancelling actions."
+        )
+
+
+class StripeTerminalStrategy(TerminalPaymentStrategy):
+    """
+    Strategy for processing payments via a Stripe card terminal.
+    """
+
+    @staticmethod
+    def sync_locations_from_stripe():
+        """
+        Fetches all physical locations from Stripe and updates the local database.
+        This is a Stripe-specific utility method.
+        """
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        try:
+            stripe_locations = stripe.terminal.Location.list(limit=100)
+            synced_ids = []
+
+            with transaction.atomic():
+                for loc in stripe_locations.data:
+                    defaults = {"name": loc.display_name}
+                    location, created = TerminalLocation.objects.update_or_create(
+                        stripe_id=loc.id, defaults=defaults
+                    )
+                    synced_ids.append(location.stripe_id)
+
+                if (
+                    TerminalLocation.objects.exists()
+                    and not TerminalLocation.objects.filter(is_default=True).exists()
+                ):
+                    first_loc = TerminalLocation.objects.order_by("name").first()
+                    if first_loc:
+                        first_loc.is_default = True
+                        first_loc.save()
+
+            return {"status": "success", "synced_count": len(synced_ids)}
+        except Exception as e:
+            print(f"Error syncing Stripe locations: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def get_frontend_configuration(self):
+        return {
+            "provider": "STRIPE_TERMINAL",
+            "publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
+            "needs_connection_token": True,
+        }
+
+    def create_connection_token(self, location_id=None):
+        """Create a connection token for Stripe Terminal, optionally scoped to a location."""
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        params = {}
+        # If a location_id is provided, add it to the request parameters.
+        if location_id:
+            params["location"] = location_id
+
+        return stripe.terminal.ConnectionToken.create(**params).secret
+
+    def create_payment_intent(self, payment: Payment, amount: Decimal):
+        """Create a payment intent for a card-present transaction."""
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        # Create the transaction record for this attempt
+        transaction = PaymentTransaction.objects.create(
+            payment=payment,
+            amount=amount,
+            method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
+            status=PaymentTransaction.TransactionStatus.PENDING,
+        )
+
+        amount_cents = int(amount * 100)
+        metadata = {
+            "source": "terminal",
+            "transaction_id": str(transaction.id),
+            "order_id": str(payment.order.id),
+        }
+        description = f"Payment for Order #{payment.order.id}"
+
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency="usd",
+            payment_method_types=["card_present"],
+            capture_method="manual",
+            metadata=metadata,
+            description=description,
+        )
+
+        transaction.transaction_id = intent.id
+        transaction.save(update_fields=["transaction_id"])
+
+        return intent
+
+    def capture_payment(self, transaction: PaymentTransaction):
+        """Capture a payment intent that has already been processed by a reader."""
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        if not transaction.transaction_id or not transaction.transaction_id.startswith(
+            "pi_"
+        ):
+            raise ValueError("Transaction does not have a valid Payment Intent ID.")
+
+        intent = stripe.PaymentIntent.capture(transaction.transaction_id)
+        return intent
+
+    def cancel_action(self, **kwargs):
+        """Cancel an ongoing action on a terminal reader."""
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        reader_id = kwargs.get("reader_id")
+        if not reader_id:
+            raise ValueError("reader_id is required to cancel a terminal action.")
+        return stripe.terminal.Reader.cancel_action(reader_id)
+
+    # --- NEW METHOD ---
+    def cancel_payment_intent(self, payment_intent_id: str):
+        """
+        Cancels a payment intent with Stripe.
+        Safely ignores errors for intents that are already canceled or processed.
+        """
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        if not payment_intent_id:
+            return False
+
+        try:
+            stripe.PaymentIntent.cancel(payment_intent_id)
+            logger.info(f"Successfully cancelled Stripe PI: {payment_intent_id}")
+            return True
+        except stripe.error.InvalidRequestError as e:
+            # This error often means the intent is already canceled or in a final state.
+            # We can safely ignore it in a "force-cancel" scenario.
+            logger.warning(
+                f"Could not cancel Stripe PI {payment_intent_id} (likely already finalized): {e}"
+            )
+            return True
+        except Exception as e:
+            # Re-raise other, more serious errors.
+            logger.error(
+                f"Unexpected error cancelling Stripe PI {payment_intent_id}: {e}"
+            )
+            raise e
+
+    def process(self, transaction: PaymentTransaction):
+        transaction.status = PaymentTransaction.TransactionStatus.PENDING
+        transaction.transaction_id = f"sim_stripe_pi_{uuid.uuid4().hex}"
+        transaction.provider_response = {
+            "provider": "stripe",
+            "status": "requires_payment_method",
+            "message": "Simulated payment intent created. Ready for reader.",
+        }
+        transaction.save()
+        return transaction
+
+
+class CloverTerminalStrategy(TerminalPaymentStrategy):
+    """
+    Strategy for processing payments via a Clover card terminal.
+    """
+
+    def get_frontend_configuration(self):
+        return {
+            "provider": "CLOVER_TERMINAL",
+            "api_key": "mock_clover_api_key",
+            "needs_connection_token": False,
+        }
+
+    def process(self, transaction: PaymentTransaction):
+        transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+        transaction.transaction_id = f"sim_clover_{uuid.uuid4().hex}"
+        transaction.provider_response = {
+            "provider": "clover",
+            "status": "succeeded",
+            "message": "Simulated payment successful.",
+        }
+        transaction.save()
+        return transaction
+
+
+class StripeOnlineStrategy(PaymentStrategy):
+    """
+    Strategy for card-not-present (online) payments using Stripe.
+    Handles the creation and confirmation of a Payment Intent.
+    """
+
+    def process(self, transaction: PaymentTransaction, **kwargs):
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        payment_method_id = kwargs.get("payment_method_id")
+        payment_intent_id = kwargs.get("payment_intent_id")
+
+        if not payment_method_id and not payment_intent_id:
+            raise ValueError(
+                "A payment_method_id or payment_intent_id is required for online payments."
+            )
+
+        order = transaction.payment.order
+        amount_cents = int(transaction.amount * 100)
+        metadata = {
+            "order_id": str(order.id),
+            "transaction_id": str(transaction.id),
+        }
+
+        try:
+            if payment_method_id:
+                intent = stripe.PaymentIntent.create(
+                    amount=amount_cents,
+                    currency="usd",
+                    payment_method=payment_method_id,
+                    confirm=True,
+                    automatic_payment_methods={
+                        "enabled": True,
+                        "allow_redirects": "never",
+                    },
+                    metadata=metadata,
+                )
+            else:
+                intent = stripe.PaymentIntent.confirm(
+                    payment_intent_id,
+                    automatic_payment_methods={
+                        "enabled": True,
+                        "allow_redirects": "never",
+                    },
+                )
+
+            transaction.transaction_id = intent.id
+            transaction.provider_response = intent.to_dict()
+
+            if intent.status == "succeeded":
+                transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+            elif intent.status == "requires_action":
+                transaction.status = PaymentTransaction.TransactionStatus.PENDING
+            else:
+                transaction.status = PaymentTransaction.TransactionStatus.FAILED
+
+        except stripe.error.CardError as e:
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {
+                "error": {"message": e.user_message or str(e)}
+            }
+        except Exception as e:
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {"error": {"message": str(e)}}
+
+        transaction.save()
+        return transaction
+
+
+# We can add CardOnlineStrategy, GiftCardStrategy, etc., here later.
