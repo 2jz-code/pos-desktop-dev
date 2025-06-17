@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import useTerminalStore from "@/store/terminalStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { shallow } from "zustand/shallow";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -37,24 +36,21 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 
 const StripeTerminalSettings = () => {
-	const {
-		terminalStatus,
-		terminalConnectionStatus,
-		discoveredReaders,
-		initializeTerminal,
-		discoverReaders,
-	} = useTerminalStore(
-		(state) => ({
-			terminalStatus: state.terminalStatus,
-			terminalConnectionStatus: state.terminalConnectionStatus,
-			discoveredReaders: state.discoveredReaders,
-			initializeTerminal: state.initializeTerminal,
-			discoverReaders: state.discoverReaders,
-		}),
-		shallow
+	// FIX: Select state individually to prevent re-renders from new object references.
+	// This resolves the "getSnapshot" warning.
+	const terminalStatus = useTerminalStore((state) => state.terminalStatus);
+	const terminalConnectionStatus = useTerminalStore(
+		(state) => state.terminalConnectionStatus
 	);
+	const discoveredReaders = useTerminalStore(
+		(state) => state.discoveredReaders
+	);
+	const initializeTerminal = useTerminalStore(
+		(state) => state.initializeTerminal
+	);
+	const discoverReaders = useTerminalStore((state) => state.discoverReaders);
 
-	const { posDeviceId } = useSettingsStore();
+	const posDeviceId = useSettingsStore((state) => state.posDeviceId);
 	const [savedReaderId, setSavedReaderId] = useState(null);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isSyncing, setIsSyncing] = useState(false);
@@ -62,15 +58,23 @@ const StripeTerminalSettings = () => {
 	const [defaultLocationId, setDefaultLocationId] = useState(null);
 	const { toast } = useToast();
 
-	const fetchInitialData = async () => {
+	// FIX: Consolidate all initialization logic into a single, stable effect.
+	useEffect(() => {
+		// Initialize the terminal service once when the component mounts.
 		initializeTerminal();
+
+		// Fetch reader data only when a posDeviceId is available.
 		if (posDeviceId) {
 			getDeviceReader(posDeviceId)
 				.then((data) => {
 					if (data && data.reader_id) setSavedReaderId(data.reader_id);
 				})
-				.catch(() => {});
+				.catch(() => {
+					/* Silently fail if no reader is paired */
+				});
 		}
+
+		// Fetch terminal locations once.
 		getTerminalLocations()
 			.then((data) => {
 				setLocations(data);
@@ -83,11 +87,7 @@ const StripeTerminalSettings = () => {
 					title: "Failed to fetch locations",
 				})
 			);
-	};
-	useEffect(() => {
-		fetchInitialData();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [posDeviceId]);
+	}, [initializeTerminal, posDeviceId, toast]); // Dependencies are stable or change only once.
 
 	const handleSyncLocations = async () => {
 		setIsSyncing(true);
@@ -98,11 +98,10 @@ const StripeTerminalSettings = () => {
 				description: `${result.synced_count} locations synced from Stripe.`,
 			});
 			// Refetch locations after syncing
-			await getTerminalLocations().then((data) => {
-				setLocations(data);
-				const defaultLoc = data.find((loc) => loc.is_default);
-				if (defaultLoc) setDefaultLocationId(defaultLoc.id);
-			});
+			const data = await getTerminalLocations();
+			setLocations(data);
+			const defaultLoc = data.find((loc) => loc.is_default);
+			if (defaultLoc) setDefaultLocationId(defaultLoc.id);
 		} catch (error) {
 			toast({
 				variant: "destructive",
@@ -115,6 +114,9 @@ const StripeTerminalSettings = () => {
 	};
 
 	const handleSetDefaultLocation = async (locationId) => {
+		// Guard clause to prevent loop if the value hasn't changed
+		if (locationId === defaultLocationId) return;
+
 		try {
 			await setDefaultTerminalLocation(locationId);
 			setDefaultLocationId(locationId);
@@ -235,7 +237,7 @@ const StripeTerminalSettings = () => {
 				<CardContent className="space-y-4">
 					<div className="flex items-center space-x-2">
 						<Select
-							value={defaultLocationId}
+							value={defaultLocationId || ""}
 							onValueChange={handleSetDefaultLocation}
 							disabled={locations.length === 0}
 						>

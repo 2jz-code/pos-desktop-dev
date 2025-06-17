@@ -46,6 +46,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     search_fields = ["id", "customer__username", "cashier__username"]
     ordering_fields = ["created_at", "grand_total"]
 
+    ordering = ["-created_at"]  # Newest orders first (descending)
+
     def get_serializer_class(self):
         """
         Return the appropriate serializer class based on the request action.

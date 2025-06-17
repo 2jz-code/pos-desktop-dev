@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom"; // Import Link
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePosStore } from "@/store/posStore";
 import * as orderService from "@/api/services/orderService";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,38 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { shallow } from "zustand/shallow";
+import { formatCurrency } from "@/lib/utils";
+import { ArrowLeft, CreditCard, DollarSign } from "lucide-react";
+
+// --- Reusable component to display a single transaction ---
+const TransactionDetail = ({ transaction }) => {
+	const method = transaction.method?.replace("_", " ") || "N/A";
+	const isCredit = method.toLowerCase() === "credit";
+
+	return (
+		<div className="p-3 border rounded-md bg-muted/50 space-y-1">
+			<div className="flex justify-between items-center">
+				<div className="flex items-center gap-2">
+					{isCredit ? (
+						<CreditCard className="h-4 w-4 text-blue-500" />
+					) : (
+						<DollarSign className="h-4 w-4 text-green-500" />
+					)}
+					<span className="font-semibold capitalize text-sm">{method}</span>
+				</div>
+				<span className="font-medium text-sm">
+					{formatCurrency(transaction.amount)}
+				</span>
+			</div>
+			{isCredit && transaction.metadata?.card_brand && (
+				<div className="text-xs text-muted-foreground pl-6">
+					{transaction.metadata.card_brand} ****
+					{transaction.metadata.card_last4}
+				</div>
+			)}
+		</div>
+	);
+};
 
 const OrderDetailsPage = () => {
 	const { orderId } = useParams();
@@ -97,7 +129,7 @@ const OrderDetailsPage = () => {
 	const getPaymentStatusBadgeVariant = (status) => {
 		switch (status) {
 			case "PAID":
-			case "succeeded": // Handle Stripe status
+			case "succeeded":
 				return "success";
 			case "PARTIALLY_PAID":
 				return "default";
@@ -118,10 +150,11 @@ const OrderDetailsPage = () => {
 				variant="outline"
 				className="mb-4"
 			>
-				&larr; Back to Orders
+				<ArrowLeft className="mr-2 h-4 w-4" />
+				Back to Orders
 			</Button>
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-				{/* Order Details Card */}
+				{/* Order Details Card (Unchanged) */}
 				<Card>
 					<CardHeader>
 						<div className="flex justify-between items-start">
@@ -129,6 +162,9 @@ const OrderDetailsPage = () => {
 								<CardTitle>Order Details</CardTitle>
 								<CardDescription className={"pt-2.5"}>
 									ID: {order.id}
+								</CardDescription>
+								<CardDescription className={"pt-2.5"}>
+									Order #: {order.order_number}
 								</CardDescription>
 								<CardDescription className={"py-2"}>
 									Cashier: {cashier?.username || "N/A"}
@@ -152,7 +188,7 @@ const OrderDetailsPage = () => {
 											{item.product.name} (x{item.quantity})
 										</span>
 										<span>
-											${(item.price_at_sale * item.quantity).toFixed(2)}
+											{formatCurrency(item.price_at_sale * item.quantity)}
 										</span>
 									</li>
 								))}
@@ -161,29 +197,29 @@ const OrderDetailsPage = () => {
 						<div className="border-t pt-4">
 							<div className="flex justify-between">
 								<span>Subtotal</span>
-								<span>${parseFloat(subtotal).toFixed(2)}</span>
+								<span>{formatCurrency(subtotal)}</span>
 							</div>
 							<div className="flex justify-between text-red-500">
 								<span>Discounts</span>
-								<span>-${parseFloat(total_discounts_amount).toFixed(2)}</span>
+								<span>-{formatCurrency(total_discounts_amount)}</span>
 							</div>
 							<div className="flex justify-between">
 								<span>Tax</span>
-								<span>${parseFloat(tax_total).toFixed(2)}</span>
+								<span>{formatCurrency(tax_total)}</span>
 							</div>
 							<div className="flex justify-between">
 								<span>Surcharges</span>
-								<span>${parseFloat(surcharges_total).toFixed(2)}</span>
+								<span>{formatCurrency(surcharges_total)}</span>
 							</div>
 							{payment_details && parseFloat(payment_details.tip) > 0 && (
 								<div className="flex justify-between">
 									<span>Tip</span>
-									<span>${parseFloat(payment_details.tip).toFixed(2)}</span>
+									<span>{formatCurrency(payment_details.tip)}</span>
 								</div>
 							)}
 							<div className="flex justify-between font-bold text-lg mt-2 border-t pt-2">
 								<span>Grand Total</span>
-								<span>${parseFloat(total_with_tip).toFixed(2)}</span>
+								<span>{formatCurrency(total_with_tip)}</span>
 							</div>
 						</div>
 					</CardContent>
@@ -207,7 +243,7 @@ const OrderDetailsPage = () => {
 					</CardFooter>
 				</Card>
 
-				{/* --- MODIFICATION: Payment Details Card --- */}
+				{/* --- UPDATED Payment Details Card --- */}
 				<Card>
 					<CardHeader>
 						<CardTitle>Payment Details</CardTitle>
@@ -219,35 +255,27 @@ const OrderDetailsPage = () => {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						{payment_details ? (
-							<div className="border-b pb-3 last:border-b-0">
-								<div className="flex justify-between">
-									<span className="font-semibold capitalize">
-										{payment_details.transactions?.[0]?.method.replace(
-											"_",
-											" "
-										) || "N/A"}
-									</span>
-									<Badge
-										variant={getPaymentStatusBadgeVariant(
-											payment_details.status
-										)}
+						{payment_details && payment_details.transactions?.length > 0 ? (
+							<>
+								<div className="text-sm">
+									<Link
+										to={`/payments/${payment_details.id}`}
+										className="text-blue-500 font-bold hover:underline"
 									>
-										{payment_details.status}
-									</Badge>
+										View Full Payment Record &rarr;
+									</Link>
 								</div>
-								<p>
-									Amount: ${parseFloat(payment_details.amount_paid).toFixed(2)}
-								</p>
-								<Link
-									to={`/payments/${payment_details.id}`}
-									className="text-sm text-blue-600 hover:underline"
-								>
-									View Payment &rarr;
-								</Link>
-							</div>
+								{payment_details.transactions.map((txn) => (
+									<TransactionDetail
+										key={txn.id}
+										transaction={txn}
+									/>
+								))}
+							</>
 						) : (
-							<p className="text-sm text-gray-500">No payment found.</p>
+							<p className="text-sm text-gray-500">
+								No payment details found for this order.
+							</p>
 						)}
 					</CardContent>
 				</Card>

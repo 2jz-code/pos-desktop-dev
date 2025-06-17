@@ -190,23 +190,35 @@ class CreateTerminalIntentView(generics.GenericAPIView):
         order_id = self.kwargs.get("order_id")
         order = get_object_or_404(Order, id=order_id)
 
-        # Prevent creating a new payment intent for an already completed order
         if order.status == Order.OrderStatus.COMPLETED:
             return Response(
                 {"error": "This order has already been completed and paid."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Get tip from request and safely convert it to a Decimal
+        # --- FIX: Read the partial amount and tip from the request body ---
+        amount_from_request = request.data.get("amount")
         tip_from_request = request.data.get("tip", "0.00")
+
+        if amount_from_request is None:
+            return Response(
+                {"error": "'amount' is a required field."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        amount_to_pay = Decimal(str(amount_from_request))
         tip_amount = Decimal(str(tip_from_request))
+        # --- END FIX ---
 
         try:
+            # --- FIX: Pass the correct partial amount to the service ---
             payment_intent = PaymentService.create_terminal_payment_intent(
                 order=order,
-                amount=order.grand_total,
-                tip=tip_amount,  # Pass the validated Decimal to the service
+                amount=amount_to_pay,  # Use the amount from the request
+                tip=tip_amount,
             )
+            # --- END FIX ---
+
             return Response(
                 {
                     "client_secret": payment_intent.client_secret,
@@ -249,7 +261,7 @@ class CancelPaymentIntentView(APIView):
 
 
 class CaptureTerminalIntentView(APIView):
-    """Captures a payment intent after it has been processed by a terminal."""
+    """Captures a payment intent and returns the updated Payment state."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -262,8 +274,14 @@ class CaptureTerminalIntentView(APIView):
             )
 
         try:
-            intent = PaymentService.capture_terminal_payment(payment_intent_id)
-            return Response({"id": intent.id, "status": intent.status})
+            # This now returns the full Payment object from your service
+            payment_object = PaymentService.capture_terminal_payment(payment_intent_id)
+
+            # Serialize the payment object to send its data back to the frontend
+            serializer = PaymentSerializer(payment_object)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
         except (
             RuntimeError,
             NotImplementedError,

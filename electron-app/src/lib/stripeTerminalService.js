@@ -247,6 +247,38 @@ const StripeTerminalService = {
 		}
 	},
 
+	async disconnectReader() {
+		console.log("[StripeTerminalService] Attempting to disconnect reader.");
+		if (
+			!this.terminal ||
+			!this.terminal.getReaderConnectionStatus() === "not_connected"
+		) {
+			console.warn(
+				"[StripeTerminalService] No active reader connection to disconnect."
+			);
+			return;
+		}
+
+		const result = await this.terminal.disconnectReader();
+		if (result.error) {
+			console.error(
+				"[StripeTerminalService] Failed to disconnect:",
+				result.error
+			);
+			this._listeners.onUpdate?.({ error: result.error.message });
+			// We throw the error so the calling function knows the disconnect failed
+			throw new Error(result.error.message);
+		} else {
+			console.log(
+				"[StripeTerminalService] Successfully disconnected from reader."
+			);
+			this._listeners.onUpdate?.({
+				connectedReader: null,
+				message: "Disconnected.",
+			});
+		}
+	},
+
 	/**
 	 * Returns the last list of discovered readers.
 	 */

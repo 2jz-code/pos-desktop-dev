@@ -11,19 +11,35 @@ const __dirname = path.dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig({
+	// ** THE KEY CHANGE IS HERE **
+	// We are adding a top-level 'ssr' config to instruct Vite's dev server
+	// on how to handle modules in a Node.js environment (the Electron main process).
+	ssr: {
+		// Explicitly tell Vite to NOT bundle these new modules.
+		// The 'require()' or 'import' calls will be left as-is and handled by Node.js at runtime.
+		external: ["node-thermal-printer", "usb"],
+	},
 	plugins: [
 		react(),
 		tailwindcss(),
 		electron([
 			{
-				// Main-Process entry file of the Electron App.
+				// Main-process entry
 				entry: "electron/main.js",
+				// We also need to configure the production build for the main process.
+				vite: {
+					build: {
+						// For the production build, ensure the modules are also externalized.
+						rollupOptions: {
+							external: ["node-thermal-printer", "usb"],
+						},
+					},
+				},
 			},
 			{
+				// Preload-script entry
 				entry: "electron/preload.js",
 				onstart(options) {
-					// Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete,
-					// instead of restarting the entire Electron App.
 					options.reload();
 				},
 			},
@@ -36,6 +52,7 @@ export default defineConfig({
 		},
 	},
 	build: {
+		// This config is for the renderer process.
 		rollupOptions: {
 			input: {
 				main: path.resolve(__dirname, "index.html"),

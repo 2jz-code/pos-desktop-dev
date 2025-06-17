@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os  # <-- Import the os module
+from dotenv import load_dotenv  # <-- Add this import
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -133,13 +137,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"  # URL prefix for static files
 
-# Define STATIC_ROOT for collectstatic
-# This is where Django will collect all static files from all apps
-STATIC_ROOT = (
-    BASE_DIR / "staticfiles"
-)  # Or os.path.join(BASE_DIR, 'staticfiles') if you prefer
+# Directory where manage.py collectstatic will copy files for deployment
+STATIC_ROOT = BASE_DIR / "staticfiles"  # <--- This is the crucial setting
+
+# --- Media files (User-uploaded content) ---
+MEDIA_URL = "/media/"
+# For local storage (development or simple deployments):
+MEDIA_ROOT = BASE_DIR / "media"
 
 # You might also want to add STATICFILES_DIRS if you have project-specific static files
 # not tied to a particular app, though it's not strictly necessary for Jazzmin to work

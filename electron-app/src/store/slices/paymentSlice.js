@@ -1,11 +1,12 @@
 import { cashPaymentModel } from "./paymentModels/cashPaymentModel";
 import { terminalPaymentModel } from "./paymentModels/terminalPaymentModel";
 import { cancelTerminalIntent } from "@/api/services/paymentService";
-import useTerminalStore from "../terminalStore"; // Import the terminal store
+import useTerminalStore from "../terminalStore";
 
 export const createPaymentSlice = (set, get) => ({
 	// CORE DIALOG STATE
 	order: null,
+	lastCompletedOrder: null,
 	isTenderDialogOpen: false,
 
 	// "STATE MACHINE" CONTEXT
@@ -17,135 +18,162 @@ export const createPaymentSlice = (set, get) => ({
 	error: null,
 	orderId: null,
 	currentPaymentIntentId: null,
+	partialAmount: 0,
 
 	// UI ACTIONS
-	startTender: (order) => {
+	startTender: (fullOrderObject) => {
 		set({
-			order: order,
+			order: fullOrderObject,
+			lastCompletedOrder: null,
 			isTenderDialogOpen: true,
 			tenderState: "awaitingPaymentMethod",
-			balanceDue: order.grand_total,
-			orderId: order.id,
-			// Reset all payment-specific state
+			// --- FIX: Ensure grand_total from the API is parsed into a number ---
+			balanceDue: parseFloat(fullOrderObject.grand_total) || 0,
+			orderId: fullOrderObject.id,
 			tipAmount: 0,
 			paymentHistory: [],
 			changeDue: 0,
 			error: null,
-			currentPaymentIntentId: null, // Ensure it's reset when a new tender starts
-		});
-	},
-
-	resetPayment: () => {
-		set({
-			order: null,
-			isTenderDialogOpen: false,
-			tenderState: "idle",
-			balanceDue: 0,
-			tipAmount: 0,
-			paymentHistory: [],
-			changeDue: 0,
-			error: null,
-			orderId: null,
 			currentPaymentIntentId: null,
+			partialAmount: 0,
 		});
 	},
 
 	closeTender: () => {
-		// Before closing, check if there's a pending payment to cancel
 		const intentIdToCancel = get().currentPaymentIntentId;
 		if (intentIdToCancel) {
-			console.log(
-				`Closing tender dialog, cancelling pending intent: ${intentIdToCancel}`
-			);
-			// Call the cancellation service but don't wait for it.
-			// The user wants the dialog to close immediately.
 			cancelTerminalIntent(intentIdToCancel);
 		}
-
 		set({
 			isTenderDialogOpen: false,
 			tenderState: "idle",
+			lastCompletedOrder: null,
 			currentPaymentIntentId: null,
+			partialAmount: 0,
 		});
 	},
+
+	retryFailedPayment: async () => {
+		console.log("Retrying failed payment...");
+		try {
+			// First, explicitly disconnect the reader
+			const { disconnectReader } = useTerminalStore.getState();
+			await disconnectReader();
+		} catch (error) {
+			// Log the error but continue, as the main goal is to reset the UI.
+			console.error("Error during disconnect on retry:", error);
+		} finally {
+			// Then, reset the payment flow back to the beginning
+			set({
+				tenderState: "awaitingPaymentMethod",
+				error: null,
+				partialAmount: 0,
+			});
+		}
+	},
+
 	// STATE TRANSITION ACTIONS
 	selectPaymentMethod: async (method) => {
-		// For cash, the transition is immediate
+		if (method === "CASH") {
+			set({ tenderState: "awaitingCashAmount" });
+			return;
+		}
+		if (method === "SPLIT") {
+			set({ tenderState: "splittingPayment" });
+			return;
+		}
+		if (method === "CREDIT") {
+			set({ tenderState: "initializingTerminal" });
+			const { initializeTerminal } = useTerminalStore.getState();
+			try {
+				await initializeTerminal();
+				set({ tenderState: "awaitingTip" });
+			} catch (error) {
+				set({ tenderState: "paymentError", error: error.message });
+			}
+		}
+	},
+
+	prepareToPaySplit: async (amount, method) => {
+		set({ partialAmount: amount });
+
 		if (method === "CASH") {
 			set({ tenderState: "awaitingCashAmount" });
 			return;
 		}
 
-		if (method === "SPLIT") {
-			set({ tenderState: "splittingPayment" });
-			return;
-		}
-
-		// --- THIS IS THE NEW LOGIC FOR CARD PAYMENTS ---
 		if (method === "CREDIT") {
-			// 1. Immediately go into a new "initializing" state to show a loading spinner
 			set({ tenderState: "initializingTerminal" });
-
-			// 2. Get the initialize function from the terminal store
-			const { initializeTerminal, isTerminalInitialized } =
-				useTerminalStore.getState();
-
+			const { initializeTerminal } = useTerminalStore.getState();
 			try {
-				// 3. Initialize the terminal (this fetches the fresh connection token)
-				// The function is idempotent, so it's safe to call multiple times.
-				if (!isTerminalInitialized) {
-					await initializeTerminal();
-				}
-
-				// 4. Once initialization is successful, proceed to the 'awaitingTip' state
+				await initializeTerminal();
 				set({ tenderState: "awaitingTip" });
 			} catch (error) {
-				// If initialization fails, go to the error state
 				set({ tenderState: "paymentError", error: error.message });
 			}
 		}
 	},
 
 	goBack: () => {
-		set({ tenderState: "awaitingPaymentMethod", error: null });
+		set({
+			tenderState: "awaitingPaymentMethod",
+			error: null,
+			partialAmount: 0,
+		});
 	},
 
-	// ASYNC LOGIC ACTIONS (DELEGATION)
-	applyCashPayment: async (amount) => {
-		// ... (this function remains the same as before)
+	// ASYNC LOGIC ACTIONS
+	applyCashPayment: async (tenderedAmount) => {
 		set({ tenderState: "processingPayment" });
-		const context = { orderId: get().orderId, amount };
-		const result = await cashPaymentModel.process(context);
+		const state = get();
+		const isSplit = state.partialAmount > 0;
+		const amountToProcess = isSplit ? state.partialAmount : state.balanceDue;
+
+		const result = await cashPaymentModel.process({
+			orderId: state.orderId,
+			amount: amountToProcess,
+		});
+
 		if (result.success) {
 			const { data } = result;
+			const newBalance = parseFloat(data.balance_due);
+			const changeForThisTransaction =
+				tenderedAmount >= amountToProcess
+					? tenderedAmount - amountToProcess
+					: 0;
+			const isComplete = newBalance <= 0;
+
 			set({
-				balanceDue: data.balance_due,
-				paymentHistory: [...get().paymentHistory, ...data.transactions],
-				changeDue: data.change_due || 0,
-				tenderState: data.balance_due <= 0 ? "complete" : "splittingPayment",
+				lastCompletedOrder: isComplete ? state.order : null,
+				balanceDue: newBalance,
+				paymentHistory: data.transactions,
+				changeDue: state.changeDue + changeForThisTransaction,
+				tenderState: isComplete ? "complete" : "splittingPayment",
+				partialAmount: 0,
 			});
 		} else {
 			set({ tenderState: "paymentError", error: result.error });
 		}
 	},
 
-	// --- NEW: This action is called by the tip listener ---
 	applyTipAndProcessTerminalPayment: async (tipAmount) => {
-		// Only proceed if we are actually waiting for a tip
 		if (get().tenderState !== "awaitingTip") return;
 
 		set({
-			tenderState: "processingPayment", // Show a generic processing view
+			tenderState: "processingPayment",
 			tipAmount: tipAmount,
-			balanceDue: get().balanceDue + tipAmount, // Add tip to balance
 		});
 
+		const state = get();
+		const isSplit = state.partialAmount > 0;
+		const baseAmountToProcess = isSplit
+			? state.partialAmount
+			: state.balanceDue;
+
 		const context = {
-			orderId: get().orderId,
-			balanceDue: get().balanceDue,
-			tipAmount: get().tipAmount,
-			// --- THIS IS THE FIX ---
-			// Pass a function to the model so it can update our state immediately
+			orderId: state.orderId,
+			balanceDue: baseAmountToProcess,
+			tipAmount: state.tipAmount,
 			setPaymentIntentId: (id) => set({ currentPaymentIntentId: id }),
 		};
 
@@ -153,18 +181,22 @@ export const createPaymentSlice = (set, get) => ({
 
 		if (result.success) {
 			const { data } = result;
+			const newBalance = parseFloat(data.balance_due);
+			const isComplete = newBalance <= 0;
+
 			set({
-				balanceDue: data.balance_due,
-				tenderState: "complete",
-				currentPaymentIntentId: null, // Clear the ID on success
+				lastCompletedOrder: isComplete ? get().order : null,
+				balanceDue: newBalance,
+				paymentHistory: data.transactions,
+				tenderState: isComplete ? "complete" : "splittingPayment",
+				currentPaymentIntentId: null,
+				partialAmount: 0,
+				tipAmount: 0,
 			});
 		} else {
-			// The model now returns the ID even on failure
 			set({
 				tenderState: "paymentError",
 				error: result.error,
-				balanceDue: get().balanceDue - get().tipAmount,
-				tipAmount: 0,
 				currentPaymentIntentId:
 					result.paymentIntentId || get().currentPaymentIntentId,
 			});

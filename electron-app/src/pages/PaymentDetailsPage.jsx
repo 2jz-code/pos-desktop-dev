@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPaymentById, refundPayment } from "@/api/services/paymentService";
@@ -10,18 +10,50 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import FullScreenLoader from "@/components/FullScreenLoader";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "@/components/ui/use-toast";
+import { formatCurrency } from "@/lib/utils";
+import { ArrowLeft, CreditCard, DollarSign } from "lucide-react";
+
+// A small component to render each transaction
+const TransactionDetail = ({ transaction }) => {
+	const method = transaction.method?.replace("_", " ") || "N/A";
+	const isCredit = method.toLowerCase() === "credit";
+
+	return (
+		<div className="p-4 border rounded-lg bg-muted/50 space-y-2">
+			<div className="flex justify-between items-center">
+				<div className="flex items-center gap-2">
+					{isCredit ? (
+						<CreditCard className="h-5 w-5 text-blue-500" />
+					) : (
+						<DollarSign className="h-5 w-5 text-green-500" />
+					)}
+					<span className="font-semibold capitalize">{method}</span>
+				</div>
+				<span className="font-bold text-lg">
+					{formatCurrency(transaction.amount)}
+				</span>
+			</div>
+			<div className="text-xs text-muted-foreground space-y-1 pl-7">
+				<p>Status: {transaction.status}</p>
+				<p>Date: {new Date(transaction.created_at).toLocaleString()}</p>
+				{isCredit && transaction.metadata?.card_brand && (
+					<p>
+						Card: {transaction.metadata.card_brand} ****
+						{transaction.metadata.card_last4}
+					</p>
+				)}
+			</div>
+		</div>
+	);
+};
 
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const { toast } = useToast();
-
-	const [refundAmount, setRefundAmount] = useState("");
 
 	const {
 		data: payment,
@@ -35,14 +67,14 @@ const PaymentDetailsPage = () => {
 	});
 
 	const { mutate: initiateRefund, isLoading: isRefunding } = useMutation({
-		mutationFn: ({ amount }) => refundPayment(paymentId, amount),
+		mutationFn: () => refundPayment(paymentId, parseFloat(payment.amount_paid)),
 		onSuccess: () => {
 			toast({
 				title: "Success",
 				description: "Refund processed successfully.",
 			});
 			queryClient.invalidateQueries(["payment", paymentId]);
-			queryClient.invalidateQueries(["payments"]); // Invalidate list view
+			queryClient.invalidateQueries(["payments"]);
 		},
 		onError: (err) => {
 			toast({
@@ -53,108 +85,89 @@ const PaymentDetailsPage = () => {
 		},
 	});
 
-	useEffect(() => {
-		if (payment) {
-			setRefundAmount(parseFloat(payment.amount_paid).toFixed(2));
-		}
-	}, [payment]);
-
-	if (isLoading) {
-		return <FullScreenLoader />;
-	}
-
-	if (isError) {
-		return (
-			<div className="flex-1 space-y-4 p-8 pt-6">
-				<h2 className="text-3xl font-bold tracking-tight">Error</h2>
-				<p>Failed to load payment details: {error.message}</p>
-			</div>
-		);
-	}
-
-	if (!payment) {
-		return (
-			<div className="flex-1 space-y-4 p-8 pt-6">
-				<h2 className="text-3xl font-bold tracking-tight">Payment Not Found</h2>
-			</div>
-		);
-	}
-
-	const handleRefund = () => {
-		const amount = parseFloat(refundAmount);
-		if (!isNaN(amount) && amount > 0) {
-			initiateRefund({ amount });
-		}
-	};
+	if (isLoading) return <FullScreenLoader />;
+	if (isError) return <div className="p-8">Error: {error.message}</div>;
+	if (!payment) return <div className="p-8">Payment not found.</div>;
 
 	const canRefund = payment.status === "succeeded";
 
 	return (
-		<div className="flex-1 space-y-4 p-8 pt-6">
+		<div className="p-4 md:p-8 space-y-4">
 			<Button
 				onClick={() => navigate("/payments")}
 				variant="outline"
-				className="mb-4"
 			>
-				&larr; Back to Payments
+				<ArrowLeft className="mr-2 h-4 w-4" />
+				Back to All Payments
 			</Button>
-			<h2 className="text-3xl font-bold tracking-tight">Payment Details</h2>
-			<div className="grid gap-4 md:grid-cols-2">
-				<Card>
+
+			<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+				{/* Left Side: Overall Payment Summary */}
+				<Card className="lg:col-span-1">
 					<CardHeader>
-						<CardTitle>Payment Information</CardTitle>
+						<CardTitle>Payment Summary</CardTitle>
 						<CardDescription>ID: {payment.id}</CardDescription>
 					</CardHeader>
-					<CardContent className="space-y-4">
-						<p>
-							<strong>Amount:</strong> $
-							{parseFloat(payment.amount_paid).toFixed(2)}
-						</p>
-						<p>
-							<strong>Method:</strong>{" "}
-							{payment.transactions?.[0]?.method.replace("_", " ") || "N/A"}
-						</p>
-						<p>
-							<strong>Status:</strong> {payment.status}
-						</p>
-						<p>
-							<strong>Created:</strong>{" "}
-							{new Date(payment.created_at).toLocaleString()}
-						</p>
-						<p>
-							<strong>Related Order:</strong>{" "}
+					<CardContent className="space-y-4 text-sm">
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Total Amount Paid</span>
+							<span className="font-medium">
+								{formatCurrency(payment.amount_paid)}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Tip</span>
+							<span className="font-medium">{formatCurrency(payment.tip)}</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Overall Status</span>
+							<Badge>{payment.status}</Badge>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Created</span>
+							<span className="font-medium">
+								{new Date(payment.created_at).toLocaleString()}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Related Order: </span>
 							<Link
 								to={`/orders/${payment.order}`}
-								className="text-blue-600 hover:underline font-mono"
+								className="hover:underline font-mono text-sm font-bold text-blue-500"
 							>
-								{payment.order}
+								{payment.order?.order_number} {/* Display order_number */}
 							</Link>
-						</p>
+						</div>
+						{canRefund && (
+							<Button
+								className="w-full mt-4"
+								onClick={initiateRefund}
+								disabled={isRefunding}
+							>
+								{isRefunding ? "Refunding..." : "Refund Full Amount"}
+							</Button>
+						)}
 					</CardContent>
 				</Card>
-				<Card>
+
+				{/* Right Side: Transaction List */}
+				<Card className="lg:col-span-2">
 					<CardHeader>
-						<CardTitle>Refunds</CardTitle>
+						<CardTitle>Transaction History</CardTitle>
+						<CardDescription>
+							Individual transactions associated with this payment.
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						{canRefund ? (
-							<div className="space-y-2">
-								<Label htmlFor="refundAmount">Refund Amount</Label>
-								<Input
-									id="refundAmount"
-									type="number"
-									value={refundAmount}
-									onChange={(e) => setRefundAmount(e.target.value)}
+						{payment.transactions && payment.transactions.length > 0 ? (
+							payment.transactions.map((txn) => (
+								<TransactionDetail
+									key={txn.id}
+									transaction={txn}
 								/>
-								<Button
-									onClick={handleRefund}
-									disabled={isRefunding}
-								>
-									{isRefunding ? "Refunding..." : "Initiate Refund"}
-								</Button>
-							</div>
+							))
 						) : (
-							<p>This payment cannot be refunded (Status: {payment.status}).</p>
+							<p className="text-muted-foreground">No transactions found.</p>
 						)}
 					</CardContent>
 				</Card>

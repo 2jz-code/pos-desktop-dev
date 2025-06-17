@@ -150,63 +150,53 @@ class PaymentService:
     @transaction.atomic
     def create_terminal_payment_intent(order: Order, amount: Decimal, tip: Decimal):
         """
-        Creates a payment intent for a terminal transaction, including the tip.
-        This is an atomic operation that creates/updates the payment and transaction records.
+        Creates a payment intent for a terminal transaction.
+        This method now correctly handles both full and partial (split) payments.
         """
         payment = PaymentService.get_or_create_payment(order)
-
-        # Idempotency Check: Prevent creating a new intent if one is already pending
-        if payment.transactions.filter(
-            method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
-            status=PaymentTransaction.TransactionStatus.PENDING,
-        ).exists():
-            raise ValueError(
-                "A terminal payment is already in progress for this order."
-            )
-
-        # Lock the payment row for update to prevent race conditions
         payment = Payment.objects.select_for_update().get(id=payment.id)
 
-        # Update payment with the final amounts
-        payment.tip = tip
-        payment.total_amount_due = order.grand_total + tip
-        payment.save()
+        # Atomically add the new tip to the payment's running tip total.
+        payment.tip = (payment.tip or Decimal("0.00")) + tip
+        payment.save(update_fields=["tip"])
 
-        # Get the currently configured terminal provider from site-wide settings
-        current_settings = GlobalSettings.objects.first()
-        if not current_settings or not current_settings.active_terminal_provider:
-            raise NotImplementedError(
-                "No active terminal provider is configured in settings."
-            )
+        # This is the actual amount for this specific transaction (e.g., the partial payment).
+        amount_for_this_intent = amount + tip
 
-        provider = current_settings.active_terminal_provider
+        # Get the active terminal strategy
+        active_strategy = PaymentService._get_active_terminal_strategy()
 
-        # Get the active payment strategy using the correct method and provider
-        active_strategy = PaymentStrategyFactory.get_strategy(
-            method=PaymentTransaction.PaymentMethod.CARD_TERMINAL, provider=provider
-        )
-
-        if not isinstance(active_strategy, TerminalPaymentStrategy):
-            raise NotImplementedError(
-                "The configured strategy is not a valid terminal strategy."
-            )
-
-        # The strategy handles the creation of the intent with the final amount
-        return active_strategy.create_payment_intent(payment, payment.total_amount_due)
+        # The strategy is responsible for creating the PaymentIntent and the
+        # associated PaymentTransaction record with the correct partial amount.
+        return active_strategy.create_payment_intent(payment, amount_for_this_intent)
 
     @classmethod
+    @transaction.atomic  # Add atomic transaction for safety
     def capture_terminal_payment(cls, payment_intent_id: str):
         """
-        Captures a specific terminal payment intent.
-        The webhook will handle the final status update.
+        Captures a specific terminal payment intent and returns the
+        updated parent Payment object for immediate UI feedback.
         """
         strategy = cls._get_active_terminal_strategy()
-        # We need the transaction to call the strategy method
         try:
-            transaction = PaymentTransaction.objects.get(
+            # Find the transaction corresponding to this payment intent
+            transaction = PaymentTransaction.objects.select_related("payment").get(
                 transaction_id=payment_intent_id
             )
-            return strategy.capture_payment(transaction)
+
+            # Capture the payment with the provider (e.g., Stripe)
+            strategy.capture_payment(transaction)
+
+            # Synchronously update our local state for immediate feedback.
+            # The webhook can serve as a later reconciliation if needed.
+            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+            transaction.save()
+
+            # Recalculate the totals and status of the parent Payment object
+            updated_payment = cls._update_payment_status(transaction.payment)
+
+            return updated_payment  # Return the full, updated payment object
+
         except PaymentTransaction.DoesNotExist:
             raise ValueError(
                 f"No transaction found for payment_intent_id: {payment_intent_id}"

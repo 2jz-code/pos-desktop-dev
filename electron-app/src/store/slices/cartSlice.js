@@ -25,6 +25,7 @@ const calculateLocalTotals = (items) => {
 // All financial values are initialized to 0.
 export const defaultCartState = {
 	orderId: null,
+	orderNumber: null,
 	orderStatus: "DRAFT",
 	items: [],
 	subtotal: 0,
@@ -86,6 +87,7 @@ export const createCartSlice = (set, get) => {
 					set({
 						orderId: orderId,
 						orderStatus: orderRes.data.status,
+						orderNumber: orderRes.data.order_number,
 					});
 					// We no longer use localStorage for the order ID.
 					// The state itself is the source of truth.
@@ -118,6 +120,7 @@ export const createCartSlice = (set, get) => {
 			set({
 				items: orderData.items || [],
 				orderId: orderData.id,
+				orderNumber: orderData.order_number,
 				orderStatus: orderData.status,
 				total: safeParseFloat(orderData.grand_total),
 				subtotal: safeParseFloat(orderData.subtotal),
@@ -267,7 +270,7 @@ export const createCartSlice = (set, get) => {
 					get().resumeCart(order);
 					get().showToast({
 						title: "Cart Loaded",
-						description: `Order #${order.id.substring(0, 4)}... loaded.`,
+						description: `${order.order_number} loaded.`,
 					});
 				} else {
 					// If order is completed or canceled, start a fresh cart

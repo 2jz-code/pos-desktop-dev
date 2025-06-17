@@ -1,4 +1,3 @@
-// desktop-combined/electron-app/src/features/pos/components/cart/CartSummary.jsx
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { usePosStore } from "@/store/posStore";
@@ -85,19 +84,9 @@ const CartSummary = () => {
 				});
 				await forceCancelAndStartPayment(orderId);
 			} else {
-				const orderForPayment = {
-					id: orderId,
-					grand_total: total,
-					items: items,
-				};
-
-				// ======================= DEBUG 1 =======================
-				console.log(
-					`[DEBUG 1/5] CartSummary: Calling startTender with total: ${orderForPayment.grand_total}`
-				);
-				// =======================================================
-
-				startTender(orderForPayment);
+				// --- FIX: Pass the full, detailed order object to startTender ---
+				// This ensures the entire payment flow has access to the complete order data.
+				startTender(orderDetails);
 			}
 		} catch (error) {
 			console.error("Error during pre-flight payment check:", error);
@@ -125,7 +114,6 @@ const CartSummary = () => {
 					appliedDiscounts.map((appliedDiscount) => (
 						<SummaryRow
 							key={appliedDiscount.id}
-							// FIX: Changed 'description' to 'name' to match your data
 							label={appliedDiscount.discount.name}
 							amount={-appliedDiscount.amount}
 							className="text-red-500"

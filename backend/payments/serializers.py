@@ -17,6 +17,9 @@ class PaymentSerializer(serializers.ModelSerializer):
     # --- FIX: Both balance_due and change_due must be calculated fields ---
     balance_due = serializers.SerializerMethodField()
     change_due = serializers.SerializerMethodField()
+    order_number = serializers.CharField(
+        source="order.order_number", read_only=True
+    )  # <--- IMPORTANT CHANGE HERE
 
     class Meta:
         model = Payment
@@ -24,6 +27,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "order",
+            "order_number",
             "status",
             "total_amount_due",
             "amount_paid",

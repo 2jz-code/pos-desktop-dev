@@ -230,7 +230,7 @@ export default function OrdersPage() {
 												className="cursor-pointer hover:bg-muted/50"
 											>
 												<TableCell className="font-mono text-xs">
-													{order.id}
+													{order.order_number}
 												</TableCell>
 												<TableCell>
 													<Badge variant={getStatusBadgeVariant(order.status)}>

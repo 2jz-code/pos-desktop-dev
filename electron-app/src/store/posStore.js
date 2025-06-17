@@ -1,4 +1,3 @@
-// desktop-combined/electron-app/src/store/posStore.js
 import { createWithEqualityFn } from "zustand/traditional";
 import { persist } from "zustand/middleware";
 import { shallow } from "zustand/shallow";
@@ -8,7 +7,7 @@ import {
 	createOrderSlice,
 	createProductSlice,
 	createUserSlice,
-	createDiscountSlice,
+	createDiscountSlice, // Added missing import
 	createPaymentSlice,
 } from "./slices";
 import { cartSocket } from "../lib/cartSocket";
@@ -17,10 +16,10 @@ export const usePosStore = createWithEqualityFn(
 	persist(
 		(set, get) => ({
 			...createCartSlice(set, get),
-			...createOrderSlice(set, get),
+			...createOrderSlice(set, get), // Removed duplicate call
 			...createProductSlice(set, get),
 			...createUserSlice(set, get),
-			...createDiscountSlice(set, get),
+			...createDiscountSlice(set, get), // Added required discount slice
 			...createPaymentSlice(set, get),
 		}),
 		{
@@ -39,14 +38,9 @@ export const usePosStore = createWithEqualityFn(
 				appliedDiscounts: state.appliedDiscounts,
 				currentUser: state.currentUser,
 			}),
-
-			// --- THIS IS THE FIX ---
-			// Add this function to ensure non-persisted state (like your machine options)
-			// is correctly merged with the state restored from storage.
 			merge: (persistedState, currentState) => {
 				return { ...currentState, ...persistedState };
 			},
-			// --- END OF FIX ---
 		}
 	),
 	shallow

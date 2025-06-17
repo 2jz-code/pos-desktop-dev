@@ -1,5 +1,10 @@
+# desktop-combined/backend/orders/admin.py
 from django.contrib import admin
-from .models import Order, OrderItem
+from .models import (
+    Order,
+    OrderItem,
+    OrderDiscount,
+)  # Make sure OrderDiscount is imported if used
 
 
 class OrderItemInline(admin.TabularInline):
@@ -31,9 +36,11 @@ class OrderAdmin(admin.ModelAdmin):
     Admin configuration for the Order model.
     """
 
-    # Expanded list_display for a more informative overview
+    # --- MODIFICATIONS START HERE ---
+
+    # Display order_number instead of id in the list view
     list_display = (
-        "id",
+        "order_number",  # Changed from "id"
         "customer",
         "cashier",
         "status",
@@ -43,6 +50,19 @@ class OrderAdmin(admin.ModelAdmin):
         "payment_in_progress",
         "created_at",
     )
+
+    # Make order_number the clickable link
+    list_display_links = ("order_number",)
+
+    # Add order_number to search fields and remove id
+    search_fields = (
+        "order_number",  # Changed from "id"
+        "customer__username",
+        "cashier__username",
+    )
+
+    # --- MODIFICATIONS END HERE ---
+
     # Added payment_in_progress to filters
     list_filter = (
         "status",
@@ -52,8 +72,6 @@ class OrderAdmin(admin.ModelAdmin):
         "cashier",
         "payment_in_progress",
     )
-    # Added cashier to search fields
-    search_fields = ("id", "customer__username", "cashier__username")
 
     inlines = [OrderItemInline]
 
@@ -61,9 +79,10 @@ class OrderAdmin(admin.ModelAdmin):
         (
             "Order Overview",
             {
-                # Added cashier and payment_status
+                # id remains here to be visible on the detail page
                 "fields": (
                     "id",
+                    "order_number",  # Add order_number here for detail view
                     "customer",
                     "cashier",
                     "status",
@@ -92,7 +111,6 @@ class OrderAdmin(admin.ModelAdmin):
                 "fields": ("created_at", "updated_at"),
             },
         ),
-        # --- NEW FIELDSET FOR MANUAL OVERRIDE ---
         (
             "!! Manual Override !!",
             {
@@ -100,7 +118,6 @@ class OrderAdmin(admin.ModelAdmin):
                 "description": '<b style="color:red;">Warning:</b> Manually changing this field should only be done to resolve a payment that is permanently stuck. Incorrectly setting this could cause payment issues.',
             },
         ),
-        # --- END OF NEW FIELDSET ---
     )
 
     def get_readonly_fields(self, request, obj=None):
@@ -108,6 +125,7 @@ class OrderAdmin(admin.ModelAdmin):
         # Start with fields that should always be readonly
         readonly = [
             "id",
+            "order_number",  # Make order_number read-only as it's auto-generated
             "created_at",
             "updated_at",
             "get_subtotal_formatted",
@@ -164,6 +182,19 @@ class OrderItemAdmin(admin.ModelAdmin):
     """
 
     list_display = ("id", "order", "product", "quantity", "price_at_sale")
-    search_fields = ("order__id", "product__name")
+    search_fields = (
+        "order__order_number",
+        "product__name",
+    )  # Changed search field for order
     autocomplete_fields = ("order", "product")
     readonly_fields = ("price_at_sale",)
+
+
+@admin.register(OrderDiscount)
+class OrderDiscountAdmin(admin.ModelAdmin):
+    list_display = ("order", "discount", "amount", "created_at")
+    search_fields = (
+        "order__order_number",
+        "discount__name",
+    )  # Changed search field for order
+    raw_id_fields = ("order", "discount")

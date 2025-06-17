@@ -66,6 +66,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id",
+            "order_number",
             "status",
             "order_type",
             "payment_status",

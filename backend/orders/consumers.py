@@ -1,46 +1,56 @@
-# desktop-combined/backend/orders/consumers.py
 import json
+import logging
+from decimal import Decimal  # 1. Import Decimal
+from uuid import UUID
 from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import sync_to_async
+
 from .models import Order, OrderItem, Product
 from .services import OrderService
 from .serializers import OrderSerializer
-from uuid import UUID
+
+# No longer need DjangoJSONEncoder if we pre-process the data
+# from django.core.serializers.json import DjangoJSONEncoder
 
 
-# ... (convert_uuids_to_str function remains the same) ...
-def convert_uuids_to_str(data):
+def convert_complex_types_to_str(data):
+    """
+    Recursively converts UUID and Decimal objects in a data structure to strings.
+    """
     if isinstance(data, dict):
-        return {k: convert_uuids_to_str(v) for k, v in data.items()}
+        return {k: convert_complex_types_to_str(v) for k, v in data.items()}
     elif isinstance(data, list):
-        return [convert_uuids_to_str(elem) for elem in data]
+        return [convert_complex_types_to_str(elem) for elem in data]
     elif isinstance(data, UUID):
+        return str(data)
+    elif isinstance(data, Decimal):  # 2. Handle Decimal conversion
         return str(data)
     return data
 
 
 class OrderConsumer(AsyncWebsocketConsumer):
+    # ... (connect, disconnect, receive, and all the action methods remain the same) ...
     async def connect(self):
-        print("OrderConsumer: Attempting to connect...")
+        logging.info("OrderConsumer: Attempting to connect...")
         self.order_id = self.scope["url_route"]["kwargs"]["order_id"]
         self.order_group_name = f"order_{self.order_id}"
 
         try:
             self.order = await sync_to_async(Order.objects.get)(id=self.order_id)
-            print(f"OrderConsumer: Found order {self.order.id}")
+            logging.info(f"OrderConsumer: Found order {self.order.id}")
         except Order.DoesNotExist:
-            print(
+            logging.warning(
                 f"OrderConsumer: Order {self.order_id} does not exist. Closing connection."
             )
             await self.close()
             return
 
         await self.channel_layer.group_add(self.order_group_name, self.channel_name)
-        print(f"OrderConsumer: Joined group {self.order_group_name}")
+        logging.info(f"OrderConsumer: Joined group {self.order_group_name}")
         await self.accept()
 
         await self.send_full_order_state()
-        print("OrderConsumer: Connection established and initial state sent.")
+        logging.info("OrderConsumer: Connection established and initial state sent.")
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.order_group_name, self.channel_name)
@@ -60,7 +70,6 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await self.apply_discount(payload)
         elif message_type == "remove_discount":
             await self.remove_discount(payload)
-        # NEW: Handle clear_cart message
         elif message_type == "clear_cart":
             await self.clear_cart(payload)
 
@@ -69,10 +78,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
     async def add_item(self, payload):
         product_id = payload.get("product_id")
         quantity = payload.get("quantity", 1)
-
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
         product = await sync_to_async(Product.objects.get)(id=product_id)
-
         await sync_to_async(OrderService.add_item_to_order)(
             order=order, product=product, quantity=quantity
         )
@@ -80,7 +87,6 @@ class OrderConsumer(AsyncWebsocketConsumer):
     async def update_item_quantity(self, payload):
         item_id = payload.get("item_id")
         quantity = payload.get("quantity")
-
         if quantity > 0:
             item = await sync_to_async(OrderItem.objects.get)(id=item_id)
             item.quantity = quantity
@@ -98,77 +104,76 @@ class OrderConsumer(AsyncWebsocketConsumer):
         await sync_to_async(OrderService.recalculate_order_totals)(order)
 
     async def apply_discount(self, payload):
-        """
-        Handles the 'apply_discount' event from the client.
-        """
         discount_id = payload.get("discount_id")
         if not discount_id:
-            print("OrderConsumer: 'discount_id' not provided in apply_discount payload")
+            logging.warning(
+                "OrderConsumer: 'discount_id' not provided in apply_discount payload"
+            )
             return
-
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
-
         try:
             await sync_to_async(OrderService.apply_discount_to_order_by_id)(
                 order=order, discount_id=discount_id
             )
-            print(
+            logging.info(
                 f"OrderConsumer: Applied discount {discount_id} to order {self.order_id}"
             )
         except Exception as e:
-            # Optionally, send an error message back to the client
-            print(f"OrderConsumer: Error applying discount {discount_id}: {e}")
+            logging.error(f"OrderConsumer: Error applying discount {discount_id}: {e}")
 
     async def remove_discount(self, payload):
-        """
-        Handles the 'remove_discount' event from the client.
-        """
         discount_id = payload.get("discount_id")
         if not discount_id:
-            print(
+            logging.warning(
                 "OrderConsumer: 'discount_id' not provided in remove_discount payload"
             )
             return
-
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
         try:
             await sync_to_async(OrderService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
             )
-            print(
+            logging.info(
                 f"OrderConsumer: Removed discount {discount_id} from order {self.order_id}"
             )
         except Exception as e:
-            print(f"OrderConsumer: Error removing discount {discount_id}: {e}")
+            logging.error(f"OrderConsumer: Error removing discount {discount_id}: {e}")
 
-    # NEW: Clear cart method
     async def clear_cart(self, payload):
         order_id_from_payload = payload.get("order_id")
         if str(order_id_from_payload) != str(self.order_id):
-            print(
+            logging.warning(
                 f"Clear cart request mismatch: expected {self.order_id}, got {order_id_from_payload}"
             )
-            return  # Don't clear if order ID doesn't match consumer's context
-
+            return
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
-        await sync_to_async(OrderService.clear_order_items)(
-            order
-        )  # Assuming this service method exists
+        await sync_to_async(OrderService.clear_order_items)(order)
 
-    # ... (rest of the consumer, send_full_order_state, cart_update, get_order_instance, serialize_order)
     async def send_full_order_state(self):
+        """
+        Fetches, serializes, and cleans the order data before sending it.
+        """
         order = await self.get_order_instance()
         serialized_order_data = await self.serialize_order(order)
-        final_payload = convert_uuids_to_str(serialized_order_data)
-        print(
+
+        # 3. Convert all complex types (UUID, Decimal) to strings in one go.
+        final_payload = convert_complex_types_to_str(serialized_order_data)
+
+        # This payload is now "safe" for any serializer (json, msgpack, etc.)
+        logging.info(
             f"OrderConsumer: Sending initial state: {json.dumps(final_payload, indent=2)}"
         )
+
         await self.channel_layer.group_send(
             self.order_group_name, {"type": "cart_update", "payload": final_payload}
         )
 
     async def cart_update(self, event):
+        """
+        Handles the 'cart_update' event from the channel layer and sends it to the client.
+        """
         payload = event["payload"]
+        # 4. No special encoder needed here anymore because the payload is already clean.
         await self.send(
             text_data=json.dumps({"type": "cart_update", "payload": payload})
         )

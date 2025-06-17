@@ -31,6 +31,7 @@
 		"date-fns": "^4.1.0",
 		"framer-motion": "^12.16.0",
 		"lucide-react": "^0.513.0",
+		"node-thermal-printer": "^4.5.0",
 		"prop-types": "^15.8.1",
 		"react": "^18.3.1",
 		"react-day-picker": "^9.7.0",
@@ -44,6 +45,7 @@
 		"tailwind-merge": "^3.3.0",
 		"tailwindcss": "^4.1.8",
 		"tailwindcss-animate": "^1.0.7",
+		"usb": "^2.15.0",
 		"use-debounce": "^10.0.5",
 		"use-sync-external-store": "^1.5.0",
 		"uuid": "^11.1.0",
@@ -73,6 +75,7 @@
 		"tw-animate-css": "^1.3.4",
 		"vite": "^6.3.5",
 		"vite-plugin-electron": "^0.29.0",
-		"vite-plugin-electron-renderer": "^0.14.6"
+		"vite-plugin-electron-renderer": "^0.14.6",
+		"vite-plugin-static-copy": "^3.0.2"
 	}
 }

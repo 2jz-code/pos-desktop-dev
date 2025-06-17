@@ -1,3 +1,4 @@
+import React, { useEffect } from "react";
 import {
 	HashRouter as Router,
 	Routes,
@@ -7,34 +8,40 @@ import {
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { QueryProvider } from "./providers/QueryProvider";
-import { LoginPage } from "./pages/LoginPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { UsersPage } from "./pages/UsersPage";
-import ProductsPage from "./pages/ProductsPage";
-import POS from "./features/pos/pages/POS";
-import OrdersPage from "./pages/OrdersPage";
-import OrderDetailsPage from "./pages/OrderDetailsPage";
-import DiscountsPage from "./pages/DiscountsPage";
+import { useSettingsStore } from "./store/settingsStore";
+import { useCustomerTipListener } from "./store/useCustomerTipListener";
+
+// Import Components and Pages
 import FullScreenLoader from "./components/FullScreenLoader";
 import { Layout } from "@/components/Layout";
 import { Toaster } from "@/components/ui/toaster";
 import { AnimatedOutlet } from "./components/animations/AnimatedOutlet";
-import SettingsPage from "./features/settings/pages/SettingsPage";
+import { LoginPage } from "./pages/LoginPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import POS from "./features/pos/pages/POS";
+import OrdersPage from "./pages/OrdersPage";
+import OrderDetailsPage from "./pages/OrderDetailsPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import PaymentDetailsPage from "./pages/PaymentDetailsPage";
-import { useCustomerTipListener } from "./store/useCustomerTipListener"; // FIX: Import the hook
+import { UsersPage } from "./pages/UsersPage";
+import ProductsPage from "./pages/ProductsPage";
+import DiscountsPage from "./pages/DiscountsPage";
+import SettingsPage from "./features/settings/pages/SettingsPage";
 
-function PrivateRoute({ children }) {
-	const { user, loading } = useAuth();
-
-	if (loading) {
-		return <FullScreenLoader />;
-	}
-
-	return user ? children : <Navigate to="/login" />;
-}
-
+/**
+ * This is the root component that sets up all the providers
+ * and runs the one-time application initialization logic.
+ */
 function App() {
+	// This hook will run ONCE when the app component mounts.
+	useEffect(() => {
+		console.log("App mounted. Running initialization logic...");
+		// 1. Ensure a device ID exists after the store has been hydrated from localStorage.
+		useSettingsStore.getState().ensurePosDeviceId();
+		// 2. Fetch global settings from the server.
+		useSettingsStore.getState().fetchSettings();
+	}, []); // The empty dependency array `[]` is crucial. It ensures this runs only once.
+
 	return (
 		<AuthProvider>
 			<QueryProvider>
@@ -47,19 +54,33 @@ function App() {
 	);
 }
 
+const PrivateRoute = ({ children }) => {
+	const { isAuthenticated, loading } = useAuth(); // Changed `user` to `isAuthenticated` for consistency
+	if (loading) {
+		return <FullScreenLoader />;
+	}
+	return isAuthenticated ? (
+		children
+	) : (
+		<Navigate
+			to="/login"
+			replace
+		/>
+	);
+};
+
 function AppRoutes() {
 	const { isAuthenticated, loading } = useAuth();
 	const location = useLocation();
 
-	// Call the hook here to set up the global listener.
-	// Hooks must be called at the top level, not conditionally.
-	// The listener will be active for the app's lifetime.
+	// This hook sets up a global listener and is safe to call on re-renders.
 	useCustomerTipListener();
 
 	if (loading) {
 		return <FullScreenLoader />;
 	}
 
+	// This logic handles routing for unauthenticated users.
 	if (!isAuthenticated && location.pathname !== "/login") {
 		return (
 			<Navigate
@@ -69,6 +90,7 @@ function AppRoutes() {
 		);
 	}
 
+	// This logic handles routing for authenticated users trying to access login page.
 	if (isAuthenticated && location.pathname === "/login") {
 		return (
 			<Navigate
@@ -78,6 +100,7 @@ function AppRoutes() {
 		);
 	}
 
+	// Main routing structure
 	return (
 		<Routes>
 			<Route
@@ -87,46 +110,29 @@ function AppRoutes() {
 			<Route
 				path="/*"
 				element={
-					isAuthenticated ? (
+					<PrivateRoute>
 						<Layout>
 							<AnimatedOutlet />
 						</Layout>
-					) : (
-						<Navigate
-							to="/login"
-							replace
-						/>
-					)
+					</PrivateRoute>
 				}
 			>
-				{/* These routes are now children of the /* route and will be rendered by AnimatedOutlet */}
+				{/* Nested routes are rendered inside AnimatedOutlet */}
 				<Route
 					index
 					element={<DashboardPage />}
 				/>
 				<Route
 					path="pos"
-					element={
-						<PrivateRoute>
-							<POS />
-						</PrivateRoute>
-					}
+					element={<POS />}
 				/>
 				<Route
 					path="orders"
-					element={
-						<PrivateRoute>
-							<OrdersPage />
-						</PrivateRoute>
-					}
+					element={<OrdersPage />}
 				/>
 				<Route
 					path="orders/:orderId"
-					element={
-						<PrivateRoute>
-							<OrderDetailsPage />
-						</PrivateRoute>
-					}
+					element={<OrderDetailsPage />}
 				/>
 				<Route
 					path="payments"
@@ -136,42 +142,30 @@ function AppRoutes() {
 					path="payments/:paymentId"
 					element={<PaymentDetailsPage />}
 				/>
-
 				<Route
 					path="users"
-					element={
-						<PrivateRoute>
-							<UsersPage />
-						</PrivateRoute>
-					}
+					element={<UsersPage />}
 				/>
 				<Route
 					path="products"
-					element={
-						<PrivateRoute>
-							<ProductsPage />
-						</PrivateRoute>
-					}
+					element={<ProductsPage />}
 				/>
 				<Route
 					path="discounts"
-					element={
-						<PrivateRoute>
-							<DiscountsPage />
-						</PrivateRoute>
-					}
+					element={<DiscountsPage />}
 				/>
 				<Route
 					path="settings"
-					element={
-						<PrivateRoute>
-							<SettingsPage />
-						</PrivateRoute>
-					}
+					element={<SettingsPage />}
 				/>
 				<Route
 					path="*"
-					element={<Navigate to="/" />}
+					element={
+						<Navigate
+							to="/"
+							replace
+						/>
+					}
 				/>
 			</Route>
 		</Routes>

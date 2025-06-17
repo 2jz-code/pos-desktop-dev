@@ -1,7 +1,10 @@
 import StripeTerminalService from "../../../lib/stripeTerminalService";
 import useTerminalStore from "../../terminalStore";
 import apiClient from "../../../lib/apiClient";
-import { captureTerminalIntent } from "../../../api/services/paymentService";
+import {
+	captureTerminalIntent,
+	cancelTerminalIntent,
+} from "../../../api/services/paymentService";
 
 export const terminalPaymentModel = {
 	process: async (context) => {
@@ -48,6 +51,26 @@ export const terminalPaymentModel = {
 				success: false,
 				error: error.message || "An unknown terminal error occurred.",
 			};
+		}
+	},
+
+	/**
+	 * Cancels a specific payment intent on the backend.
+	 * This is a discrete task, perfect for the model.
+	 */
+	cancel: async (paymentIntentId) => {
+		if (!paymentIntentId) {
+			console.warn("No paymentIntentId provided to cancel.");
+			return;
+		}
+		try {
+			await cancelTerminalIntent(paymentIntentId);
+			// Optionally, you can also tell the terminal service to clear its state
+			// await StripeTerminalService.clearCachedCredentials();
+		} catch (error) {
+			console.error("Error cancelling payment intent:", error);
+			// Throw the error so the conductor knows the cancellation failed
+			throw new Error("Failed to cancel the previous payment.");
 		}
 	},
 };
