@@ -118,3 +118,16 @@ class ProcessPaymentSerializer(serializers.Serializer):
             payment_method_id=validated_data.get("payment_method_id"),
             payment_intent_id=validated_data.get("payment_intent_id"),
         )
+
+class RefundTransactionSerializer(serializers.Serializer):
+    """
+    Serializer for initiating a refund on a specific transaction.
+    """
+    transaction_id = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Refund amount must be a positive value.")
+        return value

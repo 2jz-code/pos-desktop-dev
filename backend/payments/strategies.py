@@ -28,6 +28,14 @@ class PaymentStrategy(ABC):
         It should update the transaction's status and other details.
         """
         pass
+    
+    @abstractmethod
+    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+        """
+        Refunds a specific payment transaction via the provider.
+        Updates the transaction's status and provider_response.
+        """
+        pass
 
 
 class CashPaymentStrategy(PaymentStrategy):
@@ -42,7 +50,24 @@ class CashPaymentStrategy(PaymentStrategy):
         transaction.save()
         # In a real system, you might trigger a cash drawer opening here.
         return transaction
-
+    
+    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+        """
+        For cash payments, an "external" refund means a manual cash payout.
+        We update the transaction status and refunded amount.
+        """
+        transaction.refunded_amount += amount
+        transaction.refund_reason = reason
+        # If the refunded amount equals the original transaction amount, mark as fully refunded
+        if transaction.refunded_amount >= transaction.amount:
+            transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+        else:
+            # For partial refunds, we might need a new status or more complex logic
+            # For now, if partial, it's still "successful" but with a refunded amount.
+            # Or you might want to create a new "Refund" transaction for clarity.
+            pass
+        transaction.save()
+        return transaction
 
 class TerminalPaymentStrategy(PaymentStrategy):
     """
@@ -228,7 +253,53 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         }
         transaction.save()
         return transaction
+    
+    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+        """
+        Refunds a Stripe Terminal payment transaction.
+        Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
+        """
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        if not transaction.transaction_id:
+            raise ValueError("Stripe transaction ID is missing for refund.")
 
+        amount_cents = int(amount * 100)
+
+        try:
+            # If transaction_id is a charge ID (common for captured payments), refund the charge directly.
+            # If it's a PaymentIntent ID, Stripe's refund API can often infer the charge.
+            refund = stripe.Refund.create(
+                payment_intent=transaction.transaction_id if transaction.transaction_id.startswith("pi_") else None,
+                charge=transaction.transaction_id if not transaction.transaction_id.startswith("pi_") else None,
+                amount=amount_cents,
+                reason=reason,
+                metadata={"original_transaction_id": str(transaction.id)}
+            )
+            transaction.refunded_amount += Decimal(str(refund.amount)) / 100 # Add to refunded amount
+            transaction.refund_reason = reason
+            transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [refund.to_dict()]
+
+            if refund.status == 'succeeded':
+                transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+            elif refund.status == 'pending':
+                 # Stripe refunds can be pending
+                transaction.status = PaymentTransaction.TransactionStatus.PENDING
+            else:
+                transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            return transaction
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe refund error for transaction {transaction.id}: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {"error": {"message": str(e)}}
+            transaction.save()
+            raise e
+        except Exception as e:
+            logger.error(f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {"error": {"message": str(e)}}
+            transaction.save()
+            raise e
 
 class CloverTerminalStrategy(TerminalPaymentStrategy):
     """
@@ -250,6 +321,20 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
             "status": "succeeded",
             "message": "Simulated payment successful.",
         }
+        transaction.save()
+        return transaction
+    
+    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+        """
+        Simulated refund for Clover Terminal payments.
+        """
+        transaction.refunded_amount += amount
+        transaction.refund_reason = reason
+        if transaction.refunded_amount >= transaction.amount:
+            transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+        else:
+            pass # Keep original status or add PARTIALLY_REFUNDED status
+        transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [{"amount": str(amount), "reason": reason, "status": "succeeded"}]
         transaction.save()
         return transaction
 
@@ -321,5 +406,48 @@ class StripeOnlineStrategy(PaymentStrategy):
         transaction.save()
         return transaction
 
+    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+        """
+        Refunds a Stripe Online payment transaction.
+        Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
+        """
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        if not transaction.transaction_id:
+            raise ValueError("Stripe transaction ID is missing for refund.")
+
+        amount_cents = int(amount * 100)
+
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=transaction.transaction_id if transaction.transaction_id.startswith("pi_") else None,
+                charge=transaction.transaction_id if not transaction.transaction_id.startswith("pi_") else None,
+                amount=amount_cents,
+                reason=reason,
+                metadata={"original_transaction_id": str(transaction.id)}
+            )
+            transaction.refunded_amount += Decimal(str(refund.amount)) / 100
+            transaction.refund_reason = reason
+            transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [refund.to_dict()]
+
+            if refund.status == 'succeeded':
+                transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+            elif refund.status == 'pending':
+                transaction.status = PaymentTransaction.TransactionStatus.PENDING
+            else:
+                transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            return transaction
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe refund error for transaction {transaction.id}: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {"error": {"message": str(e)}}
+            transaction.save()
+            raise e
+        except Exception as e:
+            logger.error(f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {"error": {"message": str(e)}}
+            transaction.save()
+            raise e
 
 # We can add CardOnlineStrategy, GiftCardStrategy, etc., here later.

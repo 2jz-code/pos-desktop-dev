@@ -7,7 +7,7 @@ from .factories import PaymentStrategyFactory
 from .strategies import TerminalPaymentStrategy
 from django.shortcuts import get_object_or_404
 import stripe
-
+import uuid
 
 class PaymentService:
 
@@ -276,9 +276,10 @@ class PaymentService:
             order.save()
 
     @transaction.atomic
-    def refund(self, amount_to_refund: Decimal) -> Payment:
+    def record_internal_refund(self, amount_to_refund: Decimal) -> Payment:
         """
-        Processes a refund for the associated payment.
+        Records an internal refund for the associated payment.
+        This does NOT interact with external payment providers.
         """
         if amount_to_refund <= 0:
             raise ValueError("Refund amount must be positive.")
@@ -286,14 +287,53 @@ class PaymentService:
         if amount_to_refund > self.payment.amount_paid:
             raise ValueError("Cannot refund more than the amount paid.")
 
+        # Create a new transaction to represent the internal refund
         PaymentTransaction.objects.create(
             payment=self.payment,
-            amount=-amount_to_refund,
-            method=self.payment.transactions.last().method,
-            status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
-            transaction_type=PaymentTransaction.TransactionType.REFUND,
+            amount=-amount_to_refund, # Negative amount for refund
+            method=self.payment.transactions.last().method if self.payment.transactions.last() else PaymentTransaction.PaymentMethod.CASH, # Use the last payment method for context
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL, # Internal record is successful
+            # No transaction_id or provider_response as it's internal
+            refund_reason=f"Internal refund of {amount_to_refund}",
+            refunded_amount=amount_to_refund # Mark this new transaction as refunded this amount
         )
 
         PaymentService._update_payment_status(self.payment)
-
         return self.payment
+
+    @transaction.atomic
+    def refund_transaction_with_provider(self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str = None) -> PaymentTransaction:
+        """
+        Initiates a refund for a specific PaymentTransaction via its associated provider.
+        This method will interact with external payment APIs (e.g., Stripe).
+        """
+        if amount_to_refund <= 0:
+            raise ValueError("Refund amount must be positive.")
+
+        original_transaction = get_object_or_404(PaymentTransaction.objects.select_related('payment'), id=transaction_id)
+
+        # Check if the transaction is already fully refunded or not suitable for refund
+        # Note: If allowing partial refunds, adjust this check.
+        if original_transaction.status == PaymentTransaction.TransactionStatus.REFUNDED:
+            raise ValueError(f"Transaction {transaction_id} is already fully refunded.")
+        
+        # Check if requested refund amount plus already refunded amount exceeds original transaction amount
+        if (original_transaction.refunded_amount + amount_to_refund) > original_transaction.amount:
+            raise ValueError(f"Cannot refund more than the remaining refundable amount for transaction {transaction_id}. Original amount: {original_transaction.amount}, Already refunded: {original_transaction.refunded_amount}, Requested refund: {amount_to_refund}.")
+
+        # Get the appropriate strategy based on the original transaction's method
+        provider_setting = None
+        if original_transaction.method == PaymentTransaction.PaymentMethod.CARD_TERMINAL:
+            global_settings = GlobalSettings.objects.first()
+            if global_settings:
+                provider_setting = global_settings.active_terminal_provider
+        
+        strategy = PaymentStrategyFactory.get_strategy(original_transaction.method, provider=provider_setting)
+
+        # Call the strategy's refund method
+        refunded_transaction = strategy.refund_transaction(original_transaction, amount_to_refund, reason)
+
+        # After external refund, update the parent payment status
+        PaymentService._update_payment_status(refunded_transaction.payment)
+
+        return refunded_transaction

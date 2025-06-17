@@ -11,6 +11,7 @@ from .serializers import (
     ProcessPaymentSerializer,
     PaymentSerializer,
     InitiateTerminalPaymentSerializer,
+    RefundTransactionSerializer
 )
 from .factories import PaymentStrategyFactory
 from .services import PaymentService
@@ -158,6 +159,53 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Response(
             {"status": "active payments cancelled"}, status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=["post"], url_path="refund-transaction")
+    def refund_transaction_action(self, request, pk=None):
+        """
+        Initiates a refund for a specific PaymentTransaction associated with this Payment.
+        `pk` is the payment_id. The transaction_id, amount, and reason are passed in the request body.
+        """
+        payment = get_object_or_404(Payment, pk=pk)
+        
+        serializer = RefundTransactionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        transaction_id = serializer.validated_data.get("transaction_id")
+        amount = serializer.validated_data["amount"]
+        reason = serializer.validated_data.get("reason")
+
+        try:
+            # Ensure the transaction belongs to this payment
+            transaction_to_refund = payment.transactions.get(id=transaction_id)
+            
+            # Use the PaymentService instance method for refunding a specific transaction
+            payment_service_instance = PaymentService(payment=payment) # Initialize with the payment object
+            updated_transaction = payment_service_instance.refund_transaction_with_provider(
+                transaction_id=transaction_to_refund.id, # Pass the actual transaction ID
+                amount_to_refund=amount,
+                reason=reason
+            )
+            
+            # Return the updated payment details
+            response_serializer = PaymentSerializer(updated_transaction.payment)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+        except PaymentTransaction.DoesNotExist:
+            return Response(
+                {"error": f"Transaction with ID {transaction_id} not found for this payment."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotImplementedError as e:
+            return Response({"error": str(e)}, status=status.HTTP_501_NOT_IMPLEMENTED)
+        except Exception as e:
+            logger.error(f"Error initiating refund for payment {pk}, transaction {transaction_id}: {e}")
+            return Response(
+                {"error": f"An unexpected error occurred during refund: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class TerminalConnectionTokenView(APIView):
@@ -577,6 +625,7 @@ class StripeWebhookView(APIView):
                 # For simplicity, we assume a full refund here.
                 # A more complex implementation would handle partial refunds.
                 txn_to_refund.status = PaymentTransaction.TransactionStatus.REFUNDED
+                txn_to_refund.refunded_amount = Decimal(refund_data.amount) / 100 # Update refunded_amount from webhook
 
                 # Append refund info to provider_response
                 response = txn_to_refund.provider_response or {}
