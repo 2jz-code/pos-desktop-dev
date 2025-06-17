@@ -129,7 +129,7 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 					size="lg"
 					variant="secondary"
 					className="w-full justify-center gap-2"
-					onClick={handlePrintReceipt}
+					// onClick={handlePrintReceipt}
 				>
 					<Printer className="h-5 w-5" /> Print Receipt
 				</Button>

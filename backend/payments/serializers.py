@@ -14,20 +14,19 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     transactions = PaymentTransactionSerializer(many=True, read_only=True)
 
-    # --- FIX: Both balance_due and change_due must be calculated fields ---
     balance_due = serializers.SerializerMethodField()
     change_due = serializers.SerializerMethodField()
     order_number = serializers.CharField(
         source="order.order_number", read_only=True
-    )  # <--- IMPORTANT CHANGE HERE
+    ) 
 
     class Meta:
         model = Payment
-        # --- FIX: Ensure the calculated fields are in the list ---
         fields = [
             "id",
             "order",
             "order_number",
+            'payment_number',
             "status",
             "total_amount_due",
             "amount_paid",
@@ -37,6 +36,11 @@ class PaymentSerializer(serializers.ModelSerializer):
             "transactions",
             "created_at",
             "updated_at",
+        ]
+        read_only_fields = [
+            'id', 'balance_due', 'change_due', 'created_at', 'updated_at', 'transactions', 
+            'order_number', # Keep if applicable
+            'payment_number'
         ]
 
     def get_balance_due(self, obj: Payment) -> Decimal:

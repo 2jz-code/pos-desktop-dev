@@ -3,7 +3,9 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from orders.models import Order
 from decimal import Decimal
-
+import re 
+from django.db.models import Max
+from django.db import transaction
 
 class Payment(models.Model):
     """
@@ -23,6 +25,9 @@ class Payment(models.Model):
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name="payment_details"
     )
+
+    payment_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
+
     status = models.CharField(
         max_length=20,
         choices=PaymentStatus.choices,
@@ -51,10 +56,57 @@ class Payment(models.Model):
         verbose_name_plural = _("Payments")
 
     def __str__(self):
-        return (
-            f"Payment for Order {self.order.id} - Status: {self.get_status_display()}"
-        )
+        return f"Payment {self.payment_number or self.id} for Order {self.order.order_number or self.order.id} - {self.status}"
 
+    # --- ADD THIS SAVE METHOD AND HELPER FUNCTION ---
+    def save(self, *args, **kwargs):
+        if not self.payment_number:
+            max_retries = 5
+            for _ in range(max_retries):
+                try:
+                    self.payment_number = self._generate_sequential_payment_number()
+                    super().save(*args, **kwargs)
+                    break # Break if save is successful
+                except Exception as e: # Catch potential IntegrityError on unique field
+                    if 'duplicate key value' in str(e).lower() or 'unique constraint failed' in str(e).lower():
+                        # Another process might have taken the number, retry
+                        continue
+                    else:
+                        raise # Re-raise if it's another type of error
+            else: # If loop finishes without breaking (max_retries reached)
+                raise Exception("Failed to generate a unique payment number after multiple retries.")
+        else:
+            super().save(*args, **kwargs)
+            
+    def _generate_sequential_payment_number(self):
+        """
+        Generates the next sequential payment number.
+        Looks for the highest existing numeric suffix and increments it.
+        Formats as 'PAY-XXXXX' with leading zeros.
+        """
+        prefix = "PAY-"
+        # Get the highest existing payment number that matches our pattern
+        # Use a transaction.atomic block for better concurrency handling if needed
+        with transaction.atomic():
+            last_payment = Payment.objects.select_for_update().filter(
+                payment_number__startswith=prefix
+            ).order_by("-payment_number").first()
+
+            current_sequential_number = 0
+            if last_payment and last_payment.payment_number:
+                # Extract the numeric part using regex
+                match = re.match(rf"^{re.escape(prefix)}(\d+)$", last_payment.payment_number)
+                if match:
+                    last_number = int(match.group(1))
+                    current_sequential_number = last_number
+                # If existing numbers don't follow the pattern, current_sequential_number remains 0
+
+            next_number = current_sequential_number + 1
+            # Format with leading zeros (e.g., 00001) for a fixed width
+            # Adjust padding as needed, e.g., '06d' for PAY-000001
+            padded_number = f"{next_number:05d}"
+            
+            return f"{prefix}{padded_number}"
 
 class PaymentTransaction(models.Model):
     """

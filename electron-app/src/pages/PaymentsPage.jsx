@@ -91,7 +91,7 @@ const PaymentsPage = () => {
 											className="cursor-pointer"
 										>
 											<TableCell className="font-mono text-xs">
-												{p.id.substring(0, 12)}...
+												{p.payment_number}
 											</TableCell>
 											<TableCell className="font-mono text-xs">
 												{p.order ? `${p.order_number}` : "N/A"}

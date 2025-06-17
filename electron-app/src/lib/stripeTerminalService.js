@@ -184,7 +184,7 @@ const StripeTerminalService = {
 		this._listeners.onUpdate?.({ message: "Discovering readers..." });
 
 		const discoveryConfig = {
-			simulated: true, // MUST be true for dashboard simulated readers
+			simulated: false, // MUST be true for dashboard simulated readers
 		};
 
 		console.log(

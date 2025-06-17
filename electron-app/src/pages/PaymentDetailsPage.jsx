@@ -107,6 +107,9 @@ const PaymentDetailsPage = () => {
 					<CardHeader>
 						<CardTitle>Payment Summary</CardTitle>
 						<CardDescription>ID: {payment.id}</CardDescription>
+						<CardDescription>
+							Payment #: {payment.payment_number}
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						<div className="flex justify-between">
@@ -135,7 +138,7 @@ const PaymentDetailsPage = () => {
 								to={`/orders/${payment.order}`}
 								className="hover:underline font-mono text-sm font-bold text-blue-500"
 							>
-								{payment.order?.order_number} {/* Display order_number */}
+								{payment.order_number}
 							</Link>
 						</div>
 						{canRefund && (
