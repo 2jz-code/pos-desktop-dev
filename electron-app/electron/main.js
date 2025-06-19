@@ -10,6 +10,16 @@ import {
 	formatOpenCashDrawer,
 	formatKitchenTicket,
 } from "./receipt-formatter.js";
+import { databaseService } from "./services/database-service.js";
+import {
+	productRepository,
+	categoryRepository,
+	userRepository,
+	discountRepository,
+	offlineOrderRepository,
+} from "./services/repositories.js";
+import SyncService from "./services/sync-service.js";
+const syncService = new SyncService();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -124,13 +134,15 @@ ipcMain.handle("discover-printers", async () => {
 						}
 					}
 					return null;
-				} catch (e) {
+				} catch {
 					return null;
 				} finally {
 					if (deviceIsOpen) {
 						try {
 							device.close();
-						} catch (e) {}
+						} catch {
+							// Ignore close errors
+						}
 					}
 				}
 			})
@@ -190,8 +202,8 @@ async function sendBufferToPrinter(printer, buffer) {
 					});
 				}
 				device.close();
-			} catch (e) {
-				console.error("Error cleaning up USB device:", e);
+			} catch (cleanupError) {
+				console.error("Error cleaning up USB device:", cleanupError);
 			}
 		}
 	}
@@ -292,7 +304,237 @@ ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
 	}
 });
 
-app.whenReady().then(() => {
+// Database IPC handlers
+ipcMain.handle("db:get-products", async () => {
+	try {
+		return productRepository.getAll();
+	} catch (error) {
+		console.error("[Main Process] Error getting products:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-product-by-id", async (event, id) => {
+	try {
+		return productRepository.getById(id);
+	} catch (error) {
+		console.error("[Main Process] Error getting product by id:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-products-by-category", async (event, categoryId) => {
+	try {
+		return productRepository.getByCategory(categoryId);
+	} catch (error) {
+		console.error("[Main Process] Error getting products by category:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:search-products", async (event, searchTerm) => {
+	try {
+		return productRepository.searchByName(searchTerm);
+	} catch (error) {
+		console.error("[Main Process] Error searching products:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-categories", async () => {
+	try {
+		return categoryRepository.getCategoriesWithProductCount();
+	} catch (error) {
+		console.error("[Main Process] Error getting categories:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-users", async () => {
+	try {
+		return userRepository.getAll();
+	} catch (error) {
+		console.error("[Main Process] Error getting users:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-user-by-username", async (event, username) => {
+	try {
+		return userRepository.getByUsername(username);
+	} catch (error) {
+		console.error("[Main Process] Error getting user by username:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-discounts", async () => {
+	try {
+		return discountRepository.getActiveDiscounts();
+	} catch (error) {
+		console.error("[Main Process] Error getting discounts:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:add-offline-order", async (event, orderData) => {
+	try {
+		return offlineOrderRepository.addToQueue(orderData);
+	} catch (error) {
+		console.error("[Main Process] Error adding offline order:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-pending-orders", async () => {
+	try {
+		return offlineOrderRepository.getPendingOrders();
+	} catch (error) {
+		console.error("[Main Process] Error getting pending orders:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:get-queue-status", async () => {
+	try {
+		return offlineOrderRepository.getQueueStatus();
+	} catch (error) {
+		console.error("[Main Process] Error getting queue status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:reset", async () => {
+	try {
+		await databaseService.resetDatabase();
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error resetting database:", error);
+		throw error;
+	}
+});
+
+// Sync service IPC handlers
+ipcMain.handle("sync:get-status", async () => {
+	try {
+		return syncService.getSyncStatus();
+	} catch (error) {
+		console.error("[Main Process] Error getting sync status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:insert-sample-data", async () => {
+	try {
+		return await syncService.insertSampleData();
+	} catch (error) {
+		console.error("[Main Process] Error inserting sample data:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:perform-initial-sync", async () => {
+	try {
+		return await syncService.performInitialSync();
+	} catch (error) {
+		console.error("[Main Process] Error performing initial sync:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:perform-delta-sync", async () => {
+	try {
+		return await syncService.performDeltaSync();
+	} catch (error) {
+		console.error("[Main Process] Error performing delta sync:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:check-online-status", async () => {
+	try {
+		return await syncService.checkOnlineStatus();
+	} catch (error) {
+		console.error("[Main Process] Error checking online status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:set-api-key", async (event, apiKey) => {
+	try {
+		syncService.setAPIKey(apiKey);
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error setting API key:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("get-session-cookies", async (event, url) => {
+	try {
+		const { session } = require("electron");
+		const cookies = await session.defaultSession.cookies.get({ url });
+
+		console.log(`[Main Process] Found ${cookies.length} cookies for ${url}`);
+
+		// Log individual cookies for debugging (without sensitive values)
+		cookies.forEach((cookie, index) => {
+			console.log(
+				`[Main Process] Cookie ${index + 1}: ${cookie.name} (${
+					cookie.httpOnly ? "HttpOnly" : "Regular"
+				})`
+			);
+		});
+
+		// Convert cookies to the format needed by axios
+		const cookieString = cookies
+			.map((cookie) => `${cookie.name}=${cookie.value}`)
+			.join("; ");
+
+		if (cookieString) {
+			console.log(
+				`[Main Process] Cookie string created (length: ${cookieString.length})`
+			);
+		} else {
+			console.log("[Main Process] No cookies found - returning empty string");
+		}
+
+		return cookieString;
+	} catch (error) {
+		console.error("[Main Process] Error getting session cookies:", error);
+		throw error;
+	}
+});
+
+app.whenReady().then(async () => {
+	// Initialize database first
+	try {
+		await databaseService.initialize();
+		console.log("[Main Process] Database initialized successfully");
+	} catch (error) {
+		console.error("[Main Process] Failed to initialize database:", error);
+		// Don't fail the app startup, just log the error
+		console.error("Stack trace:", error.stack);
+	}
+
+	// Initialize sync service
+	try {
+		await syncService.initialize();
+		console.log("[Main Process] Sync service initialized successfully");
+
+		// Check if we have data, if not, insert sample data for demo
+		const status = await syncService.getSyncStatus();
+		if (!status.hasData) {
+			console.log(
+				"[Main Process] No local data found, inserting sample data..."
+			);
+			await syncService.insertSampleData();
+		}
+	} catch (error) {
+		console.error("[Main Process] Failed to initialize sync service:", error);
+		console.error("Stack trace:", error.stack);
+	}
+
 	createMainWindow();
 	createCustomerWindow();
 });

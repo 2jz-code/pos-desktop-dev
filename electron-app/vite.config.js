@@ -17,7 +17,7 @@ export default defineConfig({
 	ssr: {
 		// Explicitly tell Vite to NOT bundle these new modules.
 		// The 'require()' or 'import' calls will be left as-is and handled by Node.js at runtime.
-		external: ["node-thermal-printer", "usb"],
+		external: ["node-thermal-printer", "usb", "better-sqlite3", "axios"],
 	},
 	plugins: [
 		react(),
@@ -31,7 +31,12 @@ export default defineConfig({
 					build: {
 						// For the production build, ensure the modules are also externalized.
 						rollupOptions: {
-							external: ["node-thermal-printer", "usb"],
+							external: [
+								"node-thermal-printer",
+								"usb",
+								"better-sqlite3",
+								"axios",
+							],
 						},
 					},
 				},

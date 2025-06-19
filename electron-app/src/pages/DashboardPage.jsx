@@ -52,6 +52,12 @@ export function DashboardPage() {
 					description="View all products and menu items."
 					iconName="Package"
 				/>
+				<DashboardCard
+					to="/settings"
+					title="Settings"
+					description="Configure app settings and data sync."
+					iconName="Settings"
+				/>
 				{/* New cards can be added here as we build more features */}
 			</div>
 		</div>

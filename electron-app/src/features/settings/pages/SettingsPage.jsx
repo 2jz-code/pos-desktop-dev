@@ -2,7 +2,8 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import GlobalSettings from "../components/GlobalSettings";
 import TerminalSettings from "../components/TerminalSettings";
-import PrinterSettings from "../components/PrinterSettings"; // Import the new component
+import PrinterSettings from "../components/PrinterSettings";
+import SyncManager from "@/components/SyncManager";
 
 const SettingsPage = () => {
 	return (
@@ -14,6 +15,8 @@ const SettingsPage = () => {
 			<TerminalSettings />
 
 			<PrinterSettings />
+
+			<SyncManager />
 		</div>
 	);
 };
