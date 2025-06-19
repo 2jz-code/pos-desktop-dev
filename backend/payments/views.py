@@ -5,13 +5,13 @@ from rest_framework.response import Response
 import stripe
 from decimal import Decimal
 from django.db import transaction as db_transaction
-from settings.models import GlobalSettings
-from .models import Payment, Order, PaymentTransaction
+from .models import Payment, PaymentTransaction
+from orders.models import Order
 from .serializers import (
     ProcessPaymentSerializer,
     PaymentSerializer,
     InitiateTerminalPaymentSerializer,
-    RefundTransactionSerializer
+    RefundTransactionSerializer,
 )
 from .factories import PaymentStrategyFactory
 from .services import PaymentService
@@ -22,6 +22,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from .strategies import StripeTerminalStrategy
 import logging
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+import json
 
 # Create your views here.
 logger = logging.getLogger(__name__)
@@ -41,8 +44,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def create_terminal_intent(self, request, pk=None):
         order = get_object_or_404(Order, pk=pk)
 
-        # Server-side guard clause
-        if order.payment_in_progress:
+        # Server-side guard clause - use derived property
+        if order.payment_in_progress_derived:
             return Response(
                 {"error": "A terminal payment is already in progress for this order."},
                 status=status.HTTP_409_CONFLICT,
@@ -57,9 +60,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 order=order, amount=amount, tip=tip, currency="usd"
             )
 
-            # --- SET FLAG TO TRUE ---
-            order.payment_in_progress = True
-            order.save(update_fields=["payment_in_progress"])
+            # Payment state is now managed automatically by the state machine
 
             return Response(
                 {
@@ -113,10 +114,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 amount=Decimal(request.data.get("amount")),
                 method=request.data.get("method"),
             )
-            # --- SET FLAG TO FALSE ON COMPLETION ---
-            if payment.status == "PAID":
-                order.payment_in_progress = False
-                order.save(update_fields=["payment_in_progress"])
+            # Payment status is now managed automatically by the state machine
 
             serializer = PaymentSerializer(payment)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -132,7 +130,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         Stripe Payment Intents, and resets the order's progress flag.
         """
         order = get_object_or_404(Order, pk=pk)
-        if not order.payment_in_progress:
+        if not order.payment_in_progress_derived:
             return Response(
                 {"message": "No active payment to cancel."}, status=status.HTTP_200_OK
             )
@@ -153,8 +151,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         )
                         pass
 
-        order.payment_in_progress = False
-        order.save(update_fields=["payment_in_progress"])
+        # Payment progress status is now managed automatically by the state machine
 
         return Response(
             {"status": "active payments cancelled"}, status=status.HTTP_200_OK
@@ -167,7 +164,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         `pk` is the payment_id. The transaction_id, amount, and reason are passed in the request body.
         """
         payment = get_object_or_404(Payment, pk=pk)
-        
+
         serializer = RefundTransactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -178,22 +175,26 @@ class PaymentViewSet(viewsets.ModelViewSet):
         try:
             # Ensure the transaction belongs to this payment
             transaction_to_refund = payment.transactions.get(id=transaction_id)
-            
+
             # Use the PaymentService instance method for refunding a specific transaction
-            payment_service_instance = PaymentService(payment=payment) # Initialize with the payment object
+            payment_service_instance = PaymentService(
+                payment=payment
+            )  # Initialize with the payment object
             updated_transaction = payment_service_instance.refund_transaction_with_provider(
-                transaction_id=transaction_to_refund.id, # Pass the actual transaction ID
+                transaction_id=transaction_to_refund.id,  # Pass the actual transaction ID
                 amount_to_refund=amount,
-                reason=reason
+                reason=reason,
             )
-            
+
             # Return the updated payment details
             response_serializer = PaymentSerializer(updated_transaction.payment)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
 
         except PaymentTransaction.DoesNotExist:
             return Response(
-                {"error": f"Transaction with ID {transaction_id} not found for this payment."},
+                {
+                    "error": f"Transaction with ID {transaction_id} not found for this payment."
+                },
                 status=status.HTTP_404_NOT_FOUND,
             )
         except ValueError as e:
@@ -201,7 +202,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
         except NotImplementedError as e:
             return Response({"error": str(e)}, status=status.HTTP_501_NOT_IMPLEMENTED)
         except Exception as e:
-            logger.error(f"Error initiating refund for payment {pk}, transaction {transaction_id}: {e}")
+            logger.error(
+                f"Error initiating refund for payment {pk}, transaction {transaction_id}: {e}"
+            )
             return Response(
                 {"error": f"An unexpected error occurred during refund: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -232,6 +235,7 @@ class TerminalConnectionTokenView(APIView):
 class CreateTerminalIntentView(generics.GenericAPIView):
     """
     Creates a Stripe Payment Intent for a given order for a terminal transaction.
+    Now uses formal state transition methods.
     """
 
     def post(self, request, *args, **kwargs):
@@ -244,7 +248,7 @@ class CreateTerminalIntentView(generics.GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # --- FIX: Read the partial amount and tip from the request body ---
+        # Read the partial amount and tip from the request body
         amount_from_request = request.data.get("amount")
         tip_from_request = request.data.get("tip", "0.00")
 
@@ -256,16 +260,17 @@ class CreateTerminalIntentView(generics.GenericAPIView):
 
         amount_to_pay = Decimal(str(amount_from_request))
         tip_amount = Decimal(str(tip_from_request))
-        # --- END FIX ---
 
         try:
-            # --- FIX: Pass the correct partial amount to the service ---
+            # NEW: Use formal state transition method to initiate payment attempt
+            payment = PaymentService.initiate_payment_attempt(order)
+
+            # Create the payment intent using existing method
             payment_intent = PaymentService.create_terminal_payment_intent(
                 order=order,
-                amount=amount_to_pay,  # Use the amount from the request
+                amount=amount_to_pay,
                 tip=tip_amount,
             )
-            # --- END FIX ---
 
             return Response(
                 {
@@ -309,7 +314,10 @@ class CancelPaymentIntentView(APIView):
 
 
 class CaptureTerminalIntentView(APIView):
-    """Captures a payment intent and returns the updated Payment state."""
+    """
+    Captures a payment intent and returns the updated Payment state.
+    Now uses formal state transition methods.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -322,14 +330,30 @@ class CaptureTerminalIntentView(APIView):
             )
 
         try:
-            # This now returns the full Payment object from your service
-            payment_object = PaymentService.capture_terminal_payment(payment_intent_id)
+            # Find the transaction first
+            transaction = PaymentTransaction.objects.select_related("payment").get(
+                transaction_id=payment_intent_id
+            )
+
+            # Get the active terminal strategy to capture the payment with provider
+            strategy = PaymentService._get_active_terminal_strategy()
+            strategy.capture_payment(transaction)
+
+            # NEW: Use formal state transition method to confirm successful transaction
+            payment_object = PaymentService.confirm_successful_transaction(transaction)
 
             # Serialize the payment object to send its data back to the frontend
             serializer = PaymentSerializer(payment_object)
 
             return Response(serializer.data, status=status.HTTP_200_OK)
 
+        except PaymentTransaction.DoesNotExist:
+            return Response(
+                {
+                    "error": f"No transaction found for payment_intent_id: {payment_intent_id}"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except (
             RuntimeError,
             NotImplementedError,
@@ -372,14 +396,10 @@ class TerminalConfigurationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        settings = GlobalSettings.objects.first()
-        if not settings:
-            return Response(
-                {"error": "Terminal settings not configured."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        # Use the centralized configuration instead of direct database queries
+        from settings.config import app_settings
 
-        provider = settings.active_terminal_provider
+        provider = app_settings.active_terminal_provider
         try:
             # Get the strategy instance to ask for its frontend config
             strategy = PaymentStrategyFactory.get_strategy(
@@ -487,9 +507,9 @@ class StripeWebhookView(APIView):
         elif event["type"] == "payment_intent.canceled":
             payment_intent = event["data"]["object"]
             self._handle_payment_intent_canceled(payment_intent)
-        elif event["type"] == "charge.refunded":
+        elif event["type"] == "refund.updated":
             refund = event["data"]["object"]
-            self._handle_charge_refunded(refund)
+            self._handle_refund_updated(refund)
         else:
             # For any other event types, we can log them for now
             self._handle_unimplemented_event(event["data"]["object"])
@@ -554,26 +574,65 @@ class StripeWebhookView(APIView):
         return None
 
     def _handle_payment_intent_succeeded(self, payment_intent):
-        """Handles the 'payment_intent.succeeded' event."""
+        """
+        Handles the 'payment_intent.succeeded' event, correctly extracting card
+        details from either 'card' or 'card_present' type payments.
+        Now uses formal state transition methods.
+        """
         transaction = self._get_or_create_transaction(payment_intent)
         if not transaction:
             return
 
-        if transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL:
-            print(f"Transaction {transaction.id} already marked as successful.")
+        if (
+            transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL
+            and transaction.card_brand
+        ):
+            print(
+                f"Transaction {transaction.id} is already fully processed with card details."
+            )
             return
 
+        card_brand = None
+        card_last4 = None
+        charge_id = payment_intent.get("latest_charge")
+        if charge_id:
+            try:
+                charge = stripe.Charge.retrieve(charge_id)
+                details = charge.payment_method_details
+
+                # Check the payment type and get details from the correct object
+                card_details_source = None
+                if details:
+                    if details.type == "card":
+                        card_details_source = details.card
+                    elif details.type == "card_present":
+                        card_details_source = details.card_present
+
+                if card_details_source:
+                    card_brand = card_details_source.brand
+                    card_last4 = card_details_source.last4
+
+            except stripe.error.StripeError as e:
+                logger.error(
+                    f"Could not retrieve charge {charge_id} to get card details: {e}"
+                )
+
         with db_transaction.atomic():
-            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+            # Update card details if available
+            if card_brand and not transaction.card_brand:
+                transaction.card_brand = card_brand
+            if card_last4 and not transaction.card_last4:
+                transaction.card_last4 = card_last4
             transaction.provider_response = payment_intent
-            # Ensure the transaction_id is the charge ID for successful payments
-            if payment_intent.latest_charge:
-                transaction.transaction_id = payment_intent.latest_charge
-            transaction.save()
-            PaymentService._update_payment_status(transaction.payment)
-        print(
-            f"Successfully processed 'payment_intent.succeeded' for Txn {transaction.id}"
-        )
+            transaction.save(
+                update_fields=["card_brand", "card_last4", "provider_response"]
+            )
+
+            # NEW: Use formal state transition method if transaction needs to be marked successful
+            if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
+                PaymentService.confirm_successful_transaction(transaction)
+
+        print(f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}")
 
     def _handle_payment_intent_payment_failed(self, payment_intent):
         """Handles 'payment_intent.payment_failed' events."""
@@ -584,7 +643,10 @@ class StripeWebhookView(APIView):
         self._handle_failure(payment_intent, event_type="canceled")
 
     def _handle_failure(self, payment_intent, event_type="failed"):
-        """Generic handler for failure events."""
+        """
+        Generic handler for failure events.
+        Now uses formal state transition methods.
+        """
         transaction = self._get_or_create_transaction(payment_intent)
         if not transaction:
             return
@@ -602,50 +664,86 @@ class StripeWebhookView(APIView):
             return
 
         with db_transaction.atomic():
-            transaction.status = target_status
+            # Update provider response first
             transaction.provider_response = payment_intent
-            transaction.save()
-            PaymentService._update_payment_status(transaction.payment)
+            transaction.save(update_fields=["provider_response"])
+
+            # NEW: Use formal state transition method
+            if event_type == "canceled":
+                # For canceled payments, we can use cancel_payment_process on the parent payment
+                PaymentService.cancel_payment_process(transaction.payment)
+            else:
+                # For failed payments, use record_failed_transaction
+                PaymentService.record_failed_transaction(transaction)
 
         print(
             f"Successfully processed 'payment_intent.{event_type}' for Txn {transaction.id}"
         )
 
-    def _handle_charge_refunded(self, refund_data):
-        """Handles 'charge.refunded' events."""
-        charge_id = refund_data.charge
-        if not charge_id:
+    def _handle_refund_updated(self, refund_object):
+        """
+        Handles the 'refund.updated' event using the Payment Intent ID for a reliable lookup.
+        """
+        if refund_object.get("status") != "succeeded":
+            logger.info(
+                f"Ignoring refund {refund_object.get('id')} with status: {refund_object.get('status')}"
+            )
+            return
+
+        # --- THE CORE FIX: USE THE PAYMENT INTENT ID FOR LOOKUP ---
+        payment_intent_id = refund_object.get("payment_intent")
+        if not payment_intent_id:
+            logger.warning(
+                "Webhook 'refund.updated' received without a Payment Intent ID."
+            )
             return
 
         try:
-            # Find the original transaction by the charge ID
-            txn_to_refund = PaymentTransaction.objects.get(transaction_id=charge_id)
-
             with db_transaction.atomic():
-                # For simplicity, we assume a full refund here.
-                # A more complex implementation would handle partial refunds.
-                txn_to_refund.status = PaymentTransaction.TransactionStatus.REFUNDED
-                txn_to_refund.refunded_amount = Decimal(refund_data.amount) / 100 # Update refunded_amount from webhook
+                # Find the transaction using the ID we know is stored in our database.
+                txn_to_refund = PaymentTransaction.objects.select_for_update().get(
+                    transaction_id=payment_intent_id
+                )
 
-                # Append refund info to provider_response
-                response = txn_to_refund.provider_response or {}
-                if isinstance(response, dict):
-                    refunds = response.get("refunds", [])
-                    refunds.append(refund_data)
-                    response["refunds"] = refunds
-                    txn_to_refund.provider_response = response
+                # Idempotency Check: Prevents processing the same refund event twice.
+                response_data = txn_to_refund.provider_response or {}
+                existing_refund_ids = {
+                    r.get("id") for r in response_data.get("refunds", [])
+                }
+                if refund_object["id"] in existing_refund_ids:
+                    logger.info(
+                        f"Refund event {refund_object['id']} already processed for Txn {txn_to_refund.id}. Skipping."
+                    )
+                    return
+
+                # Apply the refund logic
+                refunded_amount_in_event = Decimal(refund_object.get("amount", 0)) / 100
+                txn_to_refund.refunded_amount += refunded_amount_in_event
+
+                if txn_to_refund.refunded_amount >= txn_to_refund.amount:
+                    txn_to_refund.status = PaymentTransaction.TransactionStatus.REFUNDED
+
+                # Store the raw refund object for auditing
+                refunds_list = response_data.get("refunds", [])
+                refunds_list.append(refund_object)
+                response_data["refunds"] = refunds_list
+                txn_to_refund.provider_response = response_data
 
                 txn_to_refund.save()
+
+                # Update the parent Payment object
                 PaymentService._update_payment_status(txn_to_refund.payment)
 
-            print(
-                f"Successfully processed 'charge.refunded' for Txn {txn_to_refund.id}"
+            logger.info(
+                f"Successfully processed webhook 'refund.updated' for Txn {txn_to_refund.id}"
             )
 
         except PaymentTransaction.DoesNotExist:
-            print(
-                f"Webhook Error: Received refund for charge {charge_id} but could not find matching transaction."
+            logger.error(
+                f"Webhook Error: Received refund for PI {payment_intent_id} but could not find matching transaction."
             )
+        except Exception as e:
+            logger.error(f"An unexpected error occurred in _handle_refund_updated: {e}")
 
 
 class CreatePaymentView(APIView):

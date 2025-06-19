@@ -8,7 +8,17 @@ from django.shortcuts import get_object_or_404
 class PaymentTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentTransaction
-        fields = ["id", "amount", "method", "status", "transaction_id", "created_at"]
+        fields = [
+            "id",
+            "amount",
+            "method",
+            "status",
+            "transaction_id",
+            "created_at",
+            "refunded_amount",
+            "card_brand",
+            "card_last4",
+        ]
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -16,9 +26,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     balance_due = serializers.SerializerMethodField()
     change_due = serializers.SerializerMethodField()
-    order_number = serializers.CharField(
-        source="order.order_number", read_only=True
-    ) 
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
 
     class Meta:
         model = Payment
@@ -26,7 +34,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "id",
             "order",
             "order_number",
-            'payment_number',
+            "payment_number",
             "status",
             "total_amount_due",
             "amount_paid",
@@ -38,9 +46,14 @@ class PaymentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = [
-            'id', 'balance_due', 'change_due', 'created_at', 'updated_at', 'transactions', 
-            'order_number', # Keep if applicable
-            'payment_number'
+            "id",
+            "balance_due",
+            "change_due",
+            "created_at",
+            "updated_at",
+            "transactions",
+            "order_number",  # Keep if applicable
+            "payment_number",
         ]
 
     def get_balance_due(self, obj: Payment) -> Decimal:
@@ -119,10 +132,12 @@ class ProcessPaymentSerializer(serializers.Serializer):
             payment_intent_id=validated_data.get("payment_intent_id"),
         )
 
+
 class RefundTransactionSerializer(serializers.Serializer):
     """
     Serializer for initiating a refund on a specific transaction.
     """
+
     transaction_id = serializers.UUIDField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     reason = serializers.CharField(required=False, allow_blank=True)

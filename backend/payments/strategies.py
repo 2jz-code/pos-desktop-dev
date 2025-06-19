@@ -28,9 +28,11 @@ class PaymentStrategy(ABC):
         It should update the transaction's status and other details.
         """
         pass
-    
+
     @abstractmethod
-    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ):
         """
         Refunds a specific payment transaction via the provider.
         Updates the transaction's status and provider_response.
@@ -50,8 +52,10 @@ class CashPaymentStrategy(PaymentStrategy):
         transaction.save()
         # In a real system, you might trigger a cash drawer opening here.
         return transaction
-    
-    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ):
         """
         For cash payments, an "external" refund means a manual cash payout.
         We update the transaction status and refunded amount.
@@ -68,6 +72,7 @@ class CashPaymentStrategy(PaymentStrategy):
             pass
         transaction.save()
         return transaction
+
 
 class TerminalPaymentStrategy(PaymentStrategy):
     """
@@ -253,53 +258,53 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         }
         transaction.save()
         return transaction
-    
-    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
-        """
-        Refunds a Stripe Terminal payment transaction.
-        Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
-        """
-        stripe.api_key = settings.STRIPE_SECRET_KEY
-        if not transaction.transaction_id:
-            raise ValueError("Stripe transaction ID is missing for refund.")
 
-        amount_cents = int(amount * 100)
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ) -> stripe.Refund:
+        """
+        Creates a refund object via the Stripe API. It now reliably finds the
+        Charge ID from the Payment Intent ID stored in transaction_id.
+        """
+        if not transaction.transaction_id or not transaction.transaction_id.startswith(
+            "pi_"
+        ):
+            raise ValueError(
+                "A valid Payment Intent ID is required to process a refund."
+            )
+
+        payment_intent_id = transaction.transaction_id
+        charge_id_to_refund = None
+
+        # Optimization: Try to get the Charge ID from the stored provider response first.
+        if transaction.provider_response and isinstance(
+            transaction.provider_response, dict
+        ):
+            charge_id_to_refund = transaction.provider_response.get("latest_charge")
 
         try:
-            # If transaction_id is a charge ID (common for captured payments), refund the charge directly.
-            # If it's a PaymentIntent ID, Stripe's refund API can often infer the charge.
-            refund = stripe.Refund.create(
-                payment_intent=transaction.transaction_id if transaction.transaction_id.startswith("pi_") else None,
-                charge=transaction.transaction_id if not transaction.transaction_id.startswith("pi_") else None,
-                amount=amount_cents,
-                reason=reason,
-                metadata={"original_transaction_id": str(transaction.id)}
-            )
-            transaction.refunded_amount += Decimal(str(refund.amount)) / 100 # Add to refunded amount
-            transaction.refund_reason = reason
-            transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [refund.to_dict()]
+            # If the charge ID wasn't in the stored response, fetch the Payment Intent from Stripe.
+            if not charge_id_to_refund:
+                payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+                charge_id_to_refund = payment_intent.latest_charge
 
-            if refund.status == 'succeeded':
-                transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-            elif refund.status == 'pending':
-                 # Stripe refunds can be pending
-                transaction.status = PaymentTransaction.TransactionStatus.PENDING
-            else:
-                transaction.status = PaymentTransaction.TransactionStatus.FAILED
-            transaction.save()
-            return transaction
+            if not charge_id_to_refund:
+                raise ValueError(
+                    f"Payment Intent {payment_intent_id} has no successful charge to refund."
+                )
+
+            # Create the refund using the correct Charge ID.
+            return stripe.Refund.create(
+                charge=charge_id_to_refund,
+                amount=int(amount * 100),
+                reason=reason,
+            )
         except stripe.error.StripeError as e:
-            logger.error(f"Stripe refund error for transaction {transaction.id}: {e}")
-            transaction.status = PaymentTransaction.TransactionStatus.FAILED
-            transaction.provider_response = {"error": {"message": str(e)}}
-            transaction.save()
-            raise e
-        except Exception as e:
-            logger.error(f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}")
-            transaction.status = PaymentTransaction.TransactionStatus.FAILED
-            transaction.provider_response = {"error": {"message": str(e)}}
-            transaction.save()
-            raise e
+            logger.error(
+                f"Stripe API error during refund for transaction {transaction.id}: {e}"
+            )
+            raise ValueError(str(e))
+
 
 class CloverTerminalStrategy(TerminalPaymentStrategy):
     """
@@ -323,8 +328,10 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         }
         transaction.save()
         return transaction
-    
-    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ):
         """
         Simulated refund for Clover Terminal payments.
         """
@@ -333,8 +340,10 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         if transaction.refunded_amount >= transaction.amount:
             transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
         else:
-            pass # Keep original status or add PARTIALLY_REFUNDED status
-        transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [{"amount": str(amount), "reason": reason, "status": "succeeded"}]
+            pass  # Keep original status or add PARTIALLY_REFUNDED status
+        transaction.provider_response["refunds"] = transaction.provider_response.get(
+            "refunds", []
+        ) + [{"amount": str(amount), "reason": reason, "status": "succeeded"}]
         transaction.save()
         return transaction
 
@@ -406,7 +415,9 @@ class StripeOnlineStrategy(PaymentStrategy):
         transaction.save()
         return transaction
 
-    def refund_transaction(self, transaction: PaymentTransaction, amount: Decimal, reason: str = None):
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ):
         """
         Refunds a Stripe Online payment transaction.
         Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
@@ -419,19 +430,29 @@ class StripeOnlineStrategy(PaymentStrategy):
 
         try:
             refund = stripe.Refund.create(
-                payment_intent=transaction.transaction_id if transaction.transaction_id.startswith("pi_") else None,
-                charge=transaction.transaction_id if not transaction.transaction_id.startswith("pi_") else None,
+                payment_intent=(
+                    transaction.transaction_id
+                    if transaction.transaction_id.startswith("pi_")
+                    else None
+                ),
+                charge=(
+                    transaction.transaction_id
+                    if not transaction.transaction_id.startswith("pi_")
+                    else None
+                ),
                 amount=amount_cents,
                 reason=reason,
-                metadata={"original_transaction_id": str(transaction.id)}
+                metadata={"original_transaction_id": str(transaction.id)},
             )
             transaction.refunded_amount += Decimal(str(refund.amount)) / 100
             transaction.refund_reason = reason
-            transaction.provider_response["refunds"] = transaction.provider_response.get("refunds", []) + [refund.to_dict()]
+            transaction.provider_response["refunds"] = (
+                transaction.provider_response.get("refunds", []) + [refund.to_dict()]
+            )
 
-            if refund.status == 'succeeded':
+            if refund.status == "succeeded":
                 transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-            elif refund.status == 'pending':
+            elif refund.status == "pending":
                 transaction.status = PaymentTransaction.TransactionStatus.PENDING
             else:
                 transaction.status = PaymentTransaction.TransactionStatus.FAILED
@@ -444,10 +465,13 @@ class StripeOnlineStrategy(PaymentStrategy):
             transaction.save()
             raise e
         except Exception as e:
-            logger.error(f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}")
+            logger.error(
+                f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}"
+            )
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
             transaction.provider_response = {"error": {"message": str(e)}}
             transaction.save()
             raise e
+
 
 # We can add CardOnlineStrategy, GiftCardStrategy, etc., here later.

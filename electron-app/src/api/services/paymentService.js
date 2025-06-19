@@ -89,3 +89,11 @@ export const cancelTerminalIntent = async (paymentIntentId) => {
 		);
 	}
 };
+
+export const refundTransaction = async (paymentId, refundData) => {
+	const response = await apiClient.post(
+		`/payments/${paymentId}/refund-transaction/`,
+		refundData
+	);
+	return response.data;
+};

@@ -7,7 +7,6 @@ from users.models import User
 # This should point to your actual discount service file
 from discounts.services import DiscountService
 from discounts.models import Discount
-from settings.models import GlobalSettings
 
 
 class OrderService:
@@ -43,6 +42,15 @@ class OrderService:
             order_type=order_type, cashier=cashier, customer=customer
         )
         return order
+
+    @staticmethod
+    @transaction.atomic
+    def create_order(order_type: str, cashier: User, customer: User = None) -> Order:
+        """
+        Creates a new, empty order.
+        Compatibility method for existing tests and code.
+        """
+        return OrderService.create_new_order(cashier, customer, order_type)
 
     @staticmethod
     @transaction.atomic
@@ -166,10 +174,9 @@ class OrderService:
         Recalculates all financial fields for an order, ensuring calculations
         are performed in the correct sequence.
         """
-        try:
-            settings = GlobalSettings.objects.get()
-        except GlobalSettings.DoesNotExist:
-            raise Exception("GlobalSettings are not configured in the admin.")
+        # Import app_settings locally to ensure we always get the fresh configuration
+        # This avoids Python's module-level import caching that could cause stale config
+        from settings.config import app_settings
 
         # Re-fetch the full order context to ensure data is fresh
         order = Order.objects.prefetch_related(
@@ -212,12 +219,14 @@ class OrderService:
                             tax.rate / Decimal("100.0")
                         )
                 else:
-                    tax_total += discounted_item_price * settings.tax_rate
+                    # Use the fresh configuration for tax rate
+                    tax_total += discounted_item_price * app_settings.tax_rate
 
         order.tax_total = tax_total.quantize(Decimal("0.01"))
 
         # 5. Calculate surcharges on the post-discount subtotal
-        surcharges_total = post_discount_subtotal * settings.surcharge_percentage
+        # Use the fresh configuration for surcharge percentage
+        surcharges_total = post_discount_subtotal * app_settings.surcharge_percentage
         order.surcharges_total = surcharges_total.quantize(Decimal("0.01"))
 
         # 6. Calculate the final grand total
@@ -244,3 +253,55 @@ class OrderService:
         """
         order.items.all().delete()
         OrderService.recalculate_order_totals(order)
+
+    @staticmethod
+    @transaction.atomic
+    def mark_as_fully_paid(order: Order):
+        """
+        Marks an order as fully paid and handles related business logic.
+        This method is called when a payment is completed.
+        """
+        # The order status updates are already handled in PaymentService._update_payment_status
+        # This method can be extended in the future for additional business logic
+        # like inventory updates, notifications, etc.
+        pass
+
+    @staticmethod
+    @transaction.atomic
+    def update_payment_status(order: Order, new_payment_status: str):
+        """
+        Updates the payment status of an order.
+        This method ensures payment status changes go through the service layer.
+        """
+        if order.payment_status != new_payment_status:
+            order.payment_status = new_payment_status
+            order.save(update_fields=["payment_status", "updated_at"])
+
+    @staticmethod
+    @transaction.atomic
+    def recalculate_in_progress_orders():
+        """
+        Recalculates totals for all in-progress orders when configuration changes.
+        This ensures tax rates and surcharges are applied consistently across all orders.
+        """
+        # Import app_settings locally to ensure we always get the fresh configuration
+        from settings.config import app_settings
+
+        in_progress_orders = Order.objects.filter(
+            status__in=[Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]
+        )
+
+        count = 0
+        for order in in_progress_orders:
+            old_grand_total = order.grand_total
+            OrderService.recalculate_order_totals(order)
+            new_grand_total = order.grand_total
+
+            if old_grand_total != new_grand_total:
+                count += 1
+                print(
+                    f"Order #{order.id}: Grand total updated from ${old_grand_total} to ${new_grand_total}"
+                )
+
+        print(f"Recalculated {count} in-progress orders due to configuration change")
+        return count

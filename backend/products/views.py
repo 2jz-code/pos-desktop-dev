@@ -28,7 +28,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return ProductSerializer
 
 
-class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class CategoryViewSet(viewsets.ModelViewSet):
     """
     A viewset for viewing categories.
     Can be filtered by parent_id to get child categories, or with `?parent=null` to get top-level categories.

@@ -178,6 +178,21 @@ class OrderConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps({"type": "cart_update", "payload": payload})
         )
 
+    async def configuration_update(self, event):
+        """
+        Handles configuration change notifications and refreshes the order state.
+        This is triggered when tax rates or surcharge percentages change.
+        The updated order state will contain the fresh totals calculated with new rates.
+        """
+        # Only send the updated order state - this contains all the fresh data
+        # including totals calculated with the new tax rates and surcharges
+        await self.send_full_order_state()
+
+        # Log for debugging purposes
+        logging.info(
+            f"OrderConsumer: Sent updated order state due to configuration change for order {self.order_id}"
+        )
+
     @sync_to_async
     def get_order_instance(self):
         return Order.objects.prefetch_related(

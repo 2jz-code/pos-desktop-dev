@@ -7,5 +7,4 @@ class OrdersConfig(AppConfig):
 
     def ready(self):
         # Implicitly connect signal handlers decorated with @receiver.
-        # This is where we will import signals later.
-        pass
+        import orders.signals

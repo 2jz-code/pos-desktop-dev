@@ -47,7 +47,7 @@ class OrderAdmin(admin.ModelAdmin):
         "payment_status",
         "order_type",
         "get_grand_total_formatted",
-        "payment_in_progress",
+        "get_payment_in_progress_display",  # NEW: Use derived property
         "created_at",
     )
 
@@ -63,14 +63,13 @@ class OrderAdmin(admin.ModelAdmin):
 
     # --- MODIFICATIONS END HERE ---
 
-    # Added payment_in_progress to filters
+    # Removed deprecated payment_in_progress from filters
     list_filter = (
         "status",
         "payment_status",
         "order_type",
         "created_at",
         "cashier",
-        "payment_in_progress",
     )
 
     inlines = [OrderItemInline]
@@ -112,10 +111,10 @@ class OrderAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "!! Manual Override !!",
+            "Payment Status",
             {
-                "fields": ("payment_in_progress",),
-                "description": '<b style="color:red;">Warning:</b> Manually changing this field should only be done to resolve a payment that is permanently stuck. Incorrectly setting this could cause payment issues.',
+                "fields": ("get_payment_in_progress_display",),
+                "description": "Payment status is now automatically derived from the Payment object status.",
             },
         ),
     )
@@ -133,11 +132,11 @@ class OrderAdmin(admin.ModelAdmin):
             "get_tax_total_formatted",
             "get_surcharges_total_formatted",
             "get_grand_total_formatted",
+            "get_payment_in_progress_display",  # NEW: Always readonly as it's derived
         ]
         if obj:  # If the object already exists (i.e., we are editing)
             # Add other fields that should not be changed after creation
             readonly.extend(["customer", "cashier", "order_type"])
-        # The 'payment_in_progress' field is NOT added to this list, so it remains editable.
         return tuple(readonly)
 
     def get_queryset(self, request):
@@ -173,6 +172,13 @@ class OrderAdmin(admin.ModelAdmin):
         return self._format_currency(obj.grand_total)
 
     get_grand_total_formatted.short_description = "Grand Total"
+
+    def get_payment_in_progress_display(self, obj):
+        """Display payment status derived from Payment model instead of deprecated field."""
+        return obj.payment_in_progress_derived
+
+    get_payment_in_progress_display.short_description = "Payment In Progress"
+    get_payment_in_progress_display.boolean = True
 
 
 @admin.register(OrderItem)

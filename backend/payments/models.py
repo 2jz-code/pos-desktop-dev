@@ -3,9 +3,10 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from orders.models import Order
 from decimal import Decimal
-import re 
+import re
 from django.db.models import Max
 from django.db import transaction
+
 
 class Payment(models.Model):
     """
@@ -66,18 +67,23 @@ class Payment(models.Model):
                 try:
                     self.payment_number = self._generate_sequential_payment_number()
                     super().save(*args, **kwargs)
-                    break # Break if save is successful
-                except Exception as e: # Catch potential IntegrityError on unique field
-                    if 'duplicate key value' in str(e).lower() or 'unique constraint failed' in str(e).lower():
+                    break  # Break if save is successful
+                except Exception as e:  # Catch potential IntegrityError on unique field
+                    if (
+                        "duplicate key value" in str(e).lower()
+                        or "unique constraint failed" in str(e).lower()
+                    ):
                         # Another process might have taken the number, retry
                         continue
                     else:
-                        raise # Re-raise if it's another type of error
-            else: # If loop finishes without breaking (max_retries reached)
-                raise Exception("Failed to generate a unique payment number after multiple retries.")
+                        raise  # Re-raise if it's another type of error
+            else:  # If loop finishes without breaking (max_retries reached)
+                raise Exception(
+                    "Failed to generate a unique payment number after multiple retries."
+                )
         else:
             super().save(*args, **kwargs)
-            
+
     def _generate_sequential_payment_number(self):
         """
         Generates the next sequential payment number.
@@ -88,14 +94,19 @@ class Payment(models.Model):
         # Get the highest existing payment number that matches our pattern
         # Use a transaction.atomic block for better concurrency handling if needed
         with transaction.atomic():
-            last_payment = Payment.objects.select_for_update().filter(
-                payment_number__startswith=prefix
-            ).order_by("-payment_number").first()
+            last_payment = (
+                Payment.objects.select_for_update()
+                .filter(payment_number__startswith=prefix)
+                .order_by("-payment_number")
+                .first()
+            )
 
             current_sequential_number = 0
             if last_payment and last_payment.payment_number:
                 # Extract the numeric part using regex
-                match = re.match(rf"^{re.escape(prefix)}(\d+)$", last_payment.payment_number)
+                match = re.match(
+                    rf"^{re.escape(prefix)}(\d+)$", last_payment.payment_number
+                )
                 if match:
                     last_number = int(match.group(1))
                     current_sequential_number = last_number
@@ -105,8 +116,9 @@ class Payment(models.Model):
             # Format with leading zeros (e.g., 00001) for a fixed width
             # Adjust padding as needed, e.g., '06d' for PAY-000001
             padded_number = f"{next_number:05d}"
-            
+
             return f"{prefix}{padded_number}"
+
 
 class PaymentTransaction(models.Model):
     """
@@ -152,6 +164,19 @@ class PaymentTransaction(models.Model):
         help_text="Full response from the payment provider for debugging",
     )
 
+    card_brand = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Card brand, e.g., Visa, Mastercard",
+    )
+    card_last4 = models.CharField(
+        max_length=4,
+        blank=True,
+        null=True,
+        help_text="The last 4 digits of the card number",
+    )
+
     refunded_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -159,9 +184,7 @@ class PaymentTransaction(models.Model):
         help_text="The amount of this transaction that has been refunded.",
     )
     refund_reason = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Reason for the refund."
+        blank=True, null=True, help_text="Reason for the refund."
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

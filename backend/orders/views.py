@@ -135,7 +135,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         Stripe Payment Intents using the strategy, and resets the order's progress flag.
         """
         order = self.get_object()
-        if not order.payment_in_progress:
+        if not order.payment_in_progress_derived:
             return Response(
                 {"message": "No active payment to cancel."}, status=status.HTTP_200_OK
             )
@@ -150,8 +150,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 # Use the strategy to cancel the payment intent
                 terminal_strategy.cancel_payment_intent(transaction.transaction_id)
 
-        order.payment_in_progress = False
-        order.save(update_fields=["payment_in_progress"])
+        # Payment progress status is now managed automatically by the state machine
 
         return Response(
             {"status": "active payments cancelled"}, status=status.HTTP_200_OK

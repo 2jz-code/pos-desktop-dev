@@ -54,10 +54,10 @@ class DiscountService:
             print(f"Discount '{discount.name}' is not applicable to this order.")
 
         # IMPORTANT: After any change, we must trigger a full recalculation of the order's totals.
-        # We need to import here to avoid circular dependencies.
-        from orders.services import OrderService
+        # We emit a signal instead of directly calling OrderService to avoid circular dependencies.
+        from orders.signals import order_needs_recalculation
 
-        OrderService.recalculate_order_totals(order)
+        order_needs_recalculation.send(sender=DiscountService, order=order)
 
     @staticmethod
     @transaction.atomic
@@ -74,6 +74,7 @@ class DiscountService:
             print(f"Discount '{discount.name}' removed from the order.")
 
         # IMPORTANT: Always recalculate totals after removing a discount.
-        from orders.services import OrderService
+        # We emit a signal instead of directly calling OrderService to avoid circular dependencies.
+        from orders.signals import order_needs_recalculation
 
-        OrderService.recalculate_order_totals(order)
+        order_needs_recalculation.send(sender=DiscountService, order=order)

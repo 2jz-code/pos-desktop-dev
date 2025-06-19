@@ -1,6 +1,10 @@
 import { cashPaymentModel } from "./paymentModels/cashPaymentModel";
 import { terminalPaymentModel } from "./paymentModels/terminalPaymentModel";
-import { cancelTerminalIntent } from "@/api/services/paymentService";
+import {
+	cancelTerminalIntent,
+	refundTransaction,
+	getPaymentById,
+} from "@/api/services/paymentService";
 import useTerminalStore from "../terminalStore";
 
 export const createPaymentSlice = (set, get) => ({
@@ -9,13 +13,16 @@ export const createPaymentSlice = (set, get) => ({
 	lastCompletedOrder: null,
 	isTenderDialogOpen: false,
 
+	selectedPayment: null, // To hold data for the details view
+	isLoadingDetails: false,
+	error: null,
+
 	// "STATE MACHINE" CONTEXT
 	tenderState: "idle",
 	balanceDue: 0,
 	tipAmount: 0,
 	paymentHistory: [],
 	changeDue: 0,
-	error: null,
 	orderId: null,
 	currentPaymentIntentId: null,
 	partialAmount: 0,
@@ -200,6 +207,36 @@ export const createPaymentSlice = (set, get) => ({
 				currentPaymentIntentId:
 					result.paymentIntentId || get().currentPaymentIntentId,
 			});
+		}
+	},
+
+	fetchPaymentById: async (paymentId) => {
+		set({ isLoadingDetails: true, error: null });
+		try {
+			const payment = await getPaymentById(paymentId);
+			set({ selectedPayment: payment, isLoadingDetails: false });
+		} catch (err) {
+			const errorMessage =
+				err.response?.data?.error || "Failed to fetch payment details.";
+			set({ error: errorMessage, isLoadingDetails: false });
+		}
+	},
+
+	/**
+	 * Processes a refund for a transaction.
+	 */
+	refundTransaction: async ({ paymentId, refundData }) => {
+		set({ isLoadingDetails: true, error: null }); // Reuse loading state
+		try {
+			const updatedPayment = await refundTransaction(paymentId, refundData);
+			// On success, update the selectedPayment in the store with the fresh data from the backend.
+			set({ selectedPayment: updatedPayment, isLoadingDetails: false });
+			return { success: true, data: updatedPayment };
+		} catch (err) {
+			const errorMessage =
+				err.response?.data?.error || "Failed to process refund.";
+			set({ error: errorMessage, isLoadingDetails: false });
+			return { success: false, error: errorMessage };
 		}
 	},
 });

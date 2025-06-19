@@ -61,6 +61,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     item_count = serializers.IntegerField(source="items.count", read_only=True)
     cashier_name = serializers.CharField(source="cashier.get_full_name", read_only=True)
     total_with_tip = serializers.SerializerMethodField()
+    payment_in_progress = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -75,7 +76,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "cashier_name",
             "created_at",
             "updated_at",
-            "payment_in_progress",  # <-- Add the new field
+            "payment_in_progress",
         ]
 
     def get_total_with_tip(self, obj):
@@ -90,6 +91,13 @@ class OrderListSerializer(serializers.ModelSerializer):
         ):
             total += obj.payment_details.tip
         return total
+
+    def get_payment_in_progress(self, obj):
+        """
+        NEW: Uses derived property based on Payment.status instead of deprecated field.
+        Returns True if a payment exists and is in PENDING status.
+        """
+        return obj.payment_in_progress_derived
 
 
 # --- Service-driven Serializers ---

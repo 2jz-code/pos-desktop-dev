@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPaymentById, refundPayment } from "@/api/services/paymentService";
+import {
+	getPaymentById,
+	refundTransaction,
+} from "@/api/services/paymentService";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -10,50 +13,44 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import FullScreenLoader from "@/components/FullScreenLoader";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
-import { ArrowLeft, CreditCard, DollarSign } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { RefundDialog } from "@/components/dialogs/RefundDialog";
 
-// A small component to render each transaction
-const TransactionDetail = ({ transaction }) => {
-	const method = transaction.method?.replace("_", " ") || "N/A";
-	const isCredit = method.toLowerCase() === "credit";
+// Import your card logos (ensure paths are correct)
+import VisaLogo from "@/assets/images/card-logos/visa.svg";
+import MastercardLogo from "@/assets/images/card-logos/mastercard.svg";
+import AmexLogo from "@/assets/images/card-logos/amex.svg";
+import DiscoverLogo from "@/assets/images/card-logos/discover.svg";
+import DefaultCardLogo from "@/assets/images/card-logos/generic.svg";
 
-	return (
-		<div className="p-4 border rounded-lg bg-muted/50 space-y-2">
-			<div className="flex justify-between items-center">
-				<div className="flex items-center gap-2">
-					{isCredit ? (
-						<CreditCard className="h-5 w-5 text-blue-500" />
-					) : (
-						<DollarSign className="h-5 w-5 text-green-500" />
-					)}
-					<span className="font-semibold capitalize">{method}</span>
-				</div>
-				<span className="font-bold text-lg">
-					{formatCurrency(transaction.amount)}
-				</span>
-			</div>
-			<div className="text-xs text-muted-foreground space-y-1 pl-7">
-				<p>Status: {transaction.status}</p>
-				<p>Date: {new Date(transaction.created_at).toLocaleString()}</p>
-				{isCredit && transaction.metadata?.card_brand && (
-					<p>
-						Card: {transaction.metadata.card_brand} ****
-						{transaction.metadata.card_last4}
-					</p>
-				)}
-			</div>
-		</div>
-	);
+// Mapping from brand string to the imported logo
+const cardBrandLogos = {
+	visa: VisaLogo,
+	mastercard: MastercardLogo,
+	amex: AmexLogo,
+	discover: DiscoverLogo,
 };
 
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const { toast } = useToast();
+
+	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
+	const [selectedTransaction, setSelectedTransaction] = useState(null);
 
 	const {
 		data: payment,
@@ -66,8 +63,10 @@ const PaymentDetailsPage = () => {
 		enabled: !!paymentId,
 	});
 
-	const { mutate: initiateRefund, isLoading: isRefunding } = useMutation({
-		mutationFn: () => refundPayment(paymentId, parseFloat(payment.amount_paid)),
+	const { mutate: processRefund, isLoading: isRefunding } = useMutation({
+		mutationFn: (refundData) => {
+			return refundTransaction(paymentId, refundData);
+		},
 		onSuccess: () => {
 			toast({
 				title: "Success",
@@ -75,27 +74,49 @@ const PaymentDetailsPage = () => {
 			});
 			queryClient.invalidateQueries(["payment", paymentId]);
 			queryClient.invalidateQueries(["payments"]);
+			setRefundDialogOpen(false);
 		},
 		onError: (err) => {
 			toast({
 				title: "Refund Error",
-				description: err.message || "Failed to process refund.",
+				description: err.response?.data?.error || "Failed to process refund.",
 				variant: "destructive",
 			});
 		},
 	});
 
+	const handleOpenRefundDialog = (transaction) => {
+		setSelectedTransaction(transaction);
+		setRefundDialogOpen(true);
+	};
+
+	const handleRefundSubmit = (refundDetails) => {
+		processRefund(refundDetails);
+	};
+
 	if (isLoading) return <FullScreenLoader />;
 	if (isError) return <div className="p-8">Error: {error.message}</div>;
 	if (!payment) return <div className="p-8">Payment not found.</div>;
 
-	const canRefund = payment.status === "succeeded";
+	const getStatusVariant = (status) => {
+		switch (status.toLowerCase()) {
+			case "paid":
+				return "success";
+			case "partially_refunded":
+				return "warning";
+			case "refunded":
+				return "destructive";
+			default:
+				return "secondary";
+		}
+	};
 
 	return (
 		<div className="p-4 md:p-8 space-y-4">
 			<Button
 				onClick={() => navigate("/payments")}
 				variant="outline"
+				className="mb-4"
 			>
 				<ArrowLeft className="mr-2 h-4 w-4" />
 				Back to All Payments
@@ -103,17 +124,16 @@ const PaymentDetailsPage = () => {
 
 			<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 				{/* Left Side: Overall Payment Summary */}
-				<Card className="lg:col-span-1">
+				<Card className="lg:col-span-1 h-fit">
 					<CardHeader>
 						<CardTitle>Payment Summary</CardTitle>
-						<CardDescription>ID: {payment.id}</CardDescription>
 						<CardDescription>
 							Payment #: {payment.payment_number}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Total Amount Paid</span>
+							<span className="text-muted-foreground">Net Amount Paid</span>
 							<span className="font-medium">
 								{formatCurrency(payment.amount_paid)}
 							</span>
@@ -123,8 +143,10 @@ const PaymentDetailsPage = () => {
 							<span className="font-medium">{formatCurrency(payment.tip)}</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Overall Status</span>
-							<Badge>{payment.status}</Badge>
+							<span className="text-muted-foreground">Status</span>
+							<Badge variant={getStatusVariant(payment.status)}>
+								{payment.status}
+							</Badge>
 						</div>
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">Created</span>
@@ -133,7 +155,7 @@ const PaymentDetailsPage = () => {
 							</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Related Order: </span>
+							<span className="text-muted-foreground">Related Order</span>
 							<Link
 								to={`/orders/${payment.order}`}
 								className="hover:underline font-mono text-sm font-bold text-blue-500"
@@ -141,15 +163,6 @@ const PaymentDetailsPage = () => {
 								{payment.order_number}
 							</Link>
 						</div>
-						{canRefund && (
-							<Button
-								className="w-full mt-4"
-								onClick={initiateRefund}
-								disabled={isRefunding}
-							>
-								{isRefunding ? "Refunding..." : "Refund Full Amount"}
-							</Button>
-						)}
 					</CardContent>
 				</Card>
 
@@ -161,20 +174,112 @@ const PaymentDetailsPage = () => {
 							Individual transactions associated with this payment.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="space-y-4">
-						{payment.transactions && payment.transactions.length > 0 ? (
-							payment.transactions.map((txn) => (
-								<TransactionDetail
-									key={txn.id}
-									transaction={txn}
-								/>
-							))
-						) : (
-							<p className="text-muted-foreground">No transactions found.</p>
-						)}
+					<CardContent>
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Amount</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead>Method</TableHead>
+									<TableHead>Card Details</TableHead>
+									<TableHead>Refunded</TableHead>
+									<TableHead className="text-right">Actions</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{payment.transactions?.length > 0 ? (
+									payment.transactions.map((txn) => {
+										const refundableAmount =
+											parseFloat(txn.amount) -
+											parseFloat(txn.refunded_amount || 0);
+										const isRefundable =
+											txn.status === "SUCCESSFUL" && refundableAmount > 0;
+
+										// Select the correct logo based on the brand string
+										const brandKey = txn.card_brand?.toLowerCase();
+										const logoSrc = cardBrandLogos[brandKey] || DefaultCardLogo;
+
+										return (
+											<TableRow key={txn.id}>
+												<TableCell className="font-medium">
+													{formatCurrency(txn.amount)}
+												</TableCell>
+												<TableCell>
+													<Badge
+														variant={
+															txn.status === "SUCCESSFUL"
+																? "success"
+																: "secondary"
+														}
+													>
+														{txn.status}
+													</Badge>
+												</TableCell>
+												<TableCell className="capitalize">
+													{txn.method.replace("_", " ")}
+												</TableCell>
+
+												{/* --- UPDATED CELL TO DISPLAY LOGO --- */}
+												<TableCell>
+													{txn.card_brand && txn.card_last4 ? (
+														<div className="flex items-center gap-2">
+															<img
+																src={logoSrc}
+																alt={txn.card_brand}
+																className="h-5 w-8 object-contain"
+															/>
+															<span className="font-mono text-sm">
+																**** {txn.card_last4}
+															</span>
+														</div>
+													) : (
+														<span className="text-muted-foreground">—</span>
+													)}
+												</TableCell>
+
+												<TableCell>
+													{formatCurrency(txn.refunded_amount || 0)}
+												</TableCell>
+												<TableCell className="text-right">
+													{isRefundable && (
+														<Button
+															size="sm"
+															variant="outline"
+															onClick={() => handleOpenRefundDialog(txn)}
+															disabled={isRefunding}
+														>
+															Refund
+														</Button>
+													)}
+												</TableCell>
+											</TableRow>
+										);
+									})
+								) : (
+									<TableRow>
+										<TableCell
+											colSpan="6"
+											className="text-center"
+										>
+											No transactions found.
+										</TableCell>
+									</TableRow>
+								)}
+							</TableBody>
+						</Table>
 					</CardContent>
 				</Card>
 			</div>
+
+			{selectedTransaction && (
+				<RefundDialog
+					isOpen={isRefundDialogOpen}
+					onOpenChange={setRefundDialogOpen}
+					transaction={selectedTransaction}
+					isRefunding={isRefunding}
+					onSubmit={handleRefundSubmit}
+				/>
+			)}
 		</div>
 	);
 };

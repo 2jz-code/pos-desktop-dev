@@ -105,8 +105,6 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    payment_in_progress = models.BooleanField(default=False)
-
     class Meta:
         # Consider ordering by `created_at` or `pk` for consistent numbering if `order_number` is null
         ordering = ["order_number", "created_at"]
@@ -117,6 +115,19 @@ class Order(models.Model):
         return (
             f"Order {self.order_number or self.pk} ({self.order_type}) - {self.status}"
         )
+
+    @property
+    def payment_in_progress_derived(self):
+        """
+        Derived property that determines if payment is in progress based on Payment.status.
+        This replaces the deprecated payment_in_progress field.
+        """
+        if hasattr(self, "payment_details") and self.payment_details:
+            # Import locally to avoid circular imports
+            from payments.models import Payment
+
+            return self.payment_details.status == Payment.PaymentStatus.PENDING
+        return False
 
     def save(self, *args, **kwargs):
         # Generate order_number only if it's not already set

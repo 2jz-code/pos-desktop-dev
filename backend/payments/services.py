@@ -1,15 +1,51 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction, models
 from django.db.models import Sum
-from settings.models import GlobalSettings, TerminalProvider
-from .models import Payment, PaymentTransaction, Order
+from .models import (
+    Payment,
+    PaymentTransaction,
+)
+from orders.models import Order
 from .factories import PaymentStrategyFactory
 from .strategies import TerminalPaymentStrategy
 from django.shortcuts import get_object_or_404
 import stripe
 import uuid
+from .signals import payment_completed
+
 
 class PaymentService:
+    """
+    Payment Service with formal state transition management.
+    This service centralizes all payment state transitions and validates them.
+    """
+
+    # State transition map - defines valid transitions for Payment.PaymentStatus
+    VALID_TRANSITIONS = {
+        Payment.PaymentStatus.UNPAID: [
+            Payment.PaymentStatus.PENDING,
+            Payment.PaymentStatus.PARTIALLY_PAID,
+            Payment.PaymentStatus.PAID,
+        ],
+        Payment.PaymentStatus.PENDING: [
+            Payment.PaymentStatus.UNPAID,
+            Payment.PaymentStatus.PARTIALLY_PAID,
+            Payment.PaymentStatus.PAID,
+        ],
+        Payment.PaymentStatus.PARTIALLY_PAID: [
+            Payment.PaymentStatus.PAID,
+            Payment.PaymentStatus.PARTIALLY_REFUNDED,
+            Payment.PaymentStatus.REFUNDED,
+        ],
+        Payment.PaymentStatus.PAID: [
+            Payment.PaymentStatus.PARTIALLY_REFUNDED,
+            Payment.PaymentStatus.REFUNDED,
+        ],
+        Payment.PaymentStatus.PARTIALLY_REFUNDED: [
+            Payment.PaymentStatus.REFUNDED,
+        ],
+        Payment.PaymentStatus.REFUNDED: [],  # Terminal state
+    }
 
     def __init__(self, payment: Payment):
         """
@@ -19,9 +55,279 @@ class PaymentService:
         self.payment = payment
 
     @staticmethod
+    def _validate_transition(current_status: str, target_status: str) -> bool:
+        """
+        Validates if a state transition is allowed.
+
+        Args:
+            current_status: Current payment status
+            target_status: Target payment status
+
+        Returns:
+            True if transition is valid, False otherwise
+        """
+        valid_targets = PaymentService.VALID_TRANSITIONS.get(current_status, [])
+        return target_status in valid_targets
+
+    @staticmethod
+    def _transition_payment_status(
+        payment: Payment, target_status: str, force: bool = False
+    ) -> Payment:
+        """
+        Safely transitions a payment to a new status with validation.
+
+        Args:
+            payment: Payment object to transition
+            target_status: Target status to transition to
+            force: If True, skip validation (use with caution)
+
+        Returns:
+            Updated payment object
+
+        Raises:
+            ValueError: If transition is invalid
+        """
+        if not force and not PaymentService._validate_transition(
+            payment.status, target_status
+        ):
+            raise ValueError(
+                f"Invalid state transition from {payment.status} to {target_status}. "
+                f"Valid transitions from {payment.status}: {PaymentService.VALID_TRANSITIONS.get(payment.status, [])}"
+            )
+
+        old_status = payment.status
+        payment.status = target_status
+        payment.save(update_fields=["status", "updated_at"])
+
+        print(
+            f"Payment {payment.id}: Status transition {old_status} -> {target_status}"
+        )
+        return payment
+
+    @staticmethod
+    @transaction.atomic
+    def initiate_payment_attempt(order: Order, **kwargs) -> Payment:
+        """
+        Initiates a payment attempt for an order. Gets or creates the Payment object
+        and transitions its status from UNPAID to PENDING.
+
+        Args:
+            order: Order to initiate payment for
+            **kwargs: Additional payment initialization data
+
+        Returns:
+            Payment object in PENDING status
+
+        Raises:
+            ValueError: If payment status is not UNPAID
+        """
+        payment, created = Payment.objects.get_or_create(
+            order=order,
+            defaults={
+                "total_amount_due": order.grand_total,
+                "status": Payment.PaymentStatus.UNPAID,
+            },
+        )
+
+        # If the order total has changed since the payment was initiated, update it.
+        if not created and payment.total_amount_due != order.grand_total:
+            payment.total_amount_due = order.grand_total
+            payment.save(update_fields=["total_amount_due"])
+
+        # Only transition to PENDING if currently UNPAID
+        if payment.status == Payment.PaymentStatus.UNPAID:
+            PaymentService._transition_payment_status(
+                payment, Payment.PaymentStatus.PENDING
+            )
+        elif payment.status != Payment.PaymentStatus.PENDING:
+            raise ValueError(
+                f"Cannot initiate payment attempt. Payment status is {payment.status}, expected UNPAID"
+            )
+
+        return payment
+
+    @staticmethod
+    @transaction.atomic
+    def confirm_successful_transaction(
+        transaction: PaymentTransaction, **kwargs
+    ) -> Payment:
+        """
+        Confirms a successful transaction and updates the parent Payment status.
+        Determines if the status should move to PARTIALLY_PAID or PAID.
+
+        Args:
+            transaction: PaymentTransaction that succeeded
+            **kwargs: Additional data for the confirmation
+
+        Returns:
+            Updated Payment object
+        """
+        # Mark the transaction as successful
+        transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+        transaction.save(update_fields=["status"])
+
+        payment = transaction.payment
+        payment = Payment.objects.select_for_update().get(id=payment.id)
+
+        # Recalculate amounts
+        updated_payment = PaymentService._recalculate_payment_amounts(payment)
+
+        # Determine new status based on amounts
+        if updated_payment.amount_paid >= updated_payment.total_amount_due:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PAID
+            )
+            PaymentService._handle_payment_completion(updated_payment)
+        elif updated_payment.amount_paid > 0:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+            )
+
+        return updated_payment
+
+    @staticmethod
+    @transaction.atomic
+    def record_failed_transaction(transaction: PaymentTransaction, **kwargs) -> Payment:
+        """
+        Records a failed transaction and updates the parent Payment status accordingly.
+        If no successful payments exist, status returns to UNPAID.
+
+        Args:
+            transaction: PaymentTransaction that failed
+            **kwargs: Additional data for the failure
+
+        Returns:
+            Updated Payment object
+        """
+        # Mark the transaction as failed
+        transaction.status = PaymentTransaction.TransactionStatus.FAILED
+        transaction.save(update_fields=["status"])
+
+        payment = transaction.payment
+        payment = Payment.objects.select_for_update().get(id=payment.id)
+
+        # Recalculate amounts
+        updated_payment = PaymentService._recalculate_payment_amounts(payment)
+
+        # Determine new status based on remaining successful payments
+        if updated_payment.amount_paid >= updated_payment.total_amount_due:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PAID
+            )
+        elif updated_payment.amount_paid > 0:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+            )
+        else:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.UNPAID
+            )
+
+        return updated_payment
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_payment_process(payment: Payment, **kwargs) -> Payment:
+        """
+        Explicitly handles payment process cancellation.
+        Cancels all pending transactions and resets payment status.
+
+        Args:
+            payment: Payment to cancel
+            **kwargs: Additional cancellation data
+
+        Returns:
+            Updated Payment object
+        """
+        # Cancel all pending transactions
+        pending_transactions = payment.transactions.filter(
+            status=PaymentTransaction.TransactionStatus.PENDING
+        )
+
+        for transaction in pending_transactions:
+            transaction.status = PaymentTransaction.TransactionStatus.CANCELED
+            transaction.save(update_fields=["status"])
+
+        # Recalculate amounts after cancellation
+        updated_payment = PaymentService._recalculate_payment_amounts(payment)
+
+        # Determine new status based on remaining successful payments
+        if updated_payment.amount_paid >= updated_payment.total_amount_due:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PAID
+            )
+        elif updated_payment.amount_paid > 0:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+            )
+        else:
+            PaymentService._transition_payment_status(
+                updated_payment, Payment.PaymentStatus.UNPAID
+            )
+
+        return updated_payment
+
+    @staticmethod
+    def _recalculate_payment_amounts(payment: Payment) -> Payment:
+        """
+        Recalculates gross paid and total refunded amounts for a payment.
+        This replaces the old _update_payment_status method with just the calculation logic.
+
+        Args:
+            payment: Payment to recalculate
+
+        Returns:
+            Payment with updated amounts
+        """
+        payment.refresh_from_db()
+
+        # Calculate the gross amount paid from all transactions that were once successful.
+        paid_transactions = payment.transactions.filter(
+            status__in=[
+                PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                PaymentTransaction.TransactionStatus.REFUNDED,
+            ]
+        )
+        total_paid_gross = paid_transactions.aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Calculate the total refunded amount on-the-fly from all associated transactions.
+        total_refunded = payment.transactions.aggregate(total=Sum("refunded_amount"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Update the amount_paid field to the GROSS total
+        payment.amount_paid = total_paid_gross
+        payment.save(update_fields=["amount_paid", "updated_at"])
+
+        return payment
+
+    @staticmethod
+    def _handle_payment_completion(payment: Payment):
+        """
+        Handles business logic when a payment is completed.
+        Updates order status and emits signals.
+
+        Args:
+            payment: Completed payment
+        """
+        order = payment.order
+        if order.status != Order.OrderStatus.COMPLETED:
+            order.status = Order.OrderStatus.COMPLETED
+            order.save(update_fields=["status"])
+
+        # Emit payment_completed signal for event-driven architecture
+        payment_completed.send(sender=PaymentService, payment=payment)
+
+    # === LEGACY METHODS - TO BE DEPRECATED ===
+    # These methods are kept for backward compatibility during transition
+
+    @staticmethod
     @transaction.atomic
     def get_or_create_payment(order: Order) -> Payment:
         """
+        LEGACY: Use initiate_payment_attempt instead.
         Retrieves the existing payment object for an order, or creates a new one
         if it doesn't exist.
         """
@@ -35,7 +341,48 @@ class PaymentService:
 
         return payment
 
-    @classmethod
+    @staticmethod
+    def _update_payment_status(payment: Payment) -> Payment:
+        """
+        LEGACY: This method is deprecated. Use explicit state transition methods instead.
+        Recalculates gross paid and total refunded amounts, then updates the
+        payment status accordingly.
+        """
+        payment = PaymentService._recalculate_payment_amounts(payment)
+
+        # Calculate the total refunded amount
+        total_refunded = payment.transactions.aggregate(total=Sum("refunded_amount"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Determine the correct status based on gross paid and total refunded
+        target_status = None
+        if total_refunded > 0:
+            if total_refunded >= payment.amount_paid:
+                target_status = Payment.PaymentStatus.REFUNDED
+            else:
+                target_status = Payment.PaymentStatus.PARTIALLY_REFUNDED
+        elif payment.amount_paid >= payment.total_amount_due:
+            target_status = Payment.PaymentStatus.PAID
+        elif payment.amount_paid > 0:
+            target_status = Payment.PaymentStatus.PARTIALLY_PAID
+        else:
+            target_status = Payment.PaymentStatus.UNPAID
+
+        # Apply transition if status changed
+        if target_status and payment.status != target_status:
+            # Use force=True to maintain backward compatibility
+            PaymentService._transition_payment_status(
+                payment, target_status, force=True
+            )
+
+            # Handle completion if needed
+            if target_status == Payment.PaymentStatus.PAID:
+                PaymentService._handle_payment_completion(payment)
+
+        return payment
+
+    @staticmethod
     @transaction.atomic
     def initiate_terminal_payment(
         cls, order: Order, amount: Decimal
@@ -43,12 +390,9 @@ class PaymentService:
         """
         Initiates a terminal payment by using the centrally configured provider.
         """
-        settings = GlobalSettings.objects.first()
-        if not settings:
-            # Handle the case where settings are not configured
-            raise RuntimeError("Global settings are not configured in the database.")
+        from settings.config import app_settings
 
-        provider = settings.active_terminal_provider
+        provider = app_settings.active_terminal_provider
         return cls.process_transaction(
             order=order,
             method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
@@ -84,49 +428,14 @@ class PaymentService:
         return updated_payment
 
     @staticmethod
-    def _update_payment_status(payment: Payment) -> Payment:
-        """
-        Recalculates the total amount paid for a payment, updates its status,
-        and returns the updated payment object.
-        """
-        payment.refresh_from_db()  # Ensure we have the latest state before calculating
-
-        successful_transactions = payment.transactions.filter(
-            status=PaymentTransaction.TransactionStatus.SUCCESSFUL
-        )
-
-        total_paid = successful_transactions.aggregate(total=Sum("amount"))[
-            "total"
-        ] or Decimal("0.00")
-
-        payment.amount_paid = total_paid
-
-        if total_paid >= payment.total_amount_due:
-            payment.status = Payment.PaymentStatus.PAID
-            # If the payment is fully paid, update the associated order's status as well.
-            order = payment.order
-            order.status = Order.OrderStatus.COMPLETED
-            order.payment_in_progress = False
-            order.save()
-        elif total_paid > 0:
-            payment.status = Payment.PaymentStatus.PARTIALLY_PAID
-        else:
-            # This case should ideally not be hit after a successful transaction
-            payment.status = Payment.PaymentStatus.PENDING
-
-        payment.save()
-        return payment
-
-    @staticmethod
     def _get_active_terminal_strategy() -> TerminalPaymentStrategy:
         """
         A helper method to retrieve the currently active terminal strategy instance.
         """
-        settings = GlobalSettings.objects.first()
-        if not settings:
-            raise RuntimeError("Global settings are not configured in the database.")
+        # Use the centralized configuration instead of direct database queries
+        from settings.config import app_settings
 
-        provider = settings.active_terminal_provider
+        provider = app_settings.active_terminal_provider
         strategy = PaymentStrategyFactory.get_strategy(
             method=PaymentTransaction.PaymentMethod.CARD_TERMINAL, provider=provider
         )
@@ -290,50 +599,61 @@ class PaymentService:
         # Create a new transaction to represent the internal refund
         PaymentTransaction.objects.create(
             payment=self.payment,
-            amount=-amount_to_refund, # Negative amount for refund
-            method=self.payment.transactions.last().method if self.payment.transactions.last() else PaymentTransaction.PaymentMethod.CASH, # Use the last payment method for context
-            status=PaymentTransaction.TransactionStatus.SUCCESSFUL, # Internal record is successful
+            amount=-amount_to_refund,  # Negative amount for refund
+            method=(
+                self.payment.transactions.last().method
+                if self.payment.transactions.last()
+                else PaymentTransaction.PaymentMethod.CASH
+            ),  # Use the last payment method for context
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL,  # Internal record is successful
             # No transaction_id or provider_response as it's internal
             refund_reason=f"Internal refund of {amount_to_refund}",
-            refunded_amount=amount_to_refund # Mark this new transaction as refunded this amount
+            refunded_amount=amount_to_refund,  # Mark this new transaction as refunded this amount
         )
 
         PaymentService._update_payment_status(self.payment)
         return self.payment
 
     @transaction.atomic
-    def refund_transaction_with_provider(self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str = None) -> PaymentTransaction:
+    def refund_transaction_with_provider(
+        self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str = None
+    ) -> PaymentTransaction:
         """
         Initiates a refund for a specific PaymentTransaction via its associated provider.
-        This method will interact with external payment APIs (e.g., Stripe).
+        This method now only triggers the external API call and relies on a webhook
+        for database updates.
         """
         if amount_to_refund <= 0:
             raise ValueError("Refund amount must be positive.")
 
-        original_transaction = get_object_or_404(PaymentTransaction.objects.select_related('payment'), id=transaction_id)
+        original_transaction = get_object_or_404(
+            PaymentTransaction.objects.select_related("payment"), id=transaction_id
+        )
 
-        # Check if the transaction is already fully refunded or not suitable for refund
-        # Note: If allowing partial refunds, adjust this check.
-        if original_transaction.status == PaymentTransaction.TransactionStatus.REFUNDED:
-            raise ValueError(f"Transaction {transaction_id} is already fully refunded.")
-        
-        # Check if requested refund amount plus already refunded amount exceeds original transaction amount
-        if (original_transaction.refunded_amount + amount_to_refund) > original_transaction.amount:
-            raise ValueError(f"Cannot refund more than the remaining refundable amount for transaction {transaction_id}. Original amount: {original_transaction.amount}, Already refunded: {original_transaction.refunded_amount}, Requested refund: {amount_to_refund}.")
+        # Validation checks remain the same...
+        if (
+            original_transaction.refunded_amount + amount_to_refund
+        ) > original_transaction.amount:
+            raise ValueError("Cannot refund more than the remaining refundable amount.")
 
-        # Get the appropriate strategy based on the original transaction's method
+        # Get the strategy
         provider_setting = None
-        if original_transaction.method == PaymentTransaction.PaymentMethod.CARD_TERMINAL:
-            global_settings = GlobalSettings.objects.first()
-            if global_settings:
-                provider_setting = global_settings.active_terminal_provider
-        
-        strategy = PaymentStrategyFactory.get_strategy(original_transaction.method, provider=provider_setting)
+        if (
+            original_transaction.method
+            == PaymentTransaction.PaymentMethod.CARD_TERMINAL
+        ):
+            # Use the centralized configuration instead of direct database queries
+            from settings.config import app_settings
 
-        # Call the strategy's refund method
-        refunded_transaction = strategy.refund_transaction(original_transaction, amount_to_refund, reason)
+            provider_setting = app_settings.active_terminal_provider
 
-        # After external refund, update the parent payment status
-        PaymentService._update_payment_status(refunded_transaction.payment)
+        strategy = PaymentStrategyFactory.get_strategy(
+            original_transaction.method, provider=provider_setting
+        )
 
-        return refunded_transaction
+        # --- CHANGE: Call the strategy but DO NOT update the database here ---
+        strategy.refund_transaction(original_transaction, amount_to_refund, reason)
+
+        # The method now returns the original transaction. The UI will have to wait
+        # for the webhook to deliver the updated state.
+        return original_transaction
