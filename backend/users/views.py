@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.utils.dateparse import parse_datetime
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,6 +41,23 @@ class UserListView(generics.ListAPIView):
     queryset = User.objects.all().order_by("email")
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        # Support for delta sync - filter by modified_since parameter
+        modified_since = self.request.query_params.get("modified_since")
+        if modified_since:
+            try:
+                modified_since_dt = parse_datetime(modified_since)
+                if modified_since_dt:
+                    # User model has date_joined, we can use that for sync
+                    queryset = queryset.filter(date_joined__gte=modified_since_dt)
+            except (ValueError, TypeError):
+                # If parsing fails, ignore the parameter
+                pass
+
+        return queryset
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -239,3 +257,38 @@ class CurrentUserView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+class GenerateAPIKeyView(APIView):
+    """Generate a new API key for the authenticated user"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        api_key = request.user.generate_api_key()
+        return Response(
+            {
+                "api_key": api_key,
+                "message": "API key generated successfully. Store this safely - it won't be shown again.",
+            }
+        )
+
+
+class RevokeAPIKeyView(APIView):
+    """Revoke the current API key for the authenticated user"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        request.user.revoke_api_key()
+        return Response({"message": "API key revoked successfully."})
+
+
+class APIKeyStatusView(APIView):
+    """Check if the user has an API key (without revealing it)"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        has_api_key = bool(request.user.api_key)
+        return Response({"has_api_key": has_api_key})

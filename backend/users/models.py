@@ -7,6 +7,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.hashers import make_password, check_password
+import secrets
 
 
 class UserManager(BaseUserManager):
@@ -81,6 +82,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     date_joined = models.DateTimeField(_("date joined"), default=timezone.now)
 
+    # API key for sync service authentication
+    api_key = models.CharField(
+        _("API key"),
+        max_length=64,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text=_("API key for programmatic access (e.g., sync service)"),
+    )
+
     objects = UserManager()
 
     USERNAME_FIELD = "email"
@@ -97,3 +108,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.pin or not raw_pin:
             return False
         return check_password(str(raw_pin), self.pin)
+
+    def generate_api_key(self):
+        """Generate a new API key for this user"""
+        self.api_key = secrets.token_urlsafe(48)
+        self.save(update_fields=["api_key"])
+        return self.api_key
+
+    def revoke_api_key(self):
+        """Revoke the current API key"""
+        self.api_key = None
+        self.save(update_fields=["api_key"])

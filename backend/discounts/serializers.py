@@ -54,6 +54,30 @@ class DiscountSerializer(serializers.ModelSerializer):
         ]
 
 
+# Sync-specific serializer that sends simple field values instead of nested objects
+class DiscountSyncSerializer(serializers.ModelSerializer):
+    """
+    Sync-specific serializer for discounts that only includes basic fields
+    suitable for SQLite storage without nested objects.
+    """
+
+    class Meta:
+        model = Discount
+        fields = [
+            "id",
+            "name",
+            "type",
+            "scope",
+            "value",
+            "min_purchase_amount",
+            "buy_quantity",
+            "get_quantity",
+            "is_active",
+            "start_date",
+            "end_date",
+        ]
+
+
 class DiscountApplySerializer(serializers.Serializer):
     """
     Serializer for applying a discount to an order.

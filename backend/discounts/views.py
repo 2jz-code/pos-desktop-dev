@@ -1,10 +1,15 @@
 from django.shortcuts import render
+from django.utils.dateparse import parse_datetime
 from rest_framework import generics, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from orders.models import Order
 from .models import Discount
-from .serializers import DiscountSerializer, DiscountApplySerializer
+from .serializers import (
+    DiscountSerializer,
+    DiscountSyncSerializer,
+    DiscountApplySerializer,
+)
 from .services import DiscountService
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import DiscountFilter
@@ -61,12 +66,40 @@ class DiscountViewSet(viewsets.ModelViewSet):
     A ViewSet for viewing and editing discounts.
     Provides list, create, retrieve, update, and destroy actions.
     Supports filtering by 'type', 'is_active', and 'scope'.
+    Supports delta sync with modified_since parameter.
     """
 
     queryset = Discount.objects.all().order_by("name")
     serializer_class = DiscountSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = DiscountFilter
+
+    def get_serializer_class(self):
+        # Use sync serializer if sync=true parameter is present
+        is_sync_request = self.request.query_params.get("sync") == "true"
+
+        if is_sync_request and self.action in ["list", "retrieve"]:
+            return DiscountSyncSerializer
+
+        return DiscountSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        # Support for delta sync - filter by modified_since parameter
+        modified_since = self.request.query_params.get("modified_since")
+        if modified_since:
+            try:
+                modified_since_dt = parse_datetime(modified_since)
+                if modified_since_dt:
+                    # Discount model doesn't have updated_at by default
+                    # For now, return all discounts until we add updated_at field
+                    queryset = queryset.filter(id__gte=1)
+            except (ValueError, TypeError):
+                # If parsing fails, ignore the parameter
+                pass
+
+        return queryset
 
 
 class AvailableDiscountListView(generics.ListAPIView):

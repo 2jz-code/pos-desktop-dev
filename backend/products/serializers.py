@@ -26,13 +26,13 @@ class ProductTypeSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    parent = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(), allow_null=True
+    parent_id = serializers.PrimaryKeyRelatedField(
+        source="parent", queryset=Category.objects.all(), allow_null=True
     )
 
     class Meta:
         model = Category
-        fields = ["id", "name", "description", "parent"]
+        fields = ["id", "name", "description", "parent_id"]
 
 
 class TaxSerializer(serializers.ModelSerializer):
@@ -59,6 +59,28 @@ class ProductSerializer(serializers.ModelSerializer):
             "taxes",
             "is_active",
             "product_type",
+            "created_at",
+            "updated_at",
+        ]
+
+
+# Sync-specific serializers that send IDs instead of nested objects
+class ProductSyncSerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(
+        source="category.id", read_only=True, allow_null=True
+    )
+    product_type_id = serializers.IntegerField(source="product_type.id", read_only=True)
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "name",
+            "description",
+            "price",
+            "category_id",
+            "product_type_id",
+            "is_active",
             "created_at",
             "updated_at",
         ]
