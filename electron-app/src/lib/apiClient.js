@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-	baseURL: "http://127.0.0.1:8001/api",
+	baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
+	timeout: parseInt(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
 	withCredentials: true, // This is crucial for sending cookies
 });
 

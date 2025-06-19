@@ -1,6 +1,6 @@
 import { app, ipcMain, session, BrowserWindow } from "electron";
 import path from "node:path";
-import process from "node:process";
+import process$1 from "node:process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import usb from "usb";
@@ -161,6 +161,12 @@ class DatabaseService {
   constructor() {
     this.db = null;
     this.isInitialized = false;
+    this.backupInterval = null;
+    this.config = {
+      backupIntervalMinutes: parseInt(process.env.VITE_DEFAULT_BACKUP_INTERVAL_MINUTES) || 30,
+      maxBackupsToKeep: parseInt(process.env.VITE_MAX_BACKUPS_TO_KEEP) || 10,
+      autoBackupEnabled: process.env.VITE_AUTO_BACKUP_ENABLED !== "false"
+    };
   }
   /**
    * Initialize the database connection and create tables if needed
@@ -176,24 +182,311 @@ class DatabaseService {
       if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
       }
+      const backupDir = path.join(userDataPath, "database-backups");
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
       console.log(`[DatabaseService] Initializing database at: ${dbPath}`);
       this.db = new Database(dbPath);
       this.db.pragma("journal_mode = WAL");
       await this.createTables();
+      await this.loadUserSettings();
+      if (this.config.autoBackupEnabled) {
+        this.startBackupSystem();
+      }
       this.isInitialized = true;
       console.log("[DatabaseService] Database initialized successfully");
     } catch (error) {
       console.error("[DatabaseService] Failed to initialize database:", error);
-      throw error;
+      if (this.db) {
+        try {
+          console.log(
+            "[DatabaseService] Attempting to recover by resetting database..."
+          );
+          this.db.close();
+          const restored = await this.restoreFromBackup();
+          if (restored) {
+            console.log("[DatabaseService] Restored from backup successfully");
+            this.db = new Database(
+              path.join(app.getPath("userData"), "pos-cache.db")
+            );
+            this.db.pragma("journal_mode = WAL");
+            this.isInitialized = true;
+            if (this.config.autoBackupEnabled) {
+              this.startBackupSystem();
+            }
+            return;
+          }
+          const userDataPath = app.getPath("userData");
+          const dbPath = path.join(userDataPath, "pos-cache.db");
+          if (fs.existsSync(dbPath)) {
+            fs.unlinkSync(dbPath);
+            console.log("[DatabaseService] Corrupted database file deleted");
+          }
+          this.db = new Database(dbPath);
+          this.db.pragma("journal_mode = WAL");
+          await this.createTables();
+          this.isInitialized = true;
+          if (this.config.autoBackupEnabled) {
+            this.startBackupSystem();
+          }
+          console.log(
+            "[DatabaseService] Database recovered and initialized successfully"
+          );
+        } catch (recoveryError) {
+          console.error(
+            "[DatabaseService] Failed to recover database:",
+            recoveryError
+          );
+          throw recoveryError;
+        }
+      } else {
+        throw error;
+      }
+    }
+  }
+  /**
+   * Load user settings for backup configuration
+   */
+  async loadUserSettings() {
+    try {
+      const stmt = this.db.prepare(
+        "SELECT value FROM sync_metadata WHERE key = ?"
+      );
+      const result = stmt.get("user_settings");
+      if (result == null ? void 0 : result.value) {
+        const userSettings = JSON.parse(result.value);
+        if (userSettings.backupIntervalMinutes) {
+          this.config.backupIntervalMinutes = userSettings.backupIntervalMinutes;
+        }
+        if (userSettings.maxBackupsToKeep) {
+          this.config.maxBackupsToKeep = userSettings.maxBackupsToKeep;
+        }
+        if (userSettings.autoBackupEnabled !== void 0) {
+          this.config.autoBackupEnabled = userSettings.autoBackupEnabled;
+        }
+        console.log("[DatabaseService] User backup settings loaded:", {
+          interval: this.config.backupIntervalMinutes,
+          maxBackups: this.config.maxBackupsToKeep,
+          autoEnabled: this.config.autoBackupEnabled
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "[DatabaseService] Failed to load user backup settings:",
+        error
+      );
+    }
+  }
+  /**
+   * Start automatic backup system
+   */
+  startBackupSystem() {
+    this.stopBackupSystem();
+    if (!this.config.autoBackupEnabled) {
+      console.log("[DatabaseService] Auto-backup is disabled");
+      return;
+    }
+    const intervalMs = this.config.backupIntervalMinutes * 60 * 1e3;
+    console.log(
+      `[DatabaseService] Starting auto-backup every ${this.config.backupIntervalMinutes} minutes`
+    );
+    this.backupInterval = setInterval(() => {
+      this.createBackup().catch((error) => {
+        console.warn("[DatabaseService] Backup failed:", error);
+      });
+    }, intervalMs);
+    setTimeout(() => {
+      this.createBackup().catch((error) => {
+        console.warn("[DatabaseService] Initial backup failed:", error);
+      });
+    }, 5e3);
+  }
+  /**
+   * Stop automatic backup system
+   */
+  stopBackupSystem() {
+    if (this.backupInterval) {
+      clearInterval(this.backupInterval);
+      this.backupInterval = null;
+      console.log("[DatabaseService] Auto-backup stopped");
+    }
+  }
+  /**
+   * Update backup configuration
+   */
+  async updateBackupConfig(settings) {
+    if (settings.backupIntervalMinutes) {
+      this.config.backupIntervalMinutes = settings.backupIntervalMinutes;
+    }
+    if (settings.maxBackupsToKeep) {
+      this.config.maxBackupsToKeep = settings.maxBackupsToKeep;
+    }
+    if (settings.autoBackupEnabled !== void 0) {
+      this.config.autoBackupEnabled = settings.autoBackupEnabled;
+    }
+    console.log("[DatabaseService] Backup configuration updated:", this.config);
+    if (this.config.autoBackupEnabled) {
+      this.startBackupSystem();
+    } else {
+      this.stopBackupSystem();
+    }
+  }
+  /**
+   * Create a backup of the current database
+   */
+  async createBackup() {
+    if (!this.isInitialized || !this.db) return;
+    try {
+      const userDataPath = app.getPath("userData");
+      const backupDir = path.join(userDataPath, "database-backups");
+      const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+      const backupPath = path.join(
+        backupDir,
+        `pos-cache-backup-${timestamp}.db`
+      );
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const sourceDbPath = path.join(userDataPath, "pos-cache.db");
+      try {
+        const stmt = this.db.prepare(`VACUUM INTO ?`);
+        stmt.run(backupPath);
+        console.log(
+          `[DatabaseService] Backup created using VACUUM INTO: ${backupPath}`
+        );
+      } catch (vacuumError) {
+        console.warn(
+          "[DatabaseService] VACUUM INTO failed, trying file copy method:",
+          vacuumError
+        );
+        try {
+          this.db.checkpoint();
+        } catch (checkpointError) {
+          console.warn(
+            "[DatabaseService] Checkpoint failed, continuing with backup:",
+            checkpointError
+          );
+        }
+        if (fs.existsSync(sourceDbPath)) {
+          fs.copyFileSync(sourceDbPath, backupPath);
+          console.log(
+            `[DatabaseService] Backup created using file copy: ${backupPath}`
+          );
+        } else {
+          throw new Error("Source database file does not exist");
+        }
+      }
+      await this.cleanupOldBackups(backupDir);
+      if (fs.existsSync(backupPath)) {
+        const stats = fs.statSync(backupPath);
+        if (stats.size > 0) {
+          console.log(
+            `[DatabaseService] Backup validation successful. Size: ${stats.size} bytes`
+          );
+        } else {
+          console.warn("[DatabaseService] Backup file created but is empty");
+        }
+      } else {
+        console.error("[DatabaseService] Backup file was not created");
+      }
+    } catch (error) {
+      console.error("[DatabaseService] Failed to create backup:", error);
+    }
+  }
+  /**
+   * Manually trigger a backup (for testing or on-demand backup)
+   */
+  async createManualBackup() {
+    console.log("[DatabaseService] Creating manual backup...");
+    await this.createBackup();
+    return true;
+  }
+  /**
+   * Clean up old backup files
+   */
+  async cleanupOldBackups(backupDir) {
+    try {
+      const files = fs.readdirSync(backupDir).filter(
+        (file) => file.startsWith("pos-cache-backup-") && file.endsWith(".db")
+      ).map((file) => ({
+        name: file,
+        path: path.join(backupDir, file),
+        stats: fs.statSync(path.join(backupDir, file))
+      })).sort((a, b) => b.stats.mtime - a.stats.mtime);
+      if (files.length > this.config.maxBackupsToKeep) {
+        const filesToDelete = files.slice(this.config.maxBackupsToKeep);
+        for (const file of filesToDelete) {
+          fs.unlinkSync(file.path);
+          console.log(`[DatabaseService] Cleaned up old backup: ${file.name}`);
+        }
+      }
+    } catch (error) {
+      console.warn("[DatabaseService] Failed to cleanup old backups:", error);
+    }
+  }
+  /**
+   * Restore database from the most recent backup
+   */
+  async restoreFromBackup() {
+    try {
+      const userDataPath = app.getPath("userData");
+      const backupDir = path.join(userDataPath, "database-backups");
+      if (!fs.existsSync(backupDir)) {
+        console.log("[DatabaseService] No backup directory found");
+        return false;
+      }
+      const backupFiles = fs.readdirSync(backupDir).filter(
+        (file) => file.startsWith("pos-cache-backup-") && file.endsWith(".db")
+      ).map((file) => ({
+        name: file,
+        path: path.join(backupDir, file),
+        stats: fs.statSync(path.join(backupDir, file))
+      })).sort((a, b) => b.stats.mtime - a.stats.mtime);
+      if (backupFiles.length === 0) {
+        console.log("[DatabaseService] No backup files found");
+        return false;
+      }
+      const latestBackup = backupFiles[0];
+      const dbPath = path.join(userDataPath, "pos-cache.db");
+      fs.copyFileSync(latestBackup.path, dbPath);
+      console.log(
+        `[DatabaseService] Restored from backup: ${latestBackup.name}`
+      );
+      return true;
+    } catch (error) {
+      console.error("[DatabaseService] Failed to restore from backup:", error);
+      return false;
     }
   }
   /**
    * Create all necessary tables
    */
   createTables() {
-    const tables = [
-      // Products table
-      `CREATE TABLE IF NOT EXISTS products (
+    try {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                parent_id INTEGER,
+                is_active BOOLEAN DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                backend_updated_at DATETIME
+            )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT UNIQUE,
+                email TEXT,
+                first_name TEXT,
+                last_name TEXT,
+                role TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                backend_updated_at DATETIME
+            )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT,
@@ -205,34 +498,10 @@ class DatabaseService {
                 is_active BOOLEAN DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                backend_updated_at DATETIME
-            )`,
-      // Categories table
-      `CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                parent_id INTEGER,
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                backend_updated_at DATETIME
-            )`,
-      // Users table
-      `CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                username TEXT UNIQUE,
-                email TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                role TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                backend_updated_at DATETIME
-            )`,
-      // Discounts table
-      `CREATE TABLE IF NOT EXISTS discounts (
+                backend_updated_at DATETIME,
+                FOREIGN KEY (category_id) REFERENCES categories(id)
+            )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS discounts (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 type TEXT NOT NULL,
@@ -247,9 +516,8 @@ class DatabaseService {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 backend_updated_at DATETIME
-            )`,
-      // Offline orders queue
-      `CREATE TABLE IF NOT EXISTS offline_orders (
+            )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS offline_orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_data TEXT NOT NULL,
                 status TEXT DEFAULT 'PENDING_SYNC',
@@ -257,30 +525,42 @@ class DatabaseService {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_attempt_at DATETIME,
                 error_message TEXT
-            )`,
-      // Sync metadata
-      `CREATE TABLE IF NOT EXISTS sync_metadata (
+            )`);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS sync_metadata (
                 key TEXT PRIMARY KEY,
                 value TEXT,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`
-    ];
-    tables.forEach((sql) => {
-      this.db.exec(sql);
-    });
-    const indexes = [
-      "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)",
-      "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)",
-      "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
-      "CREATE INDEX IF NOT EXISTS idx_offline_orders_status ON offline_orders(status)",
-      "CREATE INDEX IF NOT EXISTS idx_backend_updated_products ON products(backend_updated_at)",
-      "CREATE INDEX IF NOT EXISTS idx_backend_updated_users ON users(backend_updated_at)",
-      "CREATE INDEX IF NOT EXISTS idx_backend_updated_discounts ON discounts(backend_updated_at)"
-    ];
-    indexes.forEach((sql) => {
-      this.db.exec(sql);
-    });
-    console.log("[DatabaseService] Tables and indexes created successfully");
+            )`);
+      const indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)",
+        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+        "CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_discounts_active ON discounts(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_discounts_type ON discounts(type)",
+        "CREATE INDEX IF NOT EXISTS idx_offline_orders_status ON offline_orders(status)",
+        "CREATE INDEX IF NOT EXISTS idx_backend_updated_products ON products(backend_updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_backend_updated_categories ON categories(backend_updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_backend_updated_users ON users(backend_updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_backend_updated_discounts ON discounts(backend_updated_at)"
+      ];
+      indexes.forEach((sql) => {
+        try {
+          this.db.exec(sql);
+        } catch (error) {
+          console.warn(
+            `[DatabaseService] Failed to create index: ${sql}`,
+            error
+          );
+        }
+      });
+      console.log("[DatabaseService] Tables and indexes created successfully");
+    } catch (error) {
+      console.error("[DatabaseService] Failed to create tables:", error);
+      throw error;
+    }
   }
   /**
    * Get the database instance
@@ -499,24 +779,199 @@ class ProductRepository extends BaseRepository {
     super("products");
   }
   /**
+   * Get all products with category information
+   */
+  getAll() {
+    const stmt = this.db.prepare(`
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.is_active = 1
+        `);
+    const rows = stmt.all();
+    return rows.map((row) => {
+      const product = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        product_type_id: row.product_type_id,
+        image_url: row.image_url,
+        local_image_path: row.local_image_path,
+        is_active: row.is_active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        backend_updated_at: row.backend_updated_at,
+        category: null
+      };
+      if (row.category_id) {
+        product.category = {
+          id: row.category_id,
+          name: row.category_name,
+          description: row.category_description,
+          parent_id: row.category_parent_id,
+          parent: row.parent_category_id ? {
+            id: row.parent_category_id,
+            name: row.parent_category_name
+          } : null
+        };
+      }
+      return product;
+    });
+  }
+  /**
+   * Get record by ID with category information
+   */
+  getById(id) {
+    const stmt = this.db.prepare(`
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.id = ?
+        `);
+    const row = stmt.get(id);
+    if (!row) return null;
+    const product = {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      price: row.price,
+      product_type_id: row.product_type_id,
+      image_url: row.image_url,
+      local_image_path: row.local_image_path,
+      is_active: row.is_active,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      backend_updated_at: row.backend_updated_at,
+      category: null
+    };
+    if (row.category_id) {
+      product.category = {
+        id: row.category_id,
+        name: row.category_name,
+        description: row.category_description,
+        parent_id: row.category_parent_id,
+        parent: row.parent_category_id ? {
+          id: row.parent_category_id,
+          name: row.parent_category_name
+        } : null
+      };
+    }
+    return product;
+  }
+  /**
    * Get products by category
    */
   getByCategory(categoryId) {
     const stmt = this.db.prepare(`
-            SELECT * FROM ${this.tableName} 
-            WHERE category_id = ? AND is_active = 1
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.category_id = ? AND p.is_active = 1
         `);
-    return stmt.all(categoryId);
+    const rows = stmt.all(categoryId);
+    return rows.map((row) => {
+      const product = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        product_type_id: row.product_type_id,
+        image_url: row.image_url,
+        local_image_path: row.local_image_path,
+        is_active: row.is_active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        backend_updated_at: row.backend_updated_at,
+        category: null
+      };
+      if (row.category_id) {
+        product.category = {
+          id: row.category_id,
+          name: row.category_name,
+          description: row.category_description,
+          parent_id: row.category_parent_id,
+          parent: row.parent_category_id ? {
+            id: row.parent_category_id,
+            name: row.parent_category_name
+          } : null
+        };
+      }
+      return product;
+    });
   }
   /**
    * Search products by name
    */
   searchByName(searchTerm) {
     const stmt = this.db.prepare(`
-            SELECT * FROM ${this.tableName} 
-            WHERE name LIKE ? AND is_active = 1
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.name LIKE ? AND p.is_active = 1
         `);
-    return stmt.all(`%${searchTerm}%`);
+    const rows = stmt.all(`%${searchTerm}%`);
+    return rows.map((row) => {
+      const product = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        product_type_id: row.product_type_id,
+        image_url: row.image_url,
+        local_image_path: row.local_image_path,
+        is_active: row.is_active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        backend_updated_at: row.backend_updated_at,
+        category: null
+      };
+      if (row.category_id) {
+        product.category = {
+          id: row.category_id,
+          name: row.category_name,
+          description: row.category_description,
+          parent_id: row.category_parent_id,
+          parent: row.parent_category_id ? {
+            id: row.parent_category_id,
+            name: row.parent_category_name
+          } : null
+        };
+      }
+      return product;
+    });
   }
   /**
    * Get products with local images
@@ -543,6 +998,67 @@ class ProductRepository extends BaseRepository {
 class CategoryRepository extends BaseRepository {
   constructor() {
     super("categories");
+  }
+  /**
+   * Override replaceAll to handle hierarchical data properly
+   * Categories have parent-child relationships that need special handling
+   */
+  replaceAll(records) {
+    if (!records || records.length === 0) {
+      const transaction2 = this.db.transaction(() => {
+        this.db.prepare(`DELETE FROM products`).run();
+        this.db.prepare(`DELETE FROM ${this.tableName}`).run();
+      });
+      transaction2();
+      return;
+    }
+    const transaction = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM products`).run();
+      this.db.prepare(`DELETE FROM ${this.tableName}`).run();
+      this.insertCategoriesHierarchically(records);
+    });
+    transaction();
+  }
+  /**
+   * Insert categories in the correct order to respect foreign key constraints.
+   * This iterative method is robust against unordered data, orphans, and circular dependencies.
+   */
+  insertCategoriesHierarchically(categories) {
+    const categoryMap = new Map(categories.map((c) => [c.id, c]));
+    const recordsToInsert = [...categories];
+    const insertedIds = /* @__PURE__ */ new Set();
+    let lastRoundCount = -1;
+    while (recordsToInsert.length > 0 && recordsToInsert.length !== lastRoundCount) {
+      lastRoundCount = recordsToInsert.length;
+      const remainingRecords = [];
+      for (const record of recordsToInsert) {
+        if (!record.parent_id || insertedIds.has(record.parent_id)) {
+          try {
+            this.insertRecord(record);
+            insertedIds.add(record.id);
+          } catch (e) {
+            console.error(
+              `Error inserting category ${record.name}: ${e.message}`
+            );
+          }
+        } else {
+          if (categoryMap.has(record.parent_id)) {
+            remainingRecords.push(record);
+          } else {
+            console.error(
+              `Skipping orphan category "${record.name}" (ID: ${record.id}). Parent ID ${record.parent_id} not found in sync payload.`
+            );
+          }
+        }
+      }
+      recordsToInsert.splice(0, recordsToInsert.length, ...remainingRecords);
+    }
+    if (recordsToInsert.length > 0) {
+      console.error(
+        "Could not insert the following categories due to circular dependencies or missing parents:",
+        recordsToInsert.map((r) => r.name)
+      );
+    }
   }
   /**
    * Get categories with product count
@@ -706,7 +1222,16 @@ const discountRepository = new DiscountRepository();
 const offlineOrderRepository = new OfflineOrderRepository();
 class SyncService {
   constructor() {
-    this.baseURL = "http://127.0.0.1:8001/api";
+    this.systemConfig = {
+      baseURL: process.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
+      apiTimeout: parseInt(process.env.VITE_API_TIMEOUT_MS) || 1e4,
+      debugSync: process.env.VITE_DEBUG_SYNC === "true",
+      maxConcurrentSyncs: parseInt(process.env.VITE_MAX_CONCURRENT_SYNCS) || 3
+    };
+    this.userSettings = {
+      syncIntervalMinutes: 5,
+      autoSyncEnabled: true
+    };
     this.repositories = {
       products: new ProductRepository(),
       categories: new CategoryRepository(),
@@ -716,25 +1241,156 @@ class SyncService {
     this.imagesCacheDir = path$1.join(app.getPath("userData"), "cached_images");
     this.apiKey = null;
     this.isOnline = true;
+    this.syncInterval = null;
+    this.activeSyncs = 0;
   }
   /**
-   * Initialize the sync service
+   * Initialize the sync service with user settings
    */
   async initialize() {
     console.log("🔄 Initializing SyncService...");
+    if (this.systemConfig.debugSync) {
+      console.log("📋 SyncService System Configuration:", {
+        baseURL: this.systemConfig.baseURL,
+        apiTimeout: this.systemConfig.apiTimeout,
+        maxConcurrentSyncs: this.systemConfig.maxConcurrentSyncs
+      });
+    }
     await this.ensureImagesCacheDir();
+    await this.loadUserSettings();
+    await this.loadAPIKey();
   }
   /**
-   * Set API key for authentication
+   * Load user settings from database
    */
-  setAPIKey(apiKey) {
-    this.apiKey = apiKey;
+  async loadUserSettings() {
+    try {
+      const db = databaseService.getDatabase();
+      const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+      const result = stmt.get("user_settings");
+      if (result == null ? void 0 : result.value) {
+        const dbUserSettings = JSON.parse(result.value);
+        if (dbUserSettings.syncIntervalMinutes) {
+          this.userSettings.syncIntervalMinutes = dbUserSettings.syncIntervalMinutes;
+        }
+        if (dbUserSettings.autoSyncEnabled !== void 0) {
+          this.userSettings.autoSyncEnabled = dbUserSettings.autoSyncEnabled;
+        }
+        console.log("⚙️ User sync settings loaded:", {
+          syncInterval: this.userSettings.syncIntervalMinutes,
+          autoSyncEnabled: this.userSettings.autoSyncEnabled
+        });
+      }
+    } catch (error) {
+      console.warn("⚠️ Failed to load user sync settings:", error);
+    }
   }
   /**
-   * Get axios config with authentication
+   * Save user settings to database
+   */
+  async saveUserSettings(settings) {
+    try {
+      const db = databaseService.getDatabase();
+      const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+      const result = stmt.get("user_settings");
+      let allUserSettings = (result == null ? void 0 : result.value) ? JSON.parse(result.value) : {};
+      allUserSettings = { ...allUserSettings, ...settings };
+      const saveStmt = db.prepare(`
+				INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+			`);
+      saveStmt.run("user_settings", JSON.stringify(allUserSettings));
+      await this.loadUserSettings();
+      console.log("💾 User sync settings saved and applied");
+    } catch (error) {
+      console.error("❌ Failed to save user sync settings:", error);
+    }
+  }
+  /**
+   * Start periodic sync timer
+   */
+  startPeriodicSync() {
+    this.stopPeriodicSync();
+    if (!this.apiKey) {
+      console.log("🔐 Cannot start periodic sync: No API key available");
+      return;
+    }
+    if (!this.userSettings.autoSyncEnabled) {
+      console.log("⏸️ Auto-sync is disabled by user");
+      return;
+    }
+    const intervalMs = this.userSettings.syncIntervalMinutes * 60 * 1e3;
+    console.log(
+      `🔄 Starting periodic sync every ${this.userSettings.syncIntervalMinutes} minutes`
+    );
+    this.syncInterval = setInterval(async () => {
+      if (this.activeSyncs >= this.systemConfig.maxConcurrentSyncs) {
+        console.log("⏸️ [Periodic] Skipping sync - too many active syncs");
+        return;
+      }
+      try {
+        this.activeSyncs++;
+        console.log("🔄 [Periodic] Starting scheduled delta sync...");
+        const isOnline = await this.checkOnlineStatus();
+        if (isOnline) {
+          const result = await this.performDeltaSync();
+          if (result.success) {
+            console.log("✅ [Periodic] Scheduled sync completed successfully");
+          } else {
+            console.warn("⚠️ [Periodic] Scheduled sync failed:", result.error);
+          }
+        } else {
+          console.log(
+            "📱 [Periodic] Backend offline - skipping scheduled sync"
+          );
+        }
+      } catch (error) {
+        console.error("❌ [Periodic] Scheduled sync error:", error.message);
+      } finally {
+        this.activeSyncs--;
+      }
+    }, intervalMs);
+  }
+  /**
+   * Stop periodic sync timer
+   */
+  stopPeriodicSync() {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      console.log("⏹️ Periodic sync stopped");
+    }
+  }
+  /**
+   * Update sync interval (in minutes) - user preference
+   */
+  async setSyncInterval(minutes) {
+    this.userSettings.syncIntervalMinutes = minutes;
+    console.log(`🔄 Sync interval updated to ${minutes} minutes`);
+    await this.saveUserSettings({ syncIntervalMinutes: minutes });
+    if (this.syncInterval && this.apiKey) {
+      this.startPeriodicSync();
+    }
+  }
+  /**
+   * Toggle auto-sync enabled/disabled - user preference
+   */
+  async setAutoSyncEnabled(enabled) {
+    this.userSettings.autoSyncEnabled = enabled;
+    console.log(`🔄 Auto-sync ${enabled ? "enabled" : "disabled"}`);
+    await this.saveUserSettings({ autoSyncEnabled: enabled });
+    if (enabled && this.apiKey) {
+      this.startPeriodicSync();
+    } else {
+      this.stopPeriodicSync();
+    }
+  }
+  /**
+   * Get axios config with authentication and timeout
    */
   getRequestConfig(additionalConfig = {}) {
     const config = {
+      timeout: this.systemConfig.apiTimeout,
       ...additionalConfig
     };
     if (this.apiKey) {
@@ -750,15 +1406,124 @@ class SyncService {
    */
   async checkOnlineStatus() {
     try {
-      const response = await axios.get(`${this.baseURL}/health/`, {
-        timeout: 5e3
+      const response = await axios.get(`${this.systemConfig.baseURL}/health/`, {
+        timeout: Math.min(this.systemConfig.apiTimeout, 5e3)
+        // Max 5 seconds for health check
       });
       this.isOnline = response.status === 200;
-      console.log("🟢 Backend connection successful");
+      if (this.systemConfig.debugSync) {
+        console.log("🟢 Backend connection successful");
+      }
       return this.isOnline;
     } catch (error) {
-      console.warn("🔴 Backend appears to be offline:", error.message);
+      if (this.systemConfig.debugSync) {
+        console.warn("🔴 Backend appears to be offline:", error.message);
+      }
       this.isOnline = false;
+      return false;
+    }
+  }
+  /**
+   * Load API key from persistent storage
+   */
+  async loadAPIKey() {
+    try {
+      const db = databaseService.getDatabase();
+      const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+      const result = stmt.get("api_key");
+      if (result == null ? void 0 : result.value) {
+        this.apiKey = result.value;
+        console.log("🔑 API key loaded from storage");
+        const isValid = await this.verifyAPIKey();
+        if (isValid) {
+          console.log("🔑 API key verified successfully");
+          if (this.userSettings.autoSyncEnabled) {
+            try {
+              const syncResult = await this.performDeltaSync();
+              if (syncResult.success) {
+                console.log("🔄 Auto-sync completed successfully");
+              }
+            } catch (error) {
+              console.warn(
+                "⚠️ Auto-sync failed, but API key is valid:",
+                error.message
+              );
+            }
+          }
+          this.startPeriodicSync();
+        } else {
+          console.warn("🔑 Stored API key is invalid, clearing it");
+          await this.clearAPIKey();
+        }
+      } else {
+        console.log("🔑 No stored API key found");
+      }
+    } catch (error) {
+      console.warn("⚠️ Failed to load API key from storage:", error);
+    }
+  }
+  /**
+   * Set API key for authentication and persist it
+   */
+  setAPIKey(apiKey) {
+    this.apiKey = apiKey;
+    this.saveAPIKey(apiKey);
+    this.startPeriodicSync();
+  }
+  /**
+   * Save API key to persistent storage
+   */
+  async saveAPIKey(apiKey) {
+    try {
+      const db = databaseService.getDatabase();
+      const stmt = db.prepare(`
+				INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+			`);
+      stmt.run("api_key", apiKey);
+      console.log("🔑 API key saved to storage");
+    } catch (error) {
+      console.error("❌ Failed to save API key to storage:", error);
+    }
+  }
+  /**
+   * Clear API key from persistent storage
+   */
+  async clearAPIKey() {
+    try {
+      this.apiKey = null;
+      this.stopPeriodicSync();
+      const db = databaseService.getDatabase();
+      const stmt = db.prepare("DELETE FROM sync_metadata WHERE key = ?");
+      stmt.run("api_key");
+      console.log("🔑 API key cleared from storage");
+    } catch (error) {
+      console.error("❌ Failed to clear API key from storage:", error);
+    }
+  }
+  /**
+   * Verify if the current API key is valid
+   */
+  async verifyAPIKey() {
+    var _a;
+    if (!this.apiKey) {
+      return false;
+    }
+    try {
+      const response = await axios.get(
+        `${this.systemConfig.baseURL}/users/me/`,
+        this.getRequestConfig({ timeout: 5e3 })
+      );
+      return response.status === 200;
+    } catch (error) {
+      if (((_a = error.response) == null ? void 0 : _a.status) === 401) {
+        console.warn("🔑 API key is invalid or expired");
+        return false;
+      }
+      console.warn(
+        "🔴 Failed to verify API key due to network error:",
+        error.message
+      );
       return false;
     }
   }
@@ -852,7 +1617,7 @@ class SyncService {
         params.modified_since = modifiedSince;
       }
       const response = await axios.get(
-        `${this.baseURL}/products/categories/`,
+        `${this.systemConfig.baseURL}/products/categories/`,
         this.getRequestConfig({ params })
       );
       const categories = response.data;
@@ -880,7 +1645,7 @@ class SyncService {
         params.modified_since = modifiedSince;
       }
       const response = await axios.get(
-        `${this.baseURL}/users/`,
+        `${this.systemConfig.baseURL}/users/`,
         this.getRequestConfig({ params })
       );
       const users = response.data;
@@ -908,7 +1673,7 @@ class SyncService {
         params.modified_since = modifiedSince;
       }
       const response = await axios.get(
-        `${this.baseURL}/products/`,
+        `${this.systemConfig.baseURL}/products/`,
         this.getRequestConfig({ params })
       );
       const products = response.data;
@@ -941,7 +1706,7 @@ class SyncService {
         params.modified_since = modifiedSince;
       }
       const response = await axios.get(
-        `${this.baseURL}/discounts/`,
+        `${this.systemConfig.baseURL}/discounts/`,
         this.getRequestConfig({ params })
       );
       const discounts = response.data;
@@ -1125,16 +1890,16 @@ const require2 = createRequire(import.meta.url);
 const syncService = new SyncService();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-process.env.DIST = path.join(__dirname, "../dist");
-process.env.PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, "../public");
+process$1.env.DIST = path.join(__dirname, "../dist");
+process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
 let mainWindow;
 let customerWindow;
 let lastKnownState = null;
-const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
 function createMainWindow() {
   const persistentSession = session.fromPartition("persist:electron-app");
   mainWindow = new BrowserWindow({
-    icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
+    icon: path.join(process$1.env.PUBLIC, "electron-vite.svg"),
     webPreferences: {
       session: persistentSession,
       preload: path.join(__dirname, "preload.js"),
@@ -1151,7 +1916,7 @@ function createMainWindow() {
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(process.env.DIST, "index.html"));
+    mainWindow.loadFile(path.join(process$1.env.DIST, "index.html"));
   }
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -1173,7 +1938,7 @@ function createCustomerWindow() {
   if (VITE_DEV_SERVER_URL) {
     customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
   } else {
-    customerWindow.loadFile(path.join(process.env.DIST, "customer.html"));
+    customerWindow.loadFile(path.join(process$1.env.DIST, "customer.html"));
   }
   customerWindow.on("closed", () => {
     customerWindow = null;
@@ -1456,6 +2221,47 @@ ipcMain.handle("db:reset", async () => {
     throw error;
   }
 });
+ipcMain.handle("db:get-settings", async () => {
+  try {
+    const db = databaseService.getDatabase();
+    const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+    const result = stmt.get("user_settings");
+    return (result == null ? void 0 : result.value) ? JSON.parse(result.value) : null;
+  } catch (error) {
+    console.error("[Main Process] Error getting settings:", error);
+    throw error;
+  }
+});
+ipcMain.handle("db:save-settings", async (event, settings) => {
+  try {
+    const db = databaseService.getDatabase();
+    const stmt = db.prepare(`
+			INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+			VALUES (?, ?, CURRENT_TIMESTAMP)
+		`);
+    stmt.run("user_settings", JSON.stringify(settings));
+    if (settings.backupIntervalMinutes || settings.autoBackupEnabled !== void 0 || settings.maxBackupsToKeep) {
+      await databaseService.updateBackupConfig({
+        backupIntervalMinutes: settings.backupIntervalMinutes,
+        autoBackupEnabled: settings.autoBackupEnabled,
+        maxBackupsToKeep: settings.maxBackupsToKeep
+      });
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error saving settings:", error);
+    throw error;
+  }
+});
+ipcMain.handle("db:restore-from-backup", async () => {
+  try {
+    const restored = await databaseService.restoreFromBackup();
+    return { success: restored };
+  } catch (error) {
+    console.error("[Main Process] Error restoring from backup:", error);
+    throw error;
+  }
+});
 ipcMain.handle("sync:get-status", async () => {
   try {
     return syncService.getSyncStatus();
@@ -1502,6 +2308,51 @@ ipcMain.handle("sync:set-api-key", async (event, apiKey) => {
     return { success: true };
   } catch (error) {
     console.error("[Main Process] Error setting API key:", error);
+    throw error;
+  }
+});
+ipcMain.handle("sync:clear-api-key", async () => {
+  try {
+    await syncService.clearAPIKey();
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error clearing API key:", error);
+    throw error;
+  }
+});
+ipcMain.handle("sync:set-interval", async (event, minutes) => {
+  try {
+    await syncService.setSyncInterval(minutes);
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error setting sync interval:", error);
+    throw error;
+  }
+});
+ipcMain.handle("sync:set-auto-sync", async (event, enabled) => {
+  try {
+    await syncService.setAutoSyncEnabled(enabled);
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error setting auto-sync:", error);
+    throw error;
+  }
+});
+ipcMain.handle("sync:start-periodic", async () => {
+  try {
+    syncService.startPeriodicSync();
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error starting periodic sync:", error);
+    throw error;
+  }
+});
+ipcMain.handle("sync:stop-periodic", async () => {
+  try {
+    syncService.stopPeriodicSync();
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] Error stopping periodic sync:", error);
     throw error;
   }
 });
@@ -1555,7 +2406,7 @@ app.whenReady().then(async () => {
   createCustomerWindow();
 });
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (process$1.platform !== "darwin") {
     app.quit();
   }
 });

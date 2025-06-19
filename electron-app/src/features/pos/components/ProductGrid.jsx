@@ -8,6 +8,13 @@ import { ProductCard } from "./ProductSubcategoryGroup";
 const ProductGrid = () => {
 	const filteredProducts = usePosStore((state) => state.filteredProducts);
 
+	// Debug logging
+	console.log(
+		"🎨 ProductGrid - filteredProducts:",
+		filteredProducts?.length || 0
+	);
+	console.log("🎨 ProductGrid - First product sample:", filteredProducts?.[0]);
+
 	const groupedProducts = React.useMemo(() => {
 		if (!Array.isArray(filteredProducts)) {
 			return {};
@@ -16,30 +23,49 @@ const ProductGrid = () => {
 		const groups = {};
 
 		for (const product of filteredProducts) {
-			const parentCategory =
-				product.subcategory ||
-				(product.category?.parent === null ? product.category : null);
+			// FIXED: Use the actual category structure from the backend
+			// product.category is the direct category, which could be parent or child
 			const directCategory = product.category;
 
-			if (!parentCategory || !directCategory) continue;
+			if (!directCategory) continue;
 
-			if (!groups[parentCategory.name]) {
-				groups[parentCategory.name] = {
-					__direct_products__: [],
-				};
-			}
+			// If this category has no parent (parent_id is null), it's a parent category
+			if (directCategory.parent_id === null) {
+				// This is a parent category product
+				const parentName = directCategory.name;
 
-			if (directCategory.parent === null) {
-				groups[parentCategory.name].__direct_products__.push(product);
-			} else {
-				const subcategoryName = directCategory.name;
-				if (!groups[parentCategory.name][subcategoryName]) {
-					groups[parentCategory.name][subcategoryName] = [];
+				if (!groups[parentName]) {
+					groups[parentName] = {
+						__direct_products__: [],
+					};
 				}
-				groups[parentCategory.name][subcategoryName].push(product);
+
+				groups[parentName].__direct_products__.push(product);
+			} else {
+				// This is a subcategory product - we need the parent category name
+				// The parent info should be available in directCategory.parent if properly populated
+				// Otherwise we need to find the parent category name
+				const subcategoryName = directCategory.name;
+
+				// For now, let's try to get parent name from the category structure
+				// This assumes the backend includes parent info in the category object
+				const parentName = directCategory.parent?.name || "Other";
+
+				if (!groups[parentName]) {
+					groups[parentName] = {
+						__direct_products__: [],
+					};
+				}
+
+				if (!groups[parentName][subcategoryName]) {
+					groups[parentName][subcategoryName] = [];
+				}
+
+				groups[parentName][subcategoryName].push(product);
 			}
 		}
 
+		// Clean up empty direct products arrays
 		for (const parentName in groups) {
 			if (
 				groups[parentName].__direct_products__ &&

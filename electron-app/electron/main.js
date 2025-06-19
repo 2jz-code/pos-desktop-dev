@@ -414,6 +414,57 @@ ipcMain.handle("db:reset", async () => {
 	}
 });
 
+ipcMain.handle("db:get-settings", async () => {
+	try {
+		const db = databaseService.getDatabase();
+		const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+		const result = stmt.get("user_settings");
+		return result?.value ? JSON.parse(result.value) : null;
+	} catch (error) {
+		console.error("[Main Process] Error getting settings:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:save-settings", async (event, settings) => {
+	try {
+		const db = databaseService.getDatabase();
+		const stmt = db.prepare(`
+			INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+			VALUES (?, ?, CURRENT_TIMESTAMP)
+		`);
+		stmt.run("user_settings", JSON.stringify(settings));
+
+		// Update services with new settings
+		if (
+			settings.backupIntervalMinutes ||
+			settings.autoBackupEnabled !== undefined ||
+			settings.maxBackupsToKeep
+		) {
+			await databaseService.updateBackupConfig({
+				backupIntervalMinutes: settings.backupIntervalMinutes,
+				autoBackupEnabled: settings.autoBackupEnabled,
+				maxBackupsToKeep: settings.maxBackupsToKeep,
+			});
+		}
+
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error saving settings:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("db:restore-from-backup", async () => {
+	try {
+		const restored = await databaseService.restoreFromBackup();
+		return { success: restored };
+	} catch (error) {
+		console.error("[Main Process] Error restoring from backup:", error);
+		throw error;
+	}
+});
+
 // Sync service IPC handlers
 ipcMain.handle("sync:get-status", async () => {
 	try {
@@ -466,6 +517,56 @@ ipcMain.handle("sync:set-api-key", async (event, apiKey) => {
 		return { success: true };
 	} catch (error) {
 		console.error("[Main Process] Error setting API key:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:clear-api-key", async () => {
+	try {
+		await syncService.clearAPIKey();
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error clearing API key:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:set-interval", async (event, minutes) => {
+	try {
+		await syncService.setSyncInterval(minutes);
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error setting sync interval:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:set-auto-sync", async (event, enabled) => {
+	try {
+		await syncService.setAutoSyncEnabled(enabled);
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error setting auto-sync:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:start-periodic", async () => {
+	try {
+		syncService.startPeriodicSync();
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error starting periodic sync:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("sync:stop-periodic", async () => {
+	try {
+		syncService.stopPeriodicSync();
+		return { success: true };
+	} catch (error) {
+		console.error("[Main Process] Error stopping periodic sync:", error);
 		throw error;
 	}
 });

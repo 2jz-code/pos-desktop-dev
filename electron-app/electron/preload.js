@@ -32,6 +32,9 @@ const validDbChannels = [
 	"db:get-pending-orders",
 	"db:get-queue-status",
 	"db:reset",
+	"db:get-settings",
+	"db:save-settings",
+	"db:restore-from-backup",
 ];
 
 // --- Sync channels ---
@@ -42,6 +45,11 @@ const validSyncChannels = [
 	"sync:perform-delta-sync",
 	"sync:check-online-status",
 	"sync:set-api-key",
+	"sync:clear-api-key",
+	"sync:set-interval",
+	"sync:set-auto-sync",
+	"sync:start-periodic",
+	"sync:stop-periodic",
 	"get-session-cookies",
 ];
 
@@ -118,6 +126,9 @@ contextBridge.exposeInMainWorld("dbApi", {
 	getPendingOrders: () => ipcRenderer.invoke("db:get-pending-orders"),
 	getQueueStatus: () => ipcRenderer.invoke("db:get-queue-status"),
 	reset: () => ipcRenderer.invoke("db:reset"),
+	getSettings: () => ipcRenderer.invoke("db:get-settings"),
+	saveSettings: (settings) => ipcRenderer.invoke("db:save-settings", settings),
+	restoreFromBackup: () => ipcRenderer.invoke("db:restore-from-backup"),
 });
 
 // --- Expose the sync API ---
@@ -144,15 +155,15 @@ contextBridge.exposeInMainWorld("syncApi", {
 	performDeltaSync: () => ipcRenderer.invoke("sync:perform-delta-sync"),
 	checkOnlineStatus: () => ipcRenderer.invoke("sync:check-online-status"),
 	setAPIKey: (apiKey) => ipcRenderer.invoke("sync:set-api-key", apiKey),
+	clearAPIKey: () => ipcRenderer.invoke("sync:clear-api-key"),
+	setSyncInterval: (minutes) =>
+		ipcRenderer.invoke("sync:set-interval", minutes),
+	setAutoSyncEnabled: (enabled) =>
+		ipcRenderer.invoke("sync:set-auto-sync", enabled),
+	startPeriodicSync: () => ipcRenderer.invoke("sync:start-periodic"),
+	stopPeriodicSync: () => ipcRenderer.invoke("sync:stop-periodic"),
 	// Keep cookie testing for debugging purposes
-	testCookies: async () => {
-		const cookies = await ipcRenderer.invoke(
-			"get-session-cookies",
-			"http://localhost:8001"
-		);
-		console.log("[Preload] Test cookies result:", cookies);
-		return cookies;
-	},
+	testCookies: () => ipcRenderer.invoke("get-session-cookies"),
 	onStatusUpdate(callback) {
 		ipcRenderer.on("sync:status-update", (event, status) => callback(status));
 	},

@@ -180,14 +180,175 @@ export class ProductRepository extends BaseRepository {
 	}
 
 	/**
+	 * Get all products with category information
+	 */
+	getAll() {
+		const stmt = this.db.prepare(`
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.is_active = 1
+        `);
+
+		const rows = stmt.all();
+
+		// Transform the flat results into products with nested category objects
+		return rows.map((row) => {
+			const product = {
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				price: row.price,
+				product_type_id: row.product_type_id,
+				image_url: row.image_url,
+				local_image_path: row.local_image_path,
+				is_active: row.is_active,
+				created_at: row.created_at,
+				updated_at: row.updated_at,
+				backend_updated_at: row.backend_updated_at,
+				category: null,
+			};
+
+			// Add category information if it exists
+			if (row.category_id) {
+				product.category = {
+					id: row.category_id,
+					name: row.category_name,
+					description: row.category_description,
+					parent_id: row.category_parent_id,
+					parent: row.parent_category_id
+						? {
+								id: row.parent_category_id,
+								name: row.parent_category_name,
+						  }
+						: null,
+				};
+			}
+
+			return product;
+		});
+	}
+
+	/**
+	 * Get record by ID with category information
+	 */
+	getById(id) {
+		const stmt = this.db.prepare(`
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.id = ?
+        `);
+
+		const row = stmt.get(id);
+		if (!row) return null;
+
+		const product = {
+			id: row.id,
+			name: row.name,
+			description: row.description,
+			price: row.price,
+			product_type_id: row.product_type_id,
+			image_url: row.image_url,
+			local_image_path: row.local_image_path,
+			is_active: row.is_active,
+			created_at: row.created_at,
+			updated_at: row.updated_at,
+			backend_updated_at: row.backend_updated_at,
+			category: null,
+		};
+
+		// Add category information if it exists
+		if (row.category_id) {
+			product.category = {
+				id: row.category_id,
+				name: row.category_name,
+				description: row.category_description,
+				parent_id: row.category_parent_id,
+				parent: row.parent_category_id
+					? {
+							id: row.parent_category_id,
+							name: row.parent_category_name,
+					  }
+					: null,
+			};
+		}
+
+		return product;
+	}
+
+	/**
 	 * Get products by category
 	 */
 	getByCategory(categoryId) {
 		const stmt = this.db.prepare(`
-            SELECT * FROM ${this.tableName} 
-            WHERE category_id = ? AND is_active = 1
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.category_id = ? AND p.is_active = 1
         `);
-		return stmt.all(categoryId);
+
+		const rows = stmt.all(categoryId);
+
+		// Transform the flat results into products with nested category objects
+		return rows.map((row) => {
+			const product = {
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				price: row.price,
+				product_type_id: row.product_type_id,
+				image_url: row.image_url,
+				local_image_path: row.local_image_path,
+				is_active: row.is_active,
+				created_at: row.created_at,
+				updated_at: row.updated_at,
+				backend_updated_at: row.backend_updated_at,
+				category: null,
+			};
+
+			// Add category information if it exists
+			if (row.category_id) {
+				product.category = {
+					id: row.category_id,
+					name: row.category_name,
+					description: row.category_description,
+					parent_id: row.category_parent_id,
+					parent: row.parent_category_id
+						? {
+								id: row.parent_category_id,
+								name: row.parent_category_name,
+						  }
+						: null,
+				};
+			}
+
+			return product;
+		});
 	}
 
 	/**
@@ -195,10 +356,57 @@ export class ProductRepository extends BaseRepository {
 	 */
 	searchByName(searchTerm) {
 		const stmt = this.db.prepare(`
-            SELECT * FROM ${this.tableName} 
-            WHERE name LIKE ? AND is_active = 1
+            SELECT 
+                p.*,
+                c.id as category_id,
+                c.name as category_name,
+                c.description as category_description,
+                c.parent_id as category_parent_id,
+                parent_c.id as parent_category_id,
+                parent_c.name as parent_category_name
+            FROM ${this.tableName} p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+            WHERE p.name LIKE ? AND p.is_active = 1
         `);
-		return stmt.all(`%${searchTerm}%`);
+
+		const rows = stmt.all(`%${searchTerm}%`);
+
+		// Transform the flat results into products with nested category objects
+		return rows.map((row) => {
+			const product = {
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				price: row.price,
+				product_type_id: row.product_type_id,
+				image_url: row.image_url,
+				local_image_path: row.local_image_path,
+				is_active: row.is_active,
+				created_at: row.created_at,
+				updated_at: row.updated_at,
+				backend_updated_at: row.backend_updated_at,
+				category: null,
+			};
+
+			// Add category information if it exists
+			if (row.category_id) {
+				product.category = {
+					id: row.category_id,
+					name: row.category_name,
+					description: row.category_description,
+					parent_id: row.category_parent_id,
+					parent: row.parent_category_id
+						? {
+								id: row.parent_category_id,
+								name: row.parent_category_name,
+						  }
+						: null,
+				};
+			}
+
+			return product;
+		});
 	}
 
 	/**
@@ -234,6 +442,85 @@ export class CategoryRepository extends BaseRepository {
 	}
 
 	/**
+	 * Override replaceAll to handle hierarchical data properly
+	 * Categories have parent-child relationships that need special handling
+	 */
+	replaceAll(records) {
+		if (!records || records.length === 0) {
+			const transaction = this.db.transaction(() => {
+				// Manually delete products first to resolve foreign key constraint
+				this.db.prepare(`DELETE FROM products`).run();
+				this.db.prepare(`DELETE FROM ${this.tableName}`).run();
+			});
+			transaction();
+			return;
+		}
+
+		const transaction = this.db.transaction(() => {
+			// --- THE FIX ---
+			// Manually delete products first to resolve the foreign key constraint
+			// before we delete the categories.
+			this.db.prepare(`DELETE FROM products`).run();
+
+			// Clear existing category data
+			this.db.prepare(`DELETE FROM ${this.tableName}`).run();
+
+			// Insert records in proper hierarchical order
+			this.insertCategoriesHierarchically(records);
+		});
+
+		transaction();
+	}
+
+	/**
+	 * Insert categories in the correct order to respect foreign key constraints.
+	 * This iterative method is robust against unordered data, orphans, and circular dependencies.
+	 */
+	insertCategoriesHierarchically(categories) {
+		const categoryMap = new Map(categories.map((c) => [c.id, c]));
+		const recordsToInsert = [...categories];
+		const insertedIds = new Set();
+		let lastRoundCount = -1;
+
+		while (
+			recordsToInsert.length > 0 &&
+			recordsToInsert.length !== lastRoundCount
+		) {
+			lastRoundCount = recordsToInsert.length;
+			const remainingRecords = [];
+
+			for (const record of recordsToInsert) {
+				if (!record.parent_id || insertedIds.has(record.parent_id)) {
+					try {
+						this.insertRecord(record);
+						insertedIds.add(record.id);
+					} catch (e) {
+						console.error(
+							`Error inserting category ${record.name}: ${e.message}`
+						);
+					}
+				} else {
+					if (categoryMap.has(record.parent_id)) {
+						remainingRecords.push(record);
+					} else {
+						console.error(
+							`Skipping orphan category "${record.name}" (ID: ${record.id}). Parent ID ${record.parent_id} not found in sync payload.`
+						);
+					}
+				}
+			}
+			recordsToInsert.splice(0, recordsToInsert.length, ...remainingRecords);
+		}
+
+		if (recordsToInsert.length > 0) {
+			console.error(
+				"Could not insert the following categories due to circular dependencies or missing parents:",
+				recordsToInsert.map((r) => r.name)
+			);
+		}
+	}
+
+	/**
 	 * Get categories with product count
 	 */
 	getCategoriesWithProductCount() {
@@ -247,7 +534,6 @@ export class CategoryRepository extends BaseRepository {
 		return stmt.all();
 	}
 }
-
 /**
  * Users Repository
  */

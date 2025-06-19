@@ -10,10 +10,24 @@ import {
 	UserRepository,
 	DiscountRepository,
 } from "./repositories.js";
+import { databaseService } from "./database-service.js";
 
 class SyncService {
 	constructor() {
-		this.baseURL = "http://127.0.0.1:8001/api";
+		// Load system-level configuration from environment variables (not user-configurable)
+		this.systemConfig = {
+			baseURL: process.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
+			apiTimeout: parseInt(process.env.VITE_API_TIMEOUT_MS) || 10000,
+			debugSync: process.env.VITE_DEBUG_SYNC === "true",
+			maxConcurrentSyncs: parseInt(process.env.VITE_MAX_CONCURRENT_SYNCS) || 3,
+		};
+
+		// Default user settings (will be overridden from database)
+		this.userSettings = {
+			syncIntervalMinutes: 5,
+			autoSyncEnabled: true,
+		};
+
 		this.repositories = {
 			products: new ProductRepository(),
 			categories: new CategoryRepository(),
@@ -23,28 +37,199 @@ class SyncService {
 		this.imagesCacheDir = path.join(app.getPath("userData"), "cached_images");
 		this.apiKey = null;
 		this.isOnline = true;
+		this.syncInterval = null;
+		this.activeSyncs = 0;
 	}
 
 	/**
-	 * Initialize the sync service
+	 * Initialize the sync service with user settings
 	 */
 	async initialize() {
 		console.log("🔄 Initializing SyncService...");
+
+		// Log system configuration
+		if (this.systemConfig.debugSync) {
+			console.log("📋 SyncService System Configuration:", {
+				baseURL: this.systemConfig.baseURL,
+				apiTimeout: this.systemConfig.apiTimeout,
+				maxConcurrentSyncs: this.systemConfig.maxConcurrentSyncs,
+			});
+		}
+
 		await this.ensureImagesCacheDir();
+
+		// Load user settings from database
+		await this.loadUserSettings();
+
+		// Load API key from persistent storage
+		await this.loadAPIKey();
 	}
 
 	/**
-	 * Set API key for authentication
+	 * Load user settings from database
 	 */
-	setAPIKey(apiKey) {
-		this.apiKey = apiKey;
+	async loadUserSettings() {
+		try {
+			const db = databaseService.getDatabase();
+			const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+			const result = stmt.get("user_settings");
+
+			if (result?.value) {
+				const dbUserSettings = JSON.parse(result.value);
+
+				// Apply user-configured sync settings
+				if (dbUserSettings.syncIntervalMinutes) {
+					this.userSettings.syncIntervalMinutes =
+						dbUserSettings.syncIntervalMinutes;
+				}
+
+				if (dbUserSettings.autoSyncEnabled !== undefined) {
+					this.userSettings.autoSyncEnabled = dbUserSettings.autoSyncEnabled;
+				}
+
+				console.log("⚙️ User sync settings loaded:", {
+					syncInterval: this.userSettings.syncIntervalMinutes,
+					autoSyncEnabled: this.userSettings.autoSyncEnabled,
+				});
+			}
+		} catch (error) {
+			console.warn("⚠️ Failed to load user sync settings:", error);
+		}
 	}
 
 	/**
-	 * Get axios config with authentication
+	 * Save user settings to database
+	 */
+	async saveUserSettings(settings) {
+		try {
+			const db = databaseService.getDatabase();
+			const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+			const result = stmt.get("user_settings");
+
+			// Merge with existing settings
+			let allUserSettings = result?.value ? JSON.parse(result.value) : {};
+			allUserSettings = { ...allUserSettings, ...settings };
+
+			const saveStmt = db.prepare(`
+				INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+			`);
+			saveStmt.run("user_settings", JSON.stringify(allUserSettings));
+
+			// Apply settings immediately
+			await this.loadUserSettings();
+
+			console.log("💾 User sync settings saved and applied");
+		} catch (error) {
+			console.error("❌ Failed to save user sync settings:", error);
+		}
+	}
+
+	/**
+	 * Start periodic sync timer
+	 */
+	startPeriodicSync() {
+		// Clear any existing interval
+		this.stopPeriodicSync();
+
+		if (!this.apiKey) {
+			console.log("🔐 Cannot start periodic sync: No API key available");
+			return;
+		}
+
+		if (!this.userSettings.autoSyncEnabled) {
+			console.log("⏸️ Auto-sync is disabled by user");
+			return;
+		}
+
+		const intervalMs = this.userSettings.syncIntervalMinutes * 60 * 1000;
+		console.log(
+			`🔄 Starting periodic sync every ${this.userSettings.syncIntervalMinutes} minutes`
+		);
+
+		this.syncInterval = setInterval(async () => {
+			// Prevent concurrent syncs from overwhelming the system
+			if (this.activeSyncs >= this.systemConfig.maxConcurrentSyncs) {
+				console.log("⏸️ [Periodic] Skipping sync - too many active syncs");
+				return;
+			}
+
+			try {
+				this.activeSyncs++;
+				console.log("🔄 [Periodic] Starting scheduled delta sync...");
+				const isOnline = await this.checkOnlineStatus();
+
+				if (isOnline) {
+					const result = await this.performDeltaSync();
+					if (result.success) {
+						console.log("✅ [Periodic] Scheduled sync completed successfully");
+					} else {
+						console.warn("⚠️ [Periodic] Scheduled sync failed:", result.error);
+					}
+				} else {
+					console.log(
+						"📱 [Periodic] Backend offline - skipping scheduled sync"
+					);
+				}
+			} catch (error) {
+				console.error("❌ [Periodic] Scheduled sync error:", error.message);
+			} finally {
+				this.activeSyncs--;
+			}
+		}, intervalMs);
+	}
+
+	/**
+	 * Stop periodic sync timer
+	 */
+	stopPeriodicSync() {
+		if (this.syncInterval) {
+			clearInterval(this.syncInterval);
+			this.syncInterval = null;
+			console.log("⏹️ Periodic sync stopped");
+		}
+	}
+
+	/**
+	 * Update sync interval (in minutes) - user preference
+	 */
+	async setSyncInterval(minutes) {
+		this.userSettings.syncIntervalMinutes = minutes;
+		console.log(`🔄 Sync interval updated to ${minutes} minutes`);
+
+		// Save to user settings
+		await this.saveUserSettings({ syncIntervalMinutes: minutes });
+
+		// Restart periodic sync with new interval if it was running
+		if (this.syncInterval && this.apiKey) {
+			this.startPeriodicSync();
+		}
+	}
+
+	/**
+	 * Toggle auto-sync enabled/disabled - user preference
+	 */
+	async setAutoSyncEnabled(enabled) {
+		this.userSettings.autoSyncEnabled = enabled;
+		console.log(`🔄 Auto-sync ${enabled ? "enabled" : "disabled"}`);
+
+		// Save to user settings
+		await this.saveUserSettings({ autoSyncEnabled: enabled });
+
+		// Start or stop periodic sync based on setting
+		if (enabled && this.apiKey) {
+			this.startPeriodicSync();
+		} else {
+			this.stopPeriodicSync();
+		}
+	}
+
+	/**
+	 * Get axios config with authentication and timeout
 	 */
 	getRequestConfig(additionalConfig = {}) {
 		const config = {
+			timeout: this.systemConfig.apiTimeout,
 			...additionalConfig,
 		};
 
@@ -63,16 +248,143 @@ class SyncService {
 	 */
 	async checkOnlineStatus() {
 		try {
-			// Use public health check endpoint instead of authenticated products endpoint
-			const response = await axios.get(`${this.baseURL}/health/`, {
-				timeout: 5000,
+			// Use public health check endpoint with configurable timeout
+			const response = await axios.get(`${this.systemConfig.baseURL}/health/`, {
+				timeout: Math.min(this.systemConfig.apiTimeout, 5000), // Max 5 seconds for health check
 			});
 			this.isOnline = response.status === 200;
-			console.log("🟢 Backend connection successful");
+			if (this.systemConfig.debugSync) {
+				console.log("🟢 Backend connection successful");
+			}
 			return this.isOnline;
 		} catch (error) {
-			console.warn("🔴 Backend appears to be offline:", error.message);
+			if (this.systemConfig.debugSync) {
+				console.warn("🔴 Backend appears to be offline:", error.message);
+			}
 			this.isOnline = false;
+			return false;
+		}
+	}
+
+	/**
+	 * Load API key from persistent storage
+	 */
+	async loadAPIKey() {
+		try {
+			const db = databaseService.getDatabase();
+			const stmt = db.prepare("SELECT value FROM sync_metadata WHERE key = ?");
+			const result = stmt.get("api_key");
+
+			if (result?.value) {
+				this.apiKey = result.value;
+				console.log("🔑 API key loaded from storage");
+
+				// Verify the API key is still valid
+				const isValid = await this.verifyAPIKey();
+				if (isValid) {
+					console.log("🔑 API key verified successfully");
+
+					// Perform a delta sync if auto-sync is enabled
+					if (this.userSettings.autoSyncEnabled) {
+						try {
+							const syncResult = await this.performDeltaSync();
+							if (syncResult.success) {
+								console.log("🔄 Auto-sync completed successfully");
+							}
+						} catch (error) {
+							console.warn(
+								"⚠️ Auto-sync failed, but API key is valid:",
+								error.message
+							);
+						}
+					}
+
+					// Start periodic sync after successful initial sync
+					this.startPeriodicSync();
+				} else {
+					console.warn("🔑 Stored API key is invalid, clearing it");
+					await this.clearAPIKey();
+				}
+			} else {
+				console.log("🔑 No stored API key found");
+			}
+		} catch (error) {
+			console.warn("⚠️ Failed to load API key from storage:", error);
+		}
+	}
+
+	/**
+	 * Set API key for authentication and persist it
+	 */
+	setAPIKey(apiKey) {
+		this.apiKey = apiKey;
+		this.saveAPIKey(apiKey);
+
+		// Start periodic sync when API key is set
+		this.startPeriodicSync();
+	}
+
+	/**
+	 * Save API key to persistent storage
+	 */
+	async saveAPIKey(apiKey) {
+		try {
+			const db = databaseService.getDatabase();
+			const stmt = db.prepare(`
+				INSERT OR REPLACE INTO sync_metadata (key, value, updated_at) 
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+			`);
+			stmt.run("api_key", apiKey);
+			console.log("🔑 API key saved to storage");
+		} catch (error) {
+			console.error("❌ Failed to save API key to storage:", error);
+		}
+	}
+
+	/**
+	 * Clear API key from persistent storage
+	 */
+	async clearAPIKey() {
+		try {
+			this.apiKey = null;
+
+			// Stop periodic sync when API key is cleared
+			this.stopPeriodicSync();
+
+			const db = databaseService.getDatabase();
+			const stmt = db.prepare("DELETE FROM sync_metadata WHERE key = ?");
+			stmt.run("api_key");
+			console.log("🔑 API key cleared from storage");
+		} catch (error) {
+			console.error("❌ Failed to clear API key from storage:", error);
+		}
+	}
+
+	/**
+	 * Verify if the current API key is valid
+	 */
+	async verifyAPIKey() {
+		if (!this.apiKey) {
+			return false;
+		}
+
+		try {
+			// Test the API key with a simple authenticated endpoint
+			const response = await axios.get(
+				`${this.systemConfig.baseURL}/users/me/`,
+				this.getRequestConfig({ timeout: 5000 })
+			);
+			return response.status === 200;
+		} catch (error) {
+			if (error.response?.status === 401) {
+				console.warn("🔑 API key is invalid or expired");
+				return false;
+			}
+			// Other errors (network, etc.) don't necessarily mean invalid key
+			console.warn(
+				"🔴 Failed to verify API key due to network error:",
+				error.message
+			);
 			return false;
 		}
 	}
@@ -186,7 +498,7 @@ class SyncService {
 			}
 
 			const response = await axios.get(
-				`${this.baseURL}/products/categories/`,
+				`${this.systemConfig.baseURL}/products/categories/`,
 				this.getRequestConfig({ params })
 			);
 
@@ -221,7 +533,7 @@ class SyncService {
 			}
 
 			const response = await axios.get(
-				`${this.baseURL}/users/`,
+				`${this.systemConfig.baseURL}/users/`,
 				this.getRequestConfig({ params })
 			);
 
@@ -254,7 +566,7 @@ class SyncService {
 			}
 
 			const response = await axios.get(
-				`${this.baseURL}/products/`,
+				`${this.systemConfig.baseURL}/products/`,
 				this.getRequestConfig({ params })
 			);
 
@@ -294,7 +606,7 @@ class SyncService {
 			}
 
 			const response = await axios.get(
-				`${this.baseURL}/discounts/`,
+				`${this.systemConfig.baseURL}/discounts/`,
 				this.getRequestConfig({ params })
 			);
 
