@@ -27,6 +27,7 @@ import { UsersPage } from "./pages/UsersPage";
 import ProductsPage from "./pages/ProductsPage";
 import DiscountsPage from "./pages/DiscountsPage";
 import SettingsPage from "./features/settings/pages/SettingsPage";
+import { RoleProtectedRoute } from "./components/RoleProtectedRoute";
 
 /**
  * This is the root component that sets up all the providers
@@ -120,43 +121,65 @@ function AppRoutes() {
 				{/* Nested routes are rendered inside AnimatedOutlet */}
 				<Route
 					index
-					element={<DashboardPage />}
+					element={<DashboardPage />} // Accessible to all authenticated users
 				/>
 				<Route
 					path="pos"
-					element={<POS />}
+					element={<POS />} // POS is accessible to all authenticated users
 				/>
 				<Route
 					path="orders"
-					element={<OrdersPage />}
+					element={<OrdersPage />} // Accessible to all (cashiers need to resume held orders)
 				/>
 				<Route
 					path="orders/:orderId"
-					element={<OrderDetailsPage />}
+					element={<OrderDetailsPage />} // Accessible to all (cashiers need to resume held orders)
 				/>
 				<Route
 					path="payments"
-					element={<PaymentsPage />}
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessPayments()}
+						>
+							<PaymentsPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="payments/:paymentId"
-					element={<PaymentDetailsPage />}
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessPayments()}
+						>
+							<PaymentDetailsPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="users"
-					element={<UsersPage />}
+					element={
+						<RoleProtectedRoute requiredPermission={(p) => p.canAccessUsers()}>
+							<UsersPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="products"
-					element={<ProductsPage />}
+					element={<ProductsPage />} // Accessible to all (cashiers need to view products)
 				/>
 				<Route
 					path="discounts"
-					element={<DiscountsPage />}
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessDiscounts()}
+						>
+							<DiscountsPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="settings"
-					element={<SettingsPage />}
+					element={<SettingsPage />} // Settings has internal role protection
 				/>
 				<Route
 					path="*"

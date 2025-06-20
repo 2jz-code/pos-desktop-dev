@@ -1,172 +1,347 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, CreditCard, Printer, Wrench, Store } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Toaster } from "@/components/ui/toaster";
+import {
+	Settings,
+	Building,
+	Monitor,
+	CreditCard,
+	Printer,
+	Wrench,
+	CheckCircle,
+	Edit,
+	ShieldX,
+} from "lucide-react";
+import { useRolePermissions } from "@/hooks/useRolePermissions";
+import { RoleBasedAccessSummary } from "@/components/RoleBasedAccessSummary";
+
+// Terminal Settings Components (user-editable)
+import TerminalSyncSettings from "../components/TerminalSyncSettings";
+import TerminalDisplaySettings from "../components/TerminalDisplaySettings";
+import TerminalBehaviorSettings from "../components/TerminalBehaviorSettings";
+
+// Business Settings Components (now editable)
+import BusinessStoreInfo from "../components/BusinessStoreInfo";
+import BusinessFinancialSettings from "../components/BusinessFinancialSettings";
+import BusinessReceiptSettings from "../components/BusinessReceiptSettings";
+import BusinessHoursSettings from "../components/BusinessHoursSettings";
+
+// Mixed/Legacy Components
+import PrinterSettings from "../components/PrinterSettings";
 import GlobalSettings from "../components/GlobalSettings";
 import TerminalSettings from "../components/TerminalSettings";
-import PrinterSettings from "../components/PrinterSettings";
-import SystemSettings from "../components/SystemSettings";
-import StoreSettings from "../components/StoreSettings";
 import SyncManager from "@/components/SyncManager";
 
 const SettingsPage = () => {
+	const permissions = useRolePermissions();
+
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Header */}
 			<div className="flex-shrink-0 p-6 border-b bg-background">
-				<h1 className="text-3xl font-bold">Settings</h1>
-				<p className="text-muted-foreground mt-1">
-					Configure your POS system settings and preferences
-				</p>
+				<div className="flex items-center justify-between">
+					<div>
+						<h1 className="text-3xl font-bold">Settings</h1>
+						<p className="text-muted-foreground mt-1">
+							Configure your POS system settings and preferences
+						</p>
+					</div>
+					<Badge
+						variant="outline"
+						className="text-sm"
+					>
+						Role: {permissions.role}
+					</Badge>
+				</div>
 			</div>
 
 			{/* Tabbed Content */}
 			<div className="flex-1 min-h-0">
 				<Tabs
-					defaultValue="system"
+					defaultValue={
+						permissions.canAccessTerminalSettings()
+							? "terminal"
+							: permissions.canAccessBusinessSettings()
+							? "business"
+							: permissions.canAccessHardwareSettings()
+							? "hardware"
+							: permissions.canAccessAdvancedSettings()
+							? "advanced"
+							: "terminal"
+					}
 					className="h-full flex flex-col"
 				>
 					{/* Tab Navigation */}
 					<div className="flex-shrink-0 px-6 pt-6">
-						<TabsList className="grid w-full grid-cols-5">
-							<TabsTrigger
-								value="system"
-								className="flex items-center gap-2"
-							>
-								<Settings className="h-4 w-4" />
-								System
-							</TabsTrigger>
-							<TabsTrigger
-								value="payments"
-								className="flex items-center gap-2"
-							>
-								<CreditCard className="h-4 w-4" />
-								Payments
-							</TabsTrigger>
-							<TabsTrigger
-								value="hardware"
-								className="flex items-center gap-2"
-							>
-								<Printer className="h-4 w-4" />
-								Hardware
-							</TabsTrigger>
-							<TabsTrigger
-								value="store"
-								className="flex items-center gap-2"
-							>
-								<Store className="h-4 w-4" />
-								Store
-							</TabsTrigger>
-							<TabsTrigger
-								value="advanced"
-								className="flex items-center gap-2"
-							>
-								<Wrench className="h-4 w-4" />
-								Advanced
-							</TabsTrigger>
-						</TabsList>
+						{/* Calculate available tabs based on permissions */}
+						{(() => {
+							const availableTabs = [];
+
+							if (permissions.canAccessTerminalSettings()) {
+								availableTabs.push("terminal");
+							}
+							if (permissions.canAccessBusinessSettings()) {
+								availableTabs.push("business");
+							}
+							if (permissions.canAccessHardwareSettings()) {
+								availableTabs.push("hardware");
+							}
+							if (permissions.canAccessAdvancedSettings()) {
+								availableTabs.push("advanced");
+								// Add debug tab for owners only (development/testing)
+								if (permissions.isOwner) {
+									availableTabs.push("debug");
+								}
+							}
+
+							const gridCols =
+								availableTabs.length === 1
+									? "grid-cols-1"
+									: availableTabs.length === 2
+									? "grid-cols-2"
+									: availableTabs.length === 3
+									? "grid-cols-3"
+									: "grid-cols-4";
+
+							return (
+								<TabsList className={`grid w-full ${gridCols}`}>
+									{permissions.canAccessTerminalSettings() && (
+										<TabsTrigger
+											value="terminal"
+											className="flex items-center gap-2"
+										>
+											<Monitor className="h-4 w-4" />
+											Terminal
+											<Badge
+												variant="secondary"
+												className="text-xs"
+											>
+												{permissions.isCashier ? "Limited" : "Editable"}
+											</Badge>
+										</TabsTrigger>
+									)}
+									{permissions.canAccessBusinessSettings() && (
+										<TabsTrigger
+											value="business"
+											className="flex items-center gap-2"
+										>
+											<Building className="h-4 w-4" />
+											Business
+											<Badge
+												variant="secondary"
+												className="text-xs"
+											>
+												Editable
+											</Badge>
+										</TabsTrigger>
+									)}
+									{permissions.canAccessHardwareSettings() && (
+										<TabsTrigger
+											value="hardware"
+											className="flex items-center gap-2"
+										>
+											<Printer className="h-4 w-4" />
+											Hardware
+										</TabsTrigger>
+									)}
+									{permissions.canAccessAdvancedSettings() && (
+										<TabsTrigger
+											value="advanced"
+											className="flex items-center gap-2"
+										>
+											<Wrench className="h-4 w-4" />
+											Advanced
+										</TabsTrigger>
+									)}
+									{permissions.isOwner && (
+										<TabsTrigger
+											value="debug"
+											className="flex items-center gap-2"
+										>
+											<ShieldX className="h-4 w-4" />
+											Debug
+										</TabsTrigger>
+									)}
+								</TabsList>
+							);
+						})()}
 					</div>
 
 					{/* Tab Content - Scrollable */}
 					<div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
-						{/* System Settings */}
-						<TabsContent
-							value="system"
-							className="mt-6 space-y-6"
-						>
-							<div>
-								<h2 className="text-xl font-semibold mb-2">
-									System Configuration
-								</h2>
-								<p className="text-muted-foreground mb-6">
-									Configure sync intervals, backup settings, and system
-									interface options.
-								</p>
-								<SystemSettings />
-							</div>
-						</TabsContent>
+						{/* Terminal Settings Tab */}
+						{permissions.canAccessTerminalSettings() && (
+							<TabsContent
+								value="terminal"
+								className="mt-6 space-y-6"
+							>
+								<div>
+									<div className="flex items-center gap-2 mb-2">
+										<h2 className="text-xl font-semibold">Terminal Settings</h2>
+										<Badge
+											variant="secondary"
+											className="flex items-center gap-1"
+										>
+											<Edit className="h-3 w-3" />
+											Editable
+										</Badge>
+									</div>
+									<p className="text-muted-foreground mb-6">
+										Settings specific to this POS terminal. These changes affect
+										only this device and can be modified by terminal operators.
+									</p>
 
-						{/* Payment & Terminal Settings */}
-						<TabsContent
-							value="payments"
-							className="mt-6 space-y-6"
-						>
-							<div>
-								<h2 className="text-xl font-semibold mb-2">
-									Payment Configuration
-								</h2>
-								<p className="text-muted-foreground mb-6">
-									Configure payment processors, terminal settings, and payment
-									preferences.
-								</p>
-								<div className="space-y-6">
-									<GlobalSettings />
-									<TerminalSettings />
+									<Alert className="mb-6">
+										<Settings className="h-4 w-4" />
+										<AlertDescription>
+											<strong>Terminal Settings:</strong> These settings are
+											stored locally and affect only this specific POS terminal.
+											Changes take effect immediately.
+										</AlertDescription>
+									</Alert>
+
+									<div className="space-y-6">
+										{/* Sync Settings - only show to managers/owners */}
+										{permissions.canEditSyncSettings() && (
+											<TerminalSyncSettings />
+										)}
+
+										{/* Display Settings - accessible to all users */}
+										<TerminalDisplaySettings />
+
+										{/* Behavior Settings - only show to managers/owners */}
+										{permissions.canEditBehaviorSettings() && (
+											<TerminalBehaviorSettings />
+										)}
+									</div>
 								</div>
-							</div>
-						</TabsContent>
+							</TabsContent>
+						)}
 
-						{/* Hardware Settings */}
-						<TabsContent
-							value="hardware"
-							className="mt-6 space-y-6"
-						>
-							<div>
-								<h2 className="text-xl font-semibold mb-2">
-									Hardware Configuration
-								</h2>
-								<p className="text-muted-foreground mb-6">
-									Configure printers, cash drawers, and other hardware devices.
-								</p>
-								<PrinterSettings />
-							</div>
-						</TabsContent>
+						{/* Business Settings Tab */}
+						{permissions.canAccessBusinessSettings() && (
+							<TabsContent
+								value="business"
+								className="mt-6 space-y-6"
+							>
+								<div>
+									<div className="flex items-center gap-2 mb-2">
+										<h2 className="text-xl font-semibold">Business Settings</h2>
+										<Badge
+											variant="secondary"
+											className="flex items-center gap-1"
+										>
+											<CheckCircle className="h-3 w-3" />
+											Editable
+										</Badge>
+									</div>
+									<p className="text-muted-foreground mb-6">
+										Business-wide settings that affect all terminals. These
+										changes are synced across all devices in your store and take
+										effect immediately.
+									</p>
 
-						{/* Store Settings */}
-						<TabsContent
-							value="store"
-							className="mt-6 space-y-6"
-						>
-							<div>
-								<h2 className="text-xl font-semibold mb-2">
-									Store Configuration
-								</h2>
-								<p className="text-muted-foreground mb-6">
-									Configure store information, receipts, and business settings.
-								</p>
-								<StoreSettings />
-							</div>
-						</TabsContent>
+									<Alert className="mb-6">
+										<Building className="h-4 w-4" />
+										<AlertDescription>
+											<strong>Business Settings:</strong> These settings affect
+											all terminals in your store. Changes are saved to the
+											central database and automatically synchronized across all
+											devices.
+										</AlertDescription>
+									</Alert>
 
-						{/* Advanced Settings */}
-						<TabsContent
-							value="advanced"
-							className="mt-6 space-y-6"
-						>
-							<div>
-								<h2 className="text-xl font-semibold mb-2">
-									Advanced Settings
-								</h2>
-								<p className="text-muted-foreground mb-6">
-									API key management, manual sync operations, and advanced
-									system diagnostics.
-								</p>
-								<Card>
-									<CardHeader>
-										<CardTitle className="flex items-center gap-2">
-											<Wrench className="h-5 w-5" />
-											Sync Management
-										</CardTitle>
-									</CardHeader>
-									<CardContent>
-										<SyncManager />
-									</CardContent>
-								</Card>
-							</div>
-						</TabsContent>
+									<div className="space-y-6">
+										<BusinessStoreInfo />
+										<BusinessHoursSettings />
+										<BusinessFinancialSettings />
+										<BusinessReceiptSettings />
+									</div>
+								</div>
+							</TabsContent>
+						)}
+
+						{/* Hardware Settings Tab */}
+						{permissions.canAccessHardwareSettings() && (
+							<TabsContent
+								value="hardware"
+								className="mt-6 space-y-6"
+							>
+								<div>
+									<h2 className="text-xl font-semibold mb-2">
+										Hardware Configuration
+									</h2>
+									<p className="text-muted-foreground mb-6">
+										Configure printers, payment terminals, and other hardware
+										devices connected to this terminal.
+									</p>
+
+									<Alert className="mb-6">
+										<Printer className="h-4 w-4" />
+										<AlertDescription>
+											<strong>Mixed Settings:</strong> Some hardware settings
+											are terminal-specific (printer connections) while others
+											are business-wide (payment provider). Look for the badges
+											to identify which settings you can modify.
+										</AlertDescription>
+									</Alert>
+
+									<div className="space-y-6">
+										<PrinterSettings />
+										<GlobalSettings />
+										<TerminalSettings />
+									</div>
+								</div>
+							</TabsContent>
+						)}
+
+						{/* Advanced Settings Tab */}
+						{permissions.canAccessAdvancedSettings() && (
+							<TabsContent
+								value="advanced"
+								className="mt-6 space-y-6"
+							>
+								<div>
+									<h2 className="text-xl font-semibold mb-2">
+										Advanced Settings
+									</h2>
+									<p className="text-muted-foreground mb-6">
+										API key management, manual sync operations, debugging tools,
+										and advanced system diagnostics.
+									</p>
+									<Card>
+										<CardHeader>
+											<CardTitle className="flex items-center gap-2">
+												<Wrench className="h-5 w-5" />
+												Sync Management
+											</CardTitle>
+										</CardHeader>
+										<CardContent>
+											<SyncManager />
+										</CardContent>
+									</Card>
+								</div>
+							</TabsContent>
+						)}
+
+						{/* Debug: Role Access Summary - only for development/testing */}
+						{permissions.isOwner && (
+							<TabsContent
+								value="debug"
+								className="mt-6 space-y-6"
+							>
+								<RoleBasedAccessSummary />
+							</TabsContent>
+						)}
 					</div>
 				</Tabs>
 			</div>
+
+			{/* Toast Notifications */}
+			<Toaster />
 		</div>
 	);
 };

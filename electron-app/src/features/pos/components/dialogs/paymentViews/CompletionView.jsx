@@ -1,71 +1,22 @@
-import React, { useEffect, useCallback, useRef } from "react";
+import React from "react";
 import { usePosStore } from "../../../../../store/posStore";
 import { useSettingsStore } from "../../../../../store/settingsStore";
 import { Button } from "../../../../../components/ui/button";
 import { CheckCircle, Printer, Mail } from "lucide-react";
 import { formatCurrency } from "../../../../../lib/utils";
-import {
-	printReceipt,
-	printKitchenTicket,
-} from "../../../../../lib/hardware/printerService";
+import { printReceipt } from "../../../../../lib/hardware/printerService";
 import { toast } from "../../../../../components/ui/use-toast";
+import { getReceiptFormatData } from "../../../../../api/services/settingsService";
 
 const CompletionView = ({ order, changeDue, onClose }) => {
 	const resetCart = usePosStore((state) => state.resetCart);
 	// Select state individually to ensure stable references
 	const printers = useSettingsStore((state) => state.printers);
 	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
-	const kitchenZones = useSettingsStore((state) => state.kitchenZones);
 
-	const didAutoPrint = useRef(false);
-
-	const autoPrintAllKitchenTickets = useCallback(async () => {
-		if (!kitchenZones || kitchenZones.length === 0) {
-			console.log(
-				"No kitchen zones are configured. Skipping automatic printing."
-			);
-			return;
-		}
-
-		console.log(`Found ${kitchenZones.length} kitchen zones to print to.`);
-
-		for (const zone of kitchenZones) {
-			const printer = printers.find((p) => p.id === zone.printerId);
-
-			if (printer) {
-				try {
-					console.log(
-						`Printing to zone: "${zone.name}" on printer "${printer.name}"`
-					);
-					await printKitchenTicket(printer, order, zone.name);
-					toast({
-						title: "Kitchen Ticket Sent",
-						description: `Order sent to ${zone.name}.`,
-					});
-				} catch (error) {
-					toast({
-						title: `"${zone.name}" Print Error`,
-						description: error.message,
-						variant: "destructive",
-					});
-					console.error(
-						`[CompletionView] Error printing to zone ${zone.name}:`,
-						error
-					);
-				}
-			} else {
-				console.warn(`Printer for zone "${zone.name}" not found.`);
-			}
-		}
-	}, [printers, kitchenZones, order]);
-
-	// useEffect(() => {
-	// 	// This check prevents the effect from running a second time in Strict Mode.
-	// 	if (!didAutoPrint.current) {
-	// 		autoPrintAllKitchenTickets();
-	// 		didAutoPrint.current = true; // Set the flag to true after the first run.
-	// 	}
-	// }, [autoPrintAllKitchenTickets]);
+	// Note: Kitchen auto-printing functionality commented out
+	// const didAutoPrint = useRef(false);
+	// const autoPrintAllKitchenTickets = useCallback(async () => { ... }, [printers, kitchenZones, order]);
 
 	const handleNewOrder = () => {
 		if (resetCart) {
@@ -89,7 +40,18 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 		}
 
 		try {
-			await printReceipt(receiptPrinter, order); // Pass the full printer object
+			// Fetch store settings for dynamic receipt formatting
+			let storeSettings = null;
+			try {
+				storeSettings = await getReceiptFormatData();
+			} catch (error) {
+				console.warn(
+					"Failed to fetch store settings, using fallback values:",
+					error
+				);
+			}
+
+			await printReceipt(receiptPrinter, order, storeSettings); // Pass store settings
 			toast({
 				title: "Success",
 				description: "Receipt sent to printer.",
@@ -129,7 +91,7 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 					size="lg"
 					variant="secondary"
 					className="w-full justify-center gap-2"
-					// onClick={handlePrintReceipt}
+					onClick={handlePrintReceipt}
 				>
 					<Printer className="h-5 w-5" /> Print Receipt
 				</Button>

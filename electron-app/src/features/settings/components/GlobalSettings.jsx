@@ -7,6 +7,7 @@ import {
 	CardTitle,
 	CardDescription,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -17,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 
 const GlobalSettings = () => {
 	const { settings, isLoading, updateSettings } = useSettingsStore();
@@ -46,10 +47,19 @@ const GlobalSettings = () => {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Global Payment Settings</CardTitle>
+				<CardTitle className="flex items-center gap-2">
+					Global Payment Settings
+					<Badge
+						variant="outline"
+						className="flex items-center gap-1"
+					>
+						<Lock className="h-3 w-3" />
+						Admin Only
+					</Badge>
+				</CardTitle>
 				<CardDescription>
 					This setting determines which payment provider is used for all
-					transactions.
+					transactions across all terminals.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">

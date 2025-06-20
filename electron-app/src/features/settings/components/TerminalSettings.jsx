@@ -2,7 +2,8 @@ import React from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import StripeTerminalSettings from "./StripeTerminalSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Zap } from "lucide-react";
 
 const TerminalSettings = () => {
 	const { settings, isLoading } = useSettingsStore();
@@ -12,7 +13,16 @@ const TerminalSettings = () => {
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Terminal Settings</CardTitle>
+					<CardTitle className="flex items-center gap-2">
+						Terminal Settings
+						<Badge
+							variant="secondary"
+							className="flex items-center gap-1"
+						>
+							<Zap className="h-3 w-3" />
+							Dynamic
+						</Badge>
+					</CardTitle>
 				</CardHeader>
 				<CardContent className="flex items-center">
 					<Loader2 className="mr-2 h-4 w-4 animate-spin" />

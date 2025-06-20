@@ -11,25 +11,81 @@ class TerminalProvider(models.TextChoices):
 class GlobalSettings(models.Model):
     """
     A singleton model to store globally accessible settings for the application.
+    These settings affect ALL terminals and should be managed centrally.
     """
 
+    # === TAX & FINANCIAL SETTINGS ===
     tax_rate = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
+        max_digits=8,
+        decimal_places=6,
         default=Decimal("0.08"),
         help_text="The default sales tax rate as a decimal (e.g., 0.08 for 8%).",
     )
     surcharge_percentage = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
+        max_digits=8,
+        decimal_places=6,
         default=Decimal("0.00"),
         help_text="A percentage-based surcharge applied to the subtotal (e.g., 0.02 for 2%).",
     )
+    currency = models.CharField(
+        max_length=3,
+        default="USD",
+        help_text="Three-letter currency code (ISO 4217).",
+    )
+
+    # === STORE INFORMATION ===
+    store_name = models.CharField(
+        max_length=255,
+        default="",
+        help_text="Business name displayed on receipts and reports.",
+    )
+    store_address = models.TextField(
+        blank=True,
+        help_text="Full business address for receipts.",
+    )
+    store_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Business phone number.",
+    )
+    store_email = models.EmailField(
+        blank=True,
+        help_text="Business email address.",
+    )
+
+    # === RECEIPT CONFIGURATION ===
+    receipt_header = models.TextField(
+        blank=True,
+        help_text="Custom text to appear at the top of receipts.",
+    )
+    receipt_footer = models.TextField(
+        default="Thank you for your business!",
+        help_text="Custom text to appear at the bottom of receipts.",
+    )
+
+    # === PAYMENT PROCESSING ===
     active_terminal_provider = models.CharField(
         max_length=50,
         choices=TerminalProvider.choices,
         default=TerminalProvider.STRIPE_TERMINAL,
         help_text="The currently active payment terminal provider.",
+    )
+
+    # === BUSINESS HOURS ===
+    opening_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Business opening time (used for reporting).",
+    )
+    closing_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Business closing time (used for reporting).",
+    )
+    timezone = models.CharField(
+        max_length=50,
+        default="UTC",
+        help_text="Business timezone (e.g., 'America/New_York').",
     )
 
     def clean(self):
@@ -47,7 +103,39 @@ class GlobalSettings(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return "Global Application Settings"
+        return f"Global Settings - {self.store_name or 'Unnamed Store'}"
+
+    def is_business_open(self) -> bool:
+        """
+        Check if the business is currently open based on opening/closing times and timezone.
+        Returns True if business hours are not set (always open).
+        """
+        if not self.opening_time or not self.closing_time:
+            return True  # Always open if hours not configured
+
+        try:
+            import pytz
+            from datetime import datetime
+
+            # Get current time in business timezone
+            tz = pytz.timezone(self.timezone)
+            current_time = datetime.now(tz).time()
+
+            # Handle same-day hours (e.g., 9:00 AM - 10:00 PM)
+            if self.opening_time <= self.closing_time:
+                return self.opening_time <= current_time <= self.closing_time
+
+            # Handle overnight hours (e.g., 10:00 PM - 6:00 AM)
+            else:
+                return (
+                    current_time >= self.opening_time
+                    or current_time <= self.closing_time
+                )
+
+        except Exception as e:
+            # If timezone calculation fails, default to open
+            print(f"Business hours check failed: {e}")
+            return True
 
     class Meta:
         verbose_name_plural = "Global Settings"

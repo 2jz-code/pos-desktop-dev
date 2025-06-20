@@ -16,7 +16,7 @@ const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
 function printLine(printer, left, right) {
   printer.leftRight(left, right);
 }
-function formatReceipt(order) {
+function formatReceipt(order, storeSettings = null) {
   var _a, _b;
   let printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
@@ -24,10 +24,23 @@ function formatReceipt(order) {
     interface: "tcp://dummy"
   });
   printer.alignCenter();
-  printer.println("Ajeen Fresh");
-  printer.println("2105 Cliff Rd #300");
-  printer.println("Eagan, MN 55122");
-  printer.println("Tel: (651) 412-5336");
+  if (storeSettings == null ? void 0 : storeSettings.receipt_header) {
+    printer.println(storeSettings.receipt_header);
+    printer.println("");
+  }
+  const storeName = (storeSettings == null ? void 0 : storeSettings.store_name) || "Ajeen Fresh";
+  const storeAddress = (storeSettings == null ? void 0 : storeSettings.store_address) || "2105 Cliff Rd #300\nEagan, MN 55122";
+  const storePhone = (storeSettings == null ? void 0 : storeSettings.store_phone) || "(651) 412-5336";
+  printer.println(storeName);
+  {
+    const addressLines = storeAddress.split("\n");
+    addressLines.forEach((line) => {
+      if (line.trim()) printer.println(line.trim());
+    });
+  }
+  {
+    printer.println(`Tel: ${storePhone}`);
+  }
   printer.println("");
   printer.alignLeft();
   const orderId = order.id || "N/A";
@@ -104,8 +117,16 @@ function formatReceipt(order) {
   }
   printer.println("");
   printer.alignCenter();
-  printer.println("Thank You!");
-  printer.println("Visit us at bakeajeen.com");
+  const receiptFooter = (storeSettings == null ? void 0 : storeSettings.receipt_footer) || "Thank you for your business!";
+  {
+    const footerLines = receiptFooter.split("\n");
+    footerLines.forEach((line) => {
+      if (line.trim()) printer.println(line.trim());
+    });
+  }
+  if (!(storeSettings == null ? void 0 : storeSettings.receipt_footer)) {
+    printer.println("Visit us at bakeajeen.com");
+  }
   printer.println("");
   printer.println("");
   printer.cut();
@@ -1802,10 +1823,12 @@ class SyncService {
    */
   async getSyncStatus() {
     const lastSync = await this.getLastSyncTimestamp();
+    const dataCounts = await this.getDataCounts();
     return {
       isOnline: this.isOnline,
-      lastSyncTime: lastSync,
-      hasData: await this.hasLocalData()
+      lastSync,
+      hasData: await this.hasLocalData(),
+      dataCounts
     };
   }
   /**
@@ -1821,6 +1844,32 @@ class SyncService {
       return productsCount > 0;
     } catch {
       return false;
+    }
+  }
+  /**
+   * Get data counts for all synced tables
+   */
+  async getDataCounts() {
+    try {
+      const db = this.repositories.products.db;
+      const productsCount = db.prepare("SELECT COUNT(*) as count FROM products").get().count;
+      const categoriesCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count;
+      const usersCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+      const discountsCount = db.prepare("SELECT COUNT(*) as count FROM discounts").get().count;
+      return {
+        products: productsCount,
+        categories: categoriesCount,
+        users: usersCount,
+        discounts: discountsCount
+      };
+    } catch (error) {
+      console.error("❌ Failed to get data counts:", error);
+      return {
+        products: 0,
+        categories: 0,
+        users: 0,
+        discounts: 0
+      };
     }
   }
   /**
@@ -2044,21 +2093,28 @@ async function sendBufferToPrinter(printer, buffer) {
     }
   }
 }
-ipcMain.handle("print-receipt", async (event, { printer, data }) => {
-  console.log("\n--- [Main Process] Using HYBRID print method ---");
-  try {
-    const buffer = formatReceipt(data);
+ipcMain.handle(
+  "print-receipt",
+  async (event, { printer, data, storeSettings }) => {
+    console.log("\n--- [Main Process] Using HYBRID print method ---");
     console.log(
-      `[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
+      "[Main Process] Store settings:",
+      storeSettings ? "provided" : "not provided"
     );
-    await sendBufferToPrinter(printer, buffer);
-    console.log("[Main Process] Hybrid print command sent successfully.");
-    return { success: true };
-  } catch (error) {
-    console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", error);
-    return { success: false, error: error.message };
+    try {
+      const buffer = formatReceipt(data, storeSettings);
+      console.log(
+        `[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
+      );
+      await sendBufferToPrinter(printer, buffer);
+      console.log("[Main Process] Hybrid print command sent successfully.");
+      return { success: true };
+    } catch (error) {
+      console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", error);
+      return { success: false, error: error.message };
+    }
   }
-});
+);
 ipcMain.handle(
   "print-kitchen-ticket",
   async (event, { printer, order, zoneName }) => {

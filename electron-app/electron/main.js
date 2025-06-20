@@ -209,21 +209,28 @@ async function sendBufferToPrinter(printer, buffer) {
 	}
 }
 
-ipcMain.handle("print-receipt", async (event, { printer, data }) => {
-	console.log("\n--- [Main Process] Using HYBRID print method ---");
-	try {
-		const buffer = formatReceipt(data);
+ipcMain.handle(
+	"print-receipt",
+	async (event, { printer, data, storeSettings }) => {
+		console.log("\n--- [Main Process] Using HYBRID print method ---");
 		console.log(
-			`[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
+			"[Main Process] Store settings:",
+			storeSettings ? "provided" : "not provided"
 		);
-		await sendBufferToPrinter(printer, buffer);
-		console.log("[Main Process] Hybrid print command sent successfully.");
-		return { success: true };
-	} catch (error) {
-		console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", error);
-		return { success: false, error: error.message };
+		try {
+			const buffer = formatReceipt(data, storeSettings);
+			console.log(
+				`[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
+			);
+			await sendBufferToPrinter(printer, buffer);
+			console.log("[Main Process] Hybrid print command sent successfully.");
+			return { success: true };
+		} catch (error) {
+			console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", error);
+			return { success: false, error: error.message };
+		}
 	}
-});
+);
 
 ipcMain.handle(
 	"print-kitchen-ticket",

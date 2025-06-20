@@ -3,7 +3,7 @@ import apiClient from "./apiClient";
 import {
 	getTerminalLocations,
 	setDefaultTerminalLocation,
-} from "@/api/settings";
+} from "@/api/services/settingsService";
 
 /**
  * A singleton service to manage the Stripe Terminal instance and interactions.

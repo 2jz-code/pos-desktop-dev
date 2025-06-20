@@ -7,6 +7,7 @@ from .views import (
     CaptureTerminalIntentView,
     CancelPaymentIntentView,
     TerminalConnectionTokenView,
+    TerminalConfigurationView,
     StripeWebhookView,
 )
 
@@ -38,6 +39,11 @@ urlpatterns = [
         "terminal/connection-token/",
         TerminalConnectionTokenView.as_view(),
         name="terminal-connection-token",
+    ),
+    path(
+        "terminal/configuration/",
+        TerminalConfigurationView.as_view(),
+        name="terminal-configuration",
     ),
     # Include the router-generated URLs
     path("", include(router.urls)),

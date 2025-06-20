@@ -727,10 +727,12 @@ class SyncService {
 	 */
 	async getSyncStatus() {
 		const lastSync = await this.getLastSyncTimestamp();
+		const dataCounts = await this.getDataCounts();
 		return {
 			isOnline: this.isOnline,
-			lastSyncTime: lastSync,
+			lastSync: lastSync,
 			hasData: await this.hasLocalData(),
+			dataCounts: dataCounts,
 		};
 	}
 
@@ -750,6 +752,43 @@ class SyncService {
 			return productsCount > 0;
 		} catch {
 			return false;
+		}
+	}
+
+	/**
+	 * Get data counts for all synced tables
+	 */
+	async getDataCounts() {
+		try {
+			const db = this.repositories.products.db;
+
+			const productsCount = db
+				.prepare("SELECT COUNT(*) as count FROM products")
+				.get().count;
+			const categoriesCount = db
+				.prepare("SELECT COUNT(*) as count FROM categories")
+				.get().count;
+			const usersCount = db
+				.prepare("SELECT COUNT(*) as count FROM users")
+				.get().count;
+			const discountsCount = db
+				.prepare("SELECT COUNT(*) as count FROM discounts")
+				.get().count;
+
+			return {
+				products: productsCount,
+				categories: categoriesCount,
+				users: usersCount,
+				discounts: discountsCount,
+			};
+		} catch (error) {
+			console.error("❌ Failed to get data counts:", error);
+			return {
+				products: 0,
+				categories: 0,
+				users: 0,
+				discounts: 0,
+			};
 		}
 	}
 

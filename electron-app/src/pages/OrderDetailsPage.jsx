@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { shallow } from "zustand/shallow";
 import { formatCurrency } from "@/lib/utils";
 import { ArrowLeft, CreditCard, DollarSign } from "lucide-react";
+import { useRolePermissions } from "@/hooks/useRolePermissions";
 
 // --- Reusable component to display a single transaction ---
 const TransactionDetail = ({ transaction }) => {
@@ -51,6 +52,7 @@ const TransactionDetail = ({ transaction }) => {
 const OrderDetailsPage = () => {
 	const { orderId } = useParams();
 	const navigate = useNavigate();
+	const permissions = useRolePermissions();
 
 	const { order, fetchOrderById, updateSingleOrder, isLoading, resumeCart } =
 		usePosStore(
@@ -227,19 +229,21 @@ const OrderDetailsPage = () => {
 						{(status === "HOLD" || status === "PENDING") && (
 							<Button onClick={handleResume}>Resume Order</Button>
 						)}
-						{(status === "PENDING" || status === "HOLD") && (
-							<Button
-								variant="destructive"
-								onClick={() =>
-									handleStatusChange(
-										orderService.cancelOrder,
-										"Order has been cancelled."
-									)
-								}
-							>
-								Cancel Order
-							</Button>
-						)}
+						{/* Only allow managers/owners to cancel orders */}
+						{(status === "PENDING" || status === "HOLD") &&
+							permissions.canCancelOrders() && (
+								<Button
+									variant="destructive"
+									onClick={() =>
+										handleStatusChange(
+											orderService.cancelOrder,
+											"Order has been cancelled."
+										)
+									}
+								>
+									Cancel Order
+								</Button>
+							)}
 					</CardFooter>
 				</Card>
 
@@ -257,14 +261,17 @@ const OrderDetailsPage = () => {
 					<CardContent className="space-y-4">
 						{payment_details && payment_details.transactions?.length > 0 ? (
 							<>
-								<div className="text-sm">
-									<Link
-										to={`/payments/${payment_details.id}`}
-										className="text-blue-500 font-bold hover:underline"
-									>
-										View Full Payment Record &rarr;
-									</Link>
-								</div>
+								{/* Only show payment record link to managers/owners */}
+								{permissions.canAccessPayments() && (
+									<div className="text-sm">
+										<Link
+											to={`/payments/${payment_details.id}`}
+											className="text-blue-500 font-bold hover:underline"
+										>
+											View Full Payment Record &rarr;
+										</Link>
+									</div>
+								)}
 								{payment_details.transactions.map((txn) => (
 									<TransactionDetail
 										key={txn.id}

@@ -47,10 +47,28 @@ class AppSettings:
             # Use get_or_create with pk=1 to ensure we always have settings
             settings_obj, created = GlobalSettings.objects.get_or_create(pk=1)
 
-            # Populate instance attributes from the model
+            # === TAX & FINANCIAL SETTINGS ===
             self.tax_rate: Decimal = settings_obj.tax_rate
             self.surcharge_percentage: Decimal = settings_obj.surcharge_percentage
+            self.currency: str = settings_obj.currency
+
+            # === STORE INFORMATION ===
+            self.store_name: str = settings_obj.store_name
+            self.store_address: str = settings_obj.store_address
+            self.store_phone: str = settings_obj.store_phone
+            self.store_email: str = settings_obj.store_email
+
+            # === RECEIPT CONFIGURATION ===
+            self.receipt_header: str = settings_obj.receipt_header
+            self.receipt_footer: str = settings_obj.receipt_footer
+
+            # === PAYMENT PROCESSING ===
             self.active_terminal_provider: str = settings_obj.active_terminal_provider
+
+            # === BUSINESS HOURS ===
+            self.opening_time = settings_obj.opening_time
+            self.closing_time = settings_obj.closing_time
+            self.timezone: str = settings_obj.timezone
 
             if created:
                 print("Created default GlobalSettings instance")
@@ -66,11 +84,45 @@ class AppSettings:
         self.load_settings()
         print("AppSettings cache reloaded")
 
+    def get_store_info(self) -> dict:
+        """
+        Get store information as a dictionary.
+        Useful for receipt generation and display purposes.
+        """
+        return {
+            "name": self.store_name,
+            "address": self.store_address,
+            "phone": self.store_phone,
+            "email": self.store_email,
+        }
+
+    def get_financial_settings(self) -> dict:
+        """
+        Get financial settings as a dictionary.
+        Useful for order calculations.
+        """
+        return {
+            "tax_rate": self.tax_rate,
+            "surcharge_percentage": self.surcharge_percentage,
+            "currency": self.currency,
+        }
+
+    def get_receipt_config(self) -> dict:
+        """
+        Get receipt configuration as a dictionary.
+        Useful for receipt generation.
+        """
+        return {
+            "header": self.receipt_header,
+            "footer": self.receipt_footer,
+        }
+
     def __str__(self) -> str:
         return (
-            f"AppSettings(tax_rate={self.tax_rate}, "
-            f"surcharge_percentage={self.surcharge_percentage}, "
-            f"active_terminal_provider={self.active_terminal_provider})"
+            f"AppSettings(store='{self.store_name}', "
+            f"currency={self.currency}, "
+            f"tax_rate={self.tax_rate}, "
+            f"provider={self.active_terminal_provider})"
         )
 
 

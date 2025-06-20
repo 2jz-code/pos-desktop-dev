@@ -3,6 +3,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { AddEditPrinterDialog } from "./AddEditPrinterDialog";
 import { AddEditKitchenZoneDialog } from "./AddEditKitchenZoneDialog"; // Import the new dialog
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
 	Card,
 	CardContent,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
+import { Edit } from "lucide-react";
 import { discoverPrinters } from "@/lib/hardware/printerService";
 
 const PrinterSettings = () => {
@@ -142,9 +144,19 @@ const PrinterSettings = () => {
 		<>
 			<Card>
 				<CardHeader>
-					<CardTitle>Printer & Hardware Management</CardTitle>
+					<CardTitle className="flex items-center gap-2">
+						Printer & Hardware Management
+						<Badge
+							variant="secondary"
+							className="flex items-center gap-1"
+						>
+							<Edit className="h-3 w-3" />
+							Terminal
+						</Badge>
+					</CardTitle>
 					<CardDescription>
-						Add, edit, and assign your receipt and kitchen printers.
+						Add, edit, and assign your receipt and kitchen printers for this
+						terminal.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-8">

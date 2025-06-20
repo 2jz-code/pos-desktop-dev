@@ -44,6 +44,8 @@ class ConfigService {
 					import.meta.env.VITE_CASH_DRAWER_AVAILABLE !== "false",
 				receiptPrinterAvailable:
 					import.meta.env.VITE_RECEIPT_PRINTER_AVAILABLE !== "false",
+				cardReaderAvailable:
+					import.meta.env.VITE_CARD_READER_AVAILABLE !== "false",
 			},
 		};
 	}
@@ -57,7 +59,7 @@ class ConfigService {
 				// Try to load from database first
 				const settings = await window.dbApi.getSettings();
 				if (settings) {
-					this.userSettings = settings;
+					this.userSettings = this.migrateTimeSettings(settings);
 					return;
 				}
 			}
@@ -65,7 +67,7 @@ class ConfigService {
 			// Fallback to localStorage
 			const stored = localStorage.getItem("posSettings");
 			if (stored) {
-				this.userSettings = JSON.parse(stored);
+				this.userSettings = this.migrateTimeSettings(JSON.parse(stored));
 			} else {
 				this.userSettings = this.getDefaultUserSettings();
 			}
@@ -76,41 +78,67 @@ class ConfigService {
 	}
 
 	/**
+	 * Migrate time settings from seconds to minutes for consistency
+	 */
+	migrateTimeSettings(settings) {
+		const migrated = { ...settings };
+
+		// Convert displayTimeout from seconds to minutes if it's > 60 (likely in seconds)
+		if (migrated.displayTimeout && migrated.displayTimeout > 60) {
+			migrated.displayTimeout = Math.round(migrated.displayTimeout / 60);
+			console.log(
+				`📋 Migrated displayTimeout: ${settings.displayTimeout}s → ${migrated.displayTimeout}m`
+			);
+		}
+
+		// Convert autoLockTimeout from seconds to minutes if it's > 120 (likely in seconds)
+		if (migrated.autoLockTimeout && migrated.autoLockTimeout > 120) {
+			migrated.autoLockTimeout = Math.round(migrated.autoLockTimeout / 60);
+			console.log(
+				`📋 Migrated autoLockTimeout: ${settings.autoLockTimeout}s → ${migrated.autoLockTimeout}m`
+			);
+		}
+
+		// Mark as migrated to prevent future migrations
+		migrated.timeMigrated = true;
+
+		return migrated;
+	}
+
+	/**
 	 * Get default user settings (user-configurable preferences)
+	 * These are TERMINAL-SPECIFIC settings that affect how THIS terminal operates
 	 */
 	getDefaultUserSettings() {
 		return {
-			// Sync Settings (user preferences)
+			// === SYNC & PERFORMANCE SETTINGS ===
 			syncIntervalMinutes: 5,
 			autoSyncEnabled: true,
 
-			// Backup Settings (user preferences)
+			// === BACKUP SETTINGS ===
 			backupIntervalMinutes: 30,
 			autoBackupEnabled: true,
 			maxBackupsToKeep: 10,
 
-			// Hardware Settings (user preferences - enable/disable available hardware)
-			cashDrawerEnabled: this.systemConfig.hardware.cashDrawerAvailable,
-			receiptPrinterEnabled: this.systemConfig.hardware.receiptPrinterAvailable,
+			// === DISPLAY & ACCESSIBILITY ===
+			theme: "light", // light, dark, system
+			language: "en", // Interface language preference
+			fontSize: "medium", // small, medium, large
+			displayTimeout: 5, // Screen timeout in minutes
+			soundEnabled: true, // Audio feedback
 
-			// Store Information
-			storeName: "",
-			storeAddress: "",
-			storePhone: "",
+			// === TERMINAL BEHAVIOR ===
+			autoLockTimeout: 30, // Auto-lock after inactivity (minutes)
+			keyboardShortcuts: true, // Enable keyboard shortcuts
+			offlineReceiptStorage: 100, // Max receipts to store when offline
+			confirmOnDelete: true, // Require confirmation for deletions
 
-			// Receipt Settings
-			receiptHeader: "",
-			receiptFooter: "Thank you for your business!",
+			// === DEBUG & DEVELOPMENT ===
+			debugMode: false,
+			logLevel: "info", // error, warn, info, debug
 
-			// Tax Settings
-			defaultTaxRate: 0,
-
-			// UI Preferences
-			theme: "light",
-			language: "en",
-			currency: "USD",
-
-			// Last updated timestamp
+			// === METADATA ===
+			terminalNickname: "", // Friendly name for this terminal
 			updatedAt: new Date().toISOString(),
 		};
 	}

@@ -9,12 +9,57 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
     It prevents adding new instances if one already exists.
     """
 
+    # Organize fields into logical sections
+    fieldsets = (
+        (
+            "Store Information",
+            {
+                "fields": ("store_name", "store_address", "store_phone", "store_email"),
+                "description": "Basic store information displayed on receipts and reports.",
+            },
+        ),
+        (
+            "Financial Settings",
+            {
+                "fields": ("tax_rate", "surcharge_percentage", "currency"),
+                "description": "Tax rates and financial calculations applied to all transactions.",
+            },
+        ),
+        (
+            "Receipt Configuration",
+            {
+                "fields": ("receipt_header", "receipt_footer", "print_customer_copy"),
+                "description": "Customize receipt appearance and printing behavior.",
+            },
+        ),
+        (
+            "Payment Processing",
+            {
+                "fields": ("active_terminal_provider",),
+                "description": "Payment terminal and processing configuration.",
+            },
+        ),
+        (
+            "Business Hours",
+            {
+                "fields": ("opening_time", "closing_time", "timezone"),
+                "description": "Business hours for reporting and analytics.",
+                "classes": ("collapse",),  # Initially collapsed
+            },
+        ),
+    )
+
     list_display = (
         "__str__",
+        "store_name",
+        "currency",
         "tax_rate",
-        "surcharge_percentage",
         "active_terminal_provider",
+        "timezone",
     )
+
+    # Read-only fields that are calculated or system-managed
+    readonly_fields = []
 
     def has_add_permission(self, request):
         """
@@ -31,6 +76,15 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         You can remove this method if you want to allow deletion.
         """
         return False
+
+    def changelist_view(self, request, extra_context=None):
+        """
+        Override changelist view to redirect to the single settings object if it exists.
+        """
+        if self.model.objects.exists():
+            obj = self.model.objects.first()
+            return self.response_change(request, obj)
+        return super().changelist_view(request, extra_context)
 
 
 @admin.register(POSDevice)

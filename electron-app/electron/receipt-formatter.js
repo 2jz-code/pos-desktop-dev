@@ -18,9 +18,10 @@ function printLine(printer, left, right) {
 /**
  * Generates a raw buffer for a detailed receipt.
  * @param {object} order - The full order object from the frontend.
+ * @param {object} storeSettings - Store configuration from backend (optional, falls back to hardcoded values).
  * @returns {Buffer} The raw command buffer for the printer.
  */
-export function formatReceipt(order) {
+export function formatReceipt(order, storeSettings = null) {
 	let printer = new ThermalPrinter({
 		type: PrinterTypes.EPSON,
 		characterSet: "PC437_USA",
@@ -29,10 +30,33 @@ export function formatReceipt(order) {
 
 	// --- Header ---
 	printer.alignCenter();
-	printer.println("Ajeen Fresh");
-	printer.println("2105 Cliff Rd #300");
-	printer.println("Eagan, MN 55122");
-	printer.println("Tel: (651) 412-5336");
+
+	// Use dynamic store settings or fall back to hardcoded values
+	if (storeSettings?.receipt_header) {
+		printer.println(storeSettings.receipt_header);
+		printer.println("");
+	}
+
+	// Store information
+	const storeName = storeSettings?.store_name || "Ajeen Fresh";
+	const storeAddress =
+		storeSettings?.store_address || "2105 Cliff Rd #300\nEagan, MN 55122";
+	const storePhone = storeSettings?.store_phone || "(651) 412-5336";
+
+	printer.println(storeName);
+
+	// Handle multi-line address
+	if (storeAddress) {
+		const addressLines = storeAddress.split("\n");
+		addressLines.forEach((line) => {
+			if (line.trim()) printer.println(line.trim());
+		});
+	}
+
+	if (storePhone) {
+		printer.println(`Tel: ${storePhone}`);
+	}
+
 	printer.println("");
 
 	// --- Order Info ---
@@ -126,8 +150,23 @@ export function formatReceipt(order) {
 	// --- Footer ---
 	printer.println("");
 	printer.alignCenter();
-	printer.println("Thank You!");
-	printer.println("Visit us at bakeajeen.com");
+
+	// Use dynamic footer or fall back to hardcoded values
+	const receiptFooter =
+		storeSettings?.receipt_footer || "Thank you for your business!";
+	if (receiptFooter) {
+		// Handle multi-line footer
+		const footerLines = receiptFooter.split("\n");
+		footerLines.forEach((line) => {
+			if (line.trim()) printer.println(line.trim());
+		});
+	}
+
+	// Add website if no custom footer is set
+	if (!storeSettings?.receipt_footer) {
+		printer.println("Visit us at bakeajeen.com");
+	}
+
 	printer.println("");
 	printer.println("");
 	printer.cut();

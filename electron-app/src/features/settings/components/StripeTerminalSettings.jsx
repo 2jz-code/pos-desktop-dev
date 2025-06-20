@@ -32,7 +32,7 @@ import {
 	getTerminalLocations,
 	setDefaultTerminalLocation,
 	syncStripeLocations,
-} from "@/api/settings";
+} from "@/api/services/settingsService";
 import { useToast } from "@/components/ui/use-toast";
 
 const StripeTerminalSettings = () => {

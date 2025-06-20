@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
-import { getGlobalSettings, updateGlobalSettings } from "@/api/settings";
+import {
+	getGlobalSettings,
+	updateGlobalSettings,
+} from "@/api/services/settingsService";
 
 export const useSettingsStore = create(
 	persist(
