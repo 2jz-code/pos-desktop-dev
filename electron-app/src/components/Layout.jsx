@@ -15,6 +15,7 @@ import {
 	Percent,
 	Settings,
 	CreditCard, // Using CreditCard for Payments
+	Warehouse, // Add this import for inventory icon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -152,6 +153,17 @@ export function Layout({ children }) {
 								Products
 							</NavLink>
 
+							{/* Inventory - accessible to those who can access products */}
+							{permissions.canAccessProducts() && (
+								<NavLink
+									to="/inventory"
+									icon={Warehouse}
+									isCollapsed={isCollapsed}
+								>
+									Inventory
+								</NavLink>
+							)}
+
 							{/* Discounts - managers/owners only */}
 							{permissions.canAccessDiscounts() && (
 								<NavLink
@@ -283,6 +295,17 @@ export function Layout({ children }) {
 								>
 									Products
 								</NavLink>
+
+								{/* Inventory - accessible to those who can access products */}
+								{permissions.canAccessProducts() && (
+									<NavLink
+										to="/inventory"
+										icon={Warehouse}
+										isCollapsed={false}
+									>
+										Inventory
+									</NavLink>
+								)}
 
 								{/* Discounts - managers/owners only */}
 								{permissions.canAccessDiscounts() && (

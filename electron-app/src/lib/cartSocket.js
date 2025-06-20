@@ -105,6 +105,59 @@ const connect = (orderId) => {
 						"Store is not set in cartSocket.js, cannot dispatch cart update."
 					);
 				}
+			} else if (data.type === "error") {
+				// Handle error messages from backend
+				console.error("WebSocket error from backend:", data);
+				if (store) {
+					// Check if this is a stock validation error for menu items
+					const isStockError = data.error_type === "stock_validation";
+					const isMenuItemError =
+						data.message && data.message.toLowerCase().includes("menu");
+
+					if (isStockError && !isMenuItemError) {
+						// Only show error for non-menu items (strict stock validation)
+						store.getState().showToast({
+							title: "Insufficient Stock",
+							description: data.message || "Not enough inventory available",
+							variant: "destructive",
+						});
+					} else if (isStockError && isMenuItemError) {
+						// For menu items, show a warning instead of error
+						store.getState().showToast({
+							title: "Low Ingredients",
+							description:
+								"Some ingredients are low, but item can be prepared fresh",
+							variant: "default",
+						});
+					} else {
+						// General errors
+						store.getState().showToast({
+							title: "Error",
+							description:
+								data.message || "An error occurred while adding the item",
+							variant: "destructive",
+						});
+					}
+				}
+			} else if (data.type === "stock_error") {
+				// Handle stock errors with override option
+				console.error("WebSocket stock error from backend:", data);
+				if (store && data.can_override) {
+					// Get the current stock override dialog state to preserve lastPayload
+					const currentDialog = store.getState().stockOverrideDialog;
+
+					// Set the pending stock override data in the store
+					store.getState().setStockOverrideDialog({
+						show: true,
+						productId: data.product_id || data.item_id, // Handle both add and update actions
+						message: data.message,
+						lastPayload: currentDialog.lastPayload, // Preserve the existing payload
+						actionType: data.action_type || "add_item", // Track what action triggered this
+						itemId: data.item_id, // For quantity updates
+						currentQuantity: data.current_quantity,
+						requestedQuantity: data.requested_quantity,
+					});
+				}
 			} else {
 				console.warn(
 					"Received unknown WebSocket message type:",

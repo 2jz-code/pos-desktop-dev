@@ -9,6 +9,7 @@ import {
 	createUserSlice,
 	createDiscountSlice, // Added missing import
 	createPaymentSlice,
+	createInventorySlice,
 } from "./slices";
 import { cartSocket } from "../lib/cartSocket";
 
@@ -21,6 +22,7 @@ export const usePosStore = createWithEqualityFn(
 			...createUserSlice(set, get),
 			...createDiscountSlice(set, get), // Added required discount slice
 			...createPaymentSlice(set, get),
+			...createInventorySlice(set, get),
 		}),
 		{
 			name: "pos-storage",

@@ -1,6 +1,7 @@
 from django.dispatch import Signal
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from .models import Order
 
 # Custom signals for order events
 order_needs_recalculation = Signal()
@@ -37,3 +38,22 @@ def handle_payment_completion(sender, **kwargs):
 
         # Call the service method to handle payment completion business logic
         OrderService.mark_as_fully_paid(payment.order)
+
+
+@receiver(post_save, sender=Order)
+def handle_order_completion(sender, instance, created, **kwargs):
+    """
+    Handles inventory deduction when an order is completed.
+    This receiver listens for Order model post_save signals.
+    """
+    # Only process if this is an update (not creation) and status is COMPLETED
+    if not created and instance.status == Order.OrderStatus.COMPLETED:
+        # Import here to avoid circular imports
+        from inventory.services import InventoryService
+        
+        try:
+            InventoryService.process_order_completion(instance)
+        except Exception as e:
+            # Log the error but don't prevent the order from completing
+            print(f"Failed to process inventory for order {instance.id}: {e}")
+            # Could add proper logging here in the future

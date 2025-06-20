@@ -70,6 +70,9 @@ class AppSettings:
             self.closing_time = settings_obj.closing_time
             self.timezone: str = settings_obj.timezone
 
+            # === INVENTORY SETTINGS ===
+            self.default_inventory_location = settings_obj.default_inventory_location
+
             if created:
                 print("Created default GlobalSettings instance")
 
@@ -83,6 +86,33 @@ class AppSettings:
         """
         self.load_settings()
         print("AppSettings cache reloaded")
+
+    def get_default_location(self):
+        """
+        Get the default inventory location. Creates one if none exists.
+        """
+        if self.default_inventory_location is None:
+            # Import here to avoid circular imports
+            from inventory.models import Location
+            from .models import GlobalSettings
+            
+            # Create a default location if none exists
+            default_location, created = Location.objects.get_or_create(
+                name="Main Store",
+                defaults={"description": "Default main store location"}
+            )
+            
+            # Update the settings to use this location
+            settings_obj = GlobalSettings.objects.get(pk=1)
+            settings_obj.default_inventory_location = default_location
+            settings_obj.save()
+            
+            self.default_inventory_location = default_location
+            
+            if created:
+                print("Created default inventory location: Main Store")
+        
+        return self.default_inventory_location
 
     def get_store_info(self) -> dict:
         """

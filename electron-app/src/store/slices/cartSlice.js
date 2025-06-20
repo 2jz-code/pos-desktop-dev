@@ -38,6 +38,16 @@ export const defaultCartState = {
 	addingItemId: null,
 	updatingItems: [],
 	appliedDiscounts: [],
+	stockOverrideDialog: {
+		show: false,
+		productId: null,
+		message: "",
+		lastPayload: null,
+		actionType: null,
+		itemId: null,
+		currentQuantity: null,
+		requestedQuantity: null,
+	},
 };
 
 const loadInitialCartState = () => {
@@ -54,6 +64,11 @@ export const createCartSlice = (set, get) => {
 
 		addItem: async (product) => {
 			set({ addingItemId: product.id });
+
+			// Store original state for rollback
+			const originalItems = [...get().items];
+			const originalSubtotal = get().subtotal;
+			const originalTotal = get().total;
 
 			const existingItemIndex = get().items.findIndex(
 				(item) =>
@@ -98,12 +113,28 @@ export const createCartSlice = (set, get) => {
 					});
 				}
 
+				const payload = { product_id: product.id, quantity: 1 };
+
+				// Store the payload in case we need to retry with force_add
+				set({
+					stockOverrideDialog: {
+						...get().stockOverrideDialog,
+						lastPayload: payload,
+					},
+				});
+
 				cartSocket.sendMessage({
 					type: "add_item",
-					payload: { product_id: product.id, quantity: 1 },
+					payload: payload,
 				});
 			} catch (error) {
 				console.error("Error during cart sync:", error);
+				// Rollback optimistic update
+				set({
+					items: originalItems,
+					subtotal: originalSubtotal,
+					total: originalTotal,
+				});
 				get().showToast({
 					title: "Failed to Sync Item",
 					description:
@@ -113,6 +144,111 @@ export const createCartSlice = (set, get) => {
 			} finally {
 				set({ addingItemId: null });
 			}
+		},
+
+		// Add method to handle rollback from WebSocket errors
+		rollbackOptimisticUpdate: (originalState) => {
+			set({
+				items: originalState.items,
+				subtotal: originalState.subtotal,
+				total: originalState.total,
+			});
+		},
+
+		// Stock override dialog methods
+		setStockOverrideDialog: (dialogState) => {
+			set({ stockOverrideDialog: dialogState });
+		},
+
+		forceAddItem: () => {
+			const dialog = get().stockOverrideDialog;
+			const { lastPayload, actionType, itemId, requestedQuantity } = dialog;
+
+			if (actionType === "quantity_update" && itemId && requestedQuantity) {
+				// Force quantity update
+				cartSocket.sendMessage({
+					type: "update_item_quantity",
+					payload: {
+						item_id: itemId,
+						quantity: requestedQuantity,
+						force_update: true,
+					},
+				});
+
+				get().showToast({
+					title: "Quantity Updated",
+					description:
+						"Item quantity was updated despite low stock - remember to update inventory later",
+					variant: "default",
+				});
+			} else if (lastPayload) {
+				// Force add item
+				cartSocket.sendMessage({
+					type: "add_item",
+					payload: { ...lastPayload, force_add: true },
+				});
+
+				get().showToast({
+					title: "Item Added",
+					description:
+						"Item was added despite low stock - remember to update inventory later",
+					variant: "default",
+				});
+			}
+
+			// Close the dialog
+			get().setStockOverrideDialog({
+				show: false,
+				productId: null,
+				message: "",
+				lastPayload: null,
+				actionType: null,
+				itemId: null,
+				currentQuantity: null,
+				requestedQuantity: null,
+			});
+		},
+
+		cancelStockOverride: () => {
+			const dialog = get().stockOverrideDialog;
+			const { lastPayload, actionType, itemId, currentQuantity } = dialog;
+
+			if (
+				actionType === "quantity_update" &&
+				itemId &&
+				currentQuantity !== null
+			) {
+				// Rollback quantity update - revert to original quantity
+				const items = get().items.map((item) =>
+					item.id === itemId ? { ...item, quantity: currentQuantity } : item
+				);
+				const { subtotal, total } = calculateLocalTotals(items);
+				set({ items, subtotal, total });
+			} else if (lastPayload) {
+				// Rollback add item - remove optimistic add
+				const productId = lastPayload.product_id;
+				const items = get().items.filter(
+					(item) =>
+						!(
+							item.id.toString().startsWith("temp-") &&
+							item.product.id === productId
+						)
+				);
+				const { subtotal, total } = calculateLocalTotals(items);
+				set({ items, subtotal, total });
+			}
+
+			// Close the dialog
+			get().setStockOverrideDialog({
+				show: false,
+				productId: null,
+				message: "",
+				lastPayload: null,
+				actionType: null,
+				itemId: null,
+				currentQuantity: null,
+				requestedQuantity: null,
+			});
 		},
 
 		setCartFromSocket: (orderData) => {

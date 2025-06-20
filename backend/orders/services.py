@@ -61,16 +61,55 @@ class OrderService:
         Adds a product as an item to an order. If an item with the same
         product and notes exists, it increments its quantity. Otherwise, it
         creates a new item. Also recalculates order totals.
+        Validates stock availability before adding items.
         """
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError(
                 "Cannot add items to an order that is not Pending or on Hold."
             )
 
-        order_item = OrderItem.objects.filter(
-            order=order, product=product, notes=notes
-        ).first()
+        # Check stock availability before adding item
+        from inventory.services import InventoryService
+        from settings.config import app_settings
+        
+        try:
+            default_location = app_settings.get_default_location()
+            
+            # Calculate total quantity needed (existing + new)
+            order_item = OrderItem.objects.filter(
+                order=order, product=product, notes=notes
+            ).first()
+            
+            total_quantity_needed = quantity
+            if order_item:
+                total_quantity_needed += order_item.quantity
+            
+            # Check if this is a menu item - different validation rules
+            if product.product_type.name.lower() == 'menu':
+                # Menu items: allow cook-to-order, just log ingredient status
+                if hasattr(product, 'recipe') and product.recipe:
+                    InventoryService.check_recipe_availability(
+                        product, default_location, total_quantity_needed
+                    )
+                # Always allow menu items regardless of stock
+            else:
+                # Regular products: strict stock validation
+                if not InventoryService.check_stock_availability(
+                    product, default_location, total_quantity_needed
+                ):
+                    current_stock = InventoryService.get_stock_level(product, default_location)
+                    raise ValueError(
+                        f"Insufficient stock for {product.name}. "
+                        f"Requested: {total_quantity_needed}, Available: {current_stock}"
+                    )
+        except ValueError as e:
+            # Re-raise ValueError (stock validation errors)
+            raise e
+        except Exception as e:
+            # Log other errors but don't block the sale
+            print(f"Stock check warning for {product.name}: {e}")
 
+        # Add the item to the order
         if order_item:
             order_item.quantity += quantity
             order_item.save(update_fields=["quantity"])

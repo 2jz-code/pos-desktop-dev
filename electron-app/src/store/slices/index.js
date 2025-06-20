@@ -5,3 +5,4 @@ export * from "./userSlice";
 export * from "./discountSlice";
 export * from "./paymentSlice";
 export * from "./settingsSlice";
+export * from "./inventorySlice";

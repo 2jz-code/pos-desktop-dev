@@ -118,6 +118,16 @@ export function DashboardPage() {
 			show: permissions.canAccessProducts(),
 		},
 		{
+			to: "/inventory",
+			title: "Inventory",
+			description:
+				"Manage stock levels, track inventory, and handle adjustments",
+			icon: Package,
+			gradient: "bg-gradient-to-br from-indigo-500 to-indigo-600",
+			show: permissions.canAccessProducts(),
+			roleRequired: true,
+		},
+		{
 			to: "/payments",
 			title: "Payments",
 			description: "Payment history, refunds, and financial records",

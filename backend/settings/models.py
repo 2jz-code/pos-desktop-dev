@@ -88,6 +88,16 @@ class GlobalSettings(models.Model):
         help_text="Business timezone (e.g., 'America/New_York').",
     )
 
+    # === INVENTORY SETTINGS ===
+    default_inventory_location = models.ForeignKey(
+        "inventory.Location",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Default location for inventory operations and sales.",
+        related_name="default_for_settings",
+    )
+
     def clean(self):
         """
         Ensures that a new instance cannot be created if one already exists.

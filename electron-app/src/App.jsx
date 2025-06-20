@@ -25,6 +25,7 @@ import PaymentsPage from "./pages/PaymentsPage";
 import PaymentDetailsPage from "./pages/PaymentDetailsPage";
 import { UsersPage } from "./pages/UsersPage";
 import ProductsPage from "./pages/ProductsPage";
+import InventoryPage from "./pages/InventoryPage";
 import DiscountsPage from "./pages/DiscountsPage";
 import SettingsPage from "./features/settings/pages/SettingsPage";
 import { RoleProtectedRoute } from "./components/RoleProtectedRoute";
@@ -166,6 +167,16 @@ function AppRoutes() {
 				<Route
 					path="products"
 					element={<ProductsPage />} // Accessible to all (cashiers need to view products)
+				/>
+				<Route
+					path="inventory"
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessProducts()}
+						>
+							<InventoryPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="discounts"

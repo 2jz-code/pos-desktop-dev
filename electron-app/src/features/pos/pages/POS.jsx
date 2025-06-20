@@ -7,6 +7,7 @@ import TenderDialog from "../components/dialogs/TenderDialog";
 import { shallow } from "zustand/shallow";
 import { useCustomerTipListener } from "@/store/useCustomerTipListener";
 import DiscountDialog from "../components/dialogs/DiscountDialog";
+import StockOverrideDialog from "@/components/dialogs/StockOverrideDialog";
 // This import might also be needed depending on your full file structure
 // import { OrderDiscountDialog } from "../components/dialogs/OrderDiscountDialog";
 
@@ -100,6 +101,7 @@ const POS = () => {
 			{/* with fresh state when they are supposed to be open. */}
 			{isTenderDialogOpen && <TenderDialog />}
 			{isDiscountDialogOpen && <DiscountDialog />}
+			<StockOverrideDialog />
 			{/* {isOrderDiscountDialogOpen && <OrderDiscountDialog />} */}
 		</div>
 	);

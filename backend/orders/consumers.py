@@ -78,21 +78,149 @@ class OrderConsumer(AsyncWebsocketConsumer):
     async def add_item(self, payload):
         product_id = payload.get("product_id")
         quantity = payload.get("quantity", 1)
-        order = await sync_to_async(Order.objects.get)(id=self.order_id)
-        product = await sync_to_async(Product.objects.get)(id=product_id)
-        await sync_to_async(OrderService.add_item_to_order)(
-            order=order, product=product, quantity=quantity
-        )
+        force_add = payload.get("force_add", False)
+        
+        if force_add:
+            # Force add: bypass all validation and add directly
+            try:
+                order = await sync_to_async(Order.objects.get)(id=self.order_id)
+                product = await sync_to_async(Product.objects.get)(id=product_id)
+                
+                logging.info(f"OrderConsumer: FORCE OVERRIDE - Adding {product.name} despite stock validation failure")
+                
+                # Add the item without stock validation
+                order_item = await sync_to_async(OrderItem.objects.filter(
+                    order=order, product=product, notes=payload.get("notes", "")
+                ).first)()
+                
+                if order_item:
+                    order_item.quantity += quantity
+                    await sync_to_async(order_item.save)()
+                else:
+                    await sync_to_async(OrderItem.objects.create)(
+                        order=order,
+                        product=product,
+                        quantity=quantity,
+                        price_at_sale=product.price,
+                        notes=payload.get("notes", "")
+                    )
+                
+                await sync_to_async(OrderService.recalculate_order_totals)(order)
+                logging.info(f"OrderConsumer: Successfully force-added {quantity} of {product.name}")
+                
+            except Exception as e:
+                logging.error(f"OrderConsumer: Error during force add {product_id}: {e}")
+                await self.send(text_data=json.dumps({
+                    "type": "error", 
+                    "message": "Failed to add item even with override",
+                    "error_type": "general"
+                }))
+                return
+        else:
+            # Normal add: use validation
+            try:
+                order = await sync_to_async(Order.objects.get)(id=self.order_id)
+                product = await sync_to_async(Product.objects.get)(id=product_id)
+                await sync_to_async(OrderService.add_item_to_order)(
+                    order=order, product=product, quantity=quantity
+                )
+                logging.info(f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}")
+            except ValueError as e:
+                # Stock validation or other business logic error
+                logging.warning(f"OrderConsumer: Failed to add item {product_id}: {e}")
+                
+                # Send error with option to override
+                await self.send(text_data=json.dumps({
+                    "type": "stock_error",
+                    "message": str(e),
+                    "error_type": "stock_validation",
+                    "product_id": product_id,
+                    "can_override": True
+                }))
+                return  # Don't send order state update if item addition failed
+            except Exception as e:
+                # Unexpected error
+                logging.error(f"OrderConsumer: Unexpected error adding item {product_id}: {e}")
+                await self.send(text_data=json.dumps({
+                    "type": "error", 
+                    "message": "An unexpected error occurred while adding the item",
+                    "error_type": "general"
+                }))
+                return
 
     async def update_item_quantity(self, payload):
         item_id = payload.get("item_id")
-        quantity = payload.get("quantity")
-        if quantity > 0:
-            item = await sync_to_async(OrderItem.objects.get)(id=item_id)
-            item.quantity = quantity
-            await sync_to_async(item.save)()
-            order_obj = await sync_to_async(lambda i: i.order)(item)
-            await sync_to_async(OrderService.recalculate_order_totals)(order_obj)
+        new_quantity = payload.get("quantity")
+        force_update = payload.get("force_update", False)
+        
+        if new_quantity > 0:
+            try:
+                item = await sync_to_async(OrderItem.objects.get)(id=item_id)
+                current_quantity = item.quantity
+                
+                # If increasing quantity, check stock for the additional amount
+                if new_quantity > current_quantity and not force_update:
+                    additional_quantity = new_quantity - current_quantity
+                    
+                    # Import here to avoid circular imports
+                    from inventory.services import InventoryService
+                    from settings.config import app_settings
+                    
+                    default_location = await sync_to_async(app_settings.get_default_location)()
+                    
+                    # Get the product with relations loaded
+                    product = await sync_to_async(lambda: item.product)()
+                    
+                    # Check if there's enough stock for the additional quantity
+                    stock_available = await sync_to_async(InventoryService.check_stock_availability)(
+                        product, default_location, additional_quantity
+                    )
+                    
+                    if not stock_available:
+                        # Check if this is a regular product (strict validation) or menu item
+                        # We need to access the product_type with proper async handling
+                        product_with_type = await sync_to_async(
+                            lambda: Product.objects.select_related('product_type').get(id=product.id)
+                        )()
+                        product_type_name = product_with_type.product_type.name.lower()
+                        
+                        if product_type_name != 'menu':
+                            # Regular product - strict validation, send error
+                            logging.warning(f"OrderConsumer: Insufficient stock to increase {product.name} quantity from {current_quantity} to {new_quantity}")
+                            
+                            await self.send(text_data=json.dumps({
+                                "type": "stock_error",
+                                "message": f"Not enough stock to increase {product.name} to {new_quantity} units",
+                                "error_type": "stock_validation",
+                                "item_id": item_id,
+                                "current_quantity": current_quantity,
+                                "requested_quantity": new_quantity,
+                                "can_override": True,
+                                "action_type": "quantity_update"
+                            }))
+                            return  # Don't update quantity if validation fails
+                
+                # Update the quantity (either decreasing, or increasing with validation passed/forced)
+                item.quantity = new_quantity
+                await sync_to_async(item.save)()
+                order_obj = await sync_to_async(lambda i: i.order)(item)
+                await sync_to_async(OrderService.recalculate_order_totals)(order_obj)
+                
+                if force_update:
+                    product_name = await sync_to_async(lambda: item.product.name)()
+                    logging.info(f"OrderConsumer: FORCE OVERRIDE - Updated {product_name} quantity to {new_quantity}")
+                else:
+                    product_name = await sync_to_async(lambda: item.product.name)()
+                    logging.info(f"OrderConsumer: Updated {product_name} quantity from {current_quantity} to {new_quantity}")
+                    
+            except Exception as e:
+                logging.error(f"OrderConsumer: Error updating item quantity {item_id}: {e}")
+                await self.send(text_data=json.dumps({
+                    "type": "error", 
+                    "message": "Failed to update item quantity",
+                    "error_type": "general"
+                }))
+                return
         else:
             await self.remove_item({"item_id": item_id})
 
