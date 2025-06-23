@@ -7,6 +7,7 @@ import {
 } from "../api/services/productService";
 import { getCategories } from "../api/services/categoryService";
 import { getProductTypes } from "@/api/services/productTypeService";
+import inventoryService from "@/api/services/inventoryService";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
 	Select,
 	SelectContent,
@@ -71,6 +73,7 @@ export default function ProductsPage() {
 	const [filteredProducts, setFilteredProducts] = useState([]);
 	const [categories, setCategories] = useState([]);
 	const [productTypes, setProductTypes] = useState([]);
+	const [locations, setLocations] = useState([]);
 	const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
 	const [isCategoryManagementDialogOpen, setIsCategoryManagementDialogOpen] =
 		useState(false);
@@ -85,6 +88,9 @@ export default function ProductsPage() {
 		description: "",
 		category: null,
 		product_type_id: null,
+		track_inventory: false,
+		initial_stock: 0,
+		location_id: null,
 	});
 	const [selectedCategory, setSelectedCategory] = useState("all");
 	const [searchTerm, setSearchTerm] = useState("");
@@ -96,6 +102,7 @@ export default function ProductsPage() {
 	useEffect(() => {
 		fetchCategories();
 		fetchProductTypes();
+		fetchLocations();
 	}, []);
 
 	useEffect(() => {
@@ -112,9 +119,10 @@ export default function ProductsPage() {
 				params.search = debouncedSearchTerm;
 			}
 			const response = await getProducts(params);
-			setFilteredProducts(response.data);
+			setFilteredProducts(response.data || []);
 		} catch (error) {
 			console.error("Failed to fetch products:", error);
+			setFilteredProducts([]); // Ensure filteredProducts is always an array
 			toast({
 				title: "Error",
 				description: "Failed to fetch products.",
@@ -126,9 +134,10 @@ export default function ProductsPage() {
 	const fetchCategories = async () => {
 		try {
 			const response = await getCategories();
-			setCategories(response.data);
+			setCategories(response.data || []);
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
+			setCategories([]); // Ensure categories is always an array
 			toast({
 				title: "Error",
 				description: "Failed to fetch categories.",
@@ -140,12 +149,28 @@ export default function ProductsPage() {
 	const fetchProductTypes = async () => {
 		try {
 			const response = await getProductTypes();
-			setProductTypes(response.data);
+			setProductTypes(response.data || []);
 		} catch (error) {
 			console.error("Failed to fetch product types:", error);
+			setProductTypes([]); // Ensure productTypes is always an array
 			toast({
 				title: "Error",
 				description: "Failed to fetch product types.",
+				variant: "destructive",
+			});
+		}
+	};
+
+	const fetchLocations = async () => {
+		try {
+			const data = await inventoryService.getLocations();
+			setLocations(data || []);
+		} catch (error) {
+			console.error("Failed to fetch locations:", error);
+			setLocations([]); // Ensure locations is always an array
+			toast({
+				title: "Error",
+				description: "Failed to fetch locations.",
 				variant: "destructive",
 			});
 		}
@@ -164,6 +189,14 @@ export default function ProductsPage() {
 		setProductFormData((prev) => ({ ...prev, product_type_id: value }));
 	};
 
+	const handleTrackInventoryChange = (checked) => {
+		setProductFormData((prev) => ({ ...prev, track_inventory: checked }));
+	};
+
+	const handleLocationChange = (value) => {
+		setProductFormData((prev) => ({ ...prev, location_id: value }));
+	};
+
 	const handleFilterCategoryChange = (value) => {
 		setSelectedCategory(value);
 	};
@@ -180,6 +213,9 @@ export default function ProductsPage() {
 						product_type_id: product.product_type
 							? product.product_type.id
 							: null,
+						track_inventory: product.track_inventory || false,
+						initial_stock: 0, // Not applicable for editing existing products
+						location_id: null, // Not applicable for editing existing products
 				  }
 				: {
 						name: "",
@@ -187,6 +223,9 @@ export default function ProductsPage() {
 						description: "",
 						category: null,
 						product_type_id: null,
+						track_inventory: false,
+						initial_stock: 0,
+						location_id: null,
 				  }
 		);
 		setIsProductDialogOpen(true);
@@ -258,7 +297,7 @@ export default function ProductsPage() {
 	};
 
 	const renderCategoryOptions = (parentId = null, level = 0) => {
-		return categories
+		return (categories || [])
 			.filter((c) => (c.parent || null) === parentId)
 			.flatMap((c) => [
 				<SelectItem
@@ -344,7 +383,7 @@ export default function ProductsPage() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{filteredProducts.map((product) => (
+							{(filteredProducts || []).map((product) => (
 								<TableRow key={product.id}>
 									<TableCell>{product.name}</TableCell>
 									<TableCell>{product.category?.name}</TableCell>
@@ -498,7 +537,7 @@ export default function ProductsPage() {
 										<SelectValue placeholder="Select a product type" />
 									</SelectTrigger>
 									<SelectContent>
-										{productTypes.map((type) => (
+										{(productTypes || []).map((type) => (
 											<SelectItem
 												key={type.id}
 												value={String(type.id)}
@@ -509,6 +548,82 @@ export default function ProductsPage() {
 									</SelectContent>
 								</Select>
 							</div>
+							<div className="grid grid-cols-4 items-center gap-4">
+								<Label
+									htmlFor="track_inventory"
+									className="text-right"
+								>
+									Track Inventory
+								</Label>
+								<div className="col-span-3 flex items-center space-x-2">
+									<Switch
+										id="track_inventory"
+										checked={productFormData.track_inventory}
+										onCheckedChange={handleTrackInventoryChange}
+									/>
+									<Label
+										htmlFor="track_inventory"
+										className="text-sm text-muted-foreground"
+									>
+										{productFormData.track_inventory ? "Enabled" : "Disabled"}
+									</Label>
+								</div>
+							</div>
+
+							{/* Inventory Configuration Fields - Only show when track_inventory is enabled and not editing */}
+							{productFormData.track_inventory && !editingProduct && (
+								<>
+									<div className="grid grid-cols-4 items-center gap-4">
+										<Label
+											htmlFor="initial_stock"
+											className="text-right"
+										>
+											Initial Stock
+										</Label>
+										<Input
+											id="initial_stock"
+											name="initial_stock"
+											type="number"
+											min="0"
+											step="0.01"
+											value={productFormData.initial_stock}
+											onChange={handleProductFormChange}
+											className="col-span-3"
+											placeholder="Enter initial stock quantity"
+										/>
+									</div>
+									<div className="grid grid-cols-4 items-center gap-4">
+										<Label
+											htmlFor="location"
+											className="text-right"
+										>
+											Location
+										</Label>
+										<Select
+											value={
+												productFormData.location_id
+													? String(productFormData.location_id)
+													: ""
+											}
+											onValueChange={handleLocationChange}
+										>
+											<SelectTrigger className="col-span-3">
+												<SelectValue placeholder="Select a location (optional)" />
+											</SelectTrigger>
+											<SelectContent>
+												{(locations || []).map((location) => (
+													<SelectItem
+														key={location.id}
+														value={String(location.id)}
+													>
+														{location.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+								</>
+							)}
 						</div>
 						<DialogFooter>
 							<Button

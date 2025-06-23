@@ -43,7 +43,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
-		parent: null,
+		parent_id: null,
 	});
 	const { toast } = useToast();
 
@@ -72,7 +72,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 	const handleParentChange = (value) => {
 		const parentId = value === "null" ? null : parseInt(value, 10);
-		setFormData((prev) => ({ ...prev, parent: parentId }));
+		setFormData((prev) => ({ ...prev, parent_id: parentId }));
 	};
 
 	const openFormDialog = (category = null) => {
@@ -82,9 +82,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				? {
 						name: category.name,
 						description: category.description,
-						parent: category.parent?.id || null,
+						parent_id: category.parent?.id || null,
 				  }
-				: { name: "", description: "", parent: null }
+				: { name: "", description: "", parent_id: null }
 		);
 		setIsFormDialogOpen(true);
 	};
@@ -275,7 +275,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 									Parent Category
 								</Label>
 								<Select
-									value={formData.parent ? String(formData.parent) : "null"}
+									value={
+										formData.parent_id ? String(formData.parent_id) : "null"
+									}
 									onValueChange={handleParentChange}
 								>
 									<SelectTrigger className="col-span-3">

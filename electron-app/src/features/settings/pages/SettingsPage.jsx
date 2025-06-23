@@ -19,7 +19,7 @@ import { useRolePermissions } from "@/hooks/useRolePermissions";
 import { RoleBasedAccessSummary } from "@/components/RoleBasedAccessSummary";
 
 // Terminal Settings Components (user-editable)
-import TerminalSyncSettings from "../components/TerminalSyncSettings";
+// import TerminalSyncSettings from "../components/TerminalSyncSettings"; // Commented out for offline mode reimplementation later
 import TerminalDisplaySettings from "../components/TerminalDisplaySettings";
 import TerminalBehaviorSettings from "../components/TerminalBehaviorSettings";
 
@@ -33,7 +33,7 @@ import BusinessHoursSettings from "../components/BusinessHoursSettings";
 import PrinterSettings from "../components/PrinterSettings";
 import GlobalSettings from "../components/GlobalSettings";
 import TerminalSettings from "../components/TerminalSettings";
-import SyncManager from "@/components/SyncManager";
+// import SyncManager from "@/components/SyncManager"; // Commented out for offline mode reimplementation later
 
 const SettingsPage = () => {
 	const permissions = useRolePermissions();
@@ -204,10 +204,12 @@ const SettingsPage = () => {
 									</Alert>
 
 									<div className="space-y-6">
-										{/* Sync Settings - only show to managers/owners */}
+										{/* Sync Settings - temporarily disabled for offline mode reimplementation */}
+										{/* 
 										{permissions.canEditSyncSettings() && (
 											<TerminalSyncSettings />
 										)}
+										*/}
 
 										{/* Display Settings - accessible to all users */}
 										<TerminalDisplaySettings />
@@ -309,9 +311,11 @@ const SettingsPage = () => {
 										Advanced Settings
 									</h2>
 									<p className="text-muted-foreground mb-6">
-										API key management, manual sync operations, debugging tools,
-										and advanced system diagnostics.
+										API key management, debugging tools, and advanced system
+										diagnostics.
 									</p>
+									{/* Sync Manager temporarily disabled for offline mode reimplementation later */}
+									{/* 
 									<Card>
 										<CardHeader>
 											<CardTitle className="flex items-center gap-2">
@@ -323,6 +327,15 @@ const SettingsPage = () => {
 											<SyncManager />
 										</CardContent>
 									</Card>
+									*/}
+									<Alert>
+										<Settings className="h-4 w-4" />
+										<AlertDescription>
+											<strong>Coming Soon:</strong> Advanced sync and offline
+											features will be added in a future update. The POS system
+											currently operates in online-only mode.
+										</AlertDescription>
+									</Alert>
 								</div>
 							</TabsContent>
 						)}

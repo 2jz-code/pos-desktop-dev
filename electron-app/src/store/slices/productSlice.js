@@ -1,4 +1,6 @@
 // desktop-combined/electron-app/src/store/slices/productSlice.js
+import { getProducts } from "@/api/services/productService";
+import { getCategories } from "@/api/services/categoryService";
 
 export const createProductSlice = (set, get) => ({
 	products: [],
@@ -8,13 +10,12 @@ export const createProductSlice = (set, get) => ({
 	childCategories: [],
 	selectedParentCategory: "all",
 	selectedChildCategory: "all",
-	isUsingFallback: false, // Track if we're using API fallback
 
 	fetchProducts: async () => {
 		try {
-			console.log("🔄 [ProductSlice] Fetching products from local database...");
-			// Use local database instead of API
-			const products = await window.dbApi.getProducts();
+			console.log("🔄 [ProductSlice] Fetching products from API...");
+			const response = await getProducts();
+			const products = response.data;
 			console.log("✅ [ProductSlice] Products fetched successfully:", {
 				count: products?.length || 0,
 				firstProduct: products?.[0],
@@ -38,71 +39,29 @@ export const createProductSlice = (set, get) => ({
 			set({
 				products: products,
 				filteredProducts: products,
-				isUsingFallback: false,
 			});
 		} catch (error) {
 			console.error(
-				"❌ [ProductSlice] Failed to fetch products from local database:",
-				error
+				"❌ [ProductSlice] Failed to fetch products from API:",
+				error.response?.data?.detail || error.message
 			);
-
-			// FALLBACK: Try to fetch from API directly
-			try {
-				console.log("🔄 [ProductSlice] Attempting API fallback...");
-				const response = await fetch("http://127.0.0.1:8001/api/products/");
-				if (response.ok) {
-					const apiProducts = await response.json();
-					console.log(
-						"✅ [ProductSlice] API fallback successful:",
-						apiProducts.length
-					);
-					set({
-						products: apiProducts,
-						filteredProducts: apiProducts,
-						isUsingFallback: true,
-					});
-					return;
-				}
-			} catch (apiError) {
-				console.error("❌ [ProductSlice] API fallback also failed:", apiError);
-			}
-
-			// If both local and API fail, set empty state
-			set({ products: [], filteredProducts: [], isUsingFallback: false });
+			// Set empty state on failure
+			set({ products: [], filteredProducts: [] });
 		}
 	},
 
 	fetchParentCategories: async () => {
 		try {
-			// Use local database to get all categories and filter for parents
-			const allCategories = await window.dbApi.getCategories();
+			console.log("🔄 [ProductSlice] Fetching parent categories from API...");
+			const response = await getCategories();
+			const allCategories = response.data;
 			const categories = allCategories.filter((cat) => cat.parent_id === null);
 			set({ parentCategories: categories });
 		} catch (error) {
 			console.error(
-				"Failed to fetch parent categories from local database:",
-				error
+				"❌ [ProductSlice] Failed to fetch parent categories from API:",
+				error.response?.data?.detail || error.message
 			);
-
-			// FALLBACK: Try to fetch from API
-			try {
-				console.log("🔄 [ProductSlice] Attempting categories API fallback...");
-				const response = await fetch("http://127.0.0.1:8001/api/categories/");
-				if (response.ok) {
-					const apiCategories = await response.json();
-					const parentCategories = apiCategories.filter(
-						(cat) => cat.parent_id === null
-					);
-					set({ parentCategories });
-					return;
-				}
-			} catch (apiError) {
-				console.error(
-					"❌ [ProductSlice] Categories API fallback failed:",
-					apiError
-				);
-			}
-
 			set({ parentCategories: [] });
 		}
 	},
@@ -114,8 +73,11 @@ export const createProductSlice = (set, get) => ({
 			return;
 		}
 		try {
-			// Use local database to get all categories and filter for children
-			const allCategories = await window.dbApi.getCategories();
+			console.log(
+				`🔄 [ProductSlice] Fetching child categories for parent ${parentId} from API...`
+			);
+			const response = await getCategories();
+			const allCategories = response.data;
 			const categories = allCategories.filter(
 				(cat) => cat.parent_id === parseInt(parentId)
 			);
@@ -126,9 +88,10 @@ export const createProductSlice = (set, get) => ({
 			});
 		} catch (error) {
 			console.error(
-				`Failed to fetch child categories for parent ${parentId} from local database:`,
-				error
+				`❌ [ProductSlice] Failed to fetch child categories for parent ${parentId} from API:`,
+				error.response?.data?.detail || error.message
 			);
+			set({ childCategories: [], selectedChildCategory: "all" });
 		}
 	},
 
@@ -147,15 +110,6 @@ export const createProductSlice = (set, get) => ({
 			categoryId: get().selectedParentCategory,
 			subcategoryId: subcategoryId,
 		});
-	},
-
-	// New methods for setting data from local database
-	setProducts: (products) => {
-		set({ products, filteredProducts: products });
-	},
-
-	setParentCategories: (categories) => {
-		set({ parentCategories: categories });
 	},
 
 	applyFilter: ({ categoryId, subcategoryId, searchTerm }) => {

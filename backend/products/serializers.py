@@ -27,7 +27,10 @@ class ProductTypeSerializer(serializers.ModelSerializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     parent_id = serializers.PrimaryKeyRelatedField(
-        source="parent", queryset=Category.objects.all(), allow_null=True
+        source="parent",
+        queryset=Category.objects.all(),
+        allow_null=True,
+        required=False,
     )
 
     class Meta:
@@ -58,6 +61,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "subcategory",
             "taxes",
             "is_active",
+            "track_inventory",
             "product_type",
             "created_at",
             "updated_at",
@@ -81,6 +85,7 @@ class ProductSyncSerializer(serializers.ModelSerializer):
             "category_id",
             "product_type_id",
             "is_active",
+            "track_inventory",
             "created_at",
             "updated_at",
         ]
@@ -93,6 +98,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
     )
     product_type_id = serializers.IntegerField(write_only=True)
 
+    # Inventory fields
+    initial_stock = serializers.DecimalField(
+        max_digits=10, decimal_places=2, write_only=True, required=False, default=0
+    )
+    location_id = serializers.IntegerField(write_only=True, required=False)
+
     class Meta:
         model = Product
         fields = [
@@ -100,9 +111,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "description",
             "price",
             "is_active",
+            "track_inventory",
             "product_type_id",
             "category_id",
             "tax_ids",
+            "initial_stock",
+            "location_id",
         ]
 
     def create(self, validated_data):

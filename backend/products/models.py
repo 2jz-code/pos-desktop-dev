@@ -97,6 +97,12 @@ class Product(models.Model):
     is_active = models.BooleanField(
         default=True, help_text=_("Is this product available for sale?")
     )
+    track_inventory = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Whether to track inventory levels for this product. When enabled, inventory records will be created and stock will be monitored."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # The ForeignKey to Recipe will be added later when we create the Inventory app.

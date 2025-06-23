@@ -1,0 +1,1170 @@
+{
+    "token_blacklist": {
+        "OutstandingToken": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "user": {
+                    "type": "ForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "users.User"
+                },
+                "jti": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "token": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "expires_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                }
+            },
+            "db_table": "token_blacklist_outstandingtoken",
+            "pk_field": "id"
+        },
+        "BlacklistedToken": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "token": {
+                    "type": "OneToOneField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "related_model": "token_blacklist.OutstandingToken"
+                },
+                "blacklisted_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "token_blacklist_blacklistedtoken",
+            "pk_field": "id"
+        }
+    },
+    "products": {
+        "Category": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "description": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "parent": {
+                    "type": "TreeForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "products.Category"
+                },
+                "lft": {
+                    "type": "PositiveIntegerField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "rght": {
+                    "type": "PositiveIntegerField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "tree_id": {
+                    "type": "PositiveIntegerField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "level": {
+                    "type": "PositiveIntegerField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                }
+            },
+            "db_table": "products_category",
+            "pk_field": "id"
+        },
+        "Tax": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "rate": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                }
+            },
+            "db_table": "products_tax",
+            "pk_field": "id"
+        },
+        "ProductType": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "description": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "products_producttype",
+            "pk_field": "id"
+        },
+        "Product": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "product_type": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "products.ProductType"
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "description": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "price": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "category": {
+                    "type": "ForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "products.Category"
+                },
+                "is_active": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "True"
+                },
+                "track_inventory": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "False"
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "updated_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "taxes": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "products.Tax",
+                    "through": "Product_taxes"
+                }
+            },
+            "db_table": "products_product",
+            "pk_field": "id"
+        }
+    },
+    "inventory": {
+        "Location": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "description": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "inventory_location",
+            "pk_field": "id"
+        },
+        "InventoryStock": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "product": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "products.Product"
+                },
+                "location": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "inventory.Location"
+                },
+                "quantity": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                }
+            },
+            "db_table": "inventory_inventorystock",
+            "pk_field": "id"
+        },
+        "Recipe": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "menu_item": {
+                    "type": "OneToOneField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "related_model": "products.Product"
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "ingredients": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "products.Product",
+                    "through": "RecipeItem"
+                }
+            },
+            "db_table": "inventory_recipe",
+            "pk_field": "id"
+        },
+        "RecipeItem": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "recipe": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "inventory.Recipe"
+                },
+                "product": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "products.Product"
+                },
+                "quantity": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "unit": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                }
+            },
+            "db_table": "inventory_recipeitem",
+            "pk_field": "id"
+        }
+    },
+    "orders": {
+        "OrderDiscount": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "order": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "orders.Order"
+                },
+                "discount": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "discounts.Discount"
+                },
+                "amount": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "orders_orderdiscount",
+            "pk_field": "id"
+        },
+        "Order": {
+            "fields": {
+                "id": {
+                    "type": "UUIDField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "default": "<function uuid4 at 0x0000024238EFED40>"
+                },
+                "status": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "PENDING",
+                    "choices": {
+                        "PENDING": "Pending",
+                        "HOLD": "Hold",
+                        "COMPLETED": "Completed",
+                        "CANCELLED": "Cancelled",
+                        "VOID": "Void"
+                    }
+                },
+                "order_number": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": true
+                },
+                "order_type": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "POS",
+                    "choices": {
+                        "POS": "Point of Sale",
+                        "WEB": "Website",
+                        "APP": "Customer App",
+                        "DELIVERY": "Delivery Platform"
+                    }
+                },
+                "payment_status": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "UNPAID",
+                    "choices": {
+                        "UNPAID": "Unpaid",
+                        "PARTIALLY_PAID": "Partially Paid",
+                        "PAID": "Paid",
+                        "REFUNDED": "Refunded",
+                        "PARTIALLY_REFUNDED": "Partially Refunded"
+                    }
+                },
+                "customer": {
+                    "type": "ForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "users.User"
+                },
+                "cashier": {
+                    "type": "ForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "users.User"
+                },
+                "subtotal": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "total_discounts_amount": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "surcharges_total": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "tax_total": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "grand_total": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "updated_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "discounts": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "discounts.Discount",
+                    "through": "OrderDiscount"
+                }
+            },
+            "db_table": "orders_order",
+            "pk_field": "id"
+        },
+        "OrderItem": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "order": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "orders.Order"
+                },
+                "product": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "products.Product"
+                },
+                "quantity": {
+                    "type": "PositiveIntegerField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "1"
+                },
+                "status": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "PENDING",
+                    "choices": {
+                        "PENDING": "Pending",
+                        "SENT": "Sent to Kitchen",
+                        "PREPARING": "Preparing",
+                        "READY": "Ready for Pickup",
+                        "SERVED": "Served"
+                    }
+                },
+                "notes": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "price_at_sale": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                }
+            },
+            "db_table": "orders_orderitem",
+            "pk_field": "id"
+        }
+    },
+    "payments": {
+        "Payment": {
+            "fields": {
+                "id": {
+                    "type": "UUIDField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "default": "<function uuid4 at 0x0000024238EFED40>"
+                },
+                "order": {
+                    "type": "OneToOneField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "related_model": "orders.Order"
+                },
+                "payment_number": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": true
+                },
+                "status": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "PENDING",
+                    "choices": {
+                        "UNPAID": "Unpaid",
+                        "PARTIALLY_PAID": "Partially Paid",
+                        "PAID": "Paid",
+                        "REFUNDED": "Refunded",
+                        "PARTIALLY_REFUNDED": "Partially Refunded",
+                        "PENDING": "Pending"
+                    }
+                },
+                "total_amount_due": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "amount_paid": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.0"
+                },
+                "tip": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.00"
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "updated_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "payments_payment",
+            "pk_field": "id"
+        },
+        "PaymentTransaction": {
+            "fields": {
+                "id": {
+                    "type": "UUIDField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true,
+                    "default": "<function uuid4 at 0x0000024238EFED40>"
+                },
+                "payment": {
+                    "type": "ForeignKey",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "related_model": "payments.Payment"
+                },
+                "amount": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "method": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "choices": {
+                        "CASH": "Cash",
+                        "CARD_TERMINAL": "Card Terminal",
+                        "CARD_ONLINE": "Card Online",
+                        "GIFT_CARD": "Gift Card"
+                    }
+                },
+                "status": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "PENDING",
+                    "choices": {
+                        "PENDING": "Pending",
+                        "SUCCESSFUL": "Successful",
+                        "FAILED": "Failed",
+                        "REFUNDED": "Refunded",
+                        "CANCELED": "Canceled"
+                    }
+                },
+                "transaction_id": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "provider_response": {
+                    "type": "JSONField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "card_brand": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "card_last4": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "refunded_amount": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.00"
+                },
+                "refund_reason": {
+                    "type": "TextField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "created_at": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "payments_paymenttransaction",
+            "pk_field": "id"
+        }
+    },
+    "discounts": {
+        "Discount": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "type": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "choices": {
+                        "PERCENTAGE": "Percentage",
+                        "FIXED_AMOUNT": "Fixed Amount",
+                        "BUY_X_GET_Y": "Buy X Get Y"
+                    }
+                },
+                "scope": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "ORDER",
+                    "choices": {
+                        "ORDER": "Entire Order",
+                        "PRODUCT": "Specific Products",
+                        "CATEGORY": "Specific Categories"
+                    }
+                },
+                "value": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "min_purchase_amount": {
+                    "type": "DecimalField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "buy_quantity": {
+                    "type": "PositiveIntegerField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "get_quantity": {
+                    "type": "PositiveIntegerField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "is_active": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "True"
+                },
+                "start_date": {
+                    "type": "DateTimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "end_date": {
+                    "type": "DateTimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "applicable_products": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "products.Product",
+                    "through": "Discount_applicable_products"
+                },
+                "applicable_categories": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "products.Category",
+                    "through": "Discount_applicable_categories"
+                }
+            },
+            "db_table": "discounts_discount",
+            "pk_field": "id"
+        }
+    },
+    "users": {
+        "User": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "password": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "last_login": {
+                    "type": "DateTimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "is_superuser": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "False"
+                },
+                "email": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "username": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": true
+                },
+                "first_name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "last_name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "role": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "CUSTOMER",
+                    "choices": {
+                        "OWNER": "Owner",
+                        "ADMIN": "Admin",
+                        "MANAGER": "Manager",
+                        "CASHIER": "Cashier",
+                        "CUSTOMER": "Customer"
+                    }
+                },
+                "pin": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "is_staff": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "False"
+                },
+                "is_active": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "True"
+                },
+                "date_joined": {
+                    "type": "DateTimeField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "<function now at 0x0000024238D53C40>"
+                },
+                "api_key": {
+                    "type": "CharField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": true
+                },
+                "groups": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "auth.Group",
+                    "through": "User_groups"
+                },
+                "user_permissions": {
+                    "type": "ManyToManyField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "auth.Permission",
+                    "through": "User_user_permissions"
+                }
+            },
+            "db_table": "users_user",
+            "pk_field": "id"
+        }
+    },
+    "settings": {
+        "GlobalSettings": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "tax_rate": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.08"
+                },
+                "surcharge_percentage": {
+                    "type": "DecimalField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "0.00"
+                },
+                "currency": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "USD"
+                },
+                "store_name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": ""
+                },
+                "store_address": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "store_phone": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "store_email": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "receipt_header": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                },
+                "receipt_footer": {
+                    "type": "TextField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "Thank you for your business!"
+                },
+                "active_terminal_provider": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "STRIPE_TERMINAL",
+                    "choices": {
+                        "STRIPE_TERMINAL": "Stripe Terminal",
+                        "CLOVER_TERMINAL": "Clover Terminal"
+                    }
+                },
+                "opening_time": {
+                    "type": "TimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "closing_time": {
+                    "type": "TimeField",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false
+                },
+                "timezone": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "UTC"
+                },
+                "default_inventory_location": {
+                    "type": "ForeignKey",
+                    "nullable": true,
+                    "blank": true,
+                    "unique": false,
+                    "related_model": "inventory.Location"
+                }
+            },
+            "db_table": "settings_globalsettings",
+            "pk_field": "id"
+        },
+        "POSDevice": {
+            "fields": {
+                "device_id": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "reader_id": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "nickname": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": false
+                }
+            },
+            "db_table": "settings_posdevice",
+            "pk_field": "device_id"
+        },
+        "TerminalLocation": {
+            "fields": {
+                "id": {
+                    "type": "BigAutoField",
+                    "nullable": false,
+                    "blank": true,
+                    "unique": true
+                },
+                "name": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false
+                },
+                "stripe_id": {
+                    "type": "CharField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": true
+                },
+                "is_default": {
+                    "type": "BooleanField",
+                    "nullable": false,
+                    "blank": false,
+                    "unique": false,
+                    "default": "False"
+                }
+            },
+            "db_table": "settings_terminallocation",
+            "pk_field": "id"
+        }
+    }
+}

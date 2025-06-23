@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { usePosStore } from "@/store/posStore";
 import Cart from "../components/Cart";
 import ProductGrid from "../components/ProductGrid";
-import useTerminalStore from "@/store/terminalStore";
+// import useTerminalStore from "@/store/terminalStore"; // Commented out - not currently used
 import TenderDialog from "../components/dialogs/TenderDialog";
 import { shallow } from "zustand/shallow";
 import { useCustomerTipListener } from "@/store/useCustomerTipListener";
