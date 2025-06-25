@@ -27,11 +27,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 // NOTE: The following imports are assumed to exist based on the old project structure.
 // You will need to create and expose the AuthContext.
 import { useAuth } from "@/contexts/AuthContext";
-// This API helper should be configured to handle authenticated requests.
-import { cartAPI } from "@/api/orders";
 // The logo asset needs to be placed in the specified path.
 import LogoImg from "@/assets/logo.png";
 import { useCartSidebar } from "@/contexts/CartSidebarContext";
+import { useCart } from "@/contexts/CartContext";
 
 const ProfileDropdown = () => {
 	const { user, logout } = useAuth();
@@ -104,13 +103,13 @@ const ProfileDropdown = () => {
 const Navbar = () => {
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [scrolled, setScrolled] = useState(false);
-	const [cartItemCount, setCartItemCount] = useState(0);
 	const { isAuthenticated, logout } = useAuth();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const isHomePage = location.pathname === "/";
 	const isMenuPage = location.pathname === "/menu";
 	const { openCart } = useCartSidebar();
+	const { cartItemCount } = useCart();
 
 	const handleScroll = useCallback(() => {
 		// Use a small threshold to prevent style flickering on some browsers
@@ -131,29 +130,6 @@ const Navbar = () => {
 			}
 		};
 	}, [isHomePage, isMenuPage, handleScroll]);
-
-	const fetchCartCount = useCallback(async () => {
-		if (isAuthenticated) {
-			try {
-				const count = await cartAPI.getCartItemCount();
-				setCartItemCount(count);
-			} catch (error) {
-				console.error("Failed to fetch cart count:", error);
-				setCartItemCount(0);
-			}
-		} else {
-			setCartItemCount(0);
-		}
-	}, [isAuthenticated]);
-
-	useEffect(() => {
-		fetchCartCount();
-		// Custom event to listen for cart updates from other parts of the app
-		window.addEventListener("cartUpdated", fetchCartCount);
-		return () => {
-			window.removeEventListener("cartUpdated", fetchCartCount);
-		};
-	}, [fetchCartCount]);
 
 	const handleCartClick = (e) => {
 		e.preventDefault();

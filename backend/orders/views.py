@@ -16,6 +16,7 @@ from .permissions import IsAuthenticatedOrGuestOrder, IsGuestOrAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.request import Request
 from django_filters.rest_framework import DjangoFilterBackend
+from products.models import Product
 
 # --- NEW IMPORTS NEEDED FOR THE MOVED ACTION ---
 import stripe
@@ -292,45 +293,68 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     queryset = OrderItem.objects.all()
     serializer_class = OrderItemSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrGuestOrder]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_serializer_class(self):
         if self.action == "create":
             return AddItemSerializer
-        return self.serializer_class
+        if self.action == "partial_update":
+            return UpdateOrderItemSerializer
+        return OrderItemSerializer
 
     def get_queryset(self):
-        order_pk = self.kwargs.get("order_pk")
-        if order_pk:
-            return self.queryset.filter(order__id=order_pk)
-        return self.queryset.none()
+        """
+        Filter items based on the order_pk provided in the URL.
+        """
+        return self.queryset.filter(order__pk=self.kwargs["order_pk"])
 
     def get_object(self):
-        order_pk = self.kwargs.get("order_pk")
-        item_pk = self.kwargs.get("pk")
-        obj = get_object_or_404(OrderItem, pk=item_pk, order_id=order_pk)
-        self.check_object_permissions(self.request, obj)
+        """
+        Overridden to fetch the object based on order_pk and item pk.
+        """
+        queryset = self.get_queryset()
+        obj = get_object_or_404(queryset, pk=self.kwargs["pk"])
+        self.check_object_permissions(self.request, obj.order)
         return obj
 
     def perform_update(self, serializer):
+        """Saves the item and recalculates order totals."""
         item = serializer.save()
         OrderService.recalculate_order_totals(item.order)
 
     def perform_destroy(self, instance):
+        """Deletes the item and recalculates order totals."""
         order = instance.order
         instance.delete()
         OrderService.recalculate_order_totals(order)
 
     def create(self, request, *args, **kwargs):
-        order = get_object_or_404(Order, pk=kwargs.get("order_pk"))
+        """
+        Adds an item to an order. If the item already exists, it updates the quantity.
+        Returns the entire updated order object upon success.
+        """
+        order_pk = self.kwargs["order_pk"]
+        order = get_object_or_404(Order, pk=order_pk)
+        self.check_object_permissions(request, order)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        order_item = serializer.save(order=order)
-        response_serializer = OrderItemSerializer(
-            order_item, context={"request": request}
+
+        product_id = serializer.validated_data["product_id"]
+        product = get_object_or_404(Product, pk=product_id)
+
+        # Use the service to add or update the item
+        OrderService.add_item_to_order(
+            order=order,
+            product=product,
+            quantity=serializer.validated_data.get("quantity", 1),
+            notes=serializer.validated_data.get("notes", ""),
         )
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        # Serialize the parent order and return it
+        order_serializer = OrderSerializer(order, context={"request": request})
+        return Response(order_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["delete"], url_path="clear")
     def clear_all_items(self, request, order_pk=None):

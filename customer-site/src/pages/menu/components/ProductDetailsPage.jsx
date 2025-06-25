@@ -97,9 +97,15 @@ const ProductDetailsPage = () => {
 		if (!product) return;
 		setAddingToCart(true);
 		try {
-			await addToCart(product, quantity);
-			toast.success(`${quantity} ${product.name}(s) added to your cart!`);
-			setQuantity(1);
+			const result = await addToCart(product, quantity);
+			if (result && result.success) {
+				toast.success(`${quantity} ${product.name}(s) added to your cart!`);
+				setQuantity(1);
+			} else {
+				toast.error(
+					result?.error || "Failed to add item to cart. Please try again."
+				);
+			}
 		} catch (err) {
 			console.error("Failed to add to cart:", err);
 			toast.error("Failed to add item to cart. Please try again.");

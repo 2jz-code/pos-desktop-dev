@@ -5,6 +5,7 @@ import React, {
 	useEffect,
 	useCallback,
 } from "react";
+import { toast } from "sonner";
 import { cartAPI, ordersAPI } from "@/api/orders";
 
 // Cart action types
@@ -78,69 +79,148 @@ export const CartProvider = ({ children }) => {
 		}
 	}, []);
 
-	// Add item to cart
+	// Add item to cart with optimistic update
 	const addToCart = useCallback(
-		async (productId, quantity = 1, notes = "") => {
+		async (product, quantity = 1, notes = "") => {
+			const originalCart = state.cart;
+			dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
+
+			// --- Optimistic UI Update ---
+			const optimisticCart = JSON.parse(
+				JSON.stringify(originalCart || { items: [], subtotal: 0 })
+			);
+
+			const existingItemIndex = optimisticCart.items.findIndex(
+				(item) => item.product.id === product.id && item.notes === notes
+			);
+
+			if (existingItemIndex > -1) {
+				optimisticCart.items[existingItemIndex].quantity += quantity;
+			} else {
+				// Create a temporary item for the optimistic update
+				const tempItem = {
+					id: `temp-${Date.now()}`, // Temporary ID
+					product: product,
+					quantity: quantity,
+					notes: notes,
+					price_at_sale: product.price,
+					total_price: (product.price * quantity).toFixed(2),
+				};
+				optimisticCart.items.push(tempItem);
+			}
+
+			// Recalculate totals for the optimistic cart
+			optimisticCart.subtotal = optimisticCart.items.reduce(
+				(sum, item) => sum + parseFloat(item.total_price || 0),
+				0
+			);
+
+			dispatch({ type: CART_ACTIONS.SET_CART, payload: optimisticCart });
+			// --- End Optimistic UI Update ---
+
 			try {
-				dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
-				await cartAPI.addToCart(productId, quantity, notes);
+				// The API now returns the entire updated cart object
+				const updatedCart = await cartAPI.addToCart(
+					product.id,
+					quantity,
+					notes
+				);
 
-				// Reload cart to get updated data
-				await loadCart();
-
+				// Sync with the server's response
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: updatedCart });
 				return { success: true };
 			} catch (error) {
 				console.error("Failed to add to cart:", error);
 				dispatch({ type: CART_ACTIONS.SET_ERROR, payload: error.message });
+				// Rollback on error
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: originalCart });
+				toast.error("Failed to add item. Please try again.");
 				return { success: false, error: error.message };
 			}
 		},
-		[loadCart]
+		[state.cart]
 	);
 
-	// Update cart item quantity
-	const updateCartItem = useCallback(
-		async (itemId, quantity) => {
-			try {
-				dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
-
-				if (quantity <= 0) {
-					await cartAPI.removeFromCart(itemId);
-				} else {
-					await cartAPI.updateCartItem(itemId, quantity);
-				}
-
-				// Reload cart to get updated data
-				await loadCart();
-
-				return { success: true };
-			} catch (error) {
-				console.error("Failed to update cart item:", error);
-				dispatch({ type: CART_ACTIONS.SET_ERROR, payload: error.message });
-				return { success: false, error: error.message };
-			}
-		},
-		[loadCart]
-	);
-
-	// Remove item from cart
+	// Remove item from cart with optimistic update
 	const removeFromCart = useCallback(
 		async (itemId) => {
+			const originalCart = state.cart;
+			dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
+
+			// --- Optimistic UI Update ---
+			const optimisticCart = { ...originalCart };
+			optimisticCart.items = optimisticCart.items.filter(
+				(item) => item.id !== itemId
+			);
+			optimisticCart.subtotal = optimisticCart.items.reduce(
+				(sum, item) =>
+					sum + item.quantity * parseFloat(item.product.price || 0),
+				0
+			);
+			dispatch({ type: CART_ACTIONS.SET_CART, payload: optimisticCart });
+			// --- End Optimistic UI Update ---
+
 			try {
-				dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
+				// We still need to tell the server to remove it
 				await cartAPI.removeFromCart(itemId);
-
-				// Reload cart to get updated data
-				await loadCart();
-
+				// Optionally, we can refetch the cart from the server to ensure 100% sync
+				const updatedCart = await cartAPI.getCurrentCart();
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: updatedCart });
+				toast.success("Item removed from cart");
 				return { success: true };
 			} catch (error) {
 				console.error("Failed to remove from cart:", error);
 				dispatch({ type: CART_ACTIONS.SET_ERROR, payload: error.message });
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: originalCart }); // Rollback
+				toast.error("Failed to remove item. Please try again.");
 				return { success: false, error: error.message };
 			}
 		},
-		[loadCart]
+		[state.cart]
+	);
+
+	// Update cart item quantity with optimistic update
+	const updateCartItem = useCallback(
+		async (itemId, quantity) => {
+			if (quantity <= 0) {
+				return removeFromCart(itemId);
+			}
+
+			const originalCart = state.cart;
+			dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
+
+			// --- Optimistic UI Update ---
+			const optimisticCart = JSON.parse(JSON.stringify(originalCart));
+			const itemIndex = optimisticCart.items.findIndex(
+				(item) => item.id === itemId
+			);
+
+			if (itemIndex > -1) {
+				optimisticCart.items[itemIndex].quantity = quantity;
+			}
+
+			optimisticCart.subtotal = optimisticCart.items.reduce(
+				(sum, item) =>
+					sum + item.quantity * parseFloat(item.product.price || 0),
+				0
+			);
+			dispatch({ type: CART_ACTIONS.SET_CART, payload: optimisticCart });
+			// --- End Optimistic UI Update ---
+
+			try {
+				const updatedCart = await cartAPI.updateCartItem(itemId, quantity);
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: updatedCart });
+				toast.success("Cart updated");
+				return { success: true };
+			} catch (error) {
+				console.error("Failed to update cart item:", error);
+				dispatch({ type: CART_ACTIONS.SET_ERROR, payload: error.message });
+				dispatch({ type: CART_ACTIONS.SET_CART, payload: originalCart }); // Rollback
+				toast.error("Failed to update cart. Please try again.");
+				return { success: false, error: error.message };
+			}
+		},
+		[state.cart, removeFromCart]
 	);
 
 	// Clear entire cart
@@ -156,7 +236,7 @@ export const CartProvider = ({ children }) => {
 			dispatch({ type: CART_ACTIONS.SET_ERROR, payload: error.message });
 			return { success: false, error: error.message };
 		}
-	}, []);
+	}, [state.cart]);
 
 	// Update guest contact information
 	const updateGuestInfo = useCallback(
@@ -233,6 +313,7 @@ export const CartProvider = ({ children }) => {
 		loading: state.loading,
 		error: state.error,
 		itemCount: state.itemCount,
+		cartItemCount: state.itemCount, // Alias for navbar compatibility
 
 		// Actions
 		loadCart,

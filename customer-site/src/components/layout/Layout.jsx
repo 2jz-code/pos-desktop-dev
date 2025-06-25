@@ -1,22 +1,43 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import CartSidebar from "../ui/cart-sidebar";
 import { useCartSidebar } from "../../contexts/CartSidebarContext";
-import { useCart } from "../../hooks/useCart";
-import { ordersAPI } from "../../api/orders";
+import { useCart } from "../../contexts/CartContext";
 import { toast } from "sonner";
 
 const Layout = ({ children }) => {
 	const location = useLocation();
 	const isHomePage = location.pathname === "/";
-	const queryClient = useQueryClient();
+
+	useEffect(() => {
+		if (location.hash) {
+			const id = location.hash.replace("#", "");
+			const element = document.getElementById(id);
+			if (element) {
+				// Use a timeout to ensure the page has had time to render
+				// before trying to scroll.
+				setTimeout(() => {
+					element.scrollIntoView({ behavior: "smooth" });
+				}, 100);
+			}
+		} else {
+			// If there's no hash, scroll to the top of the page on navigation.
+			window.scrollTo({ top: 0, behavior: "smooth" });
+		}
+	}, [location]);
 
 	// Cart sidebar state and data
 	const { isCartOpen, closeCart } = useCartSidebar();
-	const { cartData, cartItems, cartItemCount, subtotal, isLoading } = useCart();
+	const { cart, itemCount, loading, updateCartItem, removeFromCart } =
+		useCart();
+
+	// Extract cart data for the sidebar
+	const cartItems = cart?.items || [];
+	const cartItemCount = itemCount;
+	const subtotal = cart?.subtotal || 0;
+	const isLoading = loading;
 
 	// Conditionally apply top padding to main content
 	// No padding on homepage to allow content to go under transparent navbar
@@ -30,10 +51,12 @@ const Layout = ({ children }) => {
 		}
 
 		try {
-			await ordersAPI.updateOrderItem(cartData.id, itemId, newQuantity);
-			// Invalidate cart query to trigger refetch
-			queryClient.invalidateQueries(["cart"]);
-			toast.success("Cart updated");
+			const result = await updateCartItem(itemId, newQuantity);
+			if (result.success) {
+				toast.success("Cart updated");
+			} else {
+				toast.error(result.error || "Failed to update item");
+			}
 		} catch (error) {
 			console.error("Failed to update item:", error);
 			toast.error("Failed to update item");
@@ -43,10 +66,12 @@ const Layout = ({ children }) => {
 	// Handle cart item removal
 	const handleRemoveItem = async (itemId) => {
 		try {
-			await ordersAPI.removeOrderItem(cartData.id, itemId);
-			// Invalidate cart query to trigger refetch
-			queryClient.invalidateQueries(["cart"]);
-			toast.success("Item removed from cart");
+			const result = await removeFromCart(itemId);
+			if (result.success) {
+				toast.success("Item removed from cart");
+			} else {
+				toast.error(result.error || "Failed to remove item");
+			}
 		} catch (error) {
 			console.error("Failed to remove item:", error);
 			toast.error("Failed to remove item");
@@ -63,7 +88,7 @@ const Layout = ({ children }) => {
 	return (
 		<div className="min-h-screen flex flex-col">
 			{/* Fixed Navbar */}
-			<Navbar />
+			<Navbar isCartOpen={isCartOpen} />
 
 			{/* Main Content Area */}
 			<main className={mainContentClass}>{children || <Outlet />}</main>

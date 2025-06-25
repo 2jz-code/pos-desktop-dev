@@ -17,18 +17,18 @@ const normalizeProductData = (product) => {
 	};
 };
 
-export const useProducts = () => {
+export const useProducts = (categoryId = null) => {
 	const {
 		data: products = [],
 		isLoading,
 		error,
 		refetch,
 	} = useQuery({
-		queryKey: ["products"],
-		queryFn: productsAPI.getProducts,
+		queryKey: ["products", categoryId],
+		queryFn: () => productsAPI.getProducts({ category: categoryId }),
 		staleTime: 5 * 60 * 1000, // 5 minutes
-		cacheTime: 10 * 60 * 1000, // 10 minutes
-		// Normalize and sort products
+		cacheTime: 15 * 60 * 1000, // 15 minutes, slightly longer cache
+		enabled: true, // Always enabled, will fetch when categoryId changes
 		select: (data) => {
 			const normalizedProducts = data?.map(normalizeProductData) || [];
 			// Sort products alphabetically by name
@@ -44,71 +44,15 @@ export const useProducts = () => {
 	};
 };
 
-// Helper function for filtering products by category
-export const useFilteredProducts = (selectedCategory, categories) => {
-	const { products, isLoading, error } = useProducts();
-
-	const filteredProducts = React.useMemo(() => {
-		if (!selectedCategory) {
-			return products;
-		}
-
-		const categoryInfo = categories.find((c) => c.id === selectedCategory);
-		const selectedCategoryName = categoryInfo ? categoryInfo.name : "";
-
-		let categorySpecificProducts = products.filter((product) => {
-			const productCategories = Array.isArray(product.category)
-				? product.category
-				: product.category
-				? [product.category]
-				: [];
-			return productCategories.some(
-				(cat) => cat && cat.id === selectedCategory
-			);
-		});
-
-		// Sort products within category
-		categorySpecificProducts.sort((a, b) => a.name.localeCompare(b.name));
-
-		// Handle special category logic
-		if (selectedCategoryName.toLowerCase() === "drinks") {
-			const freshDrinks = [];
-			const groceryDrinks = [];
-
-			categorySpecificProducts.forEach((p) => {
-				if (p.is_grocery_item) {
-					groceryDrinks.push(p);
-				} else {
-					freshDrinks.push(p);
-				}
-			});
-
-			// Sort each subgroup
-			freshDrinks.sort((a, b) => a.name.localeCompare(b.name));
-			groceryDrinks.sort((a, b) => a.name.localeCompare(b.name));
-
-			const subGroups = [];
-			if (freshDrinks.length > 0)
-				subGroups.push({ subHeading: "Fresh Drinks", products: freshDrinks });
-			if (groceryDrinks.length > 0)
-				subGroups.push({
-					subHeading: "Canned Drinks",
-					products: groceryDrinks,
-				});
-
-			return subGroups.length > 0
-				? [{ categoryName: selectedCategoryName, subGroups: subGroups }]
-				: [];
-		} else if (selectedCategoryName.toLowerCase() === "mana'eesh") {
-			// Filter out bag items
-			const filteredManaeesh = categorySpecificProducts.filter((p) => {
-				return !p.name.toLowerCase().includes("bag");
-			});
-			return filteredManaeesh;
-		}
-
-		return categorySpecificProducts;
-	}, [products, selectedCategory, categories]);
+// This hook is now deprecated and will be removed after refactoring the Menu page.
+// The filtering logic is now handled by the backend.
+// The special UI grouping logic will be moved into the component.
+export const useFilteredProducts = (selectedCategory) => {
+	const {
+		products: filteredProducts,
+		isLoading,
+		error,
+	} = useProducts(selectedCategory);
 
 	return {
 		filteredProducts,
