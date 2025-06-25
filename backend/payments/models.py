@@ -48,6 +48,21 @@ class Payment(models.Model):
         help_text=_("The tip amount for this payment."),
     )
 
+    # --- Guest Session Fields ---
+    guest_session_key = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=_("Session key for guest payments"),
+        db_index=True,
+    )
+    guest_payment_intent_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=_("Stripe Payment Intent ID for guest payments"),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -58,6 +73,11 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.payment_number or self.id} for Order {self.order.order_number or self.order.id} - {self.status}"
+
+    @property
+    def is_guest_payment(self):
+        """Returns True if this is a guest payment."""
+        return bool(self.guest_session_key)
 
     # --- ADD THIS SAVE METHOD AND HELPER FUNCTION ---
     def save(self, *args, **kwargs):

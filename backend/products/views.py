@@ -1,7 +1,9 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.utils.dateparse import parse_datetime
-from rest_framework import permissions, viewsets, generics
+from rest_framework import permissions, viewsets, generics, status
 from rest_framework.filters import SearchFilter
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.response import Response
 from .models import Product, Category, Tax, ProductType
 from .serializers import (
     ProductSerializer,
@@ -19,10 +21,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [
+        permissions.AllowAny
+    ]  # Allow public access for customer website
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_class = ProductFilter
-    search_fields = ["name", "description"]
+    search_fields = ["name", "description", "barcode"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -51,6 +55,44 @@ class ProductViewSet(viewsets.ModelViewSet):
             return ProductCreateSerializer
         return ProductSerializer
 
+    @action(detail=False, methods=["get"], url_path="by-name/(?P<name>[^/.]+)")
+    def get_by_name(self, request, name=None):
+        """
+        Get a product by its exact name.
+        URL: /api/products/by-name/{product_name}/
+        """
+        try:
+            # URL decode the name parameter
+            from urllib.parse import unquote
+
+            decoded_name = unquote(name)
+
+            product = get_object_or_404(Product, name=decoded_name, is_active=True)
+            serializer = self.get_serializer(product)
+            return Response(serializer.data)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])  # Allow public access for customer website
+def barcode_lookup(request, barcode):
+    """
+    Simple barcode lookup endpoint for POS system.
+    Returns product details if found.
+    """
+    try:
+        product = get_object_or_404(Product, barcode=barcode, is_active=True)
+        serializer = ProductSerializer(product)
+        return Response({"success": True, "product": serializer.data})
+    except Product.DoesNotExist:
+        return Response(
+            {"success": False, "error": "Product not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """
@@ -60,7 +102,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = CategorySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [
+        permissions.AllowAny
+    ]  # Allow public access for customer website
 
     def get_queryset(self):
         queryset = Category.objects.all()

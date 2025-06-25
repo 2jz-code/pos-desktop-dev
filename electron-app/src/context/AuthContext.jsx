@@ -3,7 +3,7 @@ import {
 	loginWithPin,
 	checkAuthStatus,
 	logout as apiLogout, // Aliased import to avoid name collision
-} from "@/api/services/authService";
+} from "@/domains/auth/services/authService";
 
 const AuthContext = createContext(null);
 

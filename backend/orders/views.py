@@ -11,7 +11,8 @@ from .serializers import (
     UpdateOrderStatusSerializer,
     OrderItemSerializer,
 )
-from .services import OrderService
+from .services import OrderService, GuestSessionService
+from .permissions import IsAuthenticatedOrGuestOrder, IsGuestOrAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.request import Request
 from django_filters.rest_framework import DjangoFilterBackend
@@ -29,12 +30,13 @@ class OrderViewSet(viewsets.ModelViewSet):
     """
     A comprehensive ViewSet for handling orders and their items.
     Provides CRUD for orders and cart management functionalities.
+    Supports both authenticated users and guest users.
     """
 
     queryset = Order.objects.prefetch_related(
         "items__product", "applied_discounts__discount", "cashier", "customer"
     ).all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrGuestOrder]
 
     # --- THE FIX: Add filter backends and define filterable/searchable fields ---
     filter_backends = [
@@ -47,6 +49,27 @@ class OrderViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "grand_total"]
 
     ordering = ["-created_at"]  # Newest orders first (descending)
+
+    def get_queryset(self):
+        """Filter orders based on user type (authenticated or guest)."""
+        queryset = super().get_queryset()
+
+        # If user is staff, return all orders
+        if self.request.user and self.request.user.is_staff:
+            return queryset
+
+        # If user is authenticated, return their orders
+        if self.request.user and self.request.user.is_authenticated:
+            return queryset.filter(customer=self.request.user)
+
+        # For guest users, return orders with their session guest_id
+        if hasattr(self.request, "session") and self.request.session.session_key:
+            guest_id = self.request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+            if guest_id:
+                return queryset.filter(guest_id=guest_id)
+
+        # Return empty queryset if no valid session
+        return queryset.none()
 
     def get_serializer_class(self):
         """
@@ -62,8 +85,19 @@ class OrderViewSet(viewsets.ModelViewSet):
         return OrderSerializer
 
     def perform_create(self, serializer):
-        """Inject the logged-in user as the cashier for the new order."""
-        serializer.save(cashier=self.request.user)
+        """Handle order creation for both authenticated users and guests."""
+        # Check if user is authenticated
+        if self.request.user and self.request.user.is_authenticated:
+            # For authenticated users, set them as customer and cashier
+            serializer.save(customer=self.request.user, cashier=self.request.user)
+        else:
+            # For guest users, create or get guest order
+            guest_order = GuestSessionService.create_guest_order(
+                self.request,
+                order_type=serializer.validated_data.get("order_type", "WEB"),
+            )
+            # Return the existing guest order instead of creating a new one
+            serializer.instance = guest_order
 
     def create(self, request, *args, **kwargs):
         """
@@ -155,6 +189,100 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(
             {"status": "active payments cancelled"}, status=status.HTTP_200_OK
         )
+
+    @action(detail=False, methods=["post"], url_path="guest-order")
+    def create_guest_order(self, request):
+        """
+        Create or get existing guest order for the current session.
+        """
+        order = GuestSessionService.create_guest_order(request)
+        serializer = OrderSerializer(order, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="update-guest-info")
+    def update_guest_info(self, request, pk=None):
+        """
+        Update guest contact information for an order.
+        """
+        order = self.get_object()
+
+        # Ensure this is a guest order
+        if not order.is_guest_order:
+            return Response(
+                {"error": "This action is only available for guest orders."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = request.data.get("email")
+        phone = request.data.get("phone")
+
+        if not email and not phone:
+            return Response(
+                {"error": "Email or phone is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated_order = GuestSessionService.update_guest_contact_info(
+            order, email=email, phone=phone
+        )
+
+        serializer = OrderSerializer(updated_order, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="convert-to-user")
+    def convert_guest_to_user(self, request, pk=None):
+        """
+        Convert a guest order to an authenticated user account.
+        """
+        order = self.get_object()
+
+        # Ensure this is a guest order
+        if not order.is_guest_order:
+            return Response(
+                {"error": "This action is only available for guest orders."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        username = request.data.get("username")
+        password = request.data.get("password")
+        first_name = request.data.get("first_name", "")
+        last_name = request.data.get("last_name", "")
+
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from .services import GuestConversionService
+
+            user, converted_order = (
+                GuestConversionService.create_account_from_guest_order(
+                    order, username, password, first_name, last_name
+                )
+            )
+
+            # Clear guest session data
+            GuestSessionService.clear_guest_session(request)
+
+            serializer = OrderSerializer(converted_order, context={"request": request})
+            return Response(
+                {
+                    "order": serializer.data,
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):

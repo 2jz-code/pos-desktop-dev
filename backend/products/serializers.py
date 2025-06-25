@@ -13,7 +13,7 @@ class BasicCategorySerializer(serializers.ModelSerializer):
 class BasicProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ["id", "name"]
+        fields = ["id", "name", "barcode"]
 
 
 # --- END NEW ---
@@ -63,6 +63,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "track_inventory",
             "product_type",
+            "barcode",
             "created_at",
             "updated_at",
         ]
@@ -86,6 +87,7 @@ class ProductSyncSerializer(serializers.ModelSerializer):
             "product_type_id",
             "is_active",
             "track_inventory",
+            "barcode",
             "created_at",
             "updated_at",
         ]
@@ -115,6 +117,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "product_type_id",
             "category_id",
             "tax_ids",
+            "barcode",
             "initial_stock",
             "location_id",
         ]

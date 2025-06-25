@@ -71,23 +71,23 @@ class OrderService:
         # Check stock availability before adding item
         from inventory.services import InventoryService
         from settings.config import app_settings
-        
+
         try:
             default_location = app_settings.get_default_location()
-            
+
             # Calculate total quantity needed (existing + new)
             order_item = OrderItem.objects.filter(
                 order=order, product=product, notes=notes
             ).first()
-            
+
             total_quantity_needed = quantity
             if order_item:
                 total_quantity_needed += order_item.quantity
-            
+
             # Check if this is a menu item - different validation rules
-            if product.product_type.name.lower() == 'menu':
+            if product.product_type.name.lower() == "menu":
                 # Menu items: allow cook-to-order, just log ingredient status
-                if hasattr(product, 'recipe') and product.recipe:
+                if hasattr(product, "recipe") and product.recipe:
                     InventoryService.check_recipe_availability(
                         product, default_location, total_quantity_needed
                     )
@@ -97,7 +97,9 @@ class OrderService:
                 if not InventoryService.check_stock_availability(
                     product, default_location, total_quantity_needed
                 ):
-                    current_stock = InventoryService.get_stock_level(product, default_location)
+                    current_stock = InventoryService.get_stock_level(
+                        product, default_location
+                    )
                     raise ValueError(
                         f"Insufficient stock for {product.name}. "
                         f"Requested: {total_quantity_needed}, Available: {current_stock}"
@@ -344,3 +346,171 @@ class OrderService:
 
         print(f"Recalculated {count} in-progress orders due to configuration change")
         return count
+
+
+class GuestSessionService:
+    """
+    Service for managing guest user sessions and orders.
+    Handles guest identification, order management, and conversion to authenticated users.
+    """
+
+    GUEST_SESSION_KEY = "guest_id"
+    GUEST_ORDER_KEY = "guest_order_id"
+
+    @staticmethod
+    def get_or_create_guest_id(request):
+        """
+        Get or create a unique guest identifier for the session.
+        Returns a guest_id that persists for the session.
+        """
+        if not request.session.session_key:
+            request.session.create()
+
+        guest_id = request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+        if not guest_id:
+            # Generate a unique guest ID
+            import uuid
+
+            guest_id = f"guest_{uuid.uuid4().hex[:12]}"
+            request.session[GuestSessionService.GUEST_SESSION_KEY] = guest_id
+            request.session.modified = True
+
+        return guest_id
+
+    @staticmethod
+    def get_guest_order(request):
+        """
+        Get the current pending guest order for this session.
+        Returns None if no pending order exists.
+        """
+        guest_id = request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+        if not guest_id:
+            return None
+
+        try:
+            from .models import Order
+
+            return Order.objects.get(
+                guest_id=guest_id, status=Order.OrderStatus.PENDING
+            )
+        except Order.DoesNotExist:
+            return None
+
+    @staticmethod
+    def create_guest_order(request, order_type="WEB"):
+        """
+        Create a new guest order for the session.
+        """
+        from .models import Order
+
+        guest_id = GuestSessionService.get_or_create_guest_id(request)
+
+        # Check if there's already a pending order for this guest
+        existing_order = GuestSessionService.get_guest_order(request)
+        if existing_order:
+            return existing_order
+
+        order = Order.objects.create(
+            guest_id=guest_id, order_type=order_type, status=Order.OrderStatus.PENDING
+        )
+
+        # Store order ID in session for quick access
+        request.session[GuestSessionService.GUEST_ORDER_KEY] = str(order.id)
+        request.session.modified = True
+
+        return order
+
+    @staticmethod
+    def update_guest_contact_info(order, email=None, phone=None):
+        """
+        Update guest contact information for an order.
+        """
+        if email:
+            order.guest_email = email
+        if phone:
+            order.guest_phone = phone
+        order.save(update_fields=["guest_email", "guest_phone"])
+        return order
+
+    @staticmethod
+    def convert_guest_to_user(guest_order, user):
+        """
+        Convert a guest order to an authenticated user order.
+        This links the order to the user and clears guest fields.
+        """
+        guest_order.customer = user
+        guest_order.guest_id = None  # Clear guest ID since now it's a user order
+        guest_order.save(update_fields=["customer", "guest_id"])
+
+        # Also convert any related payments
+        if hasattr(guest_order, "payment_details") and guest_order.payment_details:
+            payment = guest_order.payment_details
+            payment.guest_session_key = None  # Clear guest session
+            payment.save(update_fields=["guest_session_key"])
+
+        return guest_order
+
+    @staticmethod
+    def clear_guest_session(request):
+        """
+        Clear guest session data. Used after order completion or conversion.
+        """
+        if GuestSessionService.GUEST_SESSION_KEY in request.session:
+            del request.session[GuestSessionService.GUEST_SESSION_KEY]
+        if GuestSessionService.GUEST_ORDER_KEY in request.session:
+            del request.session[GuestSessionService.GUEST_ORDER_KEY]
+        request.session.modified = True
+
+
+class GuestConversionService:
+    """
+    Service for converting guest orders to authenticated user accounts.
+    """
+
+    @staticmethod
+    def create_account_from_guest_order(
+        order, username, password, first_name="", last_name=""
+    ):
+        """
+        Create a new user account using information from a guest order.
+        Links the order to the new user account.
+        """
+        from django.contrib.auth import get_user_model
+        from django.db import transaction
+
+        User = get_user_model()
+
+        with transaction.atomic():
+            # Create new user
+            user = User.objects.create_user(
+                username=username,
+                email=order.guest_email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            # Convert the guest order to user order
+            converted_order = GuestSessionService.convert_guest_to_user(order, user)
+
+            return user, converted_order
+
+    @staticmethod
+    def link_guest_order_to_existing_user(order, user):
+        """
+        Link a guest order to an existing authenticated user.
+        Used when a guest logs in after creating an order.
+        """
+        return GuestSessionService.convert_guest_to_user(order, user)
+
+    @staticmethod
+    def get_guest_orders_by_email(email):
+        """
+        Find all guest orders associated with an email address.
+        Useful for account creation or order lookup.
+        """
+        from .models import Order
+
+        return Order.objects.filter(
+            guest_email=email, customer__isnull=True  # Only guest orders
+        ).order_by("-created_at")

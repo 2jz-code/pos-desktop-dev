@@ -1,0 +1,130 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ─────────────────────────────────────────
+   Global CSS variables  (copied from old site)
+   ───────────────────────────────────────── */
+@theme {
+	/* New Primary Palette */
+	--color-primary-green: #909373; /* User-provided green */
+	--color-primary-beige: #f3e1ca; /* User-provided beige */
+
+	/* Accent Colors for Engagement */
+	--color-accent-dark-green: #5e6650; /* Darker, richer green for text, primary actions */
+	--color-accent-light-beige: #faf5ef; /* Lighter beige/cream for backgrounds */
+	--color-accent-warm-brown: #a0522d; /* Muted terracotta/brown for contrast and CTAs */
+	--color-accent-dark-brown: #654321; /* Deeper brown for text or secondary elements */
+	--color-accent-subtle-gray: #d1c7bc; /* A subtle gray that complements the beige */
+
+	/* Standard Tailwind-like names mapped to new palette */
+	--background: var(
+		--color-accent-light-beige
+	); /* Light beige for main background */
+	--foreground: var(
+		--color-accent-dark-green
+	); /* Dark green for primary text */
+
+	--muted: var(--color-primary-beige); /* Primary beige as muted background */
+	--muted-foreground: var(
+		--color-accent-dark-brown
+	); /* Dark brown for muted text */
+
+	--popover: var(--color-accent-light-beige);
+	--popover-foreground: var(--color-accent-dark-green);
+
+	--border: var(--color-accent-subtle-gray); /* Subtle gray for borders */
+	--input: var(--color-accent-subtle-gray);
+
+	--card: var(--color-primary-beige); /* Primary beige for cards */
+	--card-foreground: var(--color-accent-dark-green);
+
+	--primary: var(
+		--color-primary-green
+	); /* Primary green for main interactive elements */
+	--primary-foreground: var(
+		--color-accent-light-beige
+	); /* Light beige for text on primary green */
+
+	--secondary: var(
+		--color-accent-warm-brown
+	); /* Warm brown as secondary accent */
+	--secondary-foreground: var(
+		--color-accent-light-beige
+	); /* Light beige for text on warm brown */
+
+	--accent: var(--color-accent-warm-brown);
+	--accent-foreground: var(--color-accent-light-beige);
+
+	--destructive: 15 80% 50%; /* A warm red for destructive actions, e.g., #D9534F */
+	--destructive-foreground: var(--color-accent-light-beige);
+
+	--ring: var(--color-primary-green); /* Primary green for focus rings */
+
+	--radius: 0.5rem;
+}
+
+/* ─────────────────────────────────────────
+   Global element resets / helpers
+   ───────────────────────────────────────── */
+@layer base {
+	.dark {
+		--background: oklch(0.19 0.02 50); /* dark brown */
+		--foreground: oklch(0.89 0.02 85);
+		--muted: oklch(0.27 0.02 60);
+		--muted-foreground: oklch(0.75 0.02 80);
+		--popover: oklch(0.19 0.02 50);
+		--popover-foreground: oklch(0.89 0.02 85);
+		--border: oklch(0.28 0.02 65);
+		--input: oklch(0.28 0.02 65);
+		--card: oklch(0.23 0.02 55);
+		--card-foreground: oklch(0.89 0.02 85);
+		--primary: var(--color-primary-green);
+		--primary-foreground: oklch(0.19 0.02 50);
+		--secondary: var(--color-accent-warm-brown);
+		--secondary-foreground: oklch(0.19 0.02 50);
+		--accent: var(--color-accent-warm-brown);
+		--accent-foreground: oklch(0.19 0.02 50);
+		--destructive: oklch(0.59 0.15 25.5);
+		--destructive-foreground: oklch(0.89 0.02 85);
+		--ring: var(--color-primary-green);
+	}
+	* {
+		border-color: var(--border);
+	}
+	body {
+		background-color: var(--background);
+		color: var(--foreground);
+		font-feature-settings: "rlig" 1, "calt" 1;
+	}
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
+/* ─────────────────────────────────────────
+   Extra animations the old site used
+   ───────────────────────────────────────── */
+@keyframes progressPulse {
+	0% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0.7;
+	}
+}
+
+.progress-pulse {
+	animation: progressPulse 2s infinite;
+}
+
+@keyframes shimmer {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(100%);
+	}
+}

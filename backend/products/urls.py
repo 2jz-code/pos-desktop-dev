@@ -7,6 +7,7 @@ from .views import (
     ProductTypeDetailView,
     CategoryViewSet,
     ProductViewSet,
+    barcode_lookup,
 )
 
 # Create a router and register our viewsets with it.
@@ -24,5 +25,6 @@ urlpatterns = [
         ProductTypeDetailView.as_view(),
         name="product-type-detail",
     ),
+    path("barcode/<str:barcode>/", barcode_lookup, name="barcode-lookup"),
     path("", include(router.urls)),
 ]

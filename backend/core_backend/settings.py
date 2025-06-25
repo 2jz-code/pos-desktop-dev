@@ -170,6 +170,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:8001",  # For electron app requests
     "http://127.0.0.1:8001",
+    "http://localhost:5174",  # React/Vite dev server
+    "http://127.0.0.1:5174",
 ]
 
 # CSRF Trusted Origins
@@ -178,7 +180,17 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:8001",
     "http://127.0.0.1:8001",
+    "http://localhost:5174",  # React/Vite dev server
+    "http://127.0.0.1:5174",
 ]
+
+# Session Configuration for Guest Users
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = 86400  # 24 hours
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_SAMESITE = "Lax"
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
@@ -188,6 +200,9 @@ REST_FRAMEWORK = {
         "users.authentication.APIKeyAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
 }
 
 # Simple JWT settings (optional, provides sensible defaults)

@@ -91,6 +91,26 @@ class Order(models.Model):
         Discount, through="OrderDiscount", blank=True, related_name="orders"
     )
 
+    # --- Guest User Fields ---
+    guest_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=_("Session-based identifier for guest users"),
+        db_index=True,
+    )
+    guest_email = models.EmailField(
+        blank=True,
+        null=True,
+        help_text=_("Email address for guest orders"),
+    )
+    guest_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text=_("Phone number for guest orders"),
+    )
+
     # --- Financial Fields ---
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_discounts_amount = models.DecimalField(
@@ -110,11 +130,37 @@ class Order(models.Model):
         ordering = ["order_number", "created_at"]
         verbose_name = _("Order")
         verbose_name_plural = _("Orders")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["guest_id"],
+                condition=models.Q(status="PENDING", guest_id__isnull=False),
+                name="unique_guest_pending_order",
+            ),
+        ]
 
     def __str__(self):
         return (
             f"Order {self.order_number or self.pk} ({self.order_type}) - {self.status}"
         )
+
+    @property
+    def is_guest_order(self):
+        """Returns True if this is a guest order (has guest_id but no customer)."""
+        return self.guest_id and not self.customer
+
+    @property
+    def customer_email(self):
+        """Returns the appropriate email whether for guest or authenticated customer."""
+        if self.customer:
+            return self.customer.email
+        return self.guest_email
+
+    @property
+    def customer_phone(self):
+        """Returns the appropriate phone whether for guest or authenticated customer."""
+        if self.customer and hasattr(self.customer, "phone"):
+            return getattr(self.customer, "phone", None)
+        return self.guest_phone
 
     @property
     def payment_in_progress_derived(self):

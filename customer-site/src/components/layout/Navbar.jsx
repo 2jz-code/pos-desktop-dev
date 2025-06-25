@@ -1,0 +1,385 @@
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+// eslint-disable-next-line no-unused-vars
+import { motion, AnimatePresence } from "framer-motion";
+import {
+	Menu,
+	X,
+	User,
+	ShoppingCart,
+	History,
+	Settings,
+	LogOut,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+// NOTE: The following imports are assumed to exist based on the old project structure.
+// You will need to create and expose the AuthContext.
+import { useAuth } from "@/contexts/AuthContext";
+// This API helper should be configured to handle authenticated requests.
+import { cartAPI } from "@/api/orders";
+// The logo asset needs to be placed in the specified path.
+import LogoImg from "@/assets/logo.png";
+import { useCartSidebar } from "@/contexts/CartSidebarContext";
+
+const ProfileDropdown = () => {
+	const { user, logout } = useAuth();
+	const navigate = useNavigate();
+
+	const handleLogout = (e) => {
+		e.preventDefault();
+		logout();
+	};
+
+	if (!user) return null;
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					className="relative h-10 w-10 rounded-full focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+				>
+					<Avatar className="h-10 w-10">
+						<AvatarImage
+							src={user.profile_image || ""}
+							alt={user.username || "User"}
+						/>
+						<AvatarFallback>
+							{user.username ? user.username.charAt(0).toUpperCase() : <User />}
+						</AvatarFallback>
+					</Avatar>
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent
+				className="w-56"
+				align="end"
+				forceMount
+			>
+				<DropdownMenuLabel className="font-normal">
+					<div className="flex flex-col space-y-1">
+						<p className="text-sm font-medium leading-none">{user.username}</p>
+						<p className="text-xs leading-none text-muted-foreground">
+							{user.email}
+						</p>
+					</div>
+				</DropdownMenuLabel>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={() => navigate("/dashboard")}>
+					<User className="mr-2 h-4 w-4" />
+					<span>My Profile</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem onClick={() => navigate("/dashboard?tab=orders")}>
+					<History className="mr-2 h-4 w-4" />
+					<span>Order History</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem onClick={() => navigate("/dashboard?tab=account")}>
+					<Settings className="mr-2 h-4 w-4" />
+					<span>Account Settings</span>
+				</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem
+					onClick={handleLogout}
+					className="text-red-600 focus:text-red-600 focus:bg-red-50"
+				>
+					<LogOut className="mr-2 h-4 w-4" />
+					<span>Logout</span>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+};
+
+const Navbar = () => {
+	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+	const [scrolled, setScrolled] = useState(false);
+	const [cartItemCount, setCartItemCount] = useState(0);
+	const { isAuthenticated, logout } = useAuth();
+	const navigate = useNavigate();
+	const location = useLocation();
+	const isHomePage = location.pathname === "/";
+	const isMenuPage = location.pathname === "/menu";
+	const { openCart } = useCartSidebar();
+
+	const handleScroll = useCallback(() => {
+		// Use a small threshold to prevent style flickering on some browsers
+		setScrolled(window.scrollY > 10);
+	}, []);
+
+	useEffect(() => {
+		// Only add scroll listener on the home page (not menu page)
+		if (isHomePage && !isMenuPage) {
+			window.addEventListener("scroll", handleScroll);
+			// Call handler once on mount to set initial state
+			handleScroll();
+		}
+
+		return () => {
+			if (isHomePage && !isMenuPage) {
+				window.removeEventListener("scroll", handleScroll);
+			}
+		};
+	}, [isHomePage, isMenuPage, handleScroll]);
+
+	const fetchCartCount = useCallback(async () => {
+		if (isAuthenticated) {
+			try {
+				const count = await cartAPI.getCartItemCount();
+				setCartItemCount(count);
+			} catch (error) {
+				console.error("Failed to fetch cart count:", error);
+				setCartItemCount(0);
+			}
+		} else {
+			setCartItemCount(0);
+		}
+	}, [isAuthenticated]);
+
+	useEffect(() => {
+		fetchCartCount();
+		// Custom event to listen for cart updates from other parts of the app
+		window.addEventListener("cartUpdated", fetchCartCount);
+		return () => {
+			window.removeEventListener("cartUpdated", fetchCartCount);
+		};
+	}, [fetchCartCount]);
+
+	const handleCartClick = (e) => {
+		e.preventDefault();
+		// Cart should be accessible to both authenticated and guest users
+		openCart();
+	};
+
+	// NOTE: The colors below are from the old site's theme.
+	// For a consistent design, these should be replaced with variables from your tailwind.config.js.
+	const navbarClasses = useMemo(() => {
+		const base = "fixed top-0 w-full z-50 transition-all duration-300";
+		const solidClasses =
+			"bg-white/95 backdrop-blur-md shadow-lg border-b border-gray-200 py-0";
+		const transparentClasses = "bg-transparent py-2";
+		const menuClasses = "bg-accent-light-beige shadow-md py-3"; // Menu-specific styling
+
+		if (isMenuPage) {
+			return `${base} ${menuClasses}`;
+		}
+		if (!isHomePage) {
+			return `${base} ${solidClasses}`;
+		}
+		return `${base} ${scrolled ? solidClasses : transparentClasses}`;
+	}, [scrolled, isHomePage, isMenuPage]);
+
+	const textAndIconColor = useMemo(() => {
+		const solidColor = "text-gray-800";
+		const transparentColor = "text-white";
+		const menuColor = "text-accent-dark-green"; // Menu-specific text color
+
+		if (isMenuPage) {
+			return menuColor;
+		}
+		if (!isHomePage) {
+			return solidColor;
+		}
+		return scrolled ? solidColor : transparentColor;
+	}, [scrolled, isHomePage, isMenuPage]);
+
+	const linkHoverColor = useMemo(() => {
+		// Using a beige from the theme for consistency
+		const solidHover = "hover:text-accent-warm-brown";
+		const transparentHover = "hover:text-gray-200";
+		const menuHover = "hover:text-primary-green"; // Menu-specific hover color
+
+		if (isMenuPage) {
+			return menuHover;
+		}
+		if (!isHomePage) {
+			return solidHover;
+		}
+		return scrolled ? solidHover : transparentHover;
+	}, [scrolled, isHomePage, isMenuPage]);
+
+	const navLinks = ["Home", "About", "Contact", "FAQ"];
+
+	return (
+		<nav className={navbarClasses}>
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<div className="flex justify-between items-center h-16">
+					{/* Logo */}
+					<Link
+						to="/"
+						className="flex items-center"
+					>
+						<img
+							src={LogoImg}
+							alt="Ajeen Logo"
+							className="h-12 w-auto"
+						/>
+					</Link>
+
+					{/* Desktop Navigation */}
+					<div className="hidden md:flex items-center space-x-2">
+						{navLinks.map((item) => (
+							<a
+								key={item}
+								href={`#${item.toLowerCase()}`}
+								className={`relative px-3 py-2 font-medium transition-colors duration-300 ${textAndIconColor} ${linkHoverColor}
+                  after:absolute after:bottom-0.5 after:left-0 after:h-0.5 after:w-0
+                  after:bg-accent-warm-brown after:transition-all after:duration-300
+                  hover:after:w-full`}
+							>
+								{item}
+							</a>
+						))}
+
+						{/* Order Now Button */}
+						<Button
+							onClick={() => navigate("/menu")}
+							className="ml-4 bg-accent-warm-brown text-white hover:bg-accent-warm-brown/90 rounded-full px-6 shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+						>
+							Order Now
+						</Button>
+
+						{/* Cart Icon */}
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={handleCartClick}
+							className={`relative ml-1 rounded-full ${textAndIconColor} ${linkHoverColor}`}
+						>
+							<ShoppingCart className="h-6 w-6" />
+							{cartItemCount > 0 && (
+								<AnimatePresence>
+									<motion.span
+										initial={{ scale: 0 }}
+										animate={{ scale: 1 }}
+										exit={{ scale: 0 }}
+										className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent-warm-brown text-xs text-white"
+									>
+										{cartItemCount}
+									</motion.span>
+								</AnimatePresence>
+							)}
+						</Button>
+
+						{/* Login/Profile */}
+						{isAuthenticated ? (
+							<ProfileDropdown />
+						) : (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => navigate("/auth")}
+								className={`ml-1 rounded-full ${textAndIconColor} ${linkHoverColor}`}
+							>
+								<User className="h-6 w-6" />
+							</Button>
+						)}
+					</div>
+
+					{/* Mobile Menu Button */}
+					<div className="md:hidden">
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={() => setMobileMenuOpen((o) => !o)}
+							className={`rounded-md ${textAndIconColor}`}
+							aria-label="Toggle mobile menu"
+						>
+							{mobileMenuOpen ? (
+								<X className="h-6 w-6" />
+							) : (
+								<Menu className="h-6 w-6" />
+							)}
+						</Button>
+					</div>
+				</div>
+			</div>
+
+			{/* Mobile Menu */}
+			<AnimatePresence>
+				{mobileMenuOpen && (
+					<motion.div
+						initial={{ opacity: 0, height: 0 }}
+						animate={{ opacity: 1, height: "auto" }}
+						exit={{ opacity: 0, height: 0 }}
+						transition={{ duration: 0.3 }}
+						// Old color: bg-accent-light-beige (#F3EFEA)
+						className="md:hidden bg-white overflow-hidden shadow-lg"
+						onClick={() => setMobileMenuOpen(false)}
+					>
+						<div className="px-4 pt-2 pb-4 space-y-2">
+							{navLinks.map((item) => (
+								<a
+									key={item}
+									href={`#${item.toLowerCase()}`}
+									className="block py-3 px-4 text-gray-800 font-medium border-b border-gray-100 hover:bg-gray-50"
+								>
+									{item}
+								</a>
+							))}
+
+							<div className="pt-4 border-t border-gray-200 space-y-3">
+								<Button
+									onClick={() => navigate("/menu")}
+									className="w-full bg-accent-warm-brown text-white hover:bg-accent-warm-brown/90"
+								>
+									Order Now
+								</Button>
+
+								{/* Cart Button */}
+								<Button
+									variant="outline"
+									onClick={handleCartClick}
+									className="w-full flex justify-center items-center"
+								>
+									<ShoppingCart className="mr-2 h-4 w-4" />
+									Cart {cartItemCount > 0 && `(${cartItemCount})`}
+								</Button>
+
+								{!isAuthenticated ? (
+									<Button
+										variant="outline"
+										onClick={() => navigate("/auth")}
+										className="w-full"
+									>
+										Login / Sign Up
+									</Button>
+								) : (
+									<>
+										<Button
+											variant="outline"
+											onClick={() => navigate("/dashboard")}
+											className="w-full flex justify-center items-center"
+										>
+											<User className="mr-2 h-4 w-4" />
+											My Profile
+										</Button>
+										<Button
+											variant="destructive"
+											onClick={logout}
+											className="w-full"
+										>
+											Logout
+										</Button>
+									</>
+								)}
+							</div>
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</nav>
+	);
+};
+
+export default Navbar;

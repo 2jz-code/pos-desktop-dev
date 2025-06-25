@@ -1,10 +1,15 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
-import { useRolePermissions } from "@/hooks/useRolePermissions";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@/shared/components/ui/card";
+import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { ShieldX, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 
 /**
  * Component that protects routes based on user permissions

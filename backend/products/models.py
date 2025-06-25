@@ -103,6 +103,13 @@ class Product(models.Model):
             "Whether to track inventory levels for this product. When enabled, inventory records will be created and stock will be monitored."
         ),
     )
+    barcode = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text=_("Product barcode for scanning"),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # The ForeignKey to Recipe will be added later when we create the Inventory app.

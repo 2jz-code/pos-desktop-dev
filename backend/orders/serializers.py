@@ -32,6 +32,9 @@ class OrderSerializer(serializers.ModelSerializer):
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
     payment_details = PaymentSerializer(read_only=True)
     total_with_tip = serializers.SerializerMethodField()
+    is_guest_order = serializers.ReadOnlyField()
+    customer_email = serializers.ReadOnlyField()
+    customer_phone = serializers.ReadOnlyField()
 
     class Meta:
         model = Order
@@ -104,9 +107,12 @@ class OrderListSerializer(serializers.ModelSerializer):
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
+    guest_email = serializers.EmailField(required=False, allow_blank=True)
+    guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
+
     class Meta:
         model = Order
-        fields = ["order_type", "customer"]  # Cashier is set from request.user
+        fields = ["order_type", "customer", "guest_email", "guest_phone"]
 
 
 class AddItemSerializer(serializers.Serializer):
