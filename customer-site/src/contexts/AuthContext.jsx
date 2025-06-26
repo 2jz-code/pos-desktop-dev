@@ -6,6 +6,7 @@ import React, {
 	useCallback,
 } from "react";
 import { authAPI } from "@/api/auth";
+import { toast } from "sonner";
 
 const AuthContext = createContext(null);
 
@@ -39,31 +40,121 @@ export const AuthProvider = ({ children }) => {
 
 	const login = async (credentials) => {
 		try {
-			const userData = await authAPI.login(credentials);
-			setUser(userData);
-			setIsAuthenticated(true);
-			return { success: true };
+			setIsLoading(true);
+			const response = await authAPI.login(credentials);
+
+			if (response.user) {
+				setUser(response.user);
+				setIsAuthenticated(true);
+				toast.success("Welcome back!");
+				return { success: true };
+			}
+
+			return { success: false, error: "Login failed" };
 		} catch (error) {
-			console.error("Login failed:", error);
-			return {
-				success: false,
-				error:
-					error.response?.data?.detail ||
-					"Login failed. Please check your credentials.",
-			};
+			const errorMessage =
+				error.response?.data?.detail ||
+				error.response?.data?.message ||
+				"Login failed";
+
+			toast.error(errorMessage);
+			return { success: false, error: errorMessage };
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	const register = async (userData) => {
+		try {
+			setIsLoading(true);
+			const response = await authAPI.register(userData);
+
+			if (response.user) {
+				setUser(response.user);
+				setIsAuthenticated(true);
+				toast.success("Account created successfully!");
+				return { success: true };
+			}
+
+			return { success: false, error: "Registration failed" };
+		} catch (error) {
+			const errorMessage =
+				error.response?.data?.detail ||
+				error.response?.data?.message ||
+				"Registration failed";
+
+			// Handle field-specific errors
+			const fieldErrors = error.response?.data;
+			if (fieldErrors && typeof fieldErrors === "object") {
+				// Return field errors for form handling
+				return { success: false, fieldErrors };
+			}
+
+			toast.error(errorMessage);
+			return { success: false, error: errorMessage };
+		} finally {
+			setIsLoading(false);
 		}
 	};
 
 	const logout = async () => {
 		try {
 			await authAPI.logout();
-		} catch (error) {
-			console.error("Logout API call failed:", error);
-		} finally {
-			setIsAuthenticated(false);
 			setUser(null);
-			// Redirect to login or home page after logout
-			window.location.href = "/auth";
+			setIsAuthenticated(false);
+			toast.success("Logged out successfully");
+		} catch (error) {
+			console.error("Logout error:", error);
+			// Still clear local state even if API call fails
+			setUser(null);
+			setIsAuthenticated(false);
+		}
+	};
+
+	const updateProfile = async (profileData) => {
+		try {
+			const updatedUser = await authAPI.updateProfile(profileData);
+			setUser(updatedUser);
+			toast.success("Profile updated successfully");
+			return { success: true };
+		} catch (error) {
+			const errorMessage =
+				error.response?.data?.detail || "Failed to update profile";
+
+			toast.error(errorMessage);
+			return { success: false, error: errorMessage };
+		}
+	};
+
+	const changePassword = async (passwordData) => {
+		try {
+			await authAPI.changePassword(passwordData);
+			toast.success("Password changed successfully");
+			return { success: true };
+		} catch (error) {
+			const errorMessage =
+				error.response?.data?.detail || "Failed to change password";
+
+			// Handle field-specific errors
+			const fieldErrors = error.response?.data;
+			if (fieldErrors && typeof fieldErrors === "object") {
+				return { success: false, fieldErrors };
+			}
+
+			toast.error(errorMessage);
+			return { success: false, error: errorMessage };
+		}
+	};
+
+	const refreshToken = async () => {
+		try {
+			await authAPI.refreshToken();
+			return true;
+		} catch (error) {
+			console.error("Token refresh failed:", error);
+			setUser(null);
+			setIsAuthenticated(false);
+			return false;
 		}
 	};
 
@@ -72,7 +163,11 @@ export const AuthProvider = ({ children }) => {
 		user,
 		isLoading,
 		login,
+		register,
 		logout,
+		updateProfile,
+		changePassword,
+		refreshToken,
 		setUser, // For manual updates if needed
 		setIsAuthenticated, // For manual updates if needed
 	};

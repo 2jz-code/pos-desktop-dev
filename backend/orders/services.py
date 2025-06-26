@@ -166,6 +166,44 @@ class OrderService:
         return order
 
     @staticmethod
+    @transaction.atomic
+    def reorder(source_order_id: str, user: User) -> Order:
+        """
+        Creates a new PENDING order by duplicating the items from a previous order.
+        - The new order is assigned to the provided user.
+        - Items are added using their current price, not the price at the time of the original sale.
+        - The new order is left in a PENDING state, ready for checkout.
+        """
+        try:
+            source_order = Order.objects.prefetch_related("items__product").get(
+                id=source_order_id, customer=user
+            )
+        except Order.DoesNotExist:
+            raise ValueError("Original order not found or you do not have permission to reorder it.")
+
+        # Create a new order for the user
+        new_order = Order.objects.create(
+            customer=user,
+            order_type=source_order.order_type,
+            # Copy other relevant fields if necessary, e.g., location
+        )
+
+        # Copy items from the source order to the new one
+        for item in source_order.items.all():
+            OrderItem.objects.create(
+                order=new_order,
+                product=item.product,
+                quantity=item.quantity,
+                price_at_sale=item.product.price,  # Use current price
+                notes=item.notes,
+            )
+
+        # Recalculate totals for the new order
+        OrderService.recalculate_order_totals(new_order)
+
+        return new_order
+
+    @staticmethod
     def void_order(order: Order) -> Order:
         """Sets an order's status to VOID after checking transition validity."""
         return OrderService.update_order_status(order, Order.OrderStatus.VOID)

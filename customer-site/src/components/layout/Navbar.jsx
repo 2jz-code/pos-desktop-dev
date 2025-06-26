@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+	useState,
+	useEffect,
+	useCallback,
+	useMemo,
+	useRef,
+} from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,16 +19,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // NOTE: The following imports are assumed to exist based on the old project structure.
 // You will need to create and expose the AuthContext.
@@ -33,70 +29,194 @@ import { useCartSidebar } from "@/contexts/CartSidebarContext";
 import { useCart } from "@/hooks/useCart";
 
 const ProfileDropdown = () => {
-	const { user, logout } = useAuth();
-	const navigate = useNavigate();
+	const [isOpen, setIsOpen] = useState(false);
+	const dropdownRef = useRef(null);
+	const { logout, user } = useAuth();
+	const profileImageUrl = user?.profile_image;
 
-	const handleLogout = (e) => {
-		e.preventDefault();
-		logout();
+	// Close dropdown when clicking outside
+	useEffect(() => {
+		const handleClickOutside = (event) => {
+			if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+				setIsOpen(false);
+			}
+		};
+
+		if (isOpen) {
+			document.addEventListener("mousedown", handleClickOutside);
+		}
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [isOpen]);
+
+	// Handle escape key press to close dropdown
+	useEffect(() => {
+		const handleEscapeKey = (event) => {
+			if (event.key === "Escape") {
+				setIsOpen(false);
+			}
+		};
+		if (isOpen) {
+			document.addEventListener("keydown", handleEscapeKey);
+		}
+		return () => {
+			document.removeEventListener("keydown", handleEscapeKey);
+		};
+	}, [isOpen]);
+
+	const toggleDropdown = () => {
+		setIsOpen(!isOpen);
 	};
+
+	const menuItems = [
+		{
+			id: "profile",
+			label: "My Profile",
+			icon: (
+				<User
+					className="mr-2 text-accent-dark-green"
+					size={16}
+				/>
+			),
+			link: "/dashboard",
+			divider: false,
+		},
+		{
+			id: "orders",
+			label: "Order History",
+			icon: (
+				<History
+					className="mr-2 text-accent-dark-green"
+					size={16}
+				/>
+			),
+			link: "/dashboard?tab=orders",
+			divider: false,
+		},
+		{
+			id: "settings",
+			label: "Account Settings",
+			icon: (
+				<Settings
+					className="mr-2 text-accent-dark-green"
+					size={16}
+				/>
+			),
+			link: "/dashboard?tab=account",
+			divider: true,
+		},
+		{
+			id: "logout",
+			label: "Logout",
+			icon: (
+				<LogOut
+					className="mr-2 text-red-500"
+					size={16}
+				/>
+			),
+			action: logout,
+			divider: false,
+		},
+	];
 
 	if (!user) return null;
 
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button
-					variant="ghost"
-					className="relative h-10 w-10 rounded-full focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-				>
-					<Avatar className="h-10 w-10">
-						<AvatarImage
-							src={user.profile_image || ""}
-							alt={user.username || "User"}
-						/>
-						<AvatarFallback>
-							{user.username ? user.username.charAt(0).toUpperCase() : <User />}
-						</AvatarFallback>
-					</Avatar>
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent
-				className="w-56"
-				align="end"
-				forceMount
+		<div
+			className="relative"
+			ref={dropdownRef}
+		>
+			{/* Profile Avatar Button */}
+			<button
+				onClick={toggleDropdown}
+				className="relative flex items-center focus:outline-none focus:ring-2 focus:ring-primary-green rounded-full"
+				aria-expanded={isOpen}
+				aria-haspopup="true"
 			>
-				<DropdownMenuLabel className="font-normal">
-					<div className="flex flex-col space-y-1">
-						<p className="text-sm font-medium leading-none">{user.username}</p>
-						<p className="text-xs leading-none text-muted-foreground">
-							{user.email}
-						</p>
-					</div>
-				</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={() => navigate("/dashboard")}>
-					<User className="mr-2 h-4 w-4" />
-					<span>My Profile</span>
-				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => navigate("/dashboard?tab=orders")}>
-					<History className="mr-2 h-4 w-4" />
-					<span>Order History</span>
-				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => navigate("/dashboard?tab=account")}>
-					<Settings className="mr-2 h-4 w-4" />
-					<span>Account Settings</span>
-				</DropdownMenuItem>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem
-					onClick={handleLogout}
-					className="text-red-600 focus:text-red-600 focus:bg-red-50"
-				>
-					<LogOut className="mr-2 h-4 w-4" />
-					<span>Logout</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+				<div className="w-8 h-8 rounded-full overflow-hidden bg-accent-subtle-gray flex items-center justify-center">
+					{profileImageUrl ? (
+						<img
+							src={profileImageUrl}
+							alt="User profile"
+							className="w-full h-full object-cover"
+							onError={(e) => {
+								e.target.onerror = null;
+								e.target.style.display = "none";
+								const parent = e.target.parentElement;
+								if (parent && !parent.querySelector(".fallback-icon")) {
+									const icon = document.createElement("div");
+									icon.className =
+										"fallback-icon w-full h-full flex items-center justify-center";
+									icon.innerHTML =
+										'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-accent-dark-brown"><path fill-rule="evenodd" d="M18.685 19.097A9.723 9.723 0 0021.75 12c0-5.385-4.365-9.75-9.75-9.75S2.25 6.615 2.25 12a9.723 9.723 0 003.065 7.097A9.716 9.716 0 0012 21.75a9.716 9.716 0 006.685-2.653zm-12.54-1.285A7.486 7.486 0 0112 15a7.486 7.486 0 015.855 2.812A8.224 8.224 0 0112 20.25a8.224 8.224 0 01-5.855-2.438zM15.75 9a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" clip-rule="evenodd" /></svg>';
+									parent.appendChild(icon);
+								}
+							}}
+						/>
+					) : (
+						<User
+							className="text-accent-dark-brown"
+							size={20}
+						/>
+					)}
+				</div>
+			</button>
+
+			{/* Dropdown Menu */}
+			<AnimatePresence>
+				{isOpen && (
+					<motion.div
+						initial={{ opacity: 0, y: -10 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: -10 }}
+						transition={{ duration: 0.2 }}
+						className="absolute right-0 mt-2 w-48 bg-accent-light-beige rounded-md shadow-lg z-50 overflow-hidden border border-accent-subtle-gray/50"
+						style={{ transformOrigin: "top right" }}
+						role="menu"
+						aria-orientation="vertical"
+						aria-labelledby="user-menu"
+					>
+						<div className="py-1">
+							{menuItems.map((item) => (
+								<React.Fragment key={item.id}>
+									{item.link ? (
+										<Link
+											to={item.link}
+											className="flex items-center px-4 py-2 text-sm text-accent-dark-green hover:bg-primary-beige hover:text-primary-green transition-colors"
+											onClick={() => setIsOpen(false)}
+											role="menuitem"
+										>
+											{item.icon}
+											{item.label}
+										</Link>
+									) : (
+										<button
+											onClick={() => {
+												setIsOpen(false);
+												if (item.action) item.action();
+											}}
+											className={`flex items-center w-full text-left px-4 py-2 text-sm transition-colors ${
+												item.id === "logout"
+													? "text-red-600 hover:bg-red-50 hover:text-red-700"
+													: "text-accent-dark-green hover:bg-primary-beige hover:text-primary-green"
+											}`}
+											role="menuitem"
+										>
+											{item.icon}
+											{item.label}
+										</button>
+									)}
+									{item.divider && (
+										<div className="border-t border-accent-subtle-gray/30 my-1"></div>
+									)}
+								</React.Fragment>
+							))}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
 	);
 };
 
@@ -254,7 +374,7 @@ const Navbar = () => {
 							<Button
 								variant="ghost"
 								size="icon"
-								onClick={() => navigate("/auth")}
+								onClick={() => navigate("/login")}
 								className={`ml-1 rounded-full ${textAndIconColor} ${linkHoverColor}`}
 							>
 								<User className="h-6 w-6" />
@@ -325,7 +445,7 @@ const Navbar = () => {
 								{!isAuthenticated ? (
 									<Button
 										variant="outline"
-										onClick={() => navigate("/auth")}
+										onClick={() => navigate("/login")}
 										className="w-full"
 									>
 										Login / Sign Up

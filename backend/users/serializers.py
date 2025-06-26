@@ -9,7 +9,15 @@ from rest_framework_simplejwt.serializers import (
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email", "username", "first_name", "last_name", "role")
+        fields = (
+            "id",
+            "email",
+            "username",
+            "first_name",
+            "last_name",
+            "phone_number",
+            "role",
+        )
         read_only_fields = ("id",)
 
 

@@ -1,48 +1,46 @@
 import apiClient from "./client";
 
-// Authentication API service
+// Authentication API service for customer website
 export const authAPI = {
-	// User registration
+	// Register a new customer account
 	register: async (userData) => {
-		const response = await apiClient.post("/users/register/", userData);
+		const response = await apiClient.post("/auth/customer/register/", userData);
 		return response.data;
 	},
 
-	// User login
+	// Login with email/username and password
 	login: async (credentials) => {
-		const response = await apiClient.post("/users/login/", credentials);
+		const response = await apiClient.post("/auth/customer/login/", {
+			email_or_username: credentials.username || credentials.email,
+			password: credentials.password,
+			remember_me: credentials.remember_me || false,
+		});
 		return response.data;
 	},
 
-	// User logout
+	// Logout (clears authentication cookies)
 	logout: async () => {
-		const response = await apiClient.post("/users/logout/");
+		const response = await apiClient.post("/auth/customer/logout/");
 		return response.data;
 	},
 
-	// Get current user info
+	// Refresh authentication token
+	refreshToken: async () => {
+		const response = await apiClient.post("/auth/customer/token/refresh/");
+		return response.data;
+	},
+
+	// Get current authenticated user
 	getCurrentUser: async () => {
-		const response = await apiClient.get("/users/me/");
+		const response = await apiClient.get("/auth/customer/current-user/");
 		return response.data;
 	},
 
 	// Update user profile
-	updateProfile: async (userData) => {
-		const response = await apiClient.patch("/users/me/", userData);
-		return response.data;
-	},
-
-	// Password reset request
-	requestPasswordReset: async (email) => {
-		const response = await apiClient.post("/users/password-reset/", { email });
-		return response.data;
-	},
-
-	// Confirm password reset
-	confirmPasswordReset: async (resetData) => {
-		const response = await apiClient.post(
-			"/users/password-reset-confirm/",
-			resetData
+	updateProfile: async (profileData) => {
+		const response = await apiClient.patch(
+			"/auth/customer/profile/",
+			profileData
 		);
 		return response.data;
 	},
@@ -50,7 +48,7 @@ export const authAPI = {
 	// Change password
 	changePassword: async (passwordData) => {
 		const response = await apiClient.post(
-			"/users/change-password/",
+			"/auth/customer/change-password/",
 			passwordData
 		);
 		return response.data;
@@ -59,11 +57,17 @@ export const authAPI = {
 	// Check authentication status
 	checkAuth: async () => {
 		try {
-			const response = await apiClient.get("/users/me/");
-			return { isAuthenticated: true, user: response.data };
-		} catch (error) {
-			console.error("Error checking authentication status:", error);
-			return { isAuthenticated: false, user: null };
+			const user = await authAPI.getCurrentUser();
+			return { isAuthenticated: true, user };
+		} catch {
+			// Try to refresh token
+			try {
+				await authAPI.refreshToken();
+				const user = await authAPI.getCurrentUser();
+				return { isAuthenticated: true, user };
+			} catch {
+				return { isAuthenticated: false, user: null };
+			}
 		}
 	},
 };

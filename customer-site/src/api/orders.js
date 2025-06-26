@@ -1,5 +1,26 @@
 import apiClient from "./client";
 
+// Function to check if checkout was recently completed
+const isCheckoutCompleted = () => {
+	try {
+		// Check localStorage for checkout completed flag
+		const cartStorage = localStorage.getItem("cart-storage");
+		if (cartStorage) {
+			const parsed = JSON.parse(cartStorage);
+			return parsed.state?.checkoutCompleted === true;
+		}
+		return false;
+	} catch (error) {
+		console.error("Error checking checkout status:", error);
+		return false;
+	}
+};
+
+// Helper function to check if user is authenticated
+// Since we use HTTP-only cookies, we need to make an API call
+// DEPRECATED: This is no longer needed as the new cart logic is unified.
+// const isUserAuthenticated = async () => { ... };
+
 // Orders API service for customer website with guest user support
 export const ordersAPI = {
 	// Create a new order (supports both authenticated and guest users)
@@ -124,99 +145,97 @@ export const ordersAPI = {
 
 // Helper functions for cart management
 export const cartAPI = {
-	// Get or create current cart (order)
+	// Get or create current cart (order).
+	// The backend now handles the "get or create" logic, so we can just call create.
 	getCurrentCart: async () => {
 		try {
-			// First try to get existing orders
-			const orders = await ordersAPI.getCurrentUserOrders();
-			const pendingOrder = orders.results?.find(
-				(order) => order.status === "PENDING"
-			);
-
-			if (pendingOrder) {
-				return pendingOrder;
-			}
-
-			// If no pending order, create a guest order
-			return await ordersAPI.createGuestOrder();
+			// This will either create a new order or return the existing pending one.
+			return await ordersAPI.createOrder({ order_type: "WEB" });
 		} catch (error) {
-			console.error("Error getting cart:", error);
-			// Fallback to creating guest order
-			return await ordersAPI.createGuestOrder();
+			console.error("Error getting or creating cart:", error);
+			// Throw the error to be handled by the calling function (e.g., in the store)
+			throw error;
 		}
 	},
 
 	// Get current cart without creating new orders (safe after checkout)
 	getCurrentCartSafe: async (checkoutCompleted = false) => {
 		try {
-			// First try to get existing orders
-			const orders = await ordersAPI.getCurrentUserOrders();
-			const pendingOrder = orders.results?.find(
-				(order) => order.status === "PENDING"
-			);
-
-			if (pendingOrder) {
-				return pendingOrder;
-			}
+			// Check if checkout was recently completed from store
+			const checkoutRecentlyCompleted =
+				checkoutCompleted || isCheckoutCompleted();
 
 			// If checkout was recently completed, don't create a new order
-			if (checkoutCompleted) {
+			if (checkoutRecentlyCompleted) {
 				console.log("Checkout completed, not creating new order");
 				return null;
 			}
 
-			// If no pending order and checkout not completed, create a guest order
-			return await ordersAPI.createGuestOrder();
+			// This will now get the existing pending order or create one if none exists.
+			return await ordersAPI.createOrder({ order_type: "WEB" });
 		} catch (error) {
-			console.error("Error getting cart:", error);
-
-			// If checkout was completed, don't create on error either
-			if (checkoutCompleted) {
-				console.log("Checkout completed, not creating new order on error");
-				return null;
-			}
-
-			// Fallback to creating guest order only if checkout not completed
-			return await ordersAPI.createGuestOrder();
+			console.error("Error in getCurrentCartSafe:", error);
+			throw error;
 		}
 	},
 
-	// Add item to current cart
+	// Add item to current cart using the new single-action endpoint
 	addToCart: async (productId, quantity = 1, notes = "") => {
-		const cart = await cartAPI.getCurrentCart();
-		return await ordersAPI.addItemToOrder(cart.id, {
+		const response = await apiClient.post("/orders/add-item/", {
 			product_id: productId,
 			quantity,
 			notes,
 		});
+		return response.data;
 	},
 
 	// Update cart item quantity
-	updateCartItem: async (itemId, quantity) => {
-		const cart = await cartAPI.getCurrentCart();
-		return await ordersAPI.updateOrderItem(cart.id, itemId, quantity);
+	updateCartItem: async (orderId, itemId, quantity) => {
+		if (!orderId) throw new Error("Order ID is required to update an item.");
+		return await ordersAPI.updateOrderItem(orderId, itemId, quantity);
 	},
 
 	// Remove item from cart
-	removeFromCart: async (itemId) => {
-		const cart = await cartAPI.getCurrentCart();
-		return await ordersAPI.removeOrderItem(cart.id, itemId);
+	removeFromCart: async (orderId, itemId) => {
+		if (!orderId) throw new Error("Order ID is required to remove an item.");
+		try {
+			const response = await apiClient.delete(
+				`/orders/${orderId}/items/${itemId}/`
+			);
+			return response.data;
+		} catch (error) {
+			console.error("Error removing item from cart:", error.response?.data);
+			throw error.response?.data || { error: "An unknown error occurred" };
+		}
 	},
 
-	// Clear entire cart
-	clearCart: async () => {
-		const cart = await cartAPI.getCurrentCart();
-		return await ordersAPI.clearOrderItems(cart.id);
+	// Clear all items from cart
+	clearCart: async (orderId) => {
+		if (!orderId) throw new Error("Order ID is required to clear the cart.");
+		return await ordersAPI.clearOrderItems(orderId);
 	},
 
 	// Get cart item count
 	getCartItemCount: async () => {
 		try {
-			const cart = await cartAPI.getCurrentCart();
-			return cart.items?.reduce((total, item) => total + item.quantity, 0) || 0;
+			// Use the safe version that won't create new orders
+			const cart = await cartAPI.getCurrentCartSafe(true); // Pass true to indicate we're just checking
+			return (
+				cart?.items?.reduce((total, item) => total + item.quantity, 0) || 0
+			);
 		} catch (error) {
 			console.error("Error getting cart count:", error);
 			return 0;
+		}
+	},
+
+	reorder: async (orderId) => {
+		try {
+			const { data } = await apiClient.post(`/orders/${orderId}/reorder/`);
+			return data;
+		} catch (error) {
+			console.error("Error reordering:", error.response?.data);
+			throw error.response?.data || { error: "An unknown error occurred" };
 		}
 	},
 };

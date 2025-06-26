@@ -13,6 +13,7 @@ from .serializers import (
 )
 from .services import OrderService, GuestSessionService
 from .permissions import IsAuthenticatedOrGuestOrder, IsGuestOrAuthenticated
+from users.authentication import CustomerCookieJWTAuthentication, CookieJWTAuthentication
 from django.shortcuts import get_object_or_404
 from rest_framework.request import Request
 from django_filters.rest_framework import DjangoFilterBackend
@@ -37,6 +38,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.prefetch_related(
         "items__product", "applied_discounts__discount", "cashier", "customer"
     ).all()
+    authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
     permission_classes = [IsAuthenticatedOrGuestOrder]
 
     # --- THE FIX: Add filter backends and define filterable/searchable fields ---
@@ -89,10 +91,23 @@ class OrderViewSet(viewsets.ModelViewSet):
         """Handle order creation for both authenticated users and guests."""
         # Check if user is authenticated
         if self.request.user and self.request.user.is_authenticated:
-            # For authenticated users, set them as customer and cashier
-            serializer.save(customer=self.request.user, cashier=self.request.user)
+            # For authenticated customers, check for an existing pending order
+            existing_order = (
+                Order.objects.filter(
+                    customer=self.request.user, status=Order.OrderStatus.PENDING
+                )
+                .order_by("-created_at")
+                .first()
+            )
+
+            if existing_order:
+                # If a pending order exists, use it instead of creating a new one
+                serializer.instance = existing_order
+            else:
+                # If no pending order, create a new one and set the customer
+                serializer.save(customer=self.request.user)
         else:
-            # For guest users, create or get guest order
+            # For guest users, the service layer handles getting or creating
             guest_order = GuestSessionService.create_guest_order(
                 self.request,
                 order_type=serializer.validated_data.get("order_type", "WEB"),
@@ -116,6 +131,46 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(
             response_serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="add-item",
+        permission_classes=[IsGuestOrAuthenticated],
+    )
+    def add_item_to_cart(self, request, *args, **kwargs):
+        """
+        A dedicated endpoint to add an item to the current user's cart.
+        Handles getting or creating the order and adding the item in one step.
+        """
+        # First, get or create the order instance.
+        # We can reuse the logic from the main create method.
+        # We pass a dummy serializer to perform_create to get the instance.
+        create_serializer = OrderCreateSerializer(data={"order_type": "WEB"})
+        create_serializer.is_valid(raise_exception=True)
+        self.perform_create(create_serializer)
+        order = create_serializer.instance
+
+        # Now, validate the item data and add it to the order.
+        item_serializer = AddItemSerializer(data=request.data)
+        item_serializer.is_valid(raise_exception=True)
+
+        product_id = item_serializer.validated_data["product_id"]
+        product = get_object_or_404(Product, pk=product_id)
+
+        try:
+            OrderService.add_item_to_order(
+                order=order,
+                product=product,
+                quantity=item_serializer.validated_data.get("quantity", 1),
+                notes=item_serializer.validated_data.get("notes", ""),
+            )
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Return the entire updated order.
+        response_serializer = OrderSerializer(order, context={"request": request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     def _handle_status_change(self, request: Request, service_method) -> Response:
         """Generic handler for status-changing actions."""
@@ -321,6 +376,19 @@ class OrderViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"], url_path="reorder")
+    def reorder(self, request, pk=None):
+        """
+        Creates a new PENDING order by duplicating items from this order.
+        """
+        try:
+            new_order = OrderService.reorder(source_order_id=pk, user=request.user)
+            # Serialize the new order to return its details, including the new ID
+            serializer = OrderSerializer(new_order, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class OrderItemViewSet(viewsets.ModelViewSet):
     """
@@ -329,6 +397,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     queryset = OrderItem.objects.all()
     serializer_class = OrderItemSerializer
+    authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
     permission_classes = [IsAuthenticatedOrGuestOrder]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 

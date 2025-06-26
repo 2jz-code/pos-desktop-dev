@@ -1,12 +1,28 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { User, Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const CustomerInfo = ({ formData, updateFormData, onNext, isLoading }) => {
+	const { user } = useAuth();
+
+	useEffect(() => {
+		if (user) {
+			updateFormData("firstName", user.first_name || "");
+			updateFormData("lastName", user.last_name || "");
+			updateFormData("email", user.email || "");
+			// The phone number might not be in the base user object.
+			// This assumes it might be added later or could be missing.
+			if (user.phone_number) {
+				updateFormData("phone", user.phone_number);
+			}
+		}
+	}, [user]);
+
 	const handleInputChange = (e) => {
 		const { name, value } = e.target;
 

@@ -12,17 +12,31 @@ const defaultCartState = {
 
 export const useCartStore = create(
 	persist(
-		(set) => ({
+		(set, get) => ({
 			...defaultCartState,
 
 			// Actions that don't need optimistic updates
 			setLoading: (loading) => set({ isLoading: loading }),
 			setError: (error) => set({ error }),
-			setCheckoutCompleted: (completed) =>
-				set({ checkoutCompleted: completed }),
+			setCheckoutCompleted: (completed) => {
+				console.log(`Setting checkout completed: ${completed}`);
+				set({ checkoutCompleted: completed });
+			},
 
 			// Reset state
 			resetCart: () => set({ ...defaultCartState }),
+
+			// Utility to check if checkout was recently completed
+			isCheckoutRecentlyCompleted: () => {
+				const state = get();
+				return state.checkoutCompleted === true;
+			},
+
+			// Force reset checkout state (useful for debugging or manual reset)
+			forceResetCheckoutState: () => {
+				console.log("Force resetting checkout state");
+				set({ checkoutCompleted: false, error: null });
+			},
 		}),
 		{
 			name: "cart-storage",

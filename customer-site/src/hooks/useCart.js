@@ -41,16 +41,35 @@ export const useCartMutations = () => {
 		mutationFn: ({ productId, quantity, notes }) =>
 			cartAPI.addToCart(productId, quantity, notes),
 		// Optimistic update for adding items
-		onMutate: async () => {
+		onMutate: async ({ product, quantity }) => {
 			// Cancel any outgoing refetches
 			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
 
 			// Snapshot the previous value
 			const previousCart = queryClient.getQueryData(cartKeys.current());
 
-			// Don't do optimistic updates for cart calculations
-			// Let the backend handle all calculations to avoid discrepancies
-			// The cart will update when onSettled refetches the data
+			// Optimistically update to the new value
+			if (previousCart) {
+				const optimisticCart = { ...previousCart };
+				const existingItemIndex = optimisticCart.items.findIndex(
+					(item) => item.product.id === product.id
+				);
+
+				if (existingItemIndex > -1) {
+					// Update quantity if item exists
+					optimisticCart.items[existingItemIndex].quantity += quantity;
+				} else {
+					// Add new item with full product details
+					optimisticCart.items.push({
+						id: `temp-${Date.now()}`, // Temporary ID
+						product: product, // Use the full product object
+						quantity,
+						price_at_sale: product.price, // Use product's current price
+						notes: "",
+					});
+				}
+				queryClient.setQueryData(cartKeys.current(), optimisticCart);
+			}
 
 			// Return a context with the previous cart for rollback
 			return { previousCart };
@@ -74,19 +93,26 @@ export const useCartMutations = () => {
 	});
 
 	const updateCartItemMutation = useMutation({
-		mutationFn: ({ itemId, quantity }) =>
-			cartAPI.updateCartItem(itemId, quantity),
+		mutationFn: ({ orderId, itemId, quantity }) =>
+			cartAPI.updateCartItem(orderId, itemId, quantity),
 		// Optimistic update for quantity changes
-		onMutate: async () => {
+		onMutate: async ({ itemId, quantity }) => {
 			// Cancel any outgoing refetches
 			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
 
 			// Snapshot the previous value
 			const previousCart = queryClient.getQueryData(cartKeys.current());
 
-			// Don't do optimistic updates for cart calculations
-			// Let the backend handle all calculations to avoid discrepancies
-			// The cart will update when onSettled refetches the data
+			// Optimistically update to the new value
+			if (previousCart) {
+				const optimisticCart = {
+					...previousCart,
+					items: previousCart.items.map((item) =>
+						item.id === itemId ? { ...item, quantity } : item
+					),
+				};
+				queryClient.setQueryData(cartKeys.current(), optimisticCart);
+			}
 
 			// Return a context with the previous cart
 			return { previousCart };
@@ -110,9 +136,10 @@ export const useCartMutations = () => {
 	});
 
 	const removeFromCartMutation = useMutation({
-		mutationFn: (itemId) => cartAPI.removeFromCart(itemId),
+		mutationFn: ({ orderId, itemId }) =>
+			cartAPI.removeFromCart(orderId, itemId),
 		// Optimistic update for item removal
-		onMutate: async (itemId) => {
+		onMutate: async ({ itemId }) => {
 			// Cancel any outgoing refetches
 			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
 
@@ -151,13 +178,27 @@ export const useCartMutations = () => {
 	});
 
 	const clearCartMutation = useMutation({
-		mutationFn: () => cartAPI.clearCart(),
+		mutationFn: (orderId) => cartAPI.clearCart(orderId),
+		onMutate: async () => {
+			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
+			const previousCart = queryClient.getQueryData(cartKeys.current());
+			if (previousCart) {
+				queryClient.setQueryData(cartKeys.current(), {
+					...previousCart,
+					items: [],
+				});
+			}
+			return { previousCart };
+		},
 		onSuccess: () => {
 			invalidateCart();
 			cartStore.setCheckoutCompleted(true);
 			toast.success("Cart cleared");
 		},
-		onError: (error) => {
+		onError: (error, variables, context) => {
+			if (context?.previousCart) {
+				queryClient.setQueryData(cartKeys.current(), context.previousCart);
+			}
 			const errorMessage =
 				error.response?.data?.detail || "Failed to clear cart";
 			toast.error(errorMessage);
@@ -217,32 +258,53 @@ export const useCart = () => {
 		// Data
 		...summary,
 
-		// Loading states - check if any mutation is loading
-		isLoading:
-			cartQuery.isLoading ||
-			mutations.addToCart.isPending ||
-			mutations.updateCartItem.isPending ||
-			mutations.removeFromCart.isPending ||
-			mutations.clearCart.isPending,
+		// Loading states - ONLY show loading on initial fetch.
+		// Optimistic mutations should not trigger a global loading state.
+		isLoading: cartQuery.isLoading && cartQuery.isFetching,
 		isError: cartQuery.isError,
 		error: cartQuery.error || cartStore.error,
 
 		// Actions - these now return the mutation objects for better control
 		addToCart: (product, quantity = 1, notes = "") => {
-			const productId = typeof product === "object" ? product.id : product;
+			// Reset checkout completed flag when starting to add items again
+			if (cartStore.checkoutCompleted) {
+				cartStore.setCheckoutCompleted(false);
+			}
+
 			return mutations.addToCart.mutate({
-				productId,
+				productId: product.id,
+				product, // Pass the full product object for optimistic update
 				quantity,
 				notes,
 			});
 		},
 
-		updateCartItem: (itemId, quantity) =>
-			mutations.updateCartItem.mutate({ itemId, quantity }),
+		updateCartItem: (itemId, quantity) => {
+			const orderId = cartQuery.data?.id;
+			if (!orderId) {
+				toast.error("Cannot update item: cart not found.");
+				return;
+			}
+			mutations.updateCartItem.mutate({ orderId, itemId, quantity });
+		},
 
-		removeFromCart: (itemId) => mutations.removeFromCart.mutate(itemId),
+		removeFromCart: (itemId) => {
+			const orderId = cartQuery.data?.id;
+			if (!orderId) {
+				toast.error("Cannot remove item: cart not found.");
+				return;
+			}
+			mutations.removeFromCart.mutate({ orderId, itemId });
+		},
 
-		clearCart: () => mutations.clearCart.mutate(),
+		clearCart: () => {
+			const orderId = cartQuery.data?.id;
+			if (!orderId) {
+				toast.error("Cannot clear cart: cart not found.");
+				return;
+			}
+			mutations.clearCart.mutate(orderId);
+		},
 
 		updateGuestInfo: (contactData) => {
 			if (!summary.cart?.id) throw new Error("No cart found");
@@ -268,5 +330,9 @@ export const useCart = () => {
 		// Aliases for compatibility
 		cartItemCount: summary.itemCount,
 		checkoutCompleted: cartStore.checkoutCompleted,
+
+		// Expose mutation status if needed
+		isAddingToCart: mutations.addToCart.isPending,
+		isUpdatingCart: mutations.updateCartItem.isPending,
 	};
 };

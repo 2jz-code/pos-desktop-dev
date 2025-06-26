@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("admin/", admin.site.urls),
     path("api/users/", include("users.urls")),
+    path("api/auth/customer/", include("users.customer_urls")),  # Customer authentication
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***

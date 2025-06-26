@@ -13,6 +13,7 @@ import ProductDetailsPage from "./pages/menu/components/ProductDetailsPage";
 import AuthPage from "./pages/AuthPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import DashboardPage from "./pages/DashboardPage";
 
 function App() {
 	return (
@@ -36,13 +37,22 @@ function App() {
 										path="/product/:productName"
 										element={<ProductDetailsPage />}
 									/>
+									{/* Authentication routes */}
 									<Route
-										path="/auth"
+										path="/login"
+										element={<AuthPage />}
+									/>
+									<Route
+										path="/register"
 										element={<AuthPage />}
 									/>
 									<Route
 										path="/checkout"
 										element={<CheckoutPage />}
+									/>
+									<Route
+										path="/dashboard"
+										element={<DashboardPage />}
 									/>
 
 									{/* Catch all route for 404 */}

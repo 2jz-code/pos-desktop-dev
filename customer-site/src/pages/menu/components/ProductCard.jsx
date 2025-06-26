@@ -106,7 +106,6 @@ const ProductCard = ({
 			<Link
 				to={`/product/${encodeURIComponent(product.name)}`}
 				className="h-full flex flex-col"
-				onClick={(e) => showQuickAdd && stopPropagation(e)}
 			>
 				<div className="relative aspect-w-16 aspect-h-9 bg-muted">
 					<img
@@ -178,7 +177,6 @@ const ProductCard = ({
 					<Link
 						to={`/product/${encodeURIComponent(product.name)}`}
 						className="block"
-						onClick={(e) => showQuickAdd && stopPropagation(e)}
 					>
 						<h3 className="text-lg font-semibold mb-1">{product.name}</h3>
 						<p className="text-muted-foreground text-sm line-clamp-2 mb-2">
