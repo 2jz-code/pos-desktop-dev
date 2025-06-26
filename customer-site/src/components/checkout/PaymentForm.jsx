@@ -2,9 +2,23 @@ import React, { useState } from "react";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, CreditCard, Lock, Shield } from "lucide-react";
+import {
+	ArrowLeft,
+	CreditCard,
+	Lock,
+	Shield,
+	UserCheck,
+	User,
+} from "lucide-react";
 
-const PaymentForm = ({ formData, onBack, onSubmit, isLoading }) => {
+const PaymentForm = ({
+	formData,
+	onBack,
+	onSubmit,
+	isLoading,
+	isAuthenticated,
+	user,
+}) => {
 	const stripe = useStripe();
 	const elements = useElements();
 	const [cardComplete, setCardComplete] = useState(false);
@@ -69,18 +83,71 @@ const PaymentForm = ({ formData, onBack, onSubmit, isLoading }) => {
 				>
 					{/* Order Summary Preview */}
 					<div className="bg-primary-beige/30 rounded-lg p-4 border border-accent-subtle-gray/30">
-						<h4 className="font-medium text-accent-dark-brown mb-2">
-							Order for:
+						<h4 className="font-medium text-accent-dark-brown mb-3 flex items-center">
+							{isAuthenticated ? (
+								<>
+									<UserCheck className="mr-2 h-4 w-4" />
+									Order for:
+								</>
+							) : (
+								<>
+									<User className="mr-2 h-4 w-4" />
+									Order for:
+								</>
+							)}
 						</h4>
-						<p className="text-sm text-accent-dark-brown/80">
-							{formData.firstName} {formData.lastName}
-						</p>
-						<p className="text-sm text-accent-dark-brown/80">
-							{formData.email}
-						</p>
-						<p className="text-sm text-accent-dark-brown/80">
-							{formData.phone}
-						</p>
+
+						{isAuthenticated && user ? (
+							// Show authenticated user information
+							<div className="space-y-2">
+								<p className="text-sm text-accent-dark-brown/80 font-medium">
+									{user.first_name && user.last_name
+										? `${user.first_name} ${user.last_name}`
+										: user.username}
+								</p>
+								<p className="text-sm text-accent-dark-brown/70">
+									{user.email}
+								</p>
+								{user.phone && (
+									<p className="text-sm text-accent-dark-brown/70">
+										{user.phone}
+									</p>
+								)}
+								{formData.orderNotes && (
+									<div className="mt-3 pt-2 border-t border-accent-subtle-gray/20">
+										<p className="text-xs text-accent-dark-brown/60">
+											Order Notes:
+										</p>
+										<p className="text-sm text-accent-dark-brown/80">
+											{formData.orderNotes}
+										</p>
+									</div>
+								)}
+							</div>
+						) : (
+							// Show guest user information
+							<div className="space-y-2">
+								<p className="text-sm text-accent-dark-brown/80 font-medium">
+									{formData.firstName} {formData.lastName}
+								</p>
+								<p className="text-sm text-accent-dark-brown/70">
+									{formData.email}
+								</p>
+								<p className="text-sm text-accent-dark-brown/70">
+									{formData.phone}
+								</p>
+								{formData.orderNotes && (
+									<div className="mt-3 pt-2 border-t border-accent-subtle-gray/20">
+										<p className="text-xs text-accent-dark-brown/60">
+											Order Notes:
+										</p>
+										<p className="text-sm text-accent-dark-brown/80">
+											{formData.orderNotes}
+										</p>
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 
 					{/* Payment Method */}

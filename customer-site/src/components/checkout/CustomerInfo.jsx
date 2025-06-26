@@ -1,206 +1,380 @@
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	User,
+	Mail,
+	Phone,
+	ArrowRight,
+	MessageSquare,
+	UserCheck,
+} from "lucide-react";
 
-const CustomerInfo = ({ formData, updateFormData, onNext, isLoading }) => {
-	const { user } = useAuth();
+const CustomerInfo = ({
+	formData,
+	updateFormData,
+	onNext,
+	isLoading,
+	isAuthenticated,
+	user,
+}) => {
+	const [localFormData, setLocalFormData] = useState(formData);
 
+	// Pre-fill form data for authenticated users
 	useEffect(() => {
-		if (user) {
-			updateFormData("firstName", user.first_name || "");
-			updateFormData("lastName", user.last_name || "");
-			updateFormData("email", user.email || "");
-			// The phone number might not be in the base user object.
-			// This assumes it might be added later or could be missing.
-			if (user.phone_number) {
-				updateFormData("phone", user.phone_number);
-			}
+		if (isAuthenticated && user) {
+			setLocalFormData((prev) => ({
+				...prev,
+				firstName: user.first_name || "",
+				lastName: user.last_name || "",
+				email: user.email || "",
+				phone: user.phone || "",
+			}));
 		}
-	}, [user]);
+	}, [isAuthenticated, user]);
 
 	const handleInputChange = (e) => {
 		const { name, value } = e.target;
-
-		// Format phone number
-		if (name === "phone") {
-			const phoneNumber = value.replace(/[^\d]/g, "");
-			let formattedPhone = phoneNumber;
-
-			if (phoneNumber.length >= 6) {
-				formattedPhone = `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(
-					3,
-					6
-				)}-${phoneNumber.slice(6, 10)}`;
-			} else if (phoneNumber.length >= 3) {
-				formattedPhone = `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
-			} else if (phoneNumber.length > 0) {
-				formattedPhone = `(${phoneNumber}`;
-			}
-
-			updateFormData(name, formattedPhone);
-		} else {
-			updateFormData(name, value);
-		}
+		setLocalFormData((prev) => ({ ...prev, [name]: value }));
+		updateFormData(name, value);
 	};
 
 	const validateForm = () => {
-		const { firstName, lastName, email, phone } = formData;
-		const phoneDigits = phone.replace(/[^\d]/g, "");
+		// For authenticated users, only validate order notes if required
+		if (isAuthenticated && user) {
+			return true; // Always valid for authenticated users
+		}
 
-		return (
-			firstName.trim() &&
-			lastName.trim() &&
-			email.trim() &&
-			email.includes("@") &&
-			phoneDigits.length === 10
-		);
+		// For guest users, validate all required fields
+		const { firstName, lastName, email, phone } = localFormData;
+
+		if (!firstName?.trim()) return false;
+		if (!lastName?.trim()) return false;
+		if (!email?.trim()) return false;
+		if (!phone?.trim()) return false;
+
+		// Basic email validation
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+		if (!emailRegex.test(email)) return false;
+
+		// Basic phone validation (at least 10 digits)
+		const phoneDigits = phone.replace(/\D/g, "");
+		if (phoneDigits.length < 10) return false;
+
+		return true;
 	};
 
-	const handleNext = (e) => {
+	const handleSubmit = (e) => {
 		e.preventDefault();
-		if (validateForm() && !isLoading) {
+		if (validateForm()) {
 			onNext();
 		}
 	};
 
+	// Format phone number for display
+	const formatPhoneNumber = (value) => {
+		const phoneNumber = value.replace(/[^\d]/g, "");
+		const phoneNumberLength = phoneNumber.length;
+
+		if (phoneNumberLength < 4) return phoneNumber;
+		if (phoneNumberLength < 7) {
+			return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
+		}
+		return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(
+			3,
+			6
+		)}-${phoneNumber.slice(6, 10)}`;
+	};
+
+	const handlePhoneChange = (e) => {
+		const formattedPhone = formatPhoneNumber(e.target.value);
+		setLocalFormData((prev) => ({ ...prev, phone: formattedPhone }));
+		updateFormData("phone", formattedPhone);
+	};
+
 	return (
 		<div>
-			<CardHeader className="px-0 pt-0 pb-6">
-				<CardTitle className="text-accent-dark-green flex items-center mb-2">
-					<User className="mr-2 h-5 w-5" />
-					Contact Information
+			<CardHeader className="px-0 pt-0">
+				<CardTitle className="text-accent-dark-green flex items-center">
+					{isAuthenticated ? (
+						<>
+							<UserCheck className="mr-2 h-5 w-5" />
+							Welcome back, {user?.first_name || user?.username}!
+						</>
+					) : (
+						<>
+							<User className="mr-2 h-5 w-5" />
+							Contact Information
+						</>
+					)}
 				</CardTitle>
-				<p className="text-accent-dark-brown/70 text-sm leading-relaxed">
-					We need your details to process your order and send confirmation.
+				<p className="text-accent-dark-brown/70 text-sm">
+					{isAuthenticated
+						? "Please review your information and add any order notes."
+						: "We'll use this information to contact you about your order."}
 				</p>
 			</CardHeader>
 
 			<CardContent className="px-0">
 				<form
-					onSubmit={handleNext}
-					className="space-y-8"
+					onSubmit={handleSubmit}
+					className="space-y-6"
 				>
-					{/* Name Fields */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div className="space-y-3">
-							<Label
-								htmlFor="firstName"
-								className="text-accent-dark-brown font-medium text-sm"
-							>
-								First Name *
-							</Label>
-							<div className="relative">
-								<Input
-									id="firstName"
-									name="firstName"
-									type="text"
-									value={formData.firstName || ""}
-									onChange={handleInputChange}
-									placeholder="Enter your first name"
-									className="border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
-									required
-								/>
+					{isAuthenticated && user ? (
+						// For authenticated users, show editable form with pre-filled data
+						<div className="space-y-6">
+							{/* Customer Info Notice */}
+							<div className="bg-primary-beige/30 rounded-lg p-3 border border-accent-subtle-gray/30">
+								<p className="text-sm text-accent-dark-brown/80">
+									<UserCheck className="inline mr-2 h-4 w-4" />
+									Your information is pre-filled but you can update it for this
+									order.
+								</p>
+							</div>
+
+							{/* Name Fields */}
+							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+								<div className="space-y-3">
+									<Label
+										htmlFor="firstName"
+										className="text-accent-dark-brown font-medium text-sm"
+									>
+										First Name *
+									</Label>
+									<div className="relative">
+										<User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+										<Input
+											id="firstName"
+											name="firstName"
+											type="text"
+											value={localFormData.firstName || ""}
+											onChange={handleInputChange}
+											placeholder="First Name"
+											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+											required
+										/>
+									</div>
+								</div>
+
+								<div className="space-y-3">
+									<Label
+										htmlFor="lastName"
+										className="text-accent-dark-brown font-medium text-sm"
+									>
+										Last Name *
+									</Label>
+									<div className="relative">
+										<User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+										<Input
+											id="lastName"
+											name="lastName"
+											type="text"
+											value={localFormData.lastName || ""}
+											onChange={handleInputChange}
+											placeholder="Last Name"
+											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+											required
+										/>
+									</div>
+								</div>
+							</div>
+
+							{/* Email Field */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="email"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Email Address *
+								</Label>
+								<div className="relative">
+									<Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+									<Input
+										id="email"
+										name="email"
+										type="email"
+										value={localFormData.email || ""}
+										onChange={handleInputChange}
+										placeholder="your.email@example.com"
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										required
+									/>
+								</div>
+							</div>
+
+							{/* Phone Field */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="phone"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Phone Number *
+								</Label>
+								<div className="relative">
+									<Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+									<Input
+										id="phone"
+										name="phone"
+										type="tel"
+										value={localFormData.phone || ""}
+										onChange={handlePhoneChange}
+										placeholder="(555) 123-4567"
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										required
+									/>
+								</div>
+							</div>
+
+							{/* Order Notes */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="orderNotes"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Order Notes (Optional)
+								</Label>
+								<div className="relative">
+									<MessageSquare className="absolute left-3 top-3 h-4 w-4 text-accent-dark-brown/40" />
+									<Textarea
+										id="orderNotes"
+										name="orderNotes"
+										value={localFormData.orderNotes || ""}
+										onChange={handleInputChange}
+										placeholder="Any special instructions or allergies?"
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20 min-h-[80px]"
+										rows={3}
+									/>
+								</div>
 							</div>
 						</div>
+					) : (
+						// For guest users, show full form
+						<div className="space-y-6">
+							{/* Name Fields */}
+							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+								<div className="space-y-3">
+									<Label
+										htmlFor="firstName"
+										className="text-accent-dark-brown font-medium text-sm"
+									>
+										First Name *
+									</Label>
+									<div className="relative">
+										<User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+										<Input
+											id="firstName"
+											name="firstName"
+											type="text"
+											value={localFormData.firstName || ""}
+											onChange={handleInputChange}
+											placeholder="John"
+											required
+											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										/>
+									</div>
+								</div>
 
-						<div className="space-y-3">
-							<Label
-								htmlFor="lastName"
-								className="text-accent-dark-brown font-medium text-sm"
-							>
-								Last Name *
-							</Label>
-							<Input
-								id="lastName"
-								name="lastName"
-								type="text"
-								value={formData.lastName || ""}
-								onChange={handleInputChange}
-								placeholder="Enter your last name"
-								className="border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
-								required
-							/>
-						</div>
-					</div>
+								<div className="space-y-3">
+									<Label
+										htmlFor="lastName"
+										className="text-accent-dark-brown font-medium text-sm"
+									>
+										Last Name *
+									</Label>
+									<div className="relative">
+										<User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+										<Input
+											id="lastName"
+											name="lastName"
+											type="text"
+											value={localFormData.lastName || ""}
+											onChange={handleInputChange}
+											placeholder="Doe"
+											required
+											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										/>
+									</div>
+								</div>
+							</div>
 
-					{/* Email Field */}
-					<div className="space-y-3">
-						<Label
-							htmlFor="email"
-							className="text-accent-dark-brown font-medium text-sm"
-						>
-							Email Address *
-						</Label>
-						<div className="relative">
-							<Mail className="absolute left-3 top-3 h-4 w-4 text-accent-dark-brown/40" />
-							<Input
-								id="email"
-								name="email"
-								type="email"
-								value={formData.email || ""}
-								onChange={handleInputChange}
-								placeholder="Enter your email address"
-								className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
-								required
-							/>
-						</div>
-						<p className="text-xs text-accent-dark-brown/60 mt-2 leading-relaxed">
-							We'll send your order confirmation to this email.
-						</p>
-					</div>
+							{/* Email Field */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="email"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Email Address *
+								</Label>
+								<div className="relative">
+									<Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+									<Input
+										id="email"
+										name="email"
+										type="email"
+										value={localFormData.email || ""}
+										onChange={handleInputChange}
+										placeholder="john.doe@example.com"
+										required
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+									/>
+								</div>
+								<p className="text-accent-dark-brown/60 text-sm">
+									We'll send your order confirmation to this email.
+								</p>
+							</div>
 
-					{/* Phone Field */}
-					<div className="space-y-3">
-						<Label
-							htmlFor="phone"
-							className="text-accent-dark-brown font-medium text-sm"
-						>
-							Phone Number *
-						</Label>
-						<div className="relative">
-							<Phone className="absolute left-3 top-3 h-4 w-4 text-accent-dark-brown/40" />
-							<Input
-								id="phone"
-								name="phone"
-								type="tel"
-								value={formData.phone || ""}
-								onChange={handleInputChange}
-								placeholder="(555) 123-4567"
-								className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
-								required
-							/>
-						</div>
-						<p className="text-xs text-accent-dark-brown/60 mt-2 leading-relaxed">
-							We may call if there are any issues with your order.
-						</p>
-					</div>
+							{/* Phone Field */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="phone"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Phone Number *
+								</Label>
+								<div className="relative">
+									<Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-accent-dark-brown/40" />
+									<Input
+										id="phone"
+										name="phone"
+										type="tel"
+										value={localFormData.phone || ""}
+										onChange={handlePhoneChange}
+										placeholder="(555) 123-4567"
+										required
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+									/>
+								</div>
+								<p className="text-accent-dark-brown/60 text-sm">
+									We'll text you updates about your order.
+								</p>
+							</div>
 
-					{/* Order Notes */}
-					<div className="space-y-3">
-						<Label
-							htmlFor="orderNotes"
-							className="text-accent-dark-brown font-medium text-sm"
-						>
-							Order Notes (Optional)
-						</Label>
-						<div className="relative">
-							<MessageSquare className="absolute left-3 top-3 h-4 w-4 text-accent-dark-brown/40" />
-							<Textarea
-								id="orderNotes"
-								name="orderNotes"
-								value={formData.orderNotes || ""}
-								onChange={handleInputChange}
-								placeholder="Any special instructions or allergies?"
-								className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20 min-h-[80px]"
-								rows={3}
-							/>
+							{/* Order Notes */}
+							<div className="space-y-3">
+								<Label
+									htmlFor="orderNotes"
+									className="text-accent-dark-brown font-medium text-sm"
+								>
+									Order Notes (Optional)
+								</Label>
+								<div className="relative">
+									<MessageSquare className="absolute left-3 top-3 h-4 w-4 text-accent-dark-brown/40" />
+									<Textarea
+										id="orderNotes"
+										name="orderNotes"
+										value={localFormData.orderNotes || ""}
+										onChange={handleInputChange}
+										placeholder="Any special instructions or allergies?"
+										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20 min-h-[80px]"
+										rows={3}
+									/>
+								</div>
+							</div>
 						</div>
-					</div>
+					)}
 
 					{/* Continue Button */}
 					<div className="pt-6">

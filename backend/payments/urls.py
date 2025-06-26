@@ -1,14 +1,22 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (
-    PaymentProcessView,
+
+# Import from organized view modules
+from .views.authenticated import (
     PaymentViewSet,
+    PaymentProcessView,
+    CreateUserPaymentIntentView,
+    CompleteUserPaymentView,
+)
+from .views.terminal import (
     CreateTerminalIntentView,
     CaptureTerminalIntentView,
     CancelPaymentIntentView,
     TerminalConnectionTokenView,
     TerminalConfigurationView,
-    StripeWebhookView,
+)
+from .views.webhooks import StripeWebhookView
+from .views.guest import (
     CreateGuestPaymentIntentView,
     CompleteGuestPaymentView,
 )
@@ -31,8 +39,19 @@ urlpatterns = [
         CompleteGuestPaymentView.as_view(),
         name="guest-complete-payment",
     ),
-    # Existing URLs
+    # Authenticated payment endpoints
     path("process/", PaymentProcessView.as_view(), name="payment-process"),
+    path(
+        "create-payment-intent/",
+        CreateUserPaymentIntentView.as_view(),
+        name="create-payment-intent",
+    ),
+    path(
+        "complete-payment/",
+        CompleteUserPaymentView.as_view(),
+        name="complete-payment",
+    ),
+    # Terminal payment endpoints
     path(
         "orders/<uuid:order_id>/create-terminal-intent/",
         CreateTerminalIntentView.as_view(),
@@ -58,6 +77,7 @@ urlpatterns = [
         TerminalConfigurationView.as_view(),
         name="terminal-configuration",
     ),
-    # Include the router-generated URLs
+    # Include the router-generated URLs for PaymentViewSet
+    # This includes: /api/payments/, /api/payments/{id}/, and all ViewSet actions
     path("", include(router.urls)),
 ]

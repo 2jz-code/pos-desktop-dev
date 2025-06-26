@@ -5,6 +5,7 @@ import { ordersAPI } from "@/api/orders";
 import { paymentsAPI } from "@/api/payments";
 import { useCart } from "./useCart";
 import { useFinancialSettings } from "./useSettings";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Initial form data structure
 const initialFormData = {
@@ -19,6 +20,7 @@ export const useCheckout = () => {
 	const navigate = useNavigate();
 	const { cart, clearCart } = useCart();
 	const { data: financialSettings } = useFinancialSettings();
+	const { user, isAuthenticated } = useAuth();
 
 	// State management
 	const [currentStep, setCurrentStep] = useState(1);
@@ -46,8 +48,14 @@ export const useCheckout = () => {
 		setError(null);
 	}, []);
 
-	// Validate form data
+	// Validate form data - skip for authenticated users as we have their data
 	const validateFormData = useCallback(() => {
+		// For authenticated users, only validate order notes if needed
+		if (isAuthenticated && user) {
+			return null; // No validation errors for authenticated users
+		}
+
+		// For guest users, validate all fields
 		const { firstName, lastName, email, phone } = formData;
 
 		if (!firstName?.trim()) return "First name is required";
@@ -64,7 +72,7 @@ export const useCheckout = () => {
 		if (phoneDigits.length < 10) return "Please enter a valid phone number";
 
 		return null;
-	}, [formData]);
+	}, [formData, isAuthenticated, user]);
 
 	// Calculate order totals - Use backend values when available
 	const calculateOrderTotals = useCallback(
@@ -134,7 +142,7 @@ export const useCheckout = () => {
 		setCurrentStep((prev) => Math.max(prev - 1, 1));
 	}, []);
 
-	// Create or update guest order
+	// Create or update guest order (for guest users only)
 	const createGuestOrder = useCallback(async () => {
 		try {
 			const totals = calculateOrderTotals(cart);
@@ -170,8 +178,10 @@ export const useCheckout = () => {
 		}
 	}, [cart, formData, calculateOrderTotals]);
 
-	// Create payment intent
-	const createPaymentIntent = useCallback(
+	// Note: For authenticated users, we use the cart directly as it's already an order
+
+	// Create payment intent (for guest users)
+	const createGuestPaymentIntent = useCallback(
 		async (order) => {
 			try {
 				const totals = calculateOrderTotals(cart);
@@ -191,7 +201,7 @@ export const useCheckout = () => {
 				paymentIntentRef.current = paymentIntent;
 				return paymentIntent;
 			} catch (err) {
-				console.error("Error creating payment intent:", err);
+				console.error("Error creating guest payment intent:", err);
 				throw new Error(
 					err.response?.data?.detail || "Failed to initialize payment"
 				);
@@ -200,7 +210,99 @@ export const useCheckout = () => {
 		[cart, formData, calculateOrderTotals]
 	);
 
-	// Submit order and process payment
+	// Note: Authenticated payment intents are now handled in handleAuthenticatedCheckout
+
+	// Complete guest payment
+	const completeGuestPayment = useCallback(async (paymentIntentId, orderId) => {
+		return await paymentsAPI.completeGuestPayment({
+			payment_intent_id: paymentIntentId,
+			order_id: orderId,
+		});
+	}, []);
+
+	// Note: Authenticated payment completion is now handled in handleAuthenticatedCheckout
+
+	// Authenticated user checkout function (must be defined before submitOrder)
+	const handleAuthenticatedCheckout = useCallback(
+		async ({ stripe, cardElement }) => {
+			try {
+				setIsLoading(true);
+				setError(null);
+
+				console.log("Starting authenticated checkout...");
+				console.log("Current order:", cart);
+
+				if (!cart?.id) {
+					throw new Error("No order found");
+				}
+
+				// Step 1: Create payment intent for authenticated user
+				console.log("Creating authenticated payment intent...");
+				const paymentIntentData =
+					await paymentsAPI.createAuthenticatedPaymentIntent({
+						order_id: cart.id,
+						amount: cart.grand_total,
+						currency: "usd",
+					});
+
+				console.log("Payment intent created:", paymentIntentData);
+
+				// Step 2: Confirm payment with Stripe
+				console.log("Confirming payment with Stripe...");
+				const { error: confirmError, paymentIntent } =
+					await stripe.confirmCardPayment(paymentIntentData.client_secret, {
+						payment_method: {
+							card: cardElement,
+							billing_details: {
+								name:
+									user.first_name && user.last_name
+										? `${user.first_name} ${user.last_name}`
+										: user.username,
+								email: user.email,
+							},
+						},
+					});
+
+				if (confirmError) {
+					console.error("Stripe confirmation error:", confirmError);
+					throw new Error(confirmError.message);
+				}
+
+				console.log("Payment confirmed with Stripe:", paymentIntent);
+
+				// Step 3: Complete payment on backend
+				console.log("Completing payment on backend...");
+				const completionResponse =
+					await paymentsAPI.completeAuthenticatedPayment({
+						payment_intent_id: paymentIntent.id,
+						order_id: cart.id,
+					});
+
+				console.log("Payment completed:", completionResponse);
+
+				// Step 4: Set success state
+				setOrderConfirmation({
+					order: cart,
+					paymentDetails: completionResponse,
+				});
+				setCurrentStep(3); // Set to confirmation step
+
+				// Clear cart
+				clearCart();
+
+				toast.success("Order placed successfully!");
+			} catch (error) {
+				console.error("Authenticated checkout error:", error);
+				setError(error.message || "Payment failed. Please try again.");
+				toast.error(error.message || "Payment failed. Please try again.");
+			} finally {
+				setIsLoading(false);
+			}
+		},
+		[cart, user, clearCart]
+	);
+
+	// Submit order and process payment (unified for both user types)
 	const submitOrder = useCallback(
 		async ({ stripe, cardElement }) => {
 			// Prevent duplicate submissions
@@ -216,25 +318,41 @@ export const useCheckout = () => {
 			setError(null);
 
 			try {
-				// Step 1: Create the guest order
-				console.log("Creating guest order...");
-				const order = await createGuestOrder();
+				let order, paymentIntent;
 
-				// Step 2: Create payment intent
-				console.log("Creating payment intent...");
-				const paymentIntent = await createPaymentIntent(order);
+				// Step 1: Create/get the order based on user type
+				if (isAuthenticated && user) {
+					console.log("Routing to authenticated checkout...");
+					// Use the new authenticated checkout method
+					isProcessingRef.current = false; // Reset flag before calling
+					setIsLoading(false);
+					return handleAuthenticatedCheckout({ stripe, cardElement });
+				} else {
+					console.log("Processing guest user order...");
+					order = await createGuestOrder();
+					paymentIntent = await createGuestPaymentIntent(order);
+				}
 
-				// Step 3: Confirm payment with Stripe
+				// Step 2: Confirm payment with Stripe
 				console.log("Confirming payment with Stripe...");
+				const billingDetails = {
+					name:
+						isAuthenticated && user
+							? `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+							  user.username
+							: `${formData.firstName} ${formData.lastName}`,
+					email: isAuthenticated && user ? user.email : formData.email,
+					phone:
+						isAuthenticated && user
+							? user.phone
+							: formData.phone?.replace(/[^\d]/g, ""),
+				};
+
 				const { error: stripeError, paymentIntent: confirmedPayment } =
 					await stripe.confirmCardPayment(paymentIntent.client_secret, {
 						payment_method: {
 							card: cardElement,
-							billing_details: {
-								name: `${formData.firstName} ${formData.lastName}`,
-								email: formData.email,
-								phone: formData.phone.replace(/[^\d]/g, ""),
-							},
+							billing_details: billingDetails,
 						},
 					});
 
@@ -243,22 +361,19 @@ export const useCheckout = () => {
 				}
 
 				if (confirmedPayment.status === "succeeded") {
-					// Step 4: Finalize order on backend
+					// Step 3: Finalize order on backend
 					console.log("Payment succeeded, finalizing order...");
 
-					// Complete the payment on the backend
-					await paymentsAPI.completeGuestPayment({
-						payment_intent_id: confirmedPayment.id,
-						order_id: order.id,
-					});
+					// Complete the guest payment (authenticated users are handled separately)
+					await completeGuestPayment(confirmedPayment.id, order.id);
 
 					// Prepare order confirmation data
 					const confirmationData = {
 						id: order.id,
 						orderNumber: order.order_number || order.id,
-						customerName: `${formData.firstName} ${formData.lastName}`,
-						customerEmail: formData.email,
-						customerPhone: formData.phone,
+						customerName: billingDetails.name,
+						customerEmail: billingDetails.email,
+						customerPhone: billingDetails.phone,
 						items: cart.items,
 						grandTotal: calculateOrderTotals(cart).total,
 						paymentIntentId: confirmedPayment.id,
@@ -291,8 +406,12 @@ export const useCheckout = () => {
 		},
 		[
 			isLoading,
+			isAuthenticated,
+			user,
+			handleAuthenticatedCheckout,
 			createGuestOrder,
-			createPaymentIntent,
+			createGuestPaymentIntent,
+			completeGuestPayment,
 			formData,
 			cart,
 			calculateOrderTotals,
@@ -320,6 +439,10 @@ export const useCheckout = () => {
 		error,
 		orderConfirmation,
 
+		// User context
+		isAuthenticated,
+		user,
+
 		// Actions
 		updateFormData,
 		nextStep,
@@ -331,5 +454,8 @@ export const useCheckout = () => {
 		// Computed values
 		orderTotals: calculateOrderTotals(cart),
 		isFormValid: !validateFormData(),
+
+		// New authenticated checkout function
+		handleAuthenticatedCheckout,
 	};
 };

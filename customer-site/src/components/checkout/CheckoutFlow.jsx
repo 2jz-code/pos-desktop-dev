@@ -19,6 +19,8 @@ const CheckoutFlow = () => {
 		isLoading,
 		error,
 		orderConfirmation,
+		isAuthenticated,
+		user,
 		updateFormData,
 		nextStep,
 		prevStep,
@@ -64,6 +66,8 @@ const CheckoutFlow = () => {
 						updateFormData={updateFormData}
 						onNext={nextStep}
 						isLoading={isLoading}
+						isAuthenticated={isAuthenticated}
+						user={user}
 					/>
 				);
 			case 2:
@@ -74,6 +78,8 @@ const CheckoutFlow = () => {
 						onBack={prevStep}
 						onSubmit={submitOrder}
 						isLoading={isLoading}
+						isAuthenticated={isAuthenticated}
+						user={user}
 					/>
 				);
 			case 3:

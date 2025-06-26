@@ -179,7 +179,9 @@ class OrderService:
                 id=source_order_id, customer=user
             )
         except Order.DoesNotExist:
-            raise ValueError("Original order not found or you do not have permission to reorder it.")
+            raise ValueError(
+                "Original order not found or you do not have permission to reorder it."
+            )
 
         # Create a new order for the user
         new_order = Order.objects.create(
@@ -437,17 +439,64 @@ class GuestSessionService:
     @staticmethod
     def create_guest_order(request, order_type="WEB"):
         """
-        Create a new guest order for the session.
+        Create a new guest order for the session, with improved duplicate prevention.
+        Returns existing pending order if one exists for the session.
         """
         from .models import Order
 
         guest_id = GuestSessionService.get_or_create_guest_id(request)
 
-        # Check if there's already a pending order for this guest
+        # First, check if there's already a pending order for this guest
         existing_order = GuestSessionService.get_guest_order(request)
         if existing_order:
+            # Update the session with the existing order ID if not already set
+            if not request.session.get(GuestSessionService.GUEST_ORDER_KEY):
+                request.session[GuestSessionService.GUEST_ORDER_KEY] = str(
+                    existing_order.id
+                )
+                request.session.modified = True
             return existing_order
 
+        # Double-check with guest_id to prevent race conditions
+        try:
+            existing_by_guest_id = Order.objects.get(
+                guest_id=guest_id, status=Order.OrderStatus.PENDING
+            )
+            # Update session with found order
+            request.session[GuestSessionService.GUEST_ORDER_KEY] = str(
+                existing_by_guest_id.id
+            )
+            request.session.modified = True
+            return existing_by_guest_id
+        except Order.DoesNotExist:
+            pass
+        except Order.MultipleObjectsReturned:
+            # If multiple pending orders exist, use the most recent one
+            existing_by_guest_id = (
+                Order.objects.filter(
+                    guest_id=guest_id, status=Order.OrderStatus.PENDING
+                )
+                .order_by("-created_at")
+                .first()
+            )
+
+            # Clean up duplicate orders by canceling older ones
+            older_orders = Order.objects.filter(
+                guest_id=guest_id, status=Order.OrderStatus.PENDING
+            ).exclude(id=existing_by_guest_id.id)
+
+            for old_order in older_orders:
+                old_order.status = Order.OrderStatus.CANCELLED
+                old_order.save(update_fields=["status"])
+
+            # Update session with the kept order
+            request.session[GuestSessionService.GUEST_ORDER_KEY] = str(
+                existing_by_guest_id.id
+            )
+            request.session.modified = True
+            return existing_by_guest_id
+
+        # Create new order only if none exists
         order = Order.objects.create(
             guest_id=guest_id, order_type=order_type, status=Order.OrderStatus.PENDING
         )
@@ -492,12 +541,50 @@ class GuestSessionService:
     def clear_guest_session(request):
         """
         Clear guest session data. Used after order completion or conversion.
+        Enhanced to handle cleanup better.
         """
+        guest_id = request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+        order_id = request.session.get(GuestSessionService.GUEST_ORDER_KEY)
+
+        # Mark any pending orders as completed in session cleanup
+        if guest_id and order_id:
+            try:
+                from .models import Order
+
+                order = Order.objects.get(id=order_id, guest_id=guest_id)
+                if order.status == Order.OrderStatus.PENDING:
+                    # This prevents the order from being reused in future sessions
+                    order.status = Order.OrderStatus.COMPLETED
+                    order.save(update_fields=["status"])
+            except Order.DoesNotExist:
+                pass
+
+        # Clear session data
         if GuestSessionService.GUEST_SESSION_KEY in request.session:
             del request.session[GuestSessionService.GUEST_SESSION_KEY]
         if GuestSessionService.GUEST_ORDER_KEY in request.session:
             del request.session[GuestSessionService.GUEST_ORDER_KEY]
         request.session.modified = True
+
+    @staticmethod
+    def cleanup_completed_guest_orders():
+        """
+        Utility method to clean up old completed guest orders.
+        Can be called via management command or periodic task.
+        """
+        from datetime import datetime, timedelta
+        from .models import Order
+
+        # Mark old pending guest orders as cancelled (older than 24 hours)
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        old_orders = Order.objects.filter(
+            guest_id__isnull=False,
+            status=Order.OrderStatus.PENDING,
+            created_at__lt=cutoff_time,
+        )
+
+        count = old_orders.update(status=Order.OrderStatus.CANCELLED)
+        return count
 
 
 class GuestConversionService:
