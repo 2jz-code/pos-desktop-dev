@@ -568,21 +568,35 @@ class PaymentService:
         This updates the transaction, payment, and order statuses.
         """
         transaction = get_object_or_404(
-            PaymentTransaction, transaction_id=payment_intent_id
+            PaymentTransaction.objects.select_related("payment__order"),
+            transaction_id=payment_intent_id,
         )
 
+        # Mark transaction as successful
         transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-        transaction.save()
+        transaction.save(update_fields=["status"])
 
-        # Update the aggregate payment status and get the refreshed payment object
+        # Get the payment and recalculate amounts
         payment = transaction.payment
-        payment = PaymentService._update_payment_status(payment)
+        payment = PaymentService._recalculate_payment_amounts(payment)
 
-        # If the payment is fully paid, update the order status
-        if payment.status == Payment.PaymentStatus.PAID:
+        # Determine and set the correct payment status
+        if payment.amount_paid >= payment.total_amount_due:
+            payment.status = Payment.PaymentStatus.PAID
+            payment.save(update_fields=["status"])
+
+            # Update order status to completed
             order = payment.order
             order.status = Order.OrderStatus.COMPLETED
-            order.save()
+            order.save(update_fields=["status"])
+
+            # Handle payment completion (signals, etc.)
+            PaymentService._handle_payment_completion(payment)
+        elif payment.amount_paid > 0:
+            payment.status = Payment.PaymentStatus.PARTIALLY_PAID
+            payment.save(update_fields=["status"])
+
+        return payment
 
     @transaction.atomic
     def record_internal_refund(self, amount_to_refund: Decimal) -> Payment:

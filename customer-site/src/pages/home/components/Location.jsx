@@ -6,6 +6,7 @@ import {
 	ClockIcon,
 } from "@heroicons/react/24/outline";
 import apiClient from "../../../api/client";
+import { useStoreInfo } from "../../../hooks/useSettings";
 
 const ContactItem = ({ icon, title, details }) => {
 	return (
@@ -29,21 +30,24 @@ const ContactItem = ({ icon, title, details }) => {
 };
 
 const Location = () => {
+	const { data: storeInfo } = useStoreInfo();
+
 	const contactInfo = [
 		{
 			icon: <MapPinIcon className="w-6 h-6" />,
 			title: "Our Location",
-			details: "2105 Cliff Rd Suite 300, Eagan, MN, 55122",
+			details:
+				storeInfo?.store_address || "2105 Cliff Rd Suite 300, Eagan, MN, 55122",
 		},
 		{
 			icon: <PhoneIcon className="w-6 h-6" />,
 			title: "Phone Number",
-			details: "(651) 412-5336",
+			details: storeInfo?.store_phone || "(651) 412-5336",
 		},
 		{
 			icon: <EnvelopeIcon className="w-6 h-6" />,
 			title: "Email Address",
-			details: "contact@bakeajeen.com",
+			details: storeInfo?.store_email || "contact@bakeajeen.com",
 		},
 		{
 			icon: <ClockIcon className="w-6 h-6" />,

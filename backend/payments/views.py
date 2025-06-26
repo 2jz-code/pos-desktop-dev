@@ -483,6 +483,8 @@ class StripeWebhookView(APIView):
     Stripe webhook view to handle asynchronous events.
     """
 
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request, *args, **kwargs):
         payload = request.body
         sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
@@ -781,3 +783,194 @@ class CreatePaymentView(APIView):
         # Return 201 if created, 200 if it already existed.
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(serializer.data, status=status_code)
+
+
+class CreateGuestPaymentIntentView(APIView):
+    """
+    Creates a Stripe Payment Intent for guest users (no authentication required).
+    This endpoint allows guest users to create payment intents for their orders.
+    """
+
+    # No permission classes - allows unauthenticated access
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        order_id = request.data.get("order_id")
+        amount = request.data.get("amount")
+        currency = request.data.get("currency", "usd")
+        customer_email = request.data.get("customer_email")
+        customer_name = request.data.get("customer_name")
+
+        # Validate required fields
+        if not order_id:
+            return Response(
+                {"error": "order_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not amount:
+            return Response(
+                {"error": "amount is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Get the order (ensure it's a guest order or belongs to current session)
+            order = get_object_or_404(Order, id=order_id)
+
+            # Validate this is a guest order or session matches
+            if order.customer and request.user != order.customer:
+                return Response(
+                    {"error": "Order access denied"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            # For guest orders, verify session ownership
+            if order.is_guest_order:
+                session_guest_id = request.session.get("guest_id")
+                if session_guest_id != order.guest_id:
+                    return Response(
+                        {"error": "Order access denied"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+            # Convert amount to Decimal for consistency
+            amount_decimal = Decimal(str(amount))
+
+            # Create or get payment object
+            payment, created = Payment.objects.get_or_create(
+                order=order,
+                defaults={
+                    "total_amount_due": amount_decimal,
+                    "guest_session_key": request.session.session_key,
+                },
+            )
+
+            # If payment already exists, update the amount
+            if not created:
+                payment.total_amount_due = amount_decimal
+                payment.save(update_fields=["total_amount_due"])
+
+            # Create Stripe Payment Intent
+            stripe.api_key = settings.STRIPE_SECRET_KEY
+
+            intent_data = {
+                "amount": int(amount_decimal * 100),  # Convert to cents
+                "currency": currency,
+                "automatic_payment_methods": {
+                    "enabled": True,
+                },
+                "metadata": {
+                    "order_id": str(order.id),
+                    "payment_id": str(payment.id),
+                    "customer_type": "guest",
+                },
+            }
+
+            # Add customer info if provided
+            if customer_email:
+                intent_data["receipt_email"] = customer_email
+
+            if customer_name:
+                intent_data["description"] = f"Order payment for {customer_name}"
+
+            # Create the payment intent
+            intent = stripe.PaymentIntent.create(**intent_data)
+
+            # Store the payment intent ID in the payment
+            payment.guest_payment_intent_id = intent.id
+            payment.save(update_fields=["guest_payment_intent_id"])
+
+            # Create a pending transaction record
+            PaymentTransaction.objects.create(
+                payment=payment,
+                amount=amount_decimal,
+                method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
+                status=PaymentTransaction.TransactionStatus.PENDING,
+                transaction_id=intent.id,
+            )
+
+            return Response(
+                {
+                    "client_secret": intent.client_secret,
+                    "payment_intent_id": intent.id,
+                    "payment_id": str(payment.id),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Order.DoesNotExist:
+            return Response(
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            logger.error(f"Error creating guest payment intent: {e}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class CompleteGuestPaymentView(APIView):
+    """
+    Completes a guest payment after successful Stripe confirmation.
+    This endpoint allows guest users to finalize their payments.
+    """
+
+    # No permission classes - allows unauthenticated access
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        payment_intent_id = request.data.get("payment_intent_id")
+        order_id = request.data.get("order_id")
+
+        # Validate required fields
+        if not payment_intent_id:
+            return Response(
+                {"error": "payment_intent_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Get the order to verify access
+            if order_id:
+                order = get_object_or_404(Order, id=order_id)
+
+                # Validate this is a guest order or session matches
+                if order.customer and request.user != order.customer:
+                    return Response(
+                        {"error": "Order access denied"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                # For guest orders, verify session ownership
+                if order.is_guest_order:
+                    session_guest_id = request.session.get("guest_id")
+                    if session_guest_id != order.guest_id:
+                        return Response(
+                            {"error": "Order access denied"},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+            # Complete the payment using the service
+            from .services import PaymentService
+
+            PaymentService.complete_payment(payment_intent_id)
+
+            return Response(
+                {"status": "success", "message": "Payment completed successfully"},
+                status=status.HTTP_200_OK,
+            )
+
+        except PaymentTransaction.DoesNotExist:
+            return Response(
+                {"error": "Payment transaction not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            logger.error(f"Error completing guest payment: {e}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

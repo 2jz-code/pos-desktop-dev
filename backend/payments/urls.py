@@ -9,6 +9,8 @@ from .views import (
     TerminalConnectionTokenView,
     TerminalConfigurationView,
     StripeWebhookView,
+    CreateGuestPaymentIntentView,
+    CompleteGuestPaymentView,
 )
 
 app_name = "payments"
@@ -18,6 +20,17 @@ router.register(r"", PaymentViewSet, basename="payment")
 
 urlpatterns = [
     path("webhooks/stripe/", StripeWebhookView.as_view(), name="stripe-webhook"),
+    # Guest payment endpoints (no authentication required)
+    path(
+        "guest/create-payment-intent/",
+        CreateGuestPaymentIntentView.as_view(),
+        name="guest-create-payment-intent",
+    ),
+    path(
+        "guest/complete-payment/",
+        CompleteGuestPaymentView.as_view(),
+        name="guest-complete-payment",
+    ),
     # Existing URLs
     path("process/", PaymentProcessView.as_view(), name="payment-process"),
     path(

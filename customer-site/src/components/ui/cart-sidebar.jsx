@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
+import { useCart } from "@/hooks/useCart";
 
 const formatImageUrl = (originalUrl) => {
 	// If the URL is null or not a string, return it as is.
@@ -26,18 +27,14 @@ const formatImageUrl = (originalUrl) => {
 	}
 };
 
-const CartSidebar = ({
-	isOpen,
-	onClose,
-	cartItems = [],
-	cartItemCount = 0,
-	subtotal = 0,
-	// onUpdateQuantity,
-	onRemoveItem,
-	onCheckout,
-	isLoading = false,
-}) => {
+const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 	const [isRestaurantOpen, setIsRestaurantOpen] = useState(true);
+
+	// Use the new cart hook
+	const { cart, cartItemCount, subtotal, isLoading, removeFromCart } =
+		useCart();
+
+	const cartItems = cart?.items || [];
 
 	const formatPrice = (price) => {
 		if (price === null || price === undefined) return "0.00";
@@ -73,7 +70,7 @@ const CartSidebar = ({
 			chicagoDay = (chicagoDay + 1) % 7; // Go to next day, wrapping Saturday to Sunday
 		}
 
-		const openHour = 11; // 11:00 AM Chicago time
+		const openHour = 9; // 11:00 AM Chicago time
 		let closeHour; // 24-hour format
 
 		// Determine closing hour based on Chicago day of the week
@@ -101,8 +98,10 @@ const CartSidebar = ({
 	}, [checkOperatingHours]); // Re-run if checkOperatingHours callback changes
 
 	const handleRemoveItem = async (itemId) => {
-		if (onRemoveItem) {
-			await onRemoveItem(itemId);
+		try {
+			await removeFromCart(itemId);
+		} catch (error) {
+			console.error("Failed to remove item:", error);
 		}
 	};
 
@@ -199,42 +198,48 @@ const CartSidebar = ({
 														src={formatImageUrl(item.product.image)}
 														alt={item.product.name || "Product"}
 														className="h-full w-full object-cover object-center"
+														onError={(e) => {
+															e.target.style.display = "none";
+														}}
 													/>
 												) : (
-													<div className="h-full w-full flex items-center justify-center text-accent-subtle-gray">
-														{/* Placeholder */}
+													<div className="h-full w-full flex items-center justify-center text-accent-subtle-gray text-xs">
+														No Image
 													</div>
 												)}
 											</div>
 
-											{/* Product Details */}
-											<div className="flex-1 min-w-0">
-												<h3 className="text-sm font-semibold text-accent-dark-green truncate">
+											{/* Product Info */}
+											<div className="flex-grow min-w-0">
+												<h4 className="text-sm font-medium text-accent-dark-green truncate">
 													{item.product?.name || "Unknown Product"}
-												</h3>
-												<p className="mt-1 text-xs text-accent-dark-brown">
-													{item.quantity} x $
-													{formatPrice(item.product?.price || 0)}
+												</h4>
+												<p className="text-sm text-accent-dark-brown">
+													${formatPrice(item.product?.price)} × {item.quantity}
 												</p>
-											</div>
-
-											{/* Total item price */}
-											<div className="ml-4 flex-shrink-0 font-medium text-primary-green text-sm">
-												$
-												{formatPrice(
-													(item.quantity || 1) *
-														(parseFloat(item.product?.price) || 0)
+												{item.notes && (
+													<p className="text-xs text-accent-subtle-gray italic mt-1">
+														{item.notes}
+													</p>
 												)}
 											</div>
 
-											{/* Remove button */}
-											<button
-												onClick={() => handleRemoveItem(item.id)}
-												className="ml-3 text-red-500 hover:text-red-700 transition-colors p-1.5 rounded-full hover:bg-red-500/10"
-												aria-label={`Remove ${item.product?.name} from cart`}
-											>
-												<FaTrash size={14} />
-											</button>
+											{/* Item Actions */}
+											<div className="flex items-center space-x-2 ml-2">
+												<span className="text-sm font-medium text-accent-dark-green">
+													$
+													{formatPrice(
+														(item.product?.price || 0) * item.quantity
+													)}
+												</span>
+												<button
+													onClick={() => handleRemoveItem(item.id)}
+													className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-red-500"
+													aria-label="Remove item"
+												>
+													<FaTrash size={12} />
+												</button>
+											</div>
 										</motion.li>
 									))}
 								</ul>
@@ -243,43 +248,38 @@ const CartSidebar = ({
 
 						{/* Cart Footer */}
 						{cartItems.length > 0 && (
-							<div className="border-t border-accent-subtle-gray/50 p-4 bg-primary-beige/70">
-								<div className="flex justify-between text-md font-semibold text-accent-dark-green mb-3">
-									<p>Subtotal</p>
-									<p>${formatPrice(subtotal)}</p>
+							<div className="border-t border-accent-subtle-gray/50 bg-accent-light-beige p-4 space-y-4">
+								{/* Subtotal */}
+								<div className="flex justify-between items-center text-lg font-semibold text-accent-dark-green">
+									<span>Subtotal:</span>
+									<span>${formatPrice(subtotal)}</span>
 								</div>
-								<p className="text-xs text-accent-dark-brown mb-4">
-									Taxes and fees calculated at checkout.
-								</p>
+
+								{/* Restaurant Status */}
+								{!isRestaurantOpen && (
+									<div className="bg-red-50 border border-red-200 rounded-lg p-3">
+										<p className="text-sm text-red-700 text-center">
+											🕒 Restaurant is currently closed. Checkout will be
+											available during operating hours.
+										</p>
+									</div>
+								)}
 
 								{/* Checkout Button */}
 								<button
 									onClick={handleCheckout}
-									className={`w-full text-accent-light-beige py-3 px-4 rounded-lg flex items-center justify-center font-semibold shadow-md ${
-										isCheckoutButtonDisabled
-											? "bg-gray-400 cursor-not-allowed opacity-60"
-											: "bg-primary-green hover:bg-accent-dark-green transition-colors"
-									}`}
 									disabled={isCheckoutButtonDisabled}
+									className={`w-full py-3 px-4 rounded-lg font-medium text-center transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+										isCheckoutButtonDisabled
+											? "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed"
+											: "bg-primary-green text-accent-light-beige hover:bg-accent-dark-green focus:ring-primary-green shadow-sm"
+									}`}
 								>
-									Proceed to Checkout
-								</button>
-
-								{/* Display message if restaurant is closed */}
-								{!isRestaurantOpen && (
-									<p className="text-red-600 text-sm mt-2 text-center">
-										We are currently closed for online orders.
-										<br /> Our hours are 11:00 AM to 8:00 PM (Sun-Thu) and 11:00
-										AM to 9:00 PM (Fri-Sat)
-									</p>
-								)}
-
-								{/* Continue Shopping Button */}
-								<button
-									onClick={onClose}
-									className="w-full mt-2 border border-accent-subtle-gray bg-accent-light-beige text-accent-dark-green py-3 px-4 rounded-lg hover:bg-primary-beige/80 transition-colors flex items-center justify-center font-medium"
-								>
-									Continue Shopping
+									{cartItemCount === 0
+										? "Add Items to Checkout"
+										: !isRestaurantOpen
+										? "Restaurant Closed"
+										: "Proceed to Checkout"}
 								</button>
 							</div>
 						)}

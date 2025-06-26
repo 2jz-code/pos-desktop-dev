@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaSearch, FaTimes } from "react-icons/fa";
 import ProductCard from "./ProductCard";
 import { useFilteredProducts } from "../../../hooks/useProducts";
-import { useCart } from "../../../contexts/CartContext";
+import { useCart } from "@/hooks/useCart";
 import { useProductQuantities } from "../../../hooks/useProductQuantities";
 import { Skeleton } from "@/components/ui/skeleton";
 

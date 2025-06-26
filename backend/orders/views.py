@@ -191,7 +191,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             {"status": "active payments cancelled"}, status=status.HTTP_200_OK
         )
 
-    @action(detail=False, methods=["post"], url_path="guest-order")
+    @action(
+        detail=False, methods=["post"], url_path="guest-order", permission_classes=[]
+    )
     def create_guest_order(self, request):
         """
         Create or get existing guest order for the current session.
@@ -284,6 +286,40 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="init-guest-session",
+        permission_classes=[],
+    )
+    def init_guest_session(self, request):
+        """
+        Initialize or get guest session - no authentication required.
+        Ensures session is created and returns guest session info.
+        """
+        # Override permission for this specific action
+        if not hasattr(request, "session"):
+            return Response(
+                {"error": "Session middleware not available"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Ensure session exists
+        if not request.session.session_key:
+            request.session.create()
+
+        # Get or create guest ID
+        guest_id = GuestSessionService.get_or_create_guest_id(request)
+
+        return Response(
+            {
+                "session_key": request.session.session_key,
+                "guest_id": guest_id,
+                "message": "Guest session initialized",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):

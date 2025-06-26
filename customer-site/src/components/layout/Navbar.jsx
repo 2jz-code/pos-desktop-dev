@@ -30,7 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 // The logo asset needs to be placed in the specified path.
 import LogoImg from "@/assets/logo.png";
 import { useCartSidebar } from "@/contexts/CartSidebarContext";
-import { useCart } from "@/contexts/CartContext";
+import { useCart } from "@/hooks/useCart";
 
 const ProfileDropdown = () => {
 	const { user, logout } = useAuth();

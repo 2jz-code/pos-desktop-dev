@@ -6,8 +6,9 @@ import productsAPI from "./products";
 import ordersAPI from "./orders";
 import authAPI from "./auth";
 import paymentsAPI from "./payments";
+import settingsAPI from "./settings";
 
-export { productsAPI, ordersAPI, authAPI, paymentsAPI };
+export { productsAPI, ordersAPI, authAPI, paymentsAPI, settingsAPI };
 
 // Named exports for convenience
 export {

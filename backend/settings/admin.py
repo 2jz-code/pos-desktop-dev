@@ -28,7 +28,7 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         (
             "Receipt Configuration",
             {
-                "fields": ("receipt_header", "receipt_footer", "print_customer_copy"),
+                "fields": ("receipt_header", "receipt_footer"),
                 "description": "Customize receipt appearance and printing behavior.",
             },
         ),
@@ -83,7 +83,11 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         """
         if self.model.objects.exists():
             obj = self.model.objects.first()
-            return self.response_change(request, obj)
+            from django.http import HttpResponseRedirect
+            from django.urls import reverse
+
+            url = reverse("admin:settings_globalsettings_change", args=[obj.pk])
+            return HttpResponseRedirect(url)
         return super().changelist_view(request, extra_context)
 
 

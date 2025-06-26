@@ -4,8 +4,6 @@ import Navbar from "./Navbar";
 import Footer from "./Footer";
 import CartSidebar from "../ui/cart-sidebar";
 import { useCartSidebar } from "../../contexts/CartSidebarContext";
-import { useCart } from "../../contexts/CartContext";
-import { toast } from "sonner";
 
 const Layout = ({ children }) => {
 	const location = useLocation();
@@ -28,55 +26,12 @@ const Layout = ({ children }) => {
 		}
 	}, [location]);
 
-	// Cart sidebar state and data
+	// Cart sidebar state
 	const { isCartOpen, closeCart } = useCartSidebar();
-	const { cart, itemCount, loading, updateCartItem, removeFromCart } =
-		useCart();
-
-	// Extract cart data for the sidebar
-	const cartItems = cart?.items || [];
-	const cartItemCount = itemCount;
-	const subtotal = cart?.subtotal || 0;
-	const isLoading = loading;
 
 	// Conditionally apply top padding to main content
 	// No padding on homepage to allow content to go under transparent navbar
 	const mainContentClass = `flex-1 ${isHomePage ? "" : "pt-16"}`;
-
-	// Handle cart item quantity update
-	const handleUpdateQuantity = async (itemId, newQuantity) => {
-		if (newQuantity <= 0) {
-			await handleRemoveItem(itemId);
-			return;
-		}
-
-		try {
-			const result = await updateCartItem(itemId, newQuantity);
-			if (result.success) {
-				toast.success("Cart updated");
-			} else {
-				toast.error(result.error || "Failed to update item");
-			}
-		} catch (error) {
-			console.error("Failed to update item:", error);
-			toast.error("Failed to update item");
-		}
-	};
-
-	// Handle cart item removal
-	const handleRemoveItem = async (itemId) => {
-		try {
-			const result = await removeFromCart(itemId);
-			if (result.success) {
-				toast.success("Item removed from cart");
-			} else {
-				toast.error(result.error || "Failed to remove item");
-			}
-		} catch (error) {
-			console.error("Failed to remove item:", error);
-			toast.error("Failed to remove item");
-		}
-	};
 
 	// Handle checkout
 	const handleCheckout = () => {
@@ -100,13 +55,7 @@ const Layout = ({ children }) => {
 			<CartSidebar
 				isOpen={isCartOpen}
 				onClose={closeCart}
-				cartItems={cartItems}
-				cartItemCount={cartItemCount}
-				subtotal={subtotal}
-				onUpdateQuantity={handleUpdateQuantity}
-				onRemoveItem={handleRemoveItem}
 				onCheckout={handleCheckout}
-				isLoading={isLoading}
 			/>
 		</div>
 	);

@@ -9,9 +9,11 @@ import {
 	FaTiktok,
 } from "react-icons/fa";
 import Logo from "../../assets/logo.png"; // Import the logo
+import { useStoreInfo } from "@/hooks/useSettings";
 
 const Footer = () => {
 	const currentYear = new Date().getFullYear();
+	const { data: storeInfo } = useStoreInfo();
 
 	return (
 		<footer className="bg-accent-dark-green text-primary-beige">
@@ -121,6 +123,7 @@ const Footer = () => {
 							Contact Us
 						</h3>
 						<ul className="space-y-3 text-sm text-primary-beige">
+							{/* Address */}
 							<li className="flex items-start group">
 								<svg
 									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
@@ -146,10 +149,13 @@ const Footer = () => {
 										to="https://maps.app.goo.gl/42MgvJxT5Fn2eJAN7"
 										target="_blank"
 									>
-										2105 Cliff Rd Suite 300, Eagan, MN, 55124
+										{storeInfo?.store_address ||
+											"2105 Cliff Rd Suite 300, Eagan, MN, 55124"}
 									</Link>
 								</span>
 							</li>
+
+							{/* Phone */}
 							<li className="flex items-start group">
 								<svg
 									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
@@ -165,12 +171,16 @@ const Footer = () => {
 									/>
 								</svg>
 								<a
-									href="tel:+16514125336"
+									href={`tel:+1${(
+										storeInfo?.store_phone || "6514125336"
+									).replace(/\D/g, "")}`}
 									className="group-hover:text-accent-light-beige transition-colors duration-300"
 								>
-									(651) 412-5336
+									{storeInfo?.store_phone || "(651) 412-5336"}
 								</a>
 							</li>
+
+							{/* Email */}
 							<li className="flex items-start group">
 								<svg
 									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
@@ -186,10 +196,12 @@ const Footer = () => {
 									/>
 								</svg>
 								<a
-									href="mailto:contact@ajeen.com"
+									href={`mailto:${
+										storeInfo?.store_email || "contact@bakeajeen.com"
+									}`}
 									className="group-hover:text-accent-light-beige transition-colors duration-300"
 								>
-									contact@bakeajeen.com
+									{storeInfo?.store_email || "contact@bakeajeen.com"}
 								</a>
 							</li>
 						</ul>

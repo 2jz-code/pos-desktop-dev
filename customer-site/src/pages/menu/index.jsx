@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion as Motion } from "framer-motion";
+import { useCart } from "@/hooks/useCart";
 import MenuNav from "./components/MenuNav";
 import ProductList from "./components/ProductList";
 import { useCategories } from "../../hooks/useCategories";
@@ -15,6 +16,7 @@ const getCategoryFromURL = (search) => {
 const MenuPage = () => {
 	const location = useLocation();
 	const navigate = useNavigate();
+	const { checkoutCompleted, resetCheckoutState } = useCart();
 
 	// Initialize selectedCategory directly from the URL on component mount.
 	// This is crucial for refresh scenarios.
@@ -26,6 +28,14 @@ const MenuPage = () => {
 
 	// Use our new organized hooks
 	const { categories, isLoading: isLoadingCategories } = useCategories();
+
+	// Reset checkout state when user comes to menu page after completing checkout
+	useEffect(() => {
+		if (checkoutCompleted) {
+			console.log("Resetting checkout state - user returned to menu");
+			resetCheckoutState();
+		}
+	}, [checkoutCompleted, resetCheckoutState]);
 
 	// Effect 1: Update URL when `selectedCategory` state changes (e.g., user clicks a category).
 	useEffect(() => {

@@ -9,6 +9,7 @@ from .serializers import (
     POSDeviceSerializer,
     TerminalLocationSerializer,
 )
+from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from payments.strategies import StripeTerminalStrategy
 
 # Create your views here.
@@ -22,6 +23,7 @@ class GlobalSettingsViewSet(viewsets.ModelViewSet):
 
     queryset = GlobalSettings.objects.all()
     serializer_class = GlobalSettingsSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
     def get_object(self):
         """
@@ -90,7 +92,11 @@ class GlobalSettingsViewSet(viewsets.ModelViewSet):
             # Return updated store info
             return self.store_info(type("Request", (), {"method": "GET"})())
 
-    @action(detail=False, methods=["get", "patch"])
+    @action(
+        detail=False,
+        methods=["get", "patch"],
+        permission_classes=[FinancialSettingsReadAccess],
+    )
     def financial(self, request):
         """
         Get or update just the financial settings section.

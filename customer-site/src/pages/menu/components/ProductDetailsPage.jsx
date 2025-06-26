@@ -9,7 +9,7 @@ import {
 	FaHeart,
 } from "react-icons/fa";
 import { toast } from "sonner";
-import { useCart } from "../../../contexts/CartContext";
+import { useCart } from "@/hooks/useCart";
 import { productsAPI } from "../../../api";
 
 const ProductDetailsPage = () => {

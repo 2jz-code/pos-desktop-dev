@@ -11,6 +11,12 @@ export const ordersAPI = {
 		return response.data;
 	},
 
+	// Initialize guest session (no auth required)
+	initGuestSession: async () => {
+		const response = await apiClient.post("/orders/init-guest-session/");
+		return response.data;
+	},
+
 	// Create or get guest order for current session
 	createGuestOrder: async () => {
 		const response = await apiClient.post("/orders/guest-order/");
@@ -136,6 +142,41 @@ export const cartAPI = {
 		} catch (error) {
 			console.error("Error getting cart:", error);
 			// Fallback to creating guest order
+			return await ordersAPI.createGuestOrder();
+		}
+	},
+
+	// Get current cart without creating new orders (safe after checkout)
+	getCurrentCartSafe: async (checkoutCompleted = false) => {
+		try {
+			// First try to get existing orders
+			const orders = await ordersAPI.getCurrentUserOrders();
+			const pendingOrder = orders.results?.find(
+				(order) => order.status === "PENDING"
+			);
+
+			if (pendingOrder) {
+				return pendingOrder;
+			}
+
+			// If checkout was recently completed, don't create a new order
+			if (checkoutCompleted) {
+				console.log("Checkout completed, not creating new order");
+				return null;
+			}
+
+			// If no pending order and checkout not completed, create a guest order
+			return await ordersAPI.createGuestOrder();
+		} catch (error) {
+			console.error("Error getting cart:", error);
+
+			// If checkout was completed, don't create on error either
+			if (checkoutCompleted) {
+				console.log("Checkout completed, not creating new order on error");
+				return null;
+			}
+
+			// Fallback to creating guest order only if checkout not completed
 			return await ordersAPI.createGuestOrder();
 		}
 	},
