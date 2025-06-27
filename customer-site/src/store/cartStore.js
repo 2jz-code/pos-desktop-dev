@@ -22,7 +22,16 @@ export const useCartStore = create(
 				console.log(`Setting checkout completed: ${completed}`);
 				set({ checkoutCompleted: completed });
 			},
-
+			handleSuccessfulCheckout: () => {
+				console.log("Checkout successful. Clearing local cart state only.");
+				set({
+					items: [],
+					orderId: null,
+					clientSecret: null,
+					paymentIntentId: null,
+					// Reset any other cart-related state here
+				});
+			},
 			// Reset state
 			resetCart: () => set({ ...defaultCartState }),
 

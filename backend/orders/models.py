@@ -99,6 +99,18 @@ class Order(models.Model):
         help_text=_("Session-based identifier for guest users"),
         db_index=True,
     )
+    guest_first_name = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        help_text=_("First name for guest orders"),
+    )
+    guest_last_name = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        help_text=_("Last name for guest orders"),
+    )
     guest_email = models.EmailField(
         blank=True,
         null=True,
@@ -161,6 +173,34 @@ class Order(models.Model):
         if self.customer and hasattr(self.customer, "phone"):
             return getattr(self.customer, "phone", None)
         return self.guest_phone
+
+    @property
+    def customer_display_name(self):
+        """Returns the formatted customer name for display."""
+        if self.customer:
+            # Authenticated user: show "first-name last-name"
+            first_name = self.customer.first_name or ""
+            last_name = self.customer.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+
+            # Fallback to username or email if no first/last name
+            if not full_name:
+                return self.customer.username or self.customer.email
+            return full_name
+        elif self.guest_first_name or self.guest_last_name:
+            # Guest user: show "first-name last-name (guest)"
+            first_name = self.guest_first_name or ""
+            last_name = self.guest_last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+
+            if full_name:
+                return f"{full_name} (guest)"
+            else:
+                # Fallback to email if no name provided
+                return f"{self.guest_email or 'Guest'} (guest)"
+        else:
+            # No customer info available
+            return "Guest Customer"
 
     @property
     def payment_in_progress_derived(self):

@@ -327,7 +327,7 @@ const Navbar = () => {
 						{navLinks.map((item) => (
 							<a
 								key={item}
-								href={`#${item.toLowerCase()}`}
+								href={`/#${item.toLowerCase()}`}
 								className={`relative px-3 py-2 font-medium transition-colors duration-300 ${textAndIconColor} ${linkHoverColor}
                   after:absolute after:bottom-0.5 after:left-0 after:h-0.5 after:w-0
                   after:bg-accent-warm-brown after:transition-all after:duration-300
@@ -417,7 +417,7 @@ const Navbar = () => {
 							{navLinks.map((item) => (
 								<a
 									key={item}
-									href={`#${item.toLowerCase()}`}
+									href={`/#${item.toLowerCase()}`}
 									className="block py-3 px-4 text-gray-800 font-medium border-b border-gray-100 hover:bg-gray-50"
 								>
 									{item}

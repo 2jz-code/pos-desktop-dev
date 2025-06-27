@@ -76,10 +76,10 @@ const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 		// Determine closing hour based on Chicago day of the week
 		if (chicagoDay >= 0 && chicagoDay <= 4) {
 			// Sunday (0) to Thursday (4)
-			closeHour = 20; // 8:00 PM Chicago time
+			closeHour = 23; // 8:00 PM Chicago time
 		} else {
 			// Friday (5) and Saturday (6)
-			closeHour = 21; // 9:00 PM Chicago time
+			closeHour = 23; // 9:00 PM Chicago time
 		}
 
 		// Check if current "Chicago time" is within operating hours

@@ -10,10 +10,14 @@ from .serializers import (
     UpdateOrderItemSerializer,
     UpdateOrderStatusSerializer,
     OrderItemSerializer,
+    OrderCustomerInfoSerializer,
 )
 from .services import OrderService, GuestSessionService
 from .permissions import IsAuthenticatedOrGuestOrder, IsGuestOrAuthenticated
-from users.authentication import CustomerCookieJWTAuthentication, CookieJWTAuthentication
+from users.authentication import (
+    CustomerCookieJWTAuthentication,
+    CookieJWTAuthentication,
+)
 from django.shortcuts import get_object_or_404
 from rest_framework.request import Request
 from django_filters.rest_framework import DjangoFilterBackend
@@ -89,28 +93,35 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Handle order creation for both authenticated users and guests."""
-        # Check if user is authenticated
-        if self.request.user and self.request.user.is_authenticated:
-            # For authenticated customers, check for an existing pending order
-            existing_order = (
-                Order.objects.filter(
-                    customer=self.request.user, status=Order.OrderStatus.PENDING
-                )
-                .order_by("-created_at")
-                .first()
-            )
+        user = self.request.user
+        order_type = serializer.validated_data.get("order_type", "POS")
 
-            if existing_order:
-                # If a pending order exists, use it instead of creating a new one
-                serializer.instance = existing_order
-            else:
-                # If no pending order, create a new one and set the customer
-                serializer.save(customer=self.request.user)
+        # Differentiate logic based on order type and user authentication
+        if user and user.is_authenticated:
+            if order_type == Order.OrderType.POS:
+                # For POS orders, the authenticated user is the cashier
+                serializer.save(cashier=user)
+            else:  # For WEB, APP, etc.
+                # For authenticated customers, check for an existing pending order
+                existing_order = (
+                    Order.objects.filter(
+                        customer=user, status=Order.OrderStatus.PENDING
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+                if existing_order:
+                    # If a pending order exists, use it instead of creating a new one
+                    serializer.instance = existing_order
+                else:
+                    # If no pending order, create a new one and set the customer
+                    serializer.save(customer=user)
         else:
             # For guest users, the service layer handles getting or creating
             guest_order = GuestSessionService.create_guest_order(
                 self.request,
-                order_type=serializer.validated_data.get("order_type", "WEB"),
+                order_type=order_type,
             )
             # Return the existing guest order instead of creating a new one
             serializer.instance = guest_order
@@ -199,6 +210,36 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=True,
+        methods=["patch"],
+        url_path="update-customer-info",
+        permission_classes=[IsGuestOrAuthenticated],
+    )
+    def update_customer_info(self, request, pk=None):
+        """
+        Updates the customer information for an order, supporting both
+        guest and authenticated users.
+        """
+        order = self.get_object()
+        serializer = OrderCustomerInfoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            updated_order = OrderService.update_customer_info(
+                order, serializer.validated_data
+            )
+            response_serializer = OrderSerializer(
+                updated_order, context={"request": request}
+            )
+            return Response(response_serializer.data)
+        except Exception as e:
+            logger.error(f"Error updating customer info for order {pk}: {e}")
+            return Response(
+                {"error": "An error occurred while updating customer information."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(
+        detail=True,
         methods=["post"],
         url_path="update-status",
     )
@@ -251,46 +292,19 @@ class OrderViewSet(viewsets.ModelViewSet):
     )
     def create_guest_order(self, request):
         """
-        Create or get existing guest order for the current session.
+        Initializes a guest session and creates a new order if one doesn't exist.
+        This ensures guest users have an active order ID to work with from the start.
         """
-        order = GuestSessionService.create_guest_order(request)
-        serializer = OrderSerializer(order, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["post"], url_path="update-guest-info")
-    def update_guest_info(self, request, pk=None):
-        """
-        Update guest contact information for an order.
-        """
-        order = self.get_object()
-
-        # Ensure this is a guest order
-        if not order.is_guest_order:
-            return Response(
-                {"error": "This action is only available for guest orders."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        email = request.data.get("email")
-        phone = request.data.get("phone")
-
-        if not email and not phone:
-            return Response(
-                {"error": "Email or phone is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        updated_order = GuestSessionService.update_guest_contact_info(
-            order, email=email, phone=phone
-        )
-
-        serializer = OrderSerializer(updated_order, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        guest_order = GuestSessionService.create_guest_order(request)
+        serializer = self.get_serializer(guest_order)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="convert-to-user")
     def convert_guest_to_user(self, request, pk=None):
         """
-        Convert a guest order to an authenticated user account.
+        Converts a guest order to an authenticated user's order.
+        This is typically called after a guest user registers or logs in during checkout.
+        It links the guest's cart to their new user account.
         """
         order = self.get_object()
 
@@ -381,6 +395,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         """
         Creates a new PENDING order by duplicating items from this order.
         """
+        # Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response(
+                {"error": "Authentication required to reorder."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         try:
             new_order = OrderService.reorder(source_order_id=pk, user=request.user)
             # Serialize the new order to return its details, including the new ID

@@ -12,6 +12,7 @@ import MenuPage from "./pages/menu/index.jsx";
 import ProductDetailsPage from "./pages/menu/components/ProductDetailsPage";
 import AuthPage from "./pages/AuthPage";
 import CheckoutPage from "./pages/CheckoutPage";
+import ConfirmationPage from "./pages/ConfirmationPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import DashboardPage from "./pages/DashboardPage";
 
@@ -49,6 +50,10 @@ function App() {
 									<Route
 										path="/checkout"
 										element={<CheckoutPage />}
+									/>
+									<Route
+										path="/confirmation"
+										element={<ConfirmationPage />}
 									/>
 									<Route
 										path="/dashboard"

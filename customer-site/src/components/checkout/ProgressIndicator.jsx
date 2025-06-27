@@ -12,14 +12,8 @@ const ProgressIndicator = ({ currentStep }) => {
 		{
 			id: 2,
 			title: "Payment",
-			description: "Payment method",
+			description: "Complete order",
 			icon: CreditCard,
-		},
-		{
-			id: 3,
-			title: "Confirmation",
-			description: "Order complete",
-			icon: ShoppingBag,
 		},
 	];
 

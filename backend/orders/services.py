@@ -222,6 +222,39 @@ class OrderService:
 
     @staticmethod
     @transaction.atomic
+    def update_customer_info(order: Order, data: dict) -> Order:
+        """
+        Updates an order with customer information.
+        If the user is a guest, it populates the guest fields.
+        If the user is authenticated, it ensures their primary details are stored
+        for the order record, but does not modify the User model itself.
+        """
+        if order.customer:
+            # For authenticated users, we primarily rely on the user object,
+            # but we can store the provided details on the guest fields for this specific order's record
+            # This is useful if they use a different phone/name for a one-off delivery, for example.
+            order.guest_first_name = data.get(
+                "guest_first_name", order.customer.first_name
+            )
+            order.guest_last_name = data.get(
+                "guest_last_name", order.customer.last_name
+            )
+            order.guest_email = data.get("guest_email", order.customer.email)
+            order.guest_phone = data.get(
+                "guest_phone"
+            )  # Always take phone from form for logged-in user
+        else:
+            # For guest users, directly update the guest fields
+            order.guest_first_name = data.get("guest_first_name")
+            order.guest_last_name = data.get("guest_last_name")
+            order.guest_email = data.get("guest_email")
+            order.guest_phone = data.get("guest_phone")
+
+        order.save()
+        return order
+
+    @staticmethod
+    @transaction.atomic
     def apply_discount_to_order_by_id(order: Order, discount_id: int):
         """
         Applies a discount to an order by DELEGATING to the DiscountService.
@@ -508,15 +541,29 @@ class GuestSessionService:
         return order
 
     @staticmethod
-    def update_guest_contact_info(order, email=None, phone=None):
+    def update_guest_contact_info(
+        order, first_name=None, last_name=None, email=None, phone=None
+    ):
         """
         Update guest contact information for an order.
         """
-        if email:
+        update_fields = []
+
+        if first_name is not None:
+            order.guest_first_name = first_name
+            update_fields.append("guest_first_name")
+        if last_name is not None:
+            order.guest_last_name = last_name
+            update_fields.append("guest_last_name")
+        if email is not None:
             order.guest_email = email
-        if phone:
+            update_fields.append("guest_email")
+        if phone is not None:
             order.guest_phone = phone
-        order.save(update_fields=["guest_email", "guest_phone"])
+            update_fields.append("guest_phone")
+
+        if update_fields:
+            order.save(update_fields=update_fields)
         return order
 
     @staticmethod

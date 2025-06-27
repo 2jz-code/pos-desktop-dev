@@ -41,8 +41,8 @@ class OrderAdmin(admin.ModelAdmin):
     # Display order_number instead of id in the list view
     list_display = (
         "order_number",  # Changed from "id"
-        "customer",
-        "cashier",
+        "customer_display_name",
+        "cashier_name",
         "status",
         "payment_status",
         "order_type",
@@ -82,7 +82,7 @@ class OrderAdmin(admin.ModelAdmin):
                 "fields": (
                     "id",
                     "order_number",  # Add order_number here for detail view
-                    "customer",
+                    "customer_display_name",
                     "cashier",
                     "status",
                     "payment_status",
@@ -136,12 +136,26 @@ class OrderAdmin(admin.ModelAdmin):
         ]
         if obj:  # If the object already exists (i.e., we are editing)
             # Add other fields that should not be changed after creation
-            readonly.extend(["customer", "cashier", "order_type"])
+            readonly.extend(["customer_display_name", "cashier", "order_type"])
         return tuple(readonly)
 
     def get_queryset(self, request):
         """Optimize query performance by pre-fetching related objects."""
         return super().get_queryset(request).select_related("customer", "cashier")
+
+    # --- ADD THIS METHOD ---
+    @admin.display(description="Customer")
+    def customer_display_name(self, obj):
+        return obj.customer_display_name
+
+    @admin.display(ordering="cashier__username", description="Cashier")
+    def cashier_name(self, obj):
+        if obj.cashier:
+            # Manually construct the full name from the User model's fields
+            full_name = f"{obj.cashier.first_name} {obj.cashier.last_name}".strip()
+            # Fallback to username if the full name is blank
+            return full_name or obj.cashier.username
+        return None
 
     # --- Formatting Methods ---
     def _format_currency(self, value):

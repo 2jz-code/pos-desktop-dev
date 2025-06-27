@@ -22,7 +22,8 @@ export const userAPI = {
 	getOrderHistory: async () => {
 		try {
 			const { data } = await apiClient.get("/orders/");
-			return data.results; // The list view is paginated
+			// Check if data is paginated (has results property) or is a direct array
+			return data.results || data;
 		} catch (error) {
 			console.error("Error fetching order history:", error.response?.data);
 			throw error.response?.data || { error: "An unknown error occurred" };

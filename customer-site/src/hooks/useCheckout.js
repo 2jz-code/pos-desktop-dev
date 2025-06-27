@@ -1,11 +1,14 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ordersAPI } from "@/api/orders";
 import { paymentsAPI } from "@/api/payments";
 import { useCart } from "./useCart";
 import { useFinancialSettings } from "./useSettings";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCartStore } from "@/store/cartStore"; // <-- 1. IMPORT THE STORE
+import { cartKeys } from "./useCart"; // <-- 2. IMPORT CART QUERY KEYS
 
 // Initial form data structure
 const initialFormData = {
@@ -18,7 +21,8 @@ const initialFormData = {
 
 export const useCheckout = () => {
 	const navigate = useNavigate();
-	const { cart, clearCart } = useCart();
+	const queryClient = useQueryClient();
+	const { cart } = useCart();
 	const { data: financialSettings } = useFinancialSettings();
 	const { user, isAuthenticated } = useAuth();
 
@@ -28,6 +32,9 @@ export const useCheckout = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState(null);
 	const [orderConfirmation, setOrderConfirmation] = useState(null);
+	const setCheckoutCompleted = useCartStore(
+		(state) => state.setCheckoutCompleted
+	); // <-- 2. GET THE ACTION
 
 	// Refs to prevent duplicate submissions
 	const isProcessingRef = useRef(false);
@@ -142,6 +149,50 @@ export const useCheckout = () => {
 		setCurrentStep((prev) => Math.max(prev - 1, 1));
 	}, []);
 
+	// NEW: Unified function to submit customer info
+	const submitCustomerInfo = useCallback(async () => {
+		const validationError = validateFormData();
+		if (validationError) {
+			setError(validationError);
+			return; // Stop if validation fails
+		}
+		if (!cart?.id) {
+			setError("No active cart found. Please add items to your cart first.");
+			return;
+		}
+
+		setIsLoading(true);
+		setError(null);
+
+		try {
+			// This data structure matches the new serializer
+			const customerData = {
+				guest_first_name: formData.firstName,
+				guest_last_name: formData.lastName,
+				guest_email: formData.email,
+				guest_phone: formData.phone.replace(/[^\d]/g, ""), // Sanitize phone
+			};
+
+			// Call the new unified endpoint
+			await ordersAPI.updateCustomerInfo(cart.id, customerData);
+
+			// Invalidate cart queries to refetch the updated order data
+			await queryClient.invalidateQueries({ queryKey: cartKeys.current() });
+
+			// Proceed to the next step
+			setCurrentStep((prev) => Math.min(prev + 1, 3));
+		} catch (err) {
+			console.error("Error updating customer info:", err);
+			const errorMessage =
+				err.response?.data?.error ||
+				"A problem occurred while saving your information. Please try again.";
+			setError(errorMessage);
+			toast.error(errorMessage);
+		} finally {
+			setIsLoading(false);
+		}
+	}, [cart, formData, queryClient, validateFormData]);
+
 	// Create or update guest order (for guest users only)
 	const createGuestOrder = useCallback(async () => {
 		try {
@@ -160,12 +211,22 @@ export const useCheckout = () => {
 			const response = await ordersAPI.createGuestOrder();
 
 			// Then update guest contact information
-			if (response.id && formData.email) {
+			if (
+				response.id &&
+				(formData.firstName ||
+					formData.lastName ||
+					formData.email ||
+					formData.phone)
+			) {
 				try {
-					await ordersAPI.updateGuestInfo(response.id, {
-						email: formData.email,
-						phone: formData.phone.replace(/[^\d]/g, ""), // Send raw digits
-					});
+					const updateData = {};
+					if (formData.firstName) updateData.first_name = formData.firstName;
+					if (formData.lastName) updateData.last_name = formData.lastName;
+					if (formData.email) updateData.email = formData.email;
+					if (formData.phone)
+						updateData.phone = formData.phone.replace(/[^\d]/g, ""); // Send raw digits
+
+					await ordersAPI.updateGuestInfo(response.id, updateData);
 				} catch (updateError) {
 					console.warn("Failed to update guest info:", updateError);
 				}
@@ -280,17 +341,46 @@ export const useCheckout = () => {
 
 				console.log("Payment completed:", completionResponse);
 
-				// Step 4: Set success state
-				setOrderConfirmation({
-					order: cart,
+				// Step 4: Prepare confirmation data in the format expected by OrderConfirmation component
+				const confirmationData = {
+					id: cart.id,
+					orderNumber: cart.order_number || cart.id,
+					customerName:
+						user.first_name && user.last_name
+							? `${user.first_name} ${user.last_name}`
+							: user.username,
+					customerEmail: user.email,
+					customerPhone: user.phone || "",
+					items: cart.items,
+					grandTotal: cart.grand_total,
+					total: cart.grand_total, // Alternative field name for compatibility
+					subtotal: cart.subtotal,
+					taxAmount: cart.tax_total,
+					surchargeAmount: cart.surcharges_total,
+					status: "PREPARING", // Order is being prepared after payment confirmation
+					paymentIntentId: paymentIntent.id,
 					paymentDetails: completionResponse,
-				});
-				setCurrentStep(3); // Set to confirmation step
+				};
 
-				// Clear cart
-				clearCart();
+				console.log(
+					"Navigating to dedicated confirmation page with order data:",
+					confirmationData
+				);
+
+				// Navigate to dedicated confirmation page with order data
+				const queryParams = new URLSearchParams({
+					orderData: encodeURIComponent(JSON.stringify(confirmationData)),
+				});
+
+				setCheckoutCompleted(true);
+				// Clear cart data immediately to update UI
+				queryClient.invalidateQueries({ queryKey: cartKeys.current() });
+
+				navigate(`/confirmation?${queryParams.toString()}`);
 
 				toast.success("Order placed successfully!");
+
+				console.log("Authenticated checkout completed successfully");
 			} catch (error) {
 				console.error("Authenticated checkout error:", error);
 				setError(error.message || "Payment failed. Please try again.");
@@ -299,7 +389,7 @@ export const useCheckout = () => {
 				setIsLoading(false);
 			}
 		},
-		[cart, user, clearCart]
+		[cart, user, setCheckoutCompleted, navigate, queryClient]
 	);
 
 	// Submit order and process payment (unified for both user types)
@@ -376,17 +466,23 @@ export const useCheckout = () => {
 						customerPhone: billingDetails.phone,
 						items: cart.items,
 						grandTotal: calculateOrderTotals(cart).total,
+						subtotal: calculateOrderTotals(cart).subtotal,
+						taxAmount: calculateOrderTotals(cart).taxAmount,
+						surchargeAmount: calculateOrderTotals(cart).surchargeAmount,
+						status: "PREPARING", // Order is being prepared after payment confirmation
 						paymentIntentId: confirmedPayment.id,
 					};
 
-					// Clear cart
-					clearCart();
+					// Navigate to dedicated confirmation page with order data
+					const queryParams = new URLSearchParams({
+						orderData: encodeURIComponent(JSON.stringify(confirmationData)),
+					});
 
-					// Navigate to confirmation page with order data
-					const orderDataParam = encodeURIComponent(
-						JSON.stringify(confirmationData)
-					);
-					navigate(`/checkout?step=confirmation&orderData=${orderDataParam}`);
+					setCheckoutCompleted(true);
+					// Clear cart data immediately to update UI
+					queryClient.invalidateQueries({ queryKey: cartKeys.current() });
+
+					navigate(`/confirmation?${queryParams.toString()}`);
 
 					// Show success message
 					toast.success("Order placed successfully!");
@@ -415,8 +511,9 @@ export const useCheckout = () => {
 			formData,
 			cart,
 			calculateOrderTotals,
-			clearCart,
+			setCheckoutCompleted,
 			navigate,
+			queryClient,
 		]
 	);
 
@@ -457,5 +554,8 @@ export const useCheckout = () => {
 
 		// New authenticated checkout function
 		handleAuthenticatedCheckout,
+
+		// NEW: Unified function to submit customer info
+		submitCustomerInfo,
 	};
 };

@@ -135,3 +135,4 @@ export const paymentsAPI = {
 };
 
 export default paymentsAPI;
+

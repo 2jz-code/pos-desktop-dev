@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useCheckout } from "@/hooks/useCheckout";
+import { useOrderConfirmation } from "@/hooks/useOrderConfirmation";
 import { useCart } from "@/hooks/useCart";
 import ProgressIndicator from "./ProgressIndicator";
 import OrderSummary from "./OrderSummary";
@@ -22,15 +23,21 @@ const CheckoutFlow = () => {
 		isAuthenticated,
 		user,
 		updateFormData,
-		nextStep,
 		prevStep,
 		submitOrder,
 		clearError,
+		submitCustomerInfo,
 	} = useCheckout();
 
 	// Check if we're in confirmation mode from URL
 	const isConfirmationMode = searchParams.get("step") === "confirmation";
-	const orderDataParam = searchParams.get("orderData");
+
+	// Use the new order confirmation hook
+	const {
+		orderData: confirmationOrderData,
+		isLoading: isLoadingOrderData,
+		error: orderDataError,
+	} = useOrderConfirmation(orderConfirmation);
 
 	useEffect(() => {
 		// Clear error when step changes
@@ -43,28 +50,43 @@ const CheckoutFlow = () => {
 	const renderStep = () => {
 		// If URL indicates confirmation, show confirmation regardless of internal step
 		if (isConfirmationMode) {
-			let confirmationData = orderConfirmation;
-
-			// Try to get order data from URL if orderConfirmation is not available
-			if (!confirmationData && orderDataParam) {
-				try {
-					confirmationData = JSON.parse(decodeURIComponent(orderDataParam));
-				} catch (e) {
-					console.error("Failed to parse order data from URL:", e);
-				}
+			// Show loading if we're still fetching order data
+			if (isLoadingOrderData) {
+				return (
+					<div className="text-center py-8">
+						<div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-green mx-auto mb-4"></div>
+						<p className="text-accent-dark-brown/70">
+							Loading order details...
+						</p>
+					</div>
+				);
 			}
 
-			return <OrderConfirmation orderData={confirmationData} />;
+			// Show error if there was a problem loading order data
+			if (orderDataError) {
+				return (
+					<div className="text-center py-8">
+						<div className="text-red-500 mb-4">⚠️</div>
+						<p className="text-red-600 mb-4">{orderDataError}</p>
+						<p className="text-accent-dark-brown/70">
+							Please try refreshing the page or contact support if the problem
+							persists.
+						</p>
+					</div>
+				);
+			}
+
+			return <OrderConfirmation orderData={confirmationOrderData} />;
 		}
 
-		// Normal checkout flow
+		// Normal checkout flow (only steps 1 and 2 now)
 		switch (currentStep) {
 			case 1:
 				return (
 					<CustomerInfo
 						formData={formData}
 						updateFormData={updateFormData}
-						onNext={nextStep}
+						onNext={submitCustomerInfo}
 						isLoading={isLoading}
 						isAuthenticated={isAuthenticated}
 						user={user}
@@ -82,8 +104,6 @@ const CheckoutFlow = () => {
 						user={user}
 					/>
 				);
-			case 3:
-				return <OrderConfirmation orderData={orderConfirmation} />;
 			default:
 				return null;
 		}

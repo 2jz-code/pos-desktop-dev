@@ -35,6 +35,7 @@ class OrderSerializer(serializers.ModelSerializer):
     is_guest_order = serializers.ReadOnlyField()
     customer_email = serializers.ReadOnlyField()
     customer_phone = serializers.ReadOnlyField()
+    customer_display_name = serializers.ReadOnlyField()
 
     class Meta:
         model = Order
@@ -63,6 +64,7 @@ class OrderListSerializer(serializers.ModelSerializer):
 
     item_count = serializers.IntegerField(source="items.count", read_only=True)
     cashier_name = serializers.CharField(source="cashier.get_full_name", read_only=True)
+    customer_display_name = serializers.ReadOnlyField()
     total_with_tip = serializers.SerializerMethodField()
     payment_in_progress = serializers.SerializerMethodField()
 
@@ -77,6 +79,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "total_with_tip",
             "item_count",
             "cashier_name",
+            "customer_display_name",
             "created_at",
             "updated_at",
             "payment_in_progress",
@@ -103,16 +106,54 @@ class OrderListSerializer(serializers.ModelSerializer):
         return obj.payment_in_progress_derived
 
 
-# --- Service-driven Serializers ---
+class OrderCustomerInfoSerializer(serializers.ModelSerializer):
+    """
+    Serializer specifically for updating an order's customer information,
+    for both guest and authenticated users.
+    """
 
-
-class OrderCreateSerializer(serializers.ModelSerializer):
+    guest_first_name = serializers.CharField(
+        required=False, allow_blank=True, max_length=150
+    )
+    guest_last_name = serializers.CharField(
+        required=False, allow_blank=True, max_length=150
+    )
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
     class Meta:
         model = Order
-        fields = ["order_type", "customer", "guest_email", "guest_phone"]
+        fields = [
+            "guest_first_name",
+            "guest_last_name",
+            "guest_email",
+            "guest_phone",
+        ]
+
+
+# --- Service-driven Serializers ---
+
+
+class OrderCreateSerializer(serializers.ModelSerializer):
+    guest_first_name = serializers.CharField(
+        required=False, allow_blank=True, max_length=150
+    )
+    guest_last_name = serializers.CharField(
+        required=False, allow_blank=True, max_length=150
+    )
+    guest_email = serializers.EmailField(required=False, allow_blank=True)
+    guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
+
+    class Meta:
+        model = Order
+        fields = [
+            "order_type",
+            "customer",
+            "guest_first_name",
+            "guest_last_name",
+            "guest_email",
+            "guest_phone",
+        ]
 
 
 class AddItemSerializer(serializers.Serializer):

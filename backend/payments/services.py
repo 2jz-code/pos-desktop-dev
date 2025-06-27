@@ -671,3 +671,60 @@ class PaymentService:
         # The method now returns the original transaction. The UI will have to wait
         # for the webhook to deliver the updated state.
         return original_transaction
+
+    @staticmethod
+    @transaction.atomic
+    def create_online_payment_intent(
+        order: Order, amount: Decimal, currency: str, user
+    ) -> dict:
+        """
+        Creates a Stripe Payment Intent for an online payment for an authenticated user.
+        """
+        # Use the existing service method to get or create the payment record
+        payment = PaymentService.get_or_create_payment(order)
+
+        # If the amount being paid differs from the payment record, update it
+        if payment.total_amount_due != amount:
+            payment.total_amount_due = amount
+            payment.save(update_fields=["total_amount_due"])
+
+        # Build the intent data for Stripe
+        from django.conf import settings
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        user_name = f"{user.first_name} {user.last_name}".strip() or user.username
+        description = f"Order payment for {user_name}"
+
+        intent_data = {
+            "amount": int(amount * 100),  # Convert to cents
+            "currency": currency,
+            "automatic_payment_methods": {"enabled": True},
+            "description": description,
+            "receipt_email": user.email,
+            "metadata": {
+                "order_id": str(order.id),
+                "payment_id": str(payment.id),
+                "customer_type": "authenticated",
+                "user_id": str(user.id),
+            },
+        }
+
+        # Create the payment intent with Stripe
+        intent = stripe.PaymentIntent.create(**intent_data)
+
+        # Create a local, pending transaction record
+        PaymentTransaction.objects.create(
+            payment=payment,
+            amount=amount,
+            method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
+            status=PaymentTransaction.TransactionStatus.PENDING,
+            transaction_id=intent.id,
+        )
+
+        # Return the necessary details to the view
+        return {
+            "client_secret": intent.client_secret,
+            "payment_intent_id": intent.id,
+            "payment_id": str(payment.id),
+        }

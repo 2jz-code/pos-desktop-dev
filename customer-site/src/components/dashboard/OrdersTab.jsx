@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { useDashboard } from "@/contexts/DashboardContext";
 import { useCart } from "@/hooks/useCart";
 import { useNavigate } from "react-router-dom";
-import cartAPI from "@/api/orders";
+import { cartAPI, ordersAPI } from "@/api/orders";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { cartKeys } from "@/hooks/useCart";
 import {
 	Table,
 	TableBody,
@@ -13,7 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ShoppingBag } from "lucide-react";
+import { Loader2, RefreshCw, ShoppingBag, Eye } from "lucide-react";
 import {
 	Accordion,
 	AccordionContent,
@@ -25,30 +28,66 @@ import { toast } from "sonner";
 
 const OrdersTab = () => {
 	const { orders, isLoadingOrders, error } = useDashboard();
+	const { user } = useAuth();
 	const navigate = useNavigate();
-	const { setOrderId } = useCart();
+	const { resetCheckoutState } = useCart();
+	const queryClient = useQueryClient();
 	const [reorderingId, setReorderingId] = useState(null);
+	const [orderDetails, setOrderDetails] = useState({});
+	const [loadingDetails, setLoadingDetails] = useState({});
 
 	const handleReorder = async (orderId) => {
 		setReorderingId(orderId);
 		const toastId = toast.loading("Creating your new order...");
 		try {
-			const newOrder = await cartAPI.reorder(orderId);
-			setOrderId(newOrder.id, true); // Set new order and persist it
+			// Ensure user is authenticated before attempting reorder
+			if (!user || !user.id) {
+				throw new Error("Authentication required to reorder");
+			}
+
+			await cartAPI.reorder(orderId);
+
+			// Clear existing cart cache and reset checkout state so new cart can be loaded
+			await queryClient.invalidateQueries({ queryKey: cartKeys.current() });
+			resetCheckoutState();
+
 			toast.success("Order created! Redirecting to checkout...", {
 				id: toastId,
 			});
 			navigate("/checkout");
 		} catch (err) {
+			console.error("Reorder failed:", err);
 			toast.error(
 				`There was a problem creating your order: ${
-					err.error || "Please try again."
+					err.error || err.message || "Please try again."
 				}`,
 				{ id: toastId }
 			);
 		} finally {
 			setReorderingId(null);
 		}
+	};
+
+	const fetchOrderDetails = async (orderId) => {
+		if (orderDetails[orderId] || loadingDetails[orderId]) {
+			return; // Already loaded or loading
+		}
+
+		setLoadingDetails((prev) => ({ ...prev, [orderId]: true }));
+		try {
+			const fullOrder = await ordersAPI.getOrder(orderId);
+			setOrderDetails((prev) => ({ ...prev, [orderId]: fullOrder }));
+		} catch (error) {
+			console.error("Failed to fetch order details:", error);
+			toast.error("Failed to load order details");
+		} finally {
+			setLoadingDetails((prev) => ({ ...prev, [orderId]: false }));
+		}
+	};
+
+	const handleViewDetails = (orderId) => {
+		// Navigate to checkout page in confirmation mode with the order ID
+		navigate(`/checkout?step=confirmation&orderId=${orderId}`);
 	};
 
 	const OrderStatusBadge = ({ status }) => {
@@ -129,7 +168,10 @@ const OrdersTab = () => {
 						value={order.id}
 						key={order.id}
 					>
-						<AccordionTrigger className="hover:bg-accent-light-beige/50 px-4 rounded-lg">
+						<AccordionTrigger
+							className="hover:bg-accent-light-beige/50 px-4 rounded-lg"
+							onClick={() => fetchOrderDetails(order.id)}
+						>
 							<div className="flex justify-between items-center w-full">
 								<div className="flex-1 text-left">
 									<p className="font-medium">Order #{order.id.slice(0, 8)}</p>
@@ -141,49 +183,76 @@ const OrdersTab = () => {
 									<OrderStatusBadge status={order.status} />
 								</div>
 								<div className="flex-1 text-right">
-									<p className="font-medium">{formatCurrency(order.total)}</p>
+									<p className="font-medium">
+										{formatCurrency(order.total_with_tip)}
+									</p>
 								</div>
 							</div>
 						</AccordionTrigger>
 						<AccordionContent className="bg-white p-4">
 							<div className="flex justify-between items-start">
-								<div>
+								<div className="flex-1">
 									<h4 className="font-semibold mb-2">Order Details</h4>
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead>Item</TableHead>
-												<TableHead className="text-center">Quantity</TableHead>
-												<TableHead className="text-right">Price</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{order.items.map((item) => (
-												<TableRow key={item.id}>
-													<TableCell>{item.product_name}</TableCell>
-													<TableCell className="text-center">
-														{item.quantity}
-													</TableCell>
-													<TableCell className="text-right">
-														{formatCurrency(item.price_at_sale)}
-													</TableCell>
+									{loadingDetails[order.id] ? (
+										<div className="flex items-center justify-center py-8">
+											<Loader2 className="h-6 w-6 animate-spin text-primary-green" />
+											<span className="ml-2">Loading order details...</span>
+										</div>
+									) : orderDetails[order.id] ? (
+										<Table>
+											<TableHeader>
+												<TableRow>
+													<TableHead>Item</TableHead>
+													<TableHead className="text-center">
+														Quantity
+													</TableHead>
+													<TableHead className="text-right">Price</TableHead>
 												</TableRow>
-											))}
-										</TableBody>
-									</Table>
-								</div>
-								<Button
-									onClick={() => handleReorder(order.id)}
-									disabled={reorderingId === order.id}
-									className="ml-8 bg-primary-green hover:bg-accent-dark-green"
-								>
-									{reorderingId === order.id ? (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+											</TableHeader>
+											<TableBody>
+												{orderDetails[order.id].items.map((item) => (
+													<TableRow key={item.id}>
+														<TableCell>
+															{item.product?.name || item.product_name}
+														</TableCell>
+														<TableCell className="text-center">
+															{item.quantity}
+														</TableCell>
+														<TableCell className="text-right">
+															{formatCurrency(item.price_at_sale)}
+														</TableCell>
+													</TableRow>
+												))}
+											</TableBody>
+										</Table>
 									) : (
-										<RefreshCw className="mr-2 h-4 w-4" />
+										<div className="text-center py-4 text-gray-500">
+											Click to load order details
+										</div>
 									)}
-									Reorder
-								</Button>
+								</div>
+								<div className="ml-8 flex flex-col gap-2">
+									<Button
+										onClick={() => handleViewDetails(order.id)}
+										variant="outline"
+										className="border-primary-green text-primary-green hover:bg-primary-green hover:text-white"
+									>
+										<Eye className="mr-2 h-4 w-4" />
+										View Details
+									</Button>
+									<Button
+										onClick={() => handleReorder(order.id)}
+										disabled={reorderingId === order.id}
+										className="bg-primary-green hover:bg-accent-dark-green"
+									>
+										{reorderingId === order.id ? (
+											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+										) : (
+											<RefreshCw className="mr-2 h-4 w-4" />
+										)}
+										Reorder
+									</Button>
+								</div>
 							</div>
 						</AccordionContent>
 					</AccordionItem>

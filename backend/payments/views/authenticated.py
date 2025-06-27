@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404
 from decimal import Decimal
 import logging
 import stripe
-
+from orders.serializers import OrderSerializer
 from .base import (
     BasePaymentView,
     PaymentValidationMixin,
@@ -29,29 +29,36 @@ from ..serializers import (
 )
 from ..services import PaymentService
 from orders.models import Order
+from users.authentication import CustomerCookieJWTAuthentication
 
 logger = logging.getLogger(__name__)
 
 
 class AuthenticatedOrderAccessMixin(OrderAccessMixin):
-    """
-    Mixin for validating authenticated user order access.
-    """
+    """Mixin for validating authenticated user order access."""
+
+    def get_order(self, request):
+        """Retrieves the active order for the authenticated user."""
+        if not request.user.is_authenticated:
+            raise ValueError("Authentication required.")
+        try:
+            order = Order.objects.get(customer=request.user, status="PENDING")
+            return order
+        except Order.DoesNotExist:
+            raise ValueError("No active order found for the current user.")
+        except Order.MultipleObjectsReturned:
+            raise ValueError("Multiple active orders found. Please resolve.")
 
     def validate_order_access(self, order, request):
-        """
-        Validates that an authenticated user can access the given order.
-        Checks user ownership and permissions.
-        """
+        """Validates that an authenticated user can access the given order."""
         if not request.user.is_authenticated:
             raise ValueError("Authentication required")
-
-        # Check if user owns the order or has permission to access it
-        if order.customer and order.customer != request.user:
-            # TODO: Add staff/admin permission check
-            if not request.user.is_staff:
-                raise ValueError(PAYMENT_MESSAGES["ACCESS_DENIED"])
-
+        if (
+            order.customer
+            and order.customer != request.user
+            and not request.user.is_staff
+        ):
+            raise ValueError(PAYMENT_MESSAGES["ACCESS_DENIED"])
         return True
 
 
@@ -66,48 +73,32 @@ class PaymentViewSet(TerminalPaymentViewSet, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """
-        Filter payments based on user permissions.
-        Regular users see only their payments, staff see all.
-        """
-        if self.request.user.is_staff:
+        """Filter payments based on user permissions."""
+        user = self.request.user
+        if user.is_staff:
             return Payment.objects.all().order_by("-created_at")
-        else:
-            return Payment.objects.filter(order__customer=self.request.user).order_by(
-                "-created_at"
-            )
+        return Payment.objects.filter(order__customer=user).order_by("-created_at")
 
     @action(detail=False, methods=["post"], url_path="cancel-intent")
     def cancel_intent(self, request):
-        """Cancels a payment intent for authenticated users."""
-        # The frontend sends a field called 'payment_intent_id', which we know is the transaction_id
+        """Cancels a payment intent using the PaymentService."""
         intent_to_cancel = request.data.get("payment_intent_id")
         if not intent_to_cancel:
-            return Response(
-                {"error": "payment_intent_id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self.create_error_response("payment_intent_id is required.")
 
         try:
-            stripe.PaymentIntent.cancel(intent_to_cancel)
-
-            # --- FIX: Filter on the correct 'transaction_id' field ---
-            transaction = PaymentTransaction.objects.filter(
-                transaction_id=intent_to_cancel
-            ).first()
-
-            if transaction and transaction.payment.order:
-                order = transaction.payment.order
-                order.payment_in_progress = False
-                order.save(update_fields=["payment_in_progress"])
-
+            # Delegate cancellation to the PaymentService
+            result = PaymentService.cancel_payment_intent(intent_to_cancel)
             return Response(
-                {"message": "PaymentIntent canceled successfully."},
-                status=status.HTTP_200_OK,
+                {"message": "PaymentIntent action processed.", "details": result}
             )
+        except ValueError as e:
+            return self.create_error_response(str(e), status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Error canceling intent {intent_to_cancel}: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return self.create_error_response(
+                str(e), status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=["post"], url_path="add-payment")
     def add_payment(self, request, pk=None):
@@ -164,172 +155,67 @@ class PaymentViewSet(TerminalPaymentViewSet, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="refund-transaction")
     def refund_transaction_action(self, request, pk=None):
-        """
-        Initiates a refund for a specific PaymentTransaction associated with this Payment.
-        `pk` is the payment_id. The transaction_id, amount, and reason are passed in the request body.
-        """
-        payment = get_object_or_404(Payment, pk=pk)
-
+        """Initiates a refund for a specific PaymentTransaction."""
+        payment = self.get_object()
         serializer = RefundTransactionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        transaction_id = serializer.validated_data.get("transaction_id")
+        transaction_id = serializer.validated_data["transaction_id"]
         amount = serializer.validated_data["amount"]
         reason = serializer.validated_data.get("reason")
 
         try:
-            # Ensure the transaction belongs to this payment
-            transaction_to_refund = payment.transactions.get(id=transaction_id)
-
-            # Use the PaymentService instance method for refunding a specific transaction
-            payment_service_instance = PaymentService(
-                payment=payment
-            )  # Initialize with the payment object
-            updated_transaction = payment_service_instance.refund_transaction_with_provider(
-                transaction_id=transaction_to_refund.id,  # Pass the actual transaction ID
-                amount_to_refund=amount,
-                reason=reason,
+            # Use the instance-based service method for refunds
+            payment_service_instance = PaymentService(payment=payment)
+            updated_transaction = (
+                payment_service_instance.refund_transaction_with_provider(
+                    transaction_id=transaction_id,
+                    amount_to_refund=amount,
+                    reason=reason,
+                )
             )
-
-            # Return the updated payment details
             response_serializer = PaymentSerializer(updated_transaction.payment)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
-
         except PaymentTransaction.DoesNotExist:
-            return Response(
-                {
-                    "error": f"Transaction with ID {transaction_id} not found for this payment."
-                },
-                status=status.HTTP_404_NOT_FOUND,
+            return self.create_error_response(
+                f"Transaction with ID {transaction_id} not found for this payment.",
+                status.HTTP_404_NOT_FOUND,
             )
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except NotImplementedError as e:
-            return Response({"error": str(e)}, status=status.HTTP_501_NOT_IMPLEMENTED)
         except Exception as e:
-            logger.error(
-                f"Error initiating refund for payment {pk}, transaction {transaction_id}: {e}"
-            )
-            return Response(
-                {"error": f"An unexpected error occurred during refund: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            logger.error(f"Error on refund for payment {pk}, txn {transaction_id}: {e}")
+            return self.create_error_response(
+                str(e), status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
 class CreateUserPaymentIntentView(
     BasePaymentView, PaymentValidationMixin, AuthenticatedOrderAccessMixin
 ):
-    """
-    Creates a Stripe Payment Intent for authenticated users.
+    """Creates a Stripe Payment Intent for authenticated users by calling the PaymentService."""
 
-    Enhanced with user-specific features like:
-    - Link to Stripe Customer
-    - Support for saved payment methods
-    - Enhanced security and fraud detection
-    """
-
+    authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        """
-        Creates a payment intent for authenticated user checkout.
-
-        Expected payload:
-        {
-            "order_id": "uuid",
-            "amount": "decimal_string",
-            "currency": "usd",  # optional
-            "save_payment_method": true,  # optional
-            "payment_method_id": "pm_xxx"  # optional, for saved methods
-        }
-        """
+        """Handles the creation of a payment intent."""
         order_id = request.data.get("order_id")
         amount = request.data.get("amount")
         currency = request.data.get("currency", "usd")
 
-        # Validate required fields
-        if not order_id:
-            return self.create_error_response("order_id is required")
-
-        if not amount:
-            return self.create_error_response("amount is required")
+        if not all([order_id, amount]):
+            return self.create_error_response("order_id and amount are required")
 
         try:
-            # Get the order and validate access
             order = self.get_order_or_404(order_id)
             self.validate_order_access(order, request)
-
-            # Convert amount to Decimal for consistency
             amount_decimal = self.validate_amount(amount)
 
-            # Create or get payment object
-            payment, created = Payment.objects.get_or_create(
-                order=order,
-                defaults={
-                    "total_amount_due": amount_decimal,
-                    "status": Payment.PaymentStatus.PENDING,
-                },
+            # Delegate creation to the PaymentService
+            intent_details = PaymentService.create_online_payment_intent(
+                order=order, amount=amount_decimal, currency=currency, user=request.user
             )
 
-            # If payment already exists, update the amount
-            if not created:
-                payment.total_amount_due = amount_decimal
-                payment.save(update_fields=["total_amount_due"])
-
-            # Create Stripe Payment Intent
-            from django.conf import settings
-
-            stripe.api_key = settings.STRIPE_SECRET_KEY
-
-            intent_data = {
-                "amount": int(amount_decimal * 100),  # Convert to cents
-                "currency": currency,
-                "automatic_payment_methods": {
-                    "enabled": True,
-                },
-                "metadata": {
-                    "order_id": str(order.id),
-                    "payment_id": str(payment.id),
-                    "customer_type": "authenticated",
-                    "user_id": str(request.user.id),
-                },
-            }
-
-            # Add customer info from authenticated user
-            if request.user.email:
-                intent_data["receipt_email"] = request.user.email
-
-            # Set description with user info
-            user_name = f"{request.user.first_name} {request.user.last_name}".strip()
-            if not user_name:
-                user_name = request.user.username
-            intent_data["description"] = f"Order payment for {user_name}"
-
-            # TODO: Future enhancement - create/link Stripe Customer
-            # if request.data.get("save_payment_method"):
-            #     customer = self._get_or_create_stripe_customer(request.user)
-            #     intent_data["customer"] = customer.id
-
-            # Create the payment intent
-            intent = stripe.PaymentIntent.create(**intent_data)
-
-            # Create a pending transaction record
-            PaymentTransaction.objects.create(
-                payment=payment,
-                amount=amount_decimal,
-                method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
-                status=PaymentTransaction.TransactionStatus.PENDING,
-                transaction_id=intent.id,
-            )
-
-            return self.create_success_response(
-                {
-                    "client_secret": intent.client_secret,
-                    "payment_intent_id": intent.id,
-                    "payment_id": str(payment.id),
-                },
-                status.HTTP_201_CREATED,
-            )
+            return self.create_success_response(intent_details, status.HTTP_201_CREATED)
 
         except ValueError as e:
             return self.create_error_response(str(e))
@@ -340,109 +226,34 @@ class CreateUserPaymentIntentView(
             )
 
 
-class CompleteUserPaymentView(
-    BasePaymentView, PaymentValidationMixin, AuthenticatedOrderAccessMixin
-):
-    """
-    Completes an authenticated user payment with enhanced features.
-    """
+class CompleteUserPaymentView(BasePaymentView, AuthenticatedOrderAccessMixin):
+    """Completes a payment after successful provider confirmation by calling the PaymentService."""
 
+    authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        """
-        Completes an authenticated user payment.
-
-        Expected payload:
-        {
-            "payment_intent_id": "stripe_pi_id",
-            "order_id": "uuid",  # optional for verification
-            "save_payment_method": true  # optional
-        }
-        """
+        """Handles the completion of a payment."""
         payment_intent_id = request.data.get("payment_intent_id")
-        order_id = request.data.get("order_id")
 
-        # Validate required fields
         if not payment_intent_id:
-            return self.create_error_response("payment_intent_id is required")
+            return self.create_error_response("payment_intent_id is required.")
 
         try:
-            # Get the payment intent from Stripe to verify it succeeded
-            import stripe
-            from django.conf import settings
+            # Delegate completion logic to the PaymentService
+            # This service method handles everything: transaction status, payment status, and order status.
+            completed_payment = PaymentService.complete_payment(payment_intent_id)
+            serializer = PaymentSerializer(completed_payment)
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
-            stripe.api_key = settings.STRIPE_SECRET_KEY
-            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-
-            if intent.status != "succeeded":
-                return self.create_error_response(
-                    f"Payment intent status is {intent.status}, expected 'succeeded'"
-                )
-
-            # Get order ID from intent metadata if not provided
-            if not order_id:
-                order_id = intent.metadata.get("order_id")
-
-            if not order_id:
-                return self.create_error_response(
-                    "order_id not found in request or payment intent metadata"
-                )
-
-            # Get the order and validate access
-            order = self.get_order_or_404(order_id)
-            self.validate_order_access(order, request)
-
-            # Find the existing transaction
-            try:
-                transaction = PaymentTransaction.objects.get(
-                    transaction_id=payment_intent_id
-                )
-            except PaymentTransaction.DoesNotExist:
-                return self.create_error_response(
-                    "Payment transaction not found for this payment intent"
-                )
-
-            # Update the transaction with successful status
-            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-            transaction.provider_response = intent.to_dict()
-
-            # Extract card information if available
-            if intent.charges and intent.charges.data:
-                charge = intent.charges.data[0]
-                if charge.payment_method_details and charge.payment_method_details.card:
-                    card_details = charge.payment_method_details.card
-                    transaction.card_last_four = card_details.last4
-                    transaction.card_brand = card_details.brand.upper()
-
-            transaction.save()
-
-            # Update payment status using the service
-            from ..services import PaymentService
-
-            PaymentService._update_payment_status(transaction.payment)
-
-            # Mark order as completed if fully paid
-            if transaction.payment.status == Payment.PaymentStatus.PAID:
-                from orders.services import OrderService
-
-                OrderService.update_order_status(order, Order.OrderStatus.COMPLETED)
-                OrderService.update_payment_status(order, Order.PaymentStatus.PAID)
-
-            return self.create_success_response(
-                {
-                    "message": "Payment completed successfully",
-                    "payment_id": str(transaction.payment.id),
-                    "transaction_id": str(transaction.id),
-                    "order_status": order.status,
-                    "payment_status": order.payment_status,
-                }
+        except PaymentTransaction.DoesNotExist:
+            return self.create_error_response(
+                "Payment transaction not found.", status.HTTP_404_NOT_FOUND
             )
-
-        except ValueError as e:
-            return self.create_error_response(str(e))
         except Exception as e:
-            logger.error(f"Error completing authenticated payment: {e}")
+            logger.error(
+                f"Error completing user payment for intent {payment_intent_id}: {e}"
+            )
             return self.create_error_response(
                 str(e), status.HTTP_500_INTERNAL_SERVER_ERROR
             )

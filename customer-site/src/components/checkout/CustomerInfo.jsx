@@ -69,9 +69,8 @@ const CustomerInfo = ({
 
 	const handleSubmit = (e) => {
 		e.preventDefault();
-		if (validateForm()) {
-			onNext();
-		}
+		// The validation is now handled inside the submitCustomerInfo function
+		onNext();
 	};
 
 	// Format phone number for display

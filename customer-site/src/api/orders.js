@@ -32,15 +32,12 @@ export const ordersAPI = {
 		return response.data;
 	},
 
-	// Initialize guest session (no auth required)
-	initGuestSession: async () => {
-		const response = await apiClient.post("/orders/init-guest-session/");
-		return response.data;
-	},
-
-	// Create or get guest order for current session
-	createGuestOrder: async () => {
-		const response = await apiClient.post("/orders/guest-order/");
+	// Update customer info for an order (for both guest and auth users)
+	updateCustomerInfo: async (orderId, customerData) => {
+		const response = await apiClient.patch(
+			`/orders/${orderId}/update-customer-info/`,
+			customerData
+		);
 		return response.data;
 	},
 
@@ -48,6 +45,55 @@ export const ordersAPI = {
 	getOrder: async (orderId) => {
 		const response = await apiClient.get(`/orders/${orderId}/`);
 		return response.data;
+	},
+
+	// Get full order details for confirmation view (with all needed data)
+	getOrderForConfirmation: async (orderId) => {
+		try {
+			const response = await apiClient.get(`/orders/${orderId}/`);
+			const order = response.data;
+
+			// Transform the backend order data into the format expected by OrderConfirmation component
+			const confirmationData = {
+				id: order.id,
+				orderNumber: order.order_number || order.id,
+				customerName:
+					order.customer_display_name ||
+					(order.customer
+						? `${order.customer.first_name || ""} ${
+								order.customer.last_name || ""
+						  }`.trim() || order.customer.username
+						: `${order.guest_first_name || ""} ${
+								order.guest_last_name || ""
+						  }`.trim() || "Guest Customer"),
+				customerEmail:
+					order.customer?.email ||
+					order.guest_email ||
+					order.customer_email ||
+					"",
+				customerPhone:
+					order.customer?.phone ||
+					order.guest_phone ||
+					order.customer_phone ||
+					"",
+				items: order.items || [],
+				grandTotal: order.grand_total,
+				total: order.grand_total, // Alternative field name for compatibility
+				subtotal: order.subtotal,
+				taxAmount: order.tax_total,
+				surchargeAmount: order.surcharges_total,
+				status: order.status,
+				paymentStatus: order.payment_status,
+				createdAt: order.created_at,
+				updatedAt: order.updated_at,
+				orderType: order.order_type,
+			};
+
+			return confirmationData;
+		} catch (error) {
+			console.error("Error fetching order for confirmation:", error);
+			throw error;
+		}
 	},
 
 	// Get current user's orders (works for both auth and guest)
@@ -141,6 +187,18 @@ export const ordersAPI = {
 		const response = await apiClient.post(`/orders/${orderId}/cancel/`);
 		return response.data;
 	},
+
+	// Initialize a guest session
+	initGuestSession: async () => {
+		const response = await apiClient.post("/orders/init-guest-session/");
+		return response.data;
+	},
+
+	// Create a new guest order
+	createGuestOrder: async (orderData) => {
+		const response = await apiClient.post("/orders/guest-order/", orderData);
+		return response.data;
+	},
 };
 
 // Helper functions for cart management
@@ -229,14 +287,10 @@ export const cartAPI = {
 		}
 	},
 
+	// Reorder from a previous order
 	reorder: async (orderId) => {
-		try {
-			const { data } = await apiClient.post(`/orders/${orderId}/reorder/`);
-			return data;
-		} catch (error) {
-			console.error("Error reordering:", error.response?.data);
-			throw error.response?.data || { error: "An unknown error occurred" };
-		}
+		const response = await apiClient.post(`/orders/${orderId}/reorder/`);
+		return response.data;
 	},
 };
 

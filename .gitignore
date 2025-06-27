@@ -2,6 +2,7 @@
 prod-config/
 *.md
 original-customer-site/
+combined/
 .vscode/
 .env
 .env.local
