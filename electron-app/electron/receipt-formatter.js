@@ -1,9 +1,14 @@
 import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const thermalPrinter = require("node-thermal-printer");
 const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
 
 const RECEIPT_WIDTH = 42; // Same width as in the Python script
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Formats a line with left and right aligned text.
@@ -21,7 +26,7 @@ function printLine(printer, left, right) {
  * @param {object} storeSettings - Store configuration from backend (optional, falls back to hardcoded values).
  * @returns {Buffer} The raw command buffer for the printer.
  */
-export function formatReceipt(order, storeSettings = null) {
+export async function formatReceipt(order, storeSettings = null) {
 	let printer = new ThermalPrinter({
 		type: PrinterTypes.EPSON,
 		characterSet: "PC437_USA",
@@ -31,26 +36,48 @@ export function formatReceipt(order, storeSettings = null) {
 	// --- Header ---
 	printer.alignCenter();
 
-	// Use dynamic store settings or fall back to hardcoded values
-	if (storeSettings?.receipt_header) {
-		printer.println(storeSettings.receipt_header);
-		printer.println("");
+	// Print Logo
+	try {
+		// Vite copies files from /public to the root of the dist folder.
+		const logoPath = path.join(process.env.PUBLIC, "logo.png");
+		await printer.printImage(logoPath);
+		printer.println(""); // Add some space after the logo
+	} catch (error) {
+		console.error("Could not print logo. Using text fallback.");
+		console.error("Full logo printing error:", error);
+		// Use dynamic store settings or fall back to hardcoded values
+		if (storeSettings?.receipt_header) {
+			printer.println(storeSettings.receipt_header);
+			printer.println("");
+		}
 	}
 
 	// Store information
-	const storeName = storeSettings?.store_name || "Ajeen Fresh";
 	const storeAddress =
 		storeSettings?.store_address || "2105 Cliff Rd #300\nEagan, MN 55122";
 	const storePhone = storeSettings?.store_phone || "(651) 412-5336";
 
-	printer.println(storeName);
-
 	// Handle multi-line address
 	if (storeAddress) {
-		const addressLines = storeAddress.split("\n");
-		addressLines.forEach((line) => {
-			if (line.trim()) printer.println(line.trim());
-		});
+		// If address already contains a newline, use it.
+		if (storeAddress.includes("\\n")) {
+			const addressLines = storeAddress.split("\\n");
+			addressLines.forEach((line) => {
+				if (line.trim()) printer.println(line.trim());
+			});
+		} else {
+			// Otherwise, try to parse it (assuming format: Street, City, State ZIP)
+			const parts = storeAddress.split(",");
+			if (parts.length > 1) {
+				const street = parts.shift().trim();
+				const cityStateZip = parts.join(",").trim();
+				if (street) printer.println(street);
+				if (cityStateZip) printer.println(cityStateZip);
+			} else {
+				// If parsing fails, print as is.
+				printer.println(storeAddress);
+			}
+		}
 	}
 
 	if (storePhone) {
@@ -61,7 +88,8 @@ export function formatReceipt(order, storeSettings = null) {
 
 	// --- Order Info ---
 	printer.alignLeft();
-	const orderId = order.id || "N/A";
+	// Use user-friendly order number first, with fallback to UUID
+	const orderId = order.order_number || order.id || "N/A";
 	const orderDate = new Date(order.created_at).toLocaleString("en-US", {
 		timeZone: "America/Chicago",
 	});
@@ -191,9 +219,55 @@ export function formatOpenCashDrawer() {
  * Generates a raw buffer for a simplified kitchen ticket with a dynamic zone name.
  * @param {object} order - The full order object.
  * @param {string} zoneName - The name of the kitchen zone (e.g., "Hot Line").
+ * @param {object} filterConfig - Zone configuration for filtering items.
+ * @param {array} filterConfig.categories - Array of category IDs to include, or ["ALL"].
+ * @param {array} filterConfig.productTypes - Array of product type IDs to include, or ["ALL"].
  * @returns {Buffer} The raw command buffer for the printer.
  */
-export function formatKitchenTicket(order, zoneName = "KITCHEN") {
+export function formatKitchenTicket(
+	order,
+	zoneName = "KITCHEN",
+	filterConfig = null
+) {
+	// Filter items based on zone configuration
+	let itemsToPrint = order.items || [];
+
+	if (filterConfig) {
+		itemsToPrint = itemsToPrint.filter((item) => {
+			const product = item.product;
+
+			// Filter by product type
+			if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
+				if (!filterConfig.productTypes.includes("ALL")) {
+					const productTypeMatch = filterConfig.productTypes.includes(
+						product.product_type?.id
+					);
+					if (!productTypeMatch) return false;
+				}
+			}
+
+			// Filter by category
+			if (filterConfig.categories && filterConfig.categories.length > 0) {
+				if (!filterConfig.categories.includes("ALL")) {
+					const categoryMatch = filterConfig.categories.includes(
+						product.category?.id
+					);
+					if (!categoryMatch) return false;
+				}
+			}
+
+			return true;
+		});
+	}
+
+	// If no items match the filter, return null (don't print)
+	if (itemsToPrint.length === 0) {
+		console.log(
+			`[formatKitchenTicket] No items match filter for zone "${zoneName}" - skipping ticket`
+		);
+		return null;
+	}
+
 	let printer = new ThermalPrinter({
 		type: PrinterTypes.EPSON,
 		characterSet: "PC437_USA",
@@ -204,7 +278,6 @@ export function formatKitchenTicket(order, zoneName = "KITCHEN") {
 	printer.alignCenter();
 	printer.bold(true);
 	printer.setTextSize(1, 1);
-	// --- FIX: Use the provided zoneName for the ticket header ---
 	printer.println(`${zoneName.toUpperCase()} TICKET`);
 	printer.setTextNormal();
 	printer.bold(false);
@@ -212,9 +285,11 @@ export function formatKitchenTicket(order, zoneName = "KITCHEN") {
 	printer.println("");
 
 	// --- Order Info ---
+	printer.setTextSize(2, 2); // Make order number bigger
 	printer.bold(true);
-	printer.println(`Order #: ${order.id}`);
+	printer.println(`Order #${order.order_number || order.id}`); // Use user-friendly number
 	printer.bold(false);
+	printer.setTextNormal(); // Reset text size
 
 	const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
 		hour: "2-digit",
@@ -224,17 +299,45 @@ export function formatKitchenTicket(order, zoneName = "KITCHEN") {
 		timeZone: "America/Chicago",
 	});
 	printer.println(`Time: ${orderDate}`);
+
 	printer.drawLine();
 
-	// --- Items ---
-	for (const item of order.items) {
+	// --- Group items by category ---
+	const groupedItems = itemsToPrint.reduce((acc, item) => {
+		const categoryName = item.product.category?.name || "Miscellaneous";
+		if (!acc[categoryName]) {
+			acc[categoryName] = [];
+		}
+		acc[categoryName].push(item);
+		return acc;
+	}, {});
+
+	// --- Print items grouped by category ---
+	for (const categoryName in groupedItems) {
+		// Print category header
 		printer.bold(true);
-		printer.setTextSize(1, 1);
-		printer.println(`${item.quantity}x ${item.product.name}`);
-		printer.setTextNormal();
+		printer.underline(true);
+		printer.println(`${categoryName.toUpperCase()}:`);
+		printer.underline(false);
 		printer.bold(false);
+
+		const itemsInCategory = groupedItems[categoryName];
+		for (const item of itemsInCategory) {
+			printer.bold(true);
+			printer.setTextSize(1, 1);
+			printer.println(`${item.quantity}x ${item.product.name}`);
+			printer.setTextNormal();
+			printer.bold(false);
+
+			// Add special instructions or notes if available
+			if (item.notes && item.notes.trim()) {
+				printer.println(`   Notes: ${item.notes.trim()}`);
+			}
+		}
+		printer.println(""); // Add space after each category
 	}
 
+	// Remove the footer that shows item counts
 	// --- Footer ---
 	printer.println("");
 	printer.println("");

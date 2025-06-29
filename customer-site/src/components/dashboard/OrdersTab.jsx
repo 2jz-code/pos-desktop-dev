@@ -45,11 +45,17 @@ const OrdersTab = () => {
 				throw new Error("Authentication required to reorder");
 			}
 
+			// Reset checkout state first
+			resetCheckoutState();
+
+			// Call the reorder API
 			await cartAPI.reorder(orderId);
 
-			// Clear existing cart cache and reset checkout state so new cart can be loaded
-			await queryClient.invalidateQueries({ queryKey: cartKeys.current() });
-			resetCheckoutState();
+			// Wait for the cart to be refetched with the new items
+			await queryClient.refetchQueries({
+				queryKey: cartKeys.current(),
+				type: "active", // Only refetch active queries
+			});
 
 			toast.success("Order created! Redirecting to checkout...", {
 				id: toastId,
@@ -174,7 +180,9 @@ const OrdersTab = () => {
 						>
 							<div className="flex justify-between items-center w-full">
 								<div className="flex-1 text-left">
-									<p className="font-medium">Order #{order.id.slice(0, 8)}</p>
+									<p className="font-medium">
+										{order.order_number || order.id.slice(0, 8)}
+									</p>
 									<p className="text-sm text-gray-500">
 										{new Date(order.created_at).toLocaleDateString()}
 									</p>

@@ -186,12 +186,21 @@ export const PrinterSettings = () => {
 					{/* Kitchen Zones */}
 					<div>
 						<h3 className="text-lg font-medium mb-2">Kitchen Printer Zones</h3>
+						<p className="text-sm text-muted-foreground mb-4">
+							Configure printer zones for different kitchen stations. Each zone
+							can filter which products to print based on category and product
+							type.
+							<br />
+							<strong>Note:</strong> Zones with no categories configured will
+							not print any tickets (useful for configuration validation).
+						</p>
 						<div className="rounded-md border">
 							<Table>
 								<TableHeader>
 									<TableRow>
 										<TableHead>Zone Name</TableHead>
 										<TableHead>Assigned Printer</TableHead>
+										<TableHead>Filters</TableHead>
 										<TableHead className="text-right">Actions</TableHead>
 									</TableRow>
 								</TableHeader>
@@ -201,11 +210,74 @@ export const PrinterSettings = () => {
 											const printer = printers.find(
 												(p) => p.id === zone.printerId
 											);
+
+											// Generate filter summary
+											const filterParts = [];
+
+											// Product type filter
+											if (zone.productTypes?.length > 0) {
+												if (zone.productTypes.includes("ALL")) {
+													filterParts.push("All Types");
+												} else {
+													filterParts.push(
+														`${zone.productTypes.length} Type${
+															zone.productTypes.length > 1 ? "s" : ""
+														}`
+													);
+												}
+											}
+
+											// Category filter
+											if (zone.categories?.length > 0) {
+												if (zone.categories.includes("ALL")) {
+													filterParts.push("All Categories");
+												} else {
+													filterParts.push(
+														`${zone.categories.length} Categor${
+															zone.categories.length > 1 ? "ies" : "y"
+														}`
+													);
+												}
+											}
+
+											const filterSummary =
+												filterParts.length > 0
+													? filterParts.join(" + ")
+													: "No filters configured";
+
+											const hasValidConfig = zone.categories?.length > 0;
+
 											return (
 												<TableRow key={zone.id}>
-													<TableCell>{zone.name}</TableCell>
+													<TableCell className="font-medium">
+														{zone.name}
+														{!hasValidConfig && (
+															<Badge
+																variant="destructive"
+																className="ml-2 text-xs"
+															>
+																No Categories
+															</Badge>
+														)}
+													</TableCell>
 													<TableCell>
 														{printer ? printer.name : "None"}
+													</TableCell>
+													<TableCell>
+														<div className="flex flex-wrap gap-1">
+															{hasValidConfig ? (
+																<Badge
+																	variant="secondary"
+																	className="text-xs"
+																>
+																	{filterSummary}
+																</Badge>
+															) : (
+																<span className="text-sm text-muted-foreground">
+																	{filterSummary}
+																</span>
+															)}
+														</div>
 													</TableCell>
 													<TableCell className="text-right">
 														<Button
@@ -230,7 +302,7 @@ export const PrinterSettings = () => {
 									) : (
 										<TableRow>
 											<TableCell
-												colSpan={3}
+												colSpan={4}
 												className="text-center h-24"
 											>
 												No kitchen zones configured.

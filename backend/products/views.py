@@ -20,7 +20,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all()
+    queryset = (
+        Product.objects.all()
+    )  # Include all products, filtering handled by filterset
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -30,6 +32,13 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+
+        # Default to active products only if no is_active filter is specified
+        # This maintains backward compatibility for existing API consumers
+        is_active_param = self.request.query_params.get("is_active")
+        if is_active_param is None:
+            # Default behavior: only show active products
+            queryset = queryset.filter(is_active=True)
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")

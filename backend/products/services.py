@@ -14,6 +14,8 @@ class ProductService:
         """
         category_id = kwargs.pop("category_id", None)
         tax_ids = kwargs.pop("tax_ids", [])
+        # Keep the image_file in kwargs so the model gets it and the signal can process it
+        # image_file = kwargs.pop("image", None)  # Don't remove the image from kwargs
 
         # Extract inventory-related data
         initial_stock = kwargs.pop("initial_stock", 0)
@@ -23,6 +25,12 @@ class ProductService:
             kwargs["category"] = Category.objects.get(id=category_id)
 
         product = Product.objects.create(**kwargs)
+
+        # Remove manual image processing - let the signal handle it
+        # if image_file:
+        #     processed_image = ImageService.process_image(image_file)
+        #     product.image.save(processed_image.name, processed_image, save=True)
+        #     product.save()  # Save product again to update image field
 
         if tax_ids:
             product.taxes.set(Tax.objects.filter(id__in=tax_ids))

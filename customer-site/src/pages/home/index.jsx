@@ -1,23 +1,28 @@
-import React from "react";
+import React, { Suspense } from "react";
+import SEO from "@/components/SEO";
 import Hero from "./components/Hero";
-import About from "./components/Cards";
-import Order from "./components/Order";
-import ReviewCarousel from "./components/ReviewCarousel";
+import Cards from "./components/Cards";
 import Faq from "./components/Faq";
 import Location from "./components/Location";
-import Scroll from "./components/Scroll";
+const ReviewCarousel = React.lazy(() => import("./components/ReviewCarousel"));
+const Order = React.lazy(() => import("./components/Order"));
 
 const HomePage = () => {
 	return (
-		<>
+		<main>
+			<SEO />
 			<Hero />
-			<About />
-			<ReviewCarousel />
+			<Cards />
+			<Suspense fallback={<div className="w-full h-96 bg-gray-200" />}>
+				<ReviewCarousel />
+			</Suspense>
+
 			<Location />
 			<Faq />
-			<Order />
-			<Scroll />
-		</>
+			<Suspense fallback={<div className="w-full h-96 bg-primary-beige" />}>
+				<Order />
+			</Suspense>
+		</main>
 	);
 };
 

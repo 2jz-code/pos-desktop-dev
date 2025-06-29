@@ -1,21 +1,21 @@
-// desktop-combined/electron-app/src/features/pos/components/ProductGrid.jsx
+"use client";
 
-import React from "react";
-import { usePosStore } from "@/domains/pos/store/posStore"; // Corrected usePosStore to usePosStore for consistency
+import { useMemo } from "react";
+import { usePosStore } from "@/domains/pos/store/posStore";
 import ProductFilter from "./ProductFilter";
 import { ProductCard } from "./ProductSubcategoryGroup";
+import { Package } from "lucide-react";
 
 const ProductGrid = () => {
 	const filteredProducts = usePosStore((state) => state.filteredProducts);
 
-	// Debug logging
 	console.log(
 		"🎨 ProductGrid - filteredProducts:",
 		filteredProducts?.length || 0
 	);
 	console.log("🎨 ProductGrid - First product sample:", filteredProducts?.[0]);
 
-	const groupedProducts = React.useMemo(() => {
+	const groupedProducts = useMemo(() => {
 		if (!Array.isArray(filteredProducts)) {
 			return {};
 		}
@@ -23,15 +23,11 @@ const ProductGrid = () => {
 		const groups = {};
 
 		for (const product of filteredProducts) {
-			// FIXED: Use the actual category structure from the backend
-			// product.category is the direct category, which could be parent or child
 			const directCategory = product.category;
 
 			if (!directCategory) continue;
 
-			// If this category has no parent (parent_id is null), it's a parent category
 			if (directCategory.parent_id === null) {
-				// This is a parent category product
 				const parentName = directCategory.name;
 
 				if (!groups[parentName]) {
@@ -42,13 +38,7 @@ const ProductGrid = () => {
 
 				groups[parentName].__direct_products__.push(product);
 			} else {
-				// This is a subcategory product - we need the parent category name
-				// The parent info should be available in directCategory.parent if properly populated
-				// Otherwise we need to find the parent category name
 				const subcategoryName = directCategory.name;
-
-				// For now, let's try to get parent name from the category structure
-				// This assumes the backend includes parent info in the category object
 				const parentName = directCategory.parent?.name || "Other";
 
 				if (!groups[parentName]) {
@@ -65,7 +55,6 @@ const ProductGrid = () => {
 			}
 		}
 
-		// Clean up empty direct products arrays
 		for (const parentName in groups) {
 			if (
 				groups[parentName].__direct_products__ &&
@@ -83,32 +72,50 @@ const ProductGrid = () => {
 		(filteredProducts.length === 0 && Object.keys(groupedProducts).length === 0)
 	) {
 		return (
-			<div className="text-center py-10 text-gray-500">
-				Loading products or no products found...
+			<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col">
+				<div className="p-6 border-b border-slate-200 dark:border-slate-700">
+					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+						Products
+					</h2>
+				</div>
+				<div className="flex-1 flex items-center justify-center">
+					<div className="text-center py-12">
+						<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+						<p className="text-slate-500 dark:text-slate-400 text-lg">
+							Loading products...
+						</p>
+					</div>
+				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="bg-white p-4 rounded-lg shadow-lg h-full flex flex-col">
-			<div className="flex-shrink-0">
-				<h2 className="text-2xl font-bold mb-4">Products</h2>
+		<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col shadow-sm">
+			<div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+				<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">
+					Products
+				</h2>
 				<ProductFilter />
 			</div>
-			<div className="flex-grow overflow-y-auto pr-2">
+
+			<div className="flex-grow overflow-y-auto p-6">
 				{Object.entries(groupedProducts).map(([parentName, subcategories]) => (
 					<div
 						key={parentName}
-						className="mb-8"
+						className="mb-10 last:mb-0"
 					>
-						<h2 className="text-2xl font-bold mb-4 border-b pb-2 capitalize">
-							{parentName}
-						</h2>
+						<div className="flex items-center gap-3 mb-6">
+							<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 capitalize">
+								{parentName}
+							</h2>
+							<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+						</div>
 
-						{/* Render products directly under the parent category */}
+						{/* Direct products under parent category */}
 						{subcategories["__direct_products__"] &&
 							subcategories["__direct_products__"].length > 0 && (
-								<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6">
+								<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
 									{subcategories["__direct_products__"].map((product) => (
 										<ProductCard
 											key={product.id}
@@ -118,16 +125,25 @@ const ProductGrid = () => {
 								</div>
 							)}
 
-						{/* Render products under their respective subcategories */}
+						{/* Products under subcategories */}
 						{Object.entries(subcategories).map(
 							([subcategoryName, products]) => {
 								if (subcategoryName === "__direct_products__") return null;
 								return (
-									<div key={subcategoryName}>
-										<h3 className="text-xl font-semibold mb-4 capitalize">
-											{subcategoryName}
-										</h3>
-										<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-6">
+									<div
+										key={subcategoryName}
+										className="mb-8"
+									>
+										<div className="flex items-center gap-3 mb-4">
+											<h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 capitalize">
+												{subcategoryName}
+											</h3>
+											<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+											<span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+												{products.length} items
+											</span>
+										</div>
+										<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
 											{products.map((product) => (
 												<ProductCard
 													key={product.id}
@@ -143,9 +159,10 @@ const ProductGrid = () => {
 				))}
 
 				{filteredProducts.length === 0 &&
-					Object.keys(groupedProducts).length === 0 && ( // Added condition for no items found
-						<div className="text-center py-10">
-							<p className="text-gray-500">
+					Object.keys(groupedProducts).length === 0 && (
+						<div className="text-center py-12">
+							<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+							<p className="text-slate-500 dark:text-slate-400 text-lg">
 								No products match the current filter.
 							</p>
 						</div>

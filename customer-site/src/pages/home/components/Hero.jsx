@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import ManakeeshVideo from "../../../assets/Hero-Vid.mp4";
+import HeroPoster from "../../../assets/hero-pic.webp"; // Import the poster image
 import Logo from "../../../assets/logo.png"; // Import the logo
+import OptimizedImage from "@/components/OptimizedImage"; // Import the OptimizedImage component
 
 const Hero = () => {
 	const titleRef = useRef(null); // This ref might now apply to the logo container or be less relevant
@@ -42,6 +44,8 @@ const Hero = () => {
 					loop
 					muted
 					playsInline
+					poster={HeroPoster}
+					preload="none"
 					className="absolute top-0 left-0 w-full h-full object-cover"
 				>
 					<source
@@ -62,13 +66,16 @@ const Hero = () => {
 						ref={titleRef} // Apply animation ref to the logo container
 						className="mb-4 opacity-0 translate-y-10 transition-all duration-1000 ease-out"
 					>
-						<img
+						<OptimizedImage
 							src={Logo}
 							alt="Ajeen Logo"
 							// Adjust size as needed for the hero section.
 							// Using h-20 to h-32 or similar, with w-auto to maintain aspect ratio.
 							// Responsive sizing can be added e.g. h-20 sm:h-24 md:h-28 lg:h-32
 							className="h-24 md:h-28 lg:h-32 w-auto mx-auto"
+							width={148}
+							height={128}
+							priority
 						/>
 					</div>
 

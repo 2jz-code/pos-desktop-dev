@@ -3,6 +3,11 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { Plus, Minus, ShoppingCart, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import OptimizedImage from "@/components/OptimizedImage";
+import {
+	getProductImageUrl,
+	createImageErrorHandler,
+} from "../../../../src/lib/imageUtils"; // Adjust path as needed
 
 const ProductCard = ({
 	product,
@@ -108,16 +113,11 @@ const ProductCard = ({
 				className="h-full flex flex-col"
 			>
 				<div className="relative aspect-w-16 aspect-h-9 bg-muted">
-					<img
-						src={
-							product.image ||
-							`https://placehold.co/600x400/F3E1CA/5E6650?text=${encodeURIComponent(
-								product.name
-							)}`
-						}
-						alt={product.name}
-						loading="lazy"
+					<OptimizedImage
+						src={getProductImageUrl(product.image)}
+						alt={product.name || "Product Image"}
 						className="w-full h-48 object-cover"
+						onError={createImageErrorHandler("Product")}
 					/>
 				</div>
 
@@ -159,16 +159,11 @@ const ProductCard = ({
 			className="bg-card text-card-foreground rounded-lg shadow-sm hover:shadow-lg transition-shadow relative flex border overflow-hidden"
 		>
 			<div className="relative w-32 h-full flex-shrink-0 bg-muted">
-				<img
-					src={
-						product.image ||
-						`https://placehold.co/300x300/F3E1CA/5E6650?text=${encodeURIComponent(
-							product.name
-						)}`
-					}
-					alt={product.name}
-					loading="lazy"
+				<OptimizedImage
+					src={getProductImageUrl(product.image)}
+					alt={product.name || "Product Image"}
 					className="w-full h-full object-cover"
+					onError={createImageErrorHandler("Product")}
 				/>
 			</div>
 

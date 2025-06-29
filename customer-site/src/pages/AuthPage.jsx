@@ -2,6 +2,7 @@ import React from "react";
 import { useParams, useLocation, Navigate } from "react-router-dom";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
+import SEO from "@/components/SEO";
 
 const AuthPage = () => {
 	const { mode } = useParams();
@@ -27,11 +28,22 @@ const AuthPage = () => {
 		);
 	}
 
+	const isLogin = currentMode === "login";
+
 	return (
-		<div>
-			{currentMode === "login" && <LoginForm />}
+		<main>
+			<SEO
+				title={isLogin ? "Login - Ajeen" : "Create Account - Ajeen"}
+				description={
+					isLogin
+						? "Access your Ajeen account. Log in to place an order, view your order history, and manage your profile."
+						: "Create an account with Ajeen to easily order your favorite Middle Eastern dishes online, track your orders, and save your preferences."
+				}
+				robots="noindex, nofollow"
+			/>
+			{isLogin && <LoginForm />}
 			{currentMode === "register" && <RegisterForm />}
-		</div>
+		</main>
 	);
 };
 

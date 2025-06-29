@@ -97,6 +97,13 @@ class Product(models.Model):
     is_active = models.BooleanField(
         default=True, help_text=_("Is this product available for sale?")
     )
+    image = models.ImageField(
+        upload_to="products/",
+        null=True,
+        blank=True,
+        help_text="The processed WebP image.",
+    )
+    original_filename = models.CharField(max_length=255, blank=True, null=True)
     track_inventory = models.BooleanField(
         default=False,
         help_text=_(

@@ -7,7 +7,7 @@ class ProductFilter(filters.FilterSet):
 
     class Meta:
         model = Product
-        fields = ["category"]
+        fields = ["category", "is_active"]
 
     def filter_by_category(self, queryset, name, value):
         # This custom filter ensures that when a category is selected,

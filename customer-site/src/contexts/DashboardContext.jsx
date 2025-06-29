@@ -4,9 +4,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const DashboardContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useDashboard = () => useContext(DashboardContext);
 
-export const DashboardProvider = ({ children }) => {
+export default function DashboardProvider({ children }) {
 	const [activeTab, setActiveTab] = useState("profile");
 	const [profile, setProfile] = useState(null);
 	const [orders, setOrders] = useState([]);
@@ -76,4 +77,4 @@ export const DashboardProvider = ({ children }) => {
 			{children}
 		</DashboardContext.Provider>
 	);
-};
+}

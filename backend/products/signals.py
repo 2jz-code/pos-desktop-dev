@@ -3,8 +3,12 @@ from django.dispatch import receiver
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import logging
+from django.utils import timezone  # Add this import
+from django.conf import settings
 
 from .models import Product, Category, ProductType
+from .image_service import ImageService  # Import ImageService
+import os  # Import os
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +52,107 @@ def broadcast_entity_change(entity_type, entity_id, action="changed"):
 
 
 @receiver(post_save, sender=Product)
-def handle_product_change(sender, instance, created, **kwargs):
-    """Handle product create/update events"""
+def process_product_image(sender, instance, created, **kwargs):
+    """
+    After a product is saved, if it has a newly uploaded image,
+    process it and replace it with the WebP version.
+    """
+    # Check if there's an image and if it hasn't been processed yet
+    # Also check if the image has changed from its original filename to avoid reprocessing already processed images
+    if instance.image and (
+        created or instance.image.name != instance.original_filename
+    ):
+
+        # Store the path to the originally uploaded file if it exists
+        original_image_path = None
+        if not created and instance.image.path and os.path.exists(instance.image.path):
+            original_image_path = instance.image.path
+
+        try:
+            # Process the image using our service
+            processed_image_file = ImageService.process_image(instance.image)
+
+            # Extract just the filename from the processed image name to avoid double prefixing
+            # processed_image_file.name might be "products/7up2.webp" or just "7up2.webp"
+            processed_filename = os.path.basename(processed_image_file.name)
+
+            # Manually construct the correct file path to avoid Django's upload_to duplication
+            # The upload_to is "products/" so we want "products/filename.webp"
+            correct_relative_path = f"products/{processed_filename}"
+
+            # Get the full file system path
+            full_file_path = os.path.join(settings.MEDIA_ROOT, correct_relative_path)
+
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(full_file_path), exist_ok=True)
+
+            # Write the processed file to the correct location
+            with open(full_file_path, "wb") as destination:
+                processed_image_file.seek(0)  # Reset file pointer
+                destination.write(processed_image_file.read())
+
+            # Close the processed file handle
+            processed_image_file.close()
+
+            # Close the original image file handle before attempting cleanup
+            if hasattr(instance.image, "close"):
+                instance.image.close()
+
+            # Update the instance's image field to point to the new file
+            instance.image.name = correct_relative_path
+            instance.original_filename = correct_relative_path
+            instance.save(update_fields=["image", "original_filename"])
+
+            # Clean up the original uploaded file if it exists and is different from the new file
+            if (
+                original_image_path
+                and os.path.exists(original_image_path)
+                and original_image_path != full_file_path
+            ):
+                try:
+                    # Add a small delay to ensure file handles are released (Windows issue)
+                    import time
+
+                    time.sleep(0.1)
+                    os.remove(original_image_path)
+                except PermissionError:
+                    # Log the issue but don't crash the process
+                    logger.warning(
+                        f"Could not delete original image file {original_image_path} - file may be in use"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error cleaning up original image file {original_image_path}: {e}"
+                    )
+
+        except Exception as e:
+            logger.error(f"Error processing image for product {instance.id}: {e}")
+            # Don't raise the exception to prevent the product save from failing
+
+    # Also broadcast the change for real-time updates
     action = "created" if created else "updated"
     broadcast_entity_change("products", instance.id, action)
 
 
 @receiver(post_delete, sender=Product)
 def handle_product_delete(sender, instance, **kwargs):
-    """Handle product delete events"""
+    """
+    Handle product delete events: broadcast change and delete associated image file.
+    """
+    # Delete the image file when the product is deleted
+    ImageService.delete_image_file(instance.image)
     broadcast_entity_change("products", instance.id, "deleted")
+
+
+# Existing signal handlers (ensure these are still present)
+@receiver(post_save, sender=Product)
+def handle_product_change(sender, instance, created, **kwargs):
+    """Handle product create/update events"""
+    # This signal is now redundant for image processing, handled by process_product_image
+    # but still useful for broadcasting other product changes if needed
+    if not instance.image or instance.image.name == instance.original_filename:
+        action = "created" if created else "updated"
+        broadcast_entity_change("products", instance.id, action)
 
 
 # === CATEGORY SIGNALS ===

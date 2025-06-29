@@ -45,6 +45,9 @@ class UserListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = super().get_queryset()
 
+        # Filter to only show POS staff users (not customers)
+        queryset = queryset.filter(is_pos_staff=True)
+
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:

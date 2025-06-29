@@ -318,7 +318,8 @@ class PaymentService:
             order.save(update_fields=["status"])
 
         # Emit payment_completed signal for event-driven architecture
-        payment_completed.send(sender=PaymentService, payment=payment)
+        # Pass both payment and order for receiver flexibility
+        payment_completed.send(sender=PaymentService, payment=payment, order=order)
 
     # === LEGACY METHODS - TO BE DEPRECATED ===
     # These methods are kept for backward compatibility during transition

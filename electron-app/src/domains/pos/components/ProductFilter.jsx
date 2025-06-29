@@ -1,7 +1,6 @@
-// desktop-combined/electron-app/src/features/pos/components/ProductFilter.jsx
+"use client";
 
-import React from "react";
-import { usePosStore } from "@/domains/pos/store/posStore"; // Corrected usePosStore to usePosStore for consistency
+import { usePosStore } from "@/domains/pos/store/posStore";
 import {
 	Select,
 	SelectContent,
@@ -9,6 +8,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui/select";
+import { Filter } from "lucide-react";
 import { shallow } from "zustand/shallow";
 
 const ProductFilter = () => {
@@ -32,20 +32,31 @@ const ProductFilter = () => {
 	);
 
 	return (
-		<div className="flex items-center space-x-4 mb-4">
+		<div className="flex items-center gap-4 mb-6">
+			<div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+				<Filter className="h-4 w-4" />
+				<span className="text-sm font-medium">Filter by:</span>
+			</div>
+
 			<Select
 				onValueChange={setSelectedParentCategory}
 				value={selectedParentCategory}
 			>
-				<SelectTrigger className="w-[180px]">
-					<SelectValue placeholder="Select a category" />
+				<SelectTrigger className="w-[200px] border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+					<SelectValue placeholder="Select category" />
 				</SelectTrigger>
-				<SelectContent>
-					<SelectItem value="all">All Categories</SelectItem>
+				<SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+					<SelectItem
+						value="all"
+						className="hover:bg-slate-100 dark:hover:bg-slate-800"
+					>
+						All Categories
+					</SelectItem>
 					{parentCategories.map((category) => (
 						<SelectItem
 							key={category.id}
 							value={String(category.id)}
+							className="hover:bg-slate-100 dark:hover:bg-slate-800"
 						>
 							{category.name}
 						</SelectItem>
@@ -58,15 +69,21 @@ const ProductFilter = () => {
 					onValueChange={setSelectedChildCategory}
 					value={selectedChildCategory}
 				>
-					<SelectTrigger className="w-[180px]">
-						<SelectValue placeholder="Select a subcategory" />
+					<SelectTrigger className="w-[200px] border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+						<SelectValue placeholder="Select subcategory" />
 					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All Subcategories</SelectItem>
+					<SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+						<SelectItem
+							value="all"
+							className="hover:bg-slate-100 dark:hover:bg-slate-800"
+						>
+							All Subcategories
+						</SelectItem>
 						{childCategories.map((category) => (
 							<SelectItem
 								key={category.id}
 								value={String(category.id)}
+								className="hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								{category.name}
 							</SelectItem>

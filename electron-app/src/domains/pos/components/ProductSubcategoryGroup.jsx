@@ -1,9 +1,9 @@
-import React from "react";
+"use client";
+
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { Loader2 } from "lucide-react"; // MODIFICATION: Import loader icon
+import { Loader2 } from "lucide-react";
 
 export const ProductCard = ({ product }) => {
-	// Access addItem action and the new addingItemId state
 	const { addItem, addingItemId } = usePosStore((state) => ({
 		addItem: state.addItem,
 		addingItemId: state.addingItemId,
@@ -13,29 +13,47 @@ export const ProductCard = ({ product }) => {
 
 	return (
 		<div
-			onClick={() => !isAdding && addItem(product)} // MODIFICATION: Prevent clicks while adding
-			className={`border rounded-lg p-4 flex flex-col items-center text-center shadow hover:shadow-lg transition-shadow relative ${
-				isAdding
-					? "cursor-not-allowed bg-gray-100"
-					: "cursor-pointer hover:bg-gray-50"
-			}`} // MODIFICATION: Add classes for loading state
+			onClick={() => !isAdding && addItem(product)}
+			className={`
+        relative group border border-slate-200 dark:border-slate-700 rounded-xl p-4 
+        flex flex-col items-center text-center bg-white dark:bg-slate-900
+        transition-all duration-200 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600
+        ${
+					isAdding
+						? "cursor-not-allowed opacity-75"
+						: "cursor-pointer hover:-translate-y-0.5"
+				}
+      `}
 		>
-			{/* MODIFICATION: Loading Overlay */}
+			{/* Loading Overlay */}
 			{isAdding && (
-				<div className="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center rounded-lg z-10">
-					<Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+				<div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center rounded-xl z-10">
+					<div className="flex flex-col items-center gap-2">
+						<Loader2 className="h-6 w-6 animate-spin text-slate-600 dark:text-slate-400" />
+						<span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+							Adding...
+						</span>
+					</div>
 				</div>
 			)}
 
-			<img
-				src={product.image || `https://avatar.vercel.sh/${product.name}.png`}
-				alt={product.name}
-				className="w-24 h-24 object-cover mb-2 rounded-md"
-			/>
-			<h3 className="font-semibold text-sm h-10">{product.name}</h3>
-			<p className="text-lg font-bold my-2">
-				${parseFloat(product.price).toFixed(2)}
-			</p>
+			<div className="w-20 h-20 mb-3 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+				<img
+					src={product.image || `https://avatar.vercel.sh/${product.name}.png`}
+					alt={product.name}
+					className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+				/>
+			</div>
+
+			<h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100 mb-2 line-clamp-2 min-h-[2.5rem] flex items-center">
+				{product.name}
+			</h3>
+
+			<div className="mt-auto">
+				<p className="text-lg font-bold text-slate-900 dark:text-slate-100">
+					${Number.parseFloat(product.price).toFixed(2)}
+				</p>
+			</div>
 		</div>
 	);
 };
@@ -47,9 +65,15 @@ const ProductSubcategoryGroup = ({ subcategoryName, products }) => {
 
 	return (
 		<div className="mb-8">
-			<h3 className="text-xl font-bold mb-4 capitalize border-b pb-2">
-				{subcategoryName}
-			</h3>
+			<div className="flex items-center gap-3 mb-4">
+				<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 capitalize">
+					{subcategoryName}
+				</h3>
+				<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+				<span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+					{products.length} items
+				</span>
+			</div>
 			<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
 				{products.map((product) => (
 					<ProductCard

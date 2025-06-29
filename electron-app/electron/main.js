@@ -153,17 +153,24 @@ ipcMain.handle("discover-printers", async () => {
 async function sendBufferToPrinter(printer, buffer) {
 	let device = null;
 	try {
-		// --- FIX: Check for vendor_id and product_id (snake_case) ---
-		if (!printer || !printer.vendor_id || !printer.product_id) {
-			throw new Error("Invalid printer object provided.");
+		// --- FIX: Robustly get vendor and product IDs, handling both camelCase and snake_case ---
+		const vendorId = parseInt(printer.vendorId || printer.vendor_id, 10);
+		const productId = parseInt(printer.productId || printer.product_id, 10);
+
+		if (!vendorId || !productId) {
+			throw new Error(
+				`Invalid printer object provided. Missing or invalid vendor/product ID. Got: ${JSON.stringify(
+					printer
+				)}`
+			);
 		}
 
 		const devices = usb.getDeviceList();
-		// --- FIX: Use the correct snake_case properties to find the device ---
+		// --- FIX: Use the parsed numeric IDs to find the device ---
 		device = devices.find(
 			(d) =>
-				d.deviceDescriptor.idVendor == printer.vendor_id &&
-				d.deviceDescriptor.idProduct == printer.product_id
+				d.deviceDescriptor.idVendor === vendorId &&
+				d.deviceDescriptor.idProduct === productId
 		);
 
 		if (!device) {
@@ -187,7 +194,7 @@ async function sendBufferToPrinter(printer, buffer) {
 	} finally {
 		if (device) {
 			try {
-				if (device.interfaces[0] && device.interfaces[0].isClaimed()) {
+				if (device.interfaces[0] && device.interfaces[0].isClaimed) {
 					await new Promise((resolve) => {
 						device.interfaces[0].release(true, () => resolve());
 					});
@@ -209,7 +216,7 @@ ipcMain.handle(
 			storeSettings ? "provided" : "not provided"
 		);
 		try {
-			const buffer = formatReceipt(data, storeSettings);
+			const buffer = await formatReceipt(data, storeSettings);
 			console.log(
 				`[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
 			);
@@ -225,10 +232,12 @@ ipcMain.handle(
 
 ipcMain.handle(
 	"print-kitchen-ticket",
-	async (event, { printer, order, zoneName }) => {
+	async (event, { printer, order, zoneName, filterConfig }) => {
 		console.log(
 			`\n--- [Main Process] KITCHEN TICKET HANDLER for zone: "${zoneName}" ---`
 		);
+		console.log(`Filter config:`, filterConfig);
+
 		try {
 			if (printer?.connection_type !== "network" || !printer.ip_address) {
 				throw new Error("Invalid network printer configuration provided.");
@@ -253,8 +262,18 @@ ipcMain.handle(
 				`Successfully connected to kitchen printer at ${printer.ip_address}`
 			);
 
-			// --- FIX: Pass the zoneName to the formatter function ---
-			const buffer = formatKitchenTicket(order, zoneName);
+			// Pass the filtering configuration to the formatter
+			const buffer = formatKitchenTicket(order, zoneName, filterConfig);
+
+			// If buffer is null, it means no items matched the filter
+			if (!buffer) {
+				console.log(`No items to print for zone "${zoneName}" - skipping`);
+				return {
+					success: true,
+					message: "No items matched filter - ticket skipped",
+				};
+			}
+
 			console.log(`Sending kitchen ticket buffer (size: ${buffer.length})`);
 
 			await printerInstance.raw(buffer);
@@ -285,8 +304,8 @@ ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
 		}
 
 		const printer = {
-			vendor_id: foundDevice.deviceDescriptor.idVendor,
-			product_id: foundDevice.deviceDescriptor.idProduct,
+			vendorId: foundDevice.deviceDescriptor.idVendor,
+			productId: foundDevice.deviceDescriptor.idProduct,
 		};
 
 		const buffer = formatOpenCashDrawer();

@@ -80,7 +80,7 @@ const Location = () => {
 		const formData = { name, email, message };
 
 		try {
-			const response = await apiClient.post("contact-form/", formData);
+			const response = await apiClient.post("notifications/contact/", formData);
 			setSubmitStatus({
 				type: "success",
 				message:

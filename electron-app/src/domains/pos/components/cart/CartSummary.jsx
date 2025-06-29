@@ -1,12 +1,15 @@
-import React, { useState } from "react";
+"use client";
+
+import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { shallow } from "zustand/shallow";
 import apiClient from "@/shared/lib/apiClient";
 import { toast } from "@/shared/components/ui/use-toast";
-import { Loader2, Tag, X } from "lucide-react";
+import { Loader2, Tag, X, ChefHat, CreditCard } from "lucide-react";
+import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
 
-// Helper to format currency safely, defaulting to $0.00
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
 	if (isNaN(number)) {
@@ -18,21 +21,23 @@ const safeFormatCurrency = (value) => {
 };
 
 const SummaryRow = ({ label, amount, className = "", onRemove }) => (
-	<div className={`flex justify-between items-center text-sm ${className}`}>
+	<div className={`flex justify-between items-center py-1 ${className}`}>
 		<div className="flex items-center">
-			<span className="text-muted-foreground">{label}</span>
+			<span className="text-sm text-slate-600 dark:text-slate-400">
+				{label}
+			</span>
 			{onRemove && (
 				<Button
 					variant="ghost"
 					size="icon"
-					className="h-5 w-5 ml-1 text-red-500 hover:bg-red-100 hover:text-red-600"
+					className="h-5 w-5 ml-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
 					onClick={onRemove}
 				>
 					<X className="h-3 w-3" />
 				</Button>
 			)}
 		</div>
-		<span className="font-medium text-foreground">
+		<span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
 			{safeFormatCurrency(amount)}
 		</span>
 	</div>
@@ -68,7 +73,11 @@ const CartSummary = () => {
 		shallow
 	);
 
+	const printers = useSettingsStore((state) => state.printers);
+	const kitchenZones = useSettingsStore((state) => state.kitchenZones);
+
 	const [isLoading, setIsLoading] = useState(false);
+	const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
 
 	const handleCharge = async () => {
 		if (!orderId || items.length === 0) return;
@@ -84,8 +93,6 @@ const CartSummary = () => {
 				});
 				await forceCancelAndStartPayment(orderId);
 			} else {
-				// --- FIX: Pass the full, detailed order object to startTender ---
-				// This ensures the entire payment flow has access to the complete order data.
 				startTender(orderDetails);
 			}
 		} catch (error) {
@@ -100,62 +107,231 @@ const CartSummary = () => {
 		}
 	};
 
+	const handleSendToKitchen = async () => {
+		if (!orderId || items.length === 0) return;
+
+		setIsSendingToKitchen(true);
+
+		try {
+			const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
+
+			const kitchenOrder = {
+				...orderDetails,
+				id: orderDetails.id,
+				order_number: orderDetails.order_number,
+				items: orderDetails.items,
+				status: "SENT_TO_KITCHEN",
+				created_at: orderDetails.created_at,
+			};
+
+			if (!kitchenZones || kitchenZones.length === 0) {
+				toast({
+					title: "No Kitchen Zones",
+					description: "Please configure kitchen zones in settings first.",
+					variant: "destructive",
+				});
+				return;
+			}
+
+			let ticketsPrinted = 0;
+			const errors = [];
+
+			for (const zone of kitchenZones) {
+				try {
+					const printer = printers.find((p) => p.id === zone.printerId);
+
+					if (!printer) {
+						console.warn(`No printer found for zone "${zone.name}", skipping`);
+						continue;
+					}
+
+					const filterConfig = {
+						categories: zone.categories || [],
+						productTypes: zone.productTypes || [],
+					};
+
+					if (!filterConfig.categories.length) {
+						console.log(
+							`Zone "${zone.name}" has no categories configured, skipping`
+						);
+						continue;
+					}
+
+					console.log(
+						`Printing kitchen ticket for zone "${zone.name}" with filter:`,
+						filterConfig
+					);
+
+					const result = await printKitchenTicket(
+						printer,
+						kitchenOrder,
+						zone.name,
+						filterConfig
+					);
+
+					if (result.success) {
+						if (result.message) {
+							console.log(`Zone "${zone.name}": ${result.message}`);
+						} else {
+							console.log(
+								`Kitchen ticket for zone "${zone.name}" printed successfully`
+							);
+						}
+						ticketsPrinted++;
+					} else {
+						console.error(
+							`Failed to print kitchen ticket for zone "${zone.name}":`,
+							result.error
+						);
+						errors.push(`${zone.name}: ${result.error}`);
+					}
+				} catch (error) {
+					console.error(
+						`Error printing kitchen ticket for zone "${zone.name}":`,
+						error
+					);
+					errors.push(`${zone.name}: ${error.message}`);
+				}
+			}
+
+			if (ticketsPrinted > 0) {
+				toast({
+					title: "Order Sent to Kitchen",
+					description: `${ticketsPrinted} kitchen ticket(s) printed successfully. Customer can continue shopping while food is prepared.`,
+				});
+			}
+
+			if (errors.length > 0) {
+				console.error("Kitchen printing errors:", errors);
+				toast({
+					title: "Some Kitchen Tickets Failed",
+					description: `${ticketsPrinted} succeeded, ${errors.length} failed. Check printer connections.`,
+					variant: "destructive",
+				});
+			}
+
+			if (ticketsPrinted === 0) {
+				toast({
+					title: "No Kitchen Tickets Printed",
+					description:
+						"No items matched the configured kitchen zones or no printers are available.",
+					variant: "destructive",
+				});
+			}
+		} catch (error) {
+			console.error("Error sending order to kitchen:", error);
+			toast({
+				title: "Failed to Send to Kitchen",
+				description:
+					error.response?.data?.detail || "An unexpected error occurred.",
+				variant: "destructive",
+			});
+		} finally {
+			setIsSendingToKitchen(false);
+		}
+	};
+
 	const hasItems = items.length > 0;
 	const hasDiscounts = appliedDiscounts && appliedDiscounts.length > 0;
+	const hasKitchenZones = kitchenZones && kitchenZones.length > 0;
 
 	return (
-		<div className="p-4 space-y-4">
-			<div className="space-y-1 border-b pb-3">
-				<SummaryRow
-					label="Subtotal"
-					amount={subtotal}
-				/>
-				{hasDiscounts &&
-					appliedDiscounts.map((appliedDiscount) => (
-						<SummaryRow
-							key={appliedDiscount.id}
-							label={appliedDiscount.discount.name}
-							amount={-appliedDiscount.amount}
-							className="text-red-500"
-							onRemove={() =>
-								removeDiscountViaSocket(appliedDiscount.discount.id)
-							}
-						/>
-					))}
-				<SummaryRow
-					label="Taxes"
-					amount={taxAmount}
-				/>
-				<SummaryRow
-					label="Surcharges"
-					amount={surchargesAmount}
-				/>
-			</div>
-			<div className="flex justify-between font-bold text-2xl pt-2">
-				<span>Total</span>
-				<span>{safeFormatCurrency(total)}</span>
-			</div>
-			<div className="grid grid-cols-2 gap-2 pt-2">
-				<Button
-					variant="outline"
-					className="h-14"
-					disabled={!hasItems || isLoading}
-					onClick={() => setIsDiscountDialogOpen(true)}
+		<div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+			<div className="p-4 space-y-4">
+				{/* Summary Details */}
+				<div className="space-y-2">
+					<SummaryRow
+						label="Subtotal"
+						amount={subtotal}
+					/>
+					{hasDiscounts &&
+						appliedDiscounts.map((appliedDiscount) => (
+							<SummaryRow
+								key={appliedDiscount.id}
+								label={appliedDiscount.discount.name}
+								amount={-appliedDiscount.amount}
+								className="text-emerald-600 dark:text-emerald-400"
+								onRemove={() =>
+									removeDiscountViaSocket(appliedDiscount.discount.id)
+								}
+							/>
+						))}
+					<SummaryRow
+						label="Taxes"
+						amount={taxAmount}
+					/>
+					<SummaryRow
+						label="Surcharges"
+						amount={surchargesAmount}
+					/>
+				</div>
+
+				{/* Total */}
+				<div className="flex justify-between items-center pt-3 border-t border-slate-200 dark:border-slate-700">
+					<span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+						Total
+					</span>
+					<span className="text-xl font-bold text-slate-900 dark:text-slate-100">
+						{safeFormatCurrency(total)}
+					</span>
+				</div>
+
+				{/* Action Buttons */}
+				<div
+					className={`grid gap-3 pt-2 ${
+						hasKitchenZones ? "grid-cols-3" : "grid-cols-2"
+					}`}
 				>
-					<Tag className="mr-2 h-5 w-5" />
-					Discounts
-				</Button>
-				<Button
-					className="h-14 text-lg"
-					disabled={!hasItems || isLoading}
-					onClick={handleCharge}
-				>
-					{isLoading ? (
-						<Loader2 className="mr-2 h-6 w-6 animate-spin" />
-					) : (
-						`Charge`
+					{hasKitchenZones && (
+						<Button
+							variant="outline"
+							className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
+							disabled={!hasItems || isLoading || isSendingToKitchen}
+							onClick={handleSendToKitchen}
+						>
+							{isSendingToKitchen ? (
+								<>
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									Kitchen...
+								</>
+							) : (
+								<>
+									<ChefHat className="mr-2 h-4 w-4" />
+									Kitchen
+								</>
+							)}
+						</Button>
 					)}
-				</Button>
+
+					<Button
+						variant="outline"
+						className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
+						disabled={!hasItems || isLoading || isSendingToKitchen}
+						onClick={() => setIsDiscountDialogOpen(true)}
+					>
+						<Tag className="mr-2 h-4 w-4" />
+						Discounts
+					</Button>
+
+					<Button
+						className="h-12 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-semibold"
+						disabled={!hasItems || isLoading || isSendingToKitchen}
+						onClick={handleCharge}
+					>
+						{isLoading ? (
+							<Loader2 className="mr-2 h-5 w-5 animate-spin" />
+						) : (
+							<CreditCard className="mr-2 h-5 w-5" />
+						)}
+						Charge
+					</Button>
+				</div>
+
+				{hasKitchenZones && (
+					<p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">
+						Print kitchen tickets while customer continues shopping
+					</p>
+				)}
 			</div>
 		</div>
 	);

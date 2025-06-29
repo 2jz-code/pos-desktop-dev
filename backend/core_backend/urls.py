@@ -31,7 +31,9 @@ urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("admin/", admin.site.urls),
     path("api/users/", include("users.urls")),
-    path("api/auth/customer/", include("users.customer_urls")),  # Customer authentication
+    path(
+        "api/auth/customer/", include("users.customer_urls")
+    ),  # Customer authentication
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***
@@ -41,6 +43,8 @@ urlpatterns = [
     path("api/payments/", include("payments.urls")),
     path("api/", include("discounts.urls")),
     path("api/settings/", include("settings.urls")),
+    path("api/integrations/", include("integrations.urls")),
+    path("api/notifications/", include("notifications.urls")),
 ]
 
 if settings.DEBUG:

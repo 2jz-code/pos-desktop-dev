@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useOrderConfirmation } from "@/hooks/useOrderConfirmation";
 import OrderConfirmation from "@/components/checkout/OrderConfirmation";
+import SEO from "@/components/SEO";
 
 const ConfirmationPage = () => {
 	const navigate = useNavigate();
@@ -11,7 +12,12 @@ const ConfirmationPage = () => {
 	const { orderData, isLoading, error } = useOrderConfirmation();
 
 	return (
-		<div className="min-h-screen bg-background">
+		<main className="min-h-screen bg-background">
+			<SEO
+				title="Order Confirmed - Ajeen"
+				description="Thank you for your order! Your authentic Middle Eastern meal is being prepared. You'll receive a notification when it's ready for pickup or out for delivery."
+				robots="noindex, nofollow"
+			/>
 			{/* Header */}
 			<div className="bg-accent-light-beige border-b border-accent-subtle-gray/30">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -57,7 +63,7 @@ const ConfirmationPage = () => {
 					<OrderConfirmation orderData={orderData} />
 				)}
 			</div>
-		</div>
+		</main>
 	);
 };
 

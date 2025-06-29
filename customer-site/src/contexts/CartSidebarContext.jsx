@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState } from "react";
 
 const CartSidebarContext = createContext();
 
-export const CartSidebarProvider = ({ children }) => {
+export default function CartSidebarProvider({ children }) {
 	const [isCartOpen, setIsCartOpen] = useState(false);
 
 	const openCart = () => setIsCartOpen(true);
@@ -21,7 +21,7 @@ export const CartSidebarProvider = ({ children }) => {
 			{children}
 		</CartSidebarContext.Provider>
 	);
-};
+}
 // eslint-disable-next-line react-refresh/only-export-components
 export const useCartSidebar = () => {
 	const context = useContext(CartSidebarContext);

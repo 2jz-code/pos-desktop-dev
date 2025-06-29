@@ -16,7 +16,12 @@ export const useCartQuery = () => {
 
 	return useQuery({
 		queryKey: cartKeys.current(),
-		queryFn: () => cartAPI.getCurrentCartSafe(checkoutCompleted),
+		queryFn: () => {
+			if (checkoutCompleted) {
+				return null;
+			}
+			return ordersAPI.getPendingOrder();
+		},
 		staleTime: 1000 * 30, // 30 seconds
 		cacheTime: 1000 * 60 * 5, // 5 minutes
 		refetchOnWindowFocus: true,

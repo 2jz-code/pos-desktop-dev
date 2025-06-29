@@ -1,3 +1,5 @@
+"use client";
+
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
@@ -14,8 +16,8 @@ import {
 	ClipboardList,
 	Percent,
 	Settings,
-	CreditCard, // Using CreditCard for Payments
-	Warehouse, // Add this import for inventory icon
+	CreditCard,
+	Warehouse,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -49,12 +51,13 @@ function NavLink({ to, icon: Icon, children, isCollapsed }) {
 		<Link
 			to={to}
 			className={cn(
-				"flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
-				(isActive || isDashboard) && "bg-muted text-foreground",
-				isCollapsed && "justify-center"
+				"flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
+				(isActive || isDashboard) &&
+					"bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium",
+				isCollapsed && "justify-center px-2"
 			)}
 		>
-			<Icon className="h-4 w-4" />
+			<Icon className="h-4 w-4 flex-shrink-0" />
 			{!isCollapsed && <span className="truncate">{children}</span>}
 		</Link>
 	);
@@ -84,24 +87,29 @@ export function Layout({ children }) {
 	return (
 		<div
 			className={cn(
-				"grid min-h-screen w-full transition-[grid-template-columns] duration-300 ease-in-out",
+				"grid min-h-screen w-full transition-[grid-template-columns] duration-300 ease-in-out bg-slate-50 dark:bg-slate-900",
 				isCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]"
 			)}
 		>
-			<div className="hidden border-r bg-card/50 lg:block">
+			{/* Desktop Sidebar */}
+			<div className="hidden border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 lg:block">
 				<div className="flex h-full max-h-screen flex-col">
-					<div className="flex h-[60px] items-center border-b px-4">
+					{/* Logo/Brand */}
+					<div className="flex h-[60px] items-center border-b border-slate-200 dark:border-slate-700 px-4">
 						<Link
 							to="/"
-							className="flex items-center gap-2 font-semibold"
+							className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100"
 						>
-							<PanelLeft className="h-6 w-6 text-primary" />
+							<div className="p-1.5 bg-slate-900 dark:bg-slate-100 rounded-lg">
+								<PanelLeft className="h-4 w-4 text-white dark:text-slate-900" />
+							</div>
 							{!isCollapsed && <span>Ajeen POS</span>}
 						</Link>
 					</div>
-					<div className="flex-1 overflow-auto py-2">
-						<nav className="grid items-start px-4 text-sm font-medium">
-							{/* Dashboard - accessible to all authenticated users */}
+
+					{/* Navigation */}
+					<div className="flex-1 overflow-auto py-4">
+						<nav className="grid items-start px-3 text-sm font-medium gap-1">
 							<NavLink
 								to="/"
 								icon={Home}
@@ -109,8 +117,6 @@ export function Layout({ children }) {
 							>
 								Dashboard
 							</NavLink>
-
-							{/* POS - accessible to all authenticated users */}
 							<NavLink
 								to="/pos"
 								icon={ShoppingCart}
@@ -118,8 +124,6 @@ export function Layout({ children }) {
 							>
 								POS
 							</NavLink>
-
-							{/* Orders - accessible to all (cashiers need to resume held orders) */}
 							<NavLink
 								to="/orders"
 								icon={ClipboardList}
@@ -127,8 +131,6 @@ export function Layout({ children }) {
 							>
 								Orders
 							</NavLink>
-
-							{/* Payments - managers/owners only */}
 							{permissions.canAccessPayments() && (
 								<NavLink
 									to="/payments"
@@ -138,8 +140,6 @@ export function Layout({ children }) {
 									Payments
 								</NavLink>
 							)}
-
-							{/* Users - managers/owners only */}
 							{permissions.canAccessUsers() && (
 								<NavLink
 									to="/users"
@@ -149,8 +149,6 @@ export function Layout({ children }) {
 									Users
 								</NavLink>
 							)}
-
-							{/* Products - accessible to all (cashiers need to view products) */}
 							<NavLink
 								to="/products"
 								icon={Package}
@@ -158,8 +156,6 @@ export function Layout({ children }) {
 							>
 								Products
 							</NavLink>
-
-							{/* Inventory - accessible to those who can access products */}
 							{permissions.canAccessProducts() && (
 								<NavLink
 									to="/inventory"
@@ -169,8 +165,6 @@ export function Layout({ children }) {
 									Inventory
 								</NavLink>
 							)}
-
-							{/* Discounts - managers/owners only */}
 							{permissions.canAccessDiscounts() && (
 								<NavLink
 									to="/discounts"
@@ -180,8 +174,6 @@ export function Layout({ children }) {
 									Discounts
 								</NavLink>
 							)}
-
-							{/* Settings - all users (with restrictions inside) */}
 							<NavLink
 								to="/settings"
 								icon={Settings}
@@ -191,60 +183,69 @@ export function Layout({ children }) {
 							</NavLink>
 						</nav>
 					</div>
-					<div className="mt-auto border-t p-4">
+
+					{/* Logout */}
+					<div className="border-t border-slate-200 dark:border-slate-700 p-3">
 						<button
 							onClick={logout}
 							className={cn(
-								"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground",
-								isCollapsed && "justify-center"
+								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
+								isCollapsed && "justify-center px-2"
 							)}
 						>
-							<LogOut className="h-4 w-4" />
+							<LogOut className="h-4 w-4 flex-shrink-0" />
 							{!isCollapsed && <span className="truncate">Logout</span>}
 						</button>
 					</div>
 				</div>
 			</div>
+
+			{/* Main Content Area */}
 			<div className="flex flex-col h-screen">
-				<header className="flex h-14 lg:h-[60px] items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6 sticky top-0 z-30">
+				{/* Top Header */}
+				<header className="flex h-14 lg:h-[60px] items-center gap-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 sticky top-0 z-30">
+					{/* Desktop Sidebar Toggle */}
 					<Button
 						variant="outline"
 						size="icon"
-						className="hidden lg:inline-flex"
+						className="hidden lg:inline-flex border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
 						onClick={() => setIsCollapsed(!isCollapsed)}
 					>
 						{isCollapsed ? (
-							<PanelLeftOpen className="h-5 w-5" />
+							<PanelLeftOpen className="h-4 w-4" />
 						) : (
-							<PanelLeftClose className="h-5 w-5" />
+							<PanelLeftClose className="h-4 w-4" />
 						)}
 						<span className="sr-only">Toggle sidebar</span>
 					</Button>
+
+					{/* Mobile Menu */}
 					<Sheet>
 						<SheetTrigger asChild>
 							<Button
 								variant="outline"
 								size="icon"
-								className="shrink-0 lg:hidden"
+								className="shrink-0 lg:hidden border-slate-200 dark:border-slate-700 bg-transparent"
 							>
-								<Menu className="h-5 w-5" />
+								<Menu className="h-4 w-4" />
 								<span className="sr-only">Toggle navigation menu</span>
 							</Button>
 						</SheetTrigger>
 						<SheetContent
 							side="left"
-							className="flex flex-col"
+							className="flex flex-col bg-white dark:bg-slate-900"
 						>
 							<nav className="grid gap-2 text-lg font-medium">
 								<Link
 									to="/"
-									className="flex items-center gap-2 text-lg font-semibold mb-4"
+									className="flex items-center gap-2 text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100"
 								>
-									<PanelLeft className="h-6 w-6" />
+									<div className="p-1.5 bg-slate-900 dark:bg-slate-100 rounded-lg">
+										<PanelLeft className="h-4 w-4 text-white dark:text-slate-900" />
+									</div>
 									<span>Ajeen POS</span>
 								</Link>
 
-								{/* Dashboard - accessible to all authenticated users */}
 								<NavLink
 									to="/"
 									icon={Home}
@@ -252,8 +253,6 @@ export function Layout({ children }) {
 								>
 									Dashboard
 								</NavLink>
-
-								{/* POS - accessible to all authenticated users */}
 								<NavLink
 									to="/pos"
 									icon={ShoppingCart}
@@ -261,8 +260,6 @@ export function Layout({ children }) {
 								>
 									POS
 								</NavLink>
-
-								{/* Orders - accessible to all (cashiers need to resume held orders) */}
 								<NavLink
 									to="/orders"
 									icon={ClipboardList}
@@ -270,8 +267,6 @@ export function Layout({ children }) {
 								>
 									Orders
 								</NavLink>
-
-								{/* Payments - managers/owners only */}
 								{permissions.canAccessPayments() && (
 									<NavLink
 										to="/payments"
@@ -281,8 +276,6 @@ export function Layout({ children }) {
 										Payments
 									</NavLink>
 								)}
-
-								{/* Users - managers/owners only */}
 								{permissions.canAccessUsers() && (
 									<NavLink
 										to="/users"
@@ -292,8 +285,6 @@ export function Layout({ children }) {
 										Users
 									</NavLink>
 								)}
-
-								{/* Products - accessible to all (cashiers need to view products) */}
 								<NavLink
 									to="/products"
 									icon={Package}
@@ -301,8 +292,6 @@ export function Layout({ children }) {
 								>
 									Products
 								</NavLink>
-
-								{/* Inventory - accessible to those who can access products */}
 								{permissions.canAccessProducts() && (
 									<NavLink
 										to="/inventory"
@@ -312,8 +301,6 @@ export function Layout({ children }) {
 										Inventory
 									</NavLink>
 								)}
-
-								{/* Discounts - managers/owners only */}
 								{permissions.canAccessDiscounts() && (
 									<NavLink
 										to="/discounts"
@@ -323,8 +310,6 @@ export function Layout({ children }) {
 										Discounts
 									</NavLink>
 								)}
-
-								{/* Settings - all users (with restrictions inside) */}
 								<NavLink
 									to="/settings"
 									icon={Settings}
@@ -336,7 +321,7 @@ export function Layout({ children }) {
 							<div className="mt-auto">
 								<button
 									onClick={logout}
-									className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground"
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
 								>
 									<LogOut className="h-4 w-4" />
 									<span className="truncate">Logout</span>
@@ -344,19 +329,22 @@ export function Layout({ children }) {
 							</div>
 						</SheetContent>
 					</Sheet>
+
 					<div className="w-full flex-1">
 						{/* Search bar can be added here */}
 					</div>
+
+					{/* User Menu */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
 								variant="ghost"
 								size="icon"
-								className="rounded-full"
+								className="rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								<div className="relative flex-shrink-0">
 									<img
-										className="h-8 w-8 rounded-full"
+										className="h-8 w-8 rounded-full border border-slate-200 dark:border-slate-700"
 										src={`https://avatar.vercel.sh/${user?.username}.png`}
 										alt="Avatar"
 									/>
@@ -364,20 +352,34 @@ export function Layout({ children }) {
 								<span className="sr-only">Toggle user menu</span>
 							</Button>
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuLabel>My Account</DropdownMenuLabel>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem>Settings</DropdownMenuItem>
-							<DropdownMenuItem>Support</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={logout}>
+						<DropdownMenuContent
+							align="end"
+							className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+						>
+							<DropdownMenuLabel className="text-slate-900 dark:text-slate-100">
+								My Account
+							</DropdownMenuLabel>
+							<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+							<DropdownMenuItem className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+								Settings
+							</DropdownMenuItem>
+							<DropdownMenuItem className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+								Support
+							</DropdownMenuItem>
+							<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+							<DropdownMenuItem
+								onClick={logout}
+								className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+							>
 								<LogOut className="mr-2 h-4 w-4" />
 								<span>Logout</span>
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</header>
-				<main className="flex flex-1 flex-col bg-muted/40 overflow-hidden">
+
+				{/* Main Content */}
+				<main className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
 					{children}
 				</main>
 			</div>

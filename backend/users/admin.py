@@ -15,10 +15,18 @@ class UserAdmin(BaseUserAdmin):
         "first_name",
         "last_name",
         "role",
+        "is_pos_staff",
         "is_staff",
         "is_active",
     )
-    list_filter = ("role", "is_staff", "is_superuser", "is_active", "groups")
+    list_filter = (
+        "role",
+        "is_pos_staff",
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "groups",
+    )
     search_fields = ("email", "username", "first_name", "last_name")
     ordering = ("email",)
 
@@ -30,6 +38,7 @@ class UserAdmin(BaseUserAdmin):
             {
                 "fields": (
                     "role",
+                    "is_pos_staff",
                     "pin",
                     "is_active",
                     "is_staff",
@@ -46,7 +55,15 @@ class UserAdmin(BaseUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "password", "password2", "role", "username", "pin"),
+                "fields": (
+                    "email",
+                    "password",
+                    "password2",
+                    "role",
+                    "is_pos_staff",
+                    "username",
+                    "pin",
+                ),
             },
         ),
     )

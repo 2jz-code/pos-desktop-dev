@@ -18,6 +18,7 @@ const CheckoutFlow = () => {
 		currentStep,
 		formData,
 		isLoading,
+		isSubmitting,
 		error,
 		orderConfirmation,
 		isAuthenticated,
@@ -99,7 +100,7 @@ const CheckoutFlow = () => {
 						updateFormData={updateFormData}
 						onBack={prevStep}
 						onSubmit={submitOrder}
-						isLoading={isLoading}
+						isLoading={isSubmitting}
 						isAuthenticated={isAuthenticated}
 						user={user}
 					/>

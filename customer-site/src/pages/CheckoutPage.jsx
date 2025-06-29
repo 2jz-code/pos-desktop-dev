@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { StripeProvider } from "@/contexts/StripeContext";
 import { useCart } from "@/hooks/useCart";
+import SEO from "@/components/SEO";
 
 // Lazy load checkout components for better performance
 const CheckoutFlow = lazy(() => import("@/components/checkout/CheckoutFlow"));
@@ -18,7 +19,12 @@ const CheckoutPage = () => {
 	// Redirect if cart is empty BUT allow confirmation step to show
 	if (!isConfirmation && (!cart || itemCount === 0)) {
 		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
+			<main className="min-h-screen bg-background flex items-center justify-center">
+				<SEO
+					title="Empty Cart - Ajeen"
+					description="Your cart is currently empty. Add items to proceed to checkout."
+					robots="noindex, follow"
+				/>
 				<div className="max-w-md w-full text-center p-8">
 					<div className="bg-accent-light-beige rounded-lg p-6 border border-accent-subtle-gray/30">
 						<h2 className="text-xl font-semibold text-accent-dark-brown mb-4">
@@ -36,12 +42,17 @@ const CheckoutPage = () => {
 						</button>
 					</div>
 				</div>
-			</div>
+			</main>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-background">
+		<main className="min-h-screen bg-background">
+			<SEO
+				title="Secure Checkout - Ajeen Restaurant"
+				description="Complete your order from Ajeen Restaurant. Enter your payment and delivery details to enjoy our authentic Middle Eastern cuisine."
+				robots="noindex, nofollow"
+			/>
 			{/* Header */}
 			<div className="bg-accent-light-beige border-b border-accent-subtle-gray/30">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -83,7 +94,7 @@ const CheckoutPage = () => {
 					</Suspense>
 				</StripeProvider>
 			</div>
-		</div>
+		</main>
 	);
 };
 

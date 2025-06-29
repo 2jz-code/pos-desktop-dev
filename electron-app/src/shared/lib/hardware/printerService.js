@@ -15,15 +15,23 @@ export const printReceipt = (printer, data, storeSettings = null) => {
 };
 
 // --- UPDATE THIS FUNCTION ---
-export const printKitchenTicket = (printer, order, zoneName) => {
+export const printKitchenTicket = (
+	printer,
+	order,
+	zoneName,
+	filterConfig = null
+) => {
 	console.log(
 		`[printerService] Invoking 'print-kitchen-ticket' for zone: ${zoneName}`,
-		order
+		order,
+		`Filter config:`,
+		filterConfig
 	);
-	// Pass the zoneName along with the printer and order data
+	// Pass the zoneName and filterConfig along with the printer and order data
 	return hardwareApi.invoke("print-kitchen-ticket", {
 		printer,
 		order,
 		zoneName,
+		filterConfig,
 	});
 };

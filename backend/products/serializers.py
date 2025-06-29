@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Category, Tax, Product, ProductType
 from .services import ProductService
+from rest_framework.fields import ImageField
 
 
 # --- NEW: Basic serializers for nested data ---
@@ -49,6 +50,13 @@ class ProductSerializer(serializers.ModelSerializer):
     subcategory = CategorySerializer(source="category.parent", read_only=True)
     taxes = TaxSerializer(many=True, read_only=True)
     product_type = ProductTypeSerializer(read_only=True)
+    image = ImageField(read_only=True)  # Add image field
+    image_url = (
+        serializers.SerializerMethodField()
+    )  # Add image_url field for frontend compatibility
+    original_filename = serializers.CharField(
+        read_only=True
+    )  # Add original_filename field
 
     class Meta:
         model = Product
@@ -66,7 +74,19 @@ class ProductSerializer(serializers.ModelSerializer):
             "barcode",
             "created_at",
             "updated_at",
+            "image",  # Add image to fields
+            "image_url",  # Add image_url to fields
+            "original_filename",  # Add original_filename to fields
         ]
+
+    def get_image_url(self, obj):
+        """Return the full URL for the product image"""
+        if obj.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
 
 # Sync-specific serializers that send IDs instead of nested objects
@@ -105,6 +125,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, write_only=True, required=False, default=0
     )
     location_id = serializers.IntegerField(write_only=True, required=False)
+    image = ImageField(write_only=True, required=False)  # Add image field for upload
 
     class Meta:
         model = Product
@@ -120,6 +141,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "barcode",
             "initial_stock",
             "location_id",
+            "image",  # Add image to fields
         ]
 
     def create(self, validated_data):

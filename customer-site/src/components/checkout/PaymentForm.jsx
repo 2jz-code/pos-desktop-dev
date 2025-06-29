@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,13 @@ const PaymentForm = ({
 	const elements = useElements();
 	const [cardComplete, setCardComplete] = useState(false);
 	const [cardError, setCardError] = useState(null);
+	const [isProcessing, setIsProcessing] = useState(false);
+
+	useEffect(() => {
+		if (!isLoading) {
+			setIsProcessing(false);
+		}
+	}, [isLoading]);
 
 	const handleCardChange = (event) => {
 		setCardComplete(event.complete);
@@ -32,9 +39,11 @@ const PaymentForm = ({
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 
-		if (!stripe || !elements || !cardComplete || isLoading) {
+		if (!stripe || !elements || !cardComplete || isLoading || isProcessing) {
 			return;
 		}
+
+		setIsProcessing(true);
 
 		const cardElement = elements.getElement(CardElement);
 
@@ -65,7 +74,16 @@ const PaymentForm = ({
 	};
 
 	return (
-		<div>
+		<div className="relative">
+			{/* Loading Overlay */}
+			{(isLoading || isProcessing) && (
+				<div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg">
+					<div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary-green"></div>
+					<p className="mt-4 text-lg font-medium text-accent-dark-green">
+						Processing Payment...
+					</p>
+				</div>
+			)}
 			<CardHeader className="px-0 pt-0">
 				<CardTitle className="text-accent-dark-green flex items-center">
 					<CreditCard className="mr-2 h-5 w-5" />
@@ -108,9 +126,9 @@ const PaymentForm = ({
 								<p className="text-sm text-accent-dark-brown/70">
 									{user.email}
 								</p>
-								{user.phone && (
+								{user.phone_number && (
 									<p className="text-sm text-accent-dark-brown/70">
-										{user.phone}
+										{user.phone_number}
 									</p>
 								)}
 								{formData.orderNotes && (
@@ -201,7 +219,7 @@ const PaymentForm = ({
 							type="button"
 							variant="outline"
 							onClick={onBack}
-							disabled={isLoading}
+							disabled={isLoading || isProcessing}
 							className="flex-1 border-accent-subtle-gray/50 text-accent-dark-brown hover:bg-primary-beige/50"
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
@@ -210,10 +228,10 @@ const PaymentForm = ({
 
 						<Button
 							type="submit"
-							disabled={!stripe || !cardComplete || isLoading}
+							disabled={!stripe || !cardComplete || isLoading || isProcessing}
 							className="flex-1 bg-primary-green hover:bg-accent-dark-green text-accent-light-beige py-3 text-base font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 						>
-							{isLoading ? (
+							{isLoading || isProcessing ? (
 								<div className="flex items-center justify-center">
 									<div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-accent-light-beige mr-2"></div>
 									Processing Payment...

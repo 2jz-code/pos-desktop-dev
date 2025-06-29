@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children }) => {
+export default function AuthContextProvider({ children }) {
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const [user, setUser] = useState(null);
 	const [isLoading, setIsLoading] = useState(true);
@@ -177,12 +177,12 @@ export const AuthProvider = ({ children }) => {
 			{!isLoading && children}
 		</AuthContext.Provider>
 	);
-};
+}
 // eslint-disable-next-line
 export const useAuth = () => {
 	const context = useContext(AuthContext);
 	if (context === null) {
-		throw new Error("useAuth must be used within an AuthProvider");
+		throw new Error("useAuth must be used within an AuthContextProvider");
 	}
 	return context;
 };

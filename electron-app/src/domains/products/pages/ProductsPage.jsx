@@ -93,10 +93,12 @@ const ProductsPage = () => {
 		}, 100);
 	});
 
-	const fetchProducts = async () => {
+	const fetchProducts = async (includeArchived = false) => {
 		try {
 			setLoading(true);
-			const response = await getProducts();
+			// Pass is_active parameter based on what products we want to show
+			const params = { is_active: !includeArchived };
+			const response = await getProducts(params);
 			const fetchedProducts = response.data || [];
 			setAllProducts(fetchedProducts); // Store complete list
 			applyFilters(fetchedProducts);
@@ -128,9 +130,14 @@ const ProductsPage = () => {
 	};
 
 	useEffect(() => {
-		fetchProducts();
+		fetchProducts(showArchivedProducts);
 		fetchParentCategories();
 	}, []);
+
+	// Re-fetch products when switching between active and archived
+	useEffect(() => {
+		fetchProducts(showArchivedProducts);
+	}, [showArchivedProducts]);
 
 	useEffect(() => {
 		if (selectedParentCategory && selectedParentCategory !== "all") {
@@ -142,9 +149,7 @@ const ProductsPage = () => {
 	}, [selectedParentCategory]);
 
 	const applyFilters = (allProductsToFilter) => {
-		let filtered = allProductsToFilter.filter(
-			(product) => product.is_active === !showArchivedProducts
-		);
+		let filtered = allProductsToFilter;
 
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();
@@ -180,12 +185,7 @@ const ProductsPage = () => {
 
 	useEffect(() => {
 		applyFilters(allProducts);
-	}, [
-		showArchivedProducts,
-		selectedParentCategory,
-		selectedChildCategory,
-		allProducts,
-	]);
+	}, [selectedParentCategory, selectedChildCategory, allProducts]);
 
 	useEffect(() => {
 		const timeoutId = setTimeout(() => {
@@ -271,7 +271,7 @@ const ProductsPage = () => {
 					description: "Product restored successfully.",
 				});
 			}
-			fetchProducts();
+			fetchProducts(showArchivedProducts);
 		} catch (err) {
 			toast({
 				title: "Error",
@@ -293,7 +293,7 @@ const ProductsPage = () => {
 	};
 
 	const handleProductFormSuccess = () => {
-		fetchProducts();
+		fetchProducts(showArchivedProducts);
 		fetchParentCategories(); // Refresh categories in case they were updated
 	};
 
@@ -309,13 +309,13 @@ const ProductsPage = () => {
 		setIsCategoryDialogOpen(false);
 		// Refresh categories and products after category management
 		fetchParentCategories();
-		fetchProducts();
+		fetchProducts(showArchivedProducts);
 	};
 
 	const handleProductTypeDialogClose = () => {
 		setIsProductTypeDialogOpen(false);
 		// Refresh products after product type management
-		fetchProducts();
+		fetchProducts(showArchivedProducts);
 	};
 
 	const headers = [

@@ -17,6 +17,17 @@ class UserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+
+        # Automatically set is_pos_staff for staff roles
+        role = extra_fields.get("role", User.Role.CUSTOMER)
+        if role in [
+            User.Role.OWNER,
+            User.Role.ADMIN,
+            User.Role.MANAGER,
+            User.Role.CASHIER,
+        ]:
+            user.is_pos_staff = True
+
         user.save(using=self._db)
         return user
 
@@ -65,6 +76,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(
         _("role"), max_length=50, choices=Role.choices, default=Role.CUSTOMER
     )
+
+    # Quick fix: Flag to filter POS interface without major refactoring
+    is_pos_staff = models.BooleanField(
+        _("POS staff"),
+        default=False,
+        help_text=_("Designates whether this user appears in POS staff interface."),
+        db_index=True,  # Add index for efficient POS filtering
+    )
+
     pin = models.CharField(
         _("PIN"),
         max_length=128,

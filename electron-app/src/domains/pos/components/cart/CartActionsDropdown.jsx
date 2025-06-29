@@ -1,7 +1,6 @@
-// desktop-combined/electron-app/src/features/pos/components/cart/CartActionsDropdown.jsx
+"use client";
 
-import React from "react";
-import { usePosStore } from "@/domains/pos/store/posStore"; // Corrected usePosStore to usePosStore
+import { usePosStore } from "@/domains/pos/store/posStore";
 import { Button } from "@/shared/components/ui/button";
 import {
 	DropdownMenu,
@@ -10,7 +9,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { MoreVertical, Trash2, PauseCircle } from "lucide-react";
-import { shallow } from "zustand/shallow"; // Re-add shallow if used for optimization in selector
+import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
 	const { clearCart, holdOrder, items } = usePosStore(
@@ -19,7 +18,7 @@ const CartActionsDropdown = () => {
 			holdOrder: state.holdOrder,
 			items: state.items,
 		}),
-		shallow // Keep shallow if you want shallow comparison for these selections
+		shallow
 	);
 
 	const handleClearCart = () => {
@@ -28,7 +27,6 @@ const CartActionsDropdown = () => {
 		}
 	};
 
-	// Keep handleHoldOrder if needed, or remove if direct onClick is preferred
 	const handleHoldOrder = () => {
 		if (window.confirm("Are you sure you want to put this order on hold?")) {
 			holdOrder();
@@ -43,21 +41,27 @@ const CartActionsDropdown = () => {
 				<Button
 					variant="ghost"
 					size="icon"
+					className="h-8 w-8 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
 				>
-					<MoreVertical className="h-5 w-5" />
+					<MoreVertical className="h-4 w-4" />
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end">
+			<DropdownMenuContent
+				align="end"
+				className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+			>
 				<DropdownMenuItem
 					onClick={handleClearCart}
 					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
 				>
 					<Trash2 className="mr-2 h-4 w-4" />
 					<span>Clear Cart</span>
 				</DropdownMenuItem>
 				<DropdownMenuItem
-					onClick={handleHoldOrder} // Use the handler
-					disabled={isCartEmpty} // Hold also makes sense to disable if cart is empty
+					onClick={handleHoldOrder}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
 				>
 					<PauseCircle className="mr-2 h-4 w-4" />
 					<span>Hold Order</span>

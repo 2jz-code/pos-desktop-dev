@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const Sidebar = () => {
-	const { activeTab, setActiveTab, userInfo } = useDashboard();
+	const { activeTab, setActiveTab, profile } = useDashboard();
 	const { logout } = useAuth();
 
 	const handleLogout = () => {
@@ -26,20 +26,20 @@ const Sidebar = () => {
 				<div className="p-4 border-b flex items-center gap-4">
 					<Avatar>
 						<AvatarImage
-							src={userInfo?.profile_image}
-							alt={userInfo?.first_name}
+							src={profile?.profile_image}
+							alt={profile?.first_name}
 						/>
 						<AvatarFallback>
-							{userInfo?.first_name?.[0]}
-							{userInfo?.last_name?.[0]}
+							{profile?.first_name?.[0]}
+							{profile?.last_name?.[0]}
 						</AvatarFallback>
 					</Avatar>
 					<div className="truncate">
 						<p className="font-semibold truncate">
-							{userInfo?.first_name} {userInfo?.last_name}
+							{profile?.first_name} {profile?.last_name}
 						</p>
 						<p className="text-sm text-muted-foreground truncate">
-							{userInfo?.email}
+							{profile?.email}
 						</p>
 					</div>
 				</div>

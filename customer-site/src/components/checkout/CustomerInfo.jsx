@@ -31,7 +31,7 @@ const CustomerInfo = ({
 				firstName: user.first_name || "",
 				lastName: user.last_name || "",
 				email: user.email || "",
-				phone: user.phone || "",
+				phone: user.phone_number || "",
 			}));
 		}
 	}, [isAuthenticated, user]);

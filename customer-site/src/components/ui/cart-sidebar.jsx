@@ -1,34 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
+import { Link } from "react-router-dom";
 import { useCart } from "@/hooks/useCart";
+import {
+	getProductImageUrl,
+	createImageErrorHandler,
+} from "../../lib/imageUtils"; // Adjust path as needed
+import OptimizedImage from "@/components/OptimizedImage";
 
-const formatImageUrl = (originalUrl) => {
-	// If the URL is null or not a string, return it as is.
-	if (!originalUrl || typeof originalUrl !== "string") {
-		return originalUrl;
-	}
-
-	try {
-		const url = new URL(originalUrl);
-
-		// We only want to modify development URLs.
-		if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-			// Get the protocol of the frontend website (e.g., 'http:' or 'https:')
-			const frontendProtocol = window.location.protocol;
-			url.protocol = frontendProtocol;
-		}
-
-		return url.toString();
-	} catch {
-		// If the originalUrl is not a full URL (e.g., a relative path),
-		// this will fail. Return the original string in that case.
-		return originalUrl;
-	}
-};
-
-const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
+const CartSidebar = ({ isOpen, onClose }) => {
 	const [isRestaurantOpen, setIsRestaurantOpen] = useState(true);
+	const checkoutPreloaded = useRef(false);
 
 	// Use the new cart hook
 	const { cart, cartItemCount, subtotal, isLoading, removeFromCart } =
@@ -105,10 +88,10 @@ const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 		}
 	};
 
-	const handleCheckout = () => {
-		if (onCheckout) {
-			onCheckout();
-		}
+	const handlePreloadCheckout = () => {
+		if (checkoutPreloaded.current) return;
+		checkoutPreloaded.current = true;
+		import("@/pages/CheckoutPage");
 	};
 
 	// Determine if the checkout button should be disabled
@@ -169,12 +152,13 @@ const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 									<p className="text-sm text-accent-dark-brown mb-6">
 										Looks like you haven't added any delicious items yet.
 									</p>
-									<button
+									<Link
+										to="/menu"
 										onClick={onClose}
 										className="px-5 py-2.5 bg-primary-green text-accent-light-beige rounded-lg hover:bg-accent-dark-green transition-colors font-medium shadow-sm"
 									>
 										Browse Menu
-									</button>
+									</Link>
 								</div>
 							) : (
 								<ul className="divide-y divide-accent-subtle-gray/30">
@@ -193,20 +177,12 @@ const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 										>
 											{/* Product Image */}
 											<div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-accent-subtle-gray/30 bg-accent-subtle-gray/20 mr-4">
-												{item.product?.image ? (
-													<img
-														src={formatImageUrl(item.product.image)}
-														alt={item.product.name || "Product"}
-														className="h-full w-full object-cover object-center"
-														onError={(e) => {
-															e.target.style.display = "none";
-														}}
-													/>
-												) : (
-													<div className="h-full w-full flex items-center justify-center text-accent-subtle-gray text-xs">
-														No Image
-													</div>
-												)}
+												<OptimizedImage
+													src={getProductImageUrl(item.product?.image)}
+													alt={item.product?.name || "Product"}
+													className="h-full w-full object-cover object-center"
+													onError={createImageErrorHandler("Cart Item")}
+												/>
 											</div>
 
 											{/* Product Info */}
@@ -266,21 +242,19 @@ const CartSidebar = ({ isOpen, onClose, onCheckout }) => {
 								)}
 
 								{/* Checkout Button */}
-								<button
-									onClick={handleCheckout}
-									disabled={isCheckoutButtonDisabled}
-									className={`w-full py-3 px-4 rounded-lg font-medium text-center transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+								<Link
+									to="/checkout"
+									onClick={onClose}
+									onMouseEnter={handlePreloadCheckout}
+									className={`block w-full py-3 px-4 rounded-lg font-medium text-center transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
 										isCheckoutButtonDisabled
-											? "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed"
+											? "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed pointer-events-none"
 											: "bg-primary-green text-accent-light-beige hover:bg-accent-dark-green focus:ring-primary-green shadow-sm"
 									}`}
+									aria-disabled={isCheckoutButtonDisabled}
 								>
-									{cartItemCount === 0
-										? "Add Items to Checkout"
-										: !isRestaurantOpen
-										? "Restaurant Closed"
-										: "Proceed to Checkout"}
-								</button>
+									Proceed to Checkout
+								</Link>
 							</div>
 						)}
 					</motion.div>

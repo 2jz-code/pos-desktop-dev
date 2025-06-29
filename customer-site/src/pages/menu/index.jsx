@@ -5,6 +5,7 @@ import { useCart } from "@/hooks/useCart";
 import MenuNav from "./components/MenuNav";
 import ProductList from "./components/ProductList";
 import { useCategories } from "../../hooks/useCategories";
+import SEO from "@/components/SEO";
 
 // Helper function to get category from URL search params
 const getCategoryFromURL = (search) => {
@@ -68,7 +69,12 @@ const MenuPage = () => {
 	}, [location.search, selectedCategory]);
 
 	return (
-		<div className="min-h-screen">
+		<main className="min-h-screen">
+			<SEO
+				title="Our Menu - Ajeen | Mana'eesh, Soups, Hummus, Desserts"
+				description="Explore the delicious menu at Ajeen. From traditional Mana'eesh to savory Hummus and sweet desserts, all our dishes are prepared with the freshest ingredients."
+				keywords="restaurant menu, online menu, middle eastern dishes, appetizers, main courses, desserts, Ajeen"
+			/>
 			{/* Header section */}
 			<div className="bg-gradient-to-r from-primary-green to-accent-dark-green text-accent-light-beige py-12">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -172,7 +178,7 @@ const MenuPage = () => {
 				setSelectedCategory={setSelectedCategory}
 				activeView={activeView}
 			/>
-		</div>
+		</main>
 	);
 };
 

@@ -30,6 +30,7 @@ export const useCheckout = () => {
 	const [currentStep, setCurrentStep] = useState(1);
 	const [formData, setFormData] = useState(initialFormData);
 	const [isLoading, setIsLoading] = useState(false);
+	const [isSubmitting, setIsSubmitting] = useState(false); // <-- New state for payment submission
 	const [error, setError] = useState(null);
 	const [orderConfirmation, setOrderConfirmation] = useState(null);
 	const setCheckoutCompleted = useCartStore(
@@ -350,7 +351,7 @@ export const useCheckout = () => {
 							? `${user.first_name} ${user.last_name}`
 							: user.username,
 					customerEmail: user.email,
-					customerPhone: user.phone || "",
+					customerPhone: user.phone_number || "",
 					items: cart.items,
 					grandTotal: cart.grand_total,
 					total: cart.grand_total, // Alternative field name for compatibility
@@ -395,16 +396,10 @@ export const useCheckout = () => {
 	// Submit order and process payment (unified for both user types)
 	const submitOrder = useCallback(
 		async ({ stripe, cardElement }) => {
-			// Prevent duplicate submissions
-			if (isProcessingRef.current || isLoading) {
-				console.log(
-					"Already processing payment, ignoring duplicate submission"
-				);
-				return;
-			}
+			// Prevent multiple submissions
+			if (isSubmitting) return;
 
-			isProcessingRef.current = true;
-			setIsLoading(true);
+			setIsSubmitting(true);
 			setError(null);
 
 			try {
@@ -434,7 +429,7 @@ export const useCheckout = () => {
 					email: isAuthenticated && user ? user.email : formData.email,
 					phone:
 						isAuthenticated && user
-							? user.phone
+							? user.phone_number
 							: formData.phone?.replace(/[^\d]/g, ""),
 				};
 
@@ -497,7 +492,7 @@ export const useCheckout = () => {
 				toast.error("Payment failed. Please try again.");
 			} finally {
 				setIsLoading(false);
-				isProcessingRef.current = false;
+				setIsSubmitting(false);
 			}
 		},
 		[
@@ -514,6 +509,7 @@ export const useCheckout = () => {
 			setCheckoutCompleted,
 			navigate,
 			queryClient,
+			isSubmitting,
 		]
 	);
 
@@ -533,6 +529,7 @@ export const useCheckout = () => {
 		currentStep,
 		formData,
 		isLoading,
+		isSubmitting, // <-- Expose new state
 		error,
 		orderConfirmation,
 

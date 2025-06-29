@@ -59,6 +59,8 @@ INSTALLED_APPS = [
     "discounts",
     "users.apps.UsersConfig",
     "settings",
+    "integrations",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +174,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8001",
     "http://localhost:5174",  # React/Vite dev server
     "http://127.0.0.1:5174",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
 ]
 
 # CSRF Trusted Origins
@@ -182,6 +186,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8001",
     "http://localhost:5174",  # React/Vite dev server
     "http://127.0.0.1:5174",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
 ]
 
 # Session Configuration for Guest Users
@@ -369,3 +375,28 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 stripe.api_key = STRIPE_SECRET_KEY
+
+# ==============================================================================
+# GOOGLE SETTINGS
+# ==============================================================================
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GOOGLE_PLACE_ID = os.environ.get("GOOGLE_PLACE_ID")
+
+
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)  # Default to console backend if not set
+EMAIL_HOST = os.environ.get("DJANGO_EMAIL_HOST")
+EMAIL_PORT = int(
+    os.environ.get("DJANGO_EMAIL_PORT", 587)
+)  # Default to 587, ensure it's an int
+EMAIL_USE_TLS = (
+    os.environ.get("DJANGO_EMAIL_USE_TLS", "True") == "True"
+)  # Convert to boolean
+EMAIL_USE_SSL = (
+    os.environ.get("DJANGO_EMAIL_USE_SSL", "False") == "True"
+)  # Convert to boolean
+EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL")
+BUSINESS_CONTACT_EMAIL = os.environ.get("DJANGO_BUSINESS_CONTACT_EMAIL")

@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions, status, filters
+from rest_framework import viewsets, permissions, status, filters, generics
+from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Order, OrderItem
@@ -13,7 +14,11 @@ from .serializers import (
     OrderCustomerInfoSerializer,
 )
 from .services import OrderService, GuestSessionService
-from .permissions import IsAuthenticatedOrGuestOrder, IsGuestOrAuthenticated
+from .permissions import (
+    IsAuthenticatedOrGuestOrder,
+    IsGuestOrAuthenticated,
+)
+from rest_framework.permissions import AllowAny
 from users.authentication import (
     CustomerCookieJWTAuthentication,
     CookieJWTAuthentication,
@@ -30,6 +35,39 @@ from payments.models import Payment
 from payments.strategies import StripeTerminalStrategy
 
 logger = logging.getLogger(__name__)
+
+
+class GetPendingOrderView(generics.RetrieveAPIView):
+    """
+    A view to get the current user's (guest or authenticated) pending order.
+    Returns 404 if no pending order exists, without creating one.
+    """
+
+    serializer_class = OrderSerializer
+    authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
+    permission_classes = [AllowAny]  # Let the service layer handle guest/auth logic
+
+    def get_object(self):
+        """
+        Retrieves the pending order for the current session/user.
+        """
+        order = GuestSessionService.get_guest_order(self.request)
+
+        if not order:
+            # Explicitly check for an authenticated user's pending order
+            if self.request.user and self.request.user.is_authenticated:
+                order = (
+                    Order.objects.filter(
+                        customer=self.request.user, status=Order.OrderStatus.PENDING
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+        if not order:
+            raise NotFound("No pending order found.")
+
+        return order
 
 
 class OrderViewSet(viewsets.ModelViewSet):

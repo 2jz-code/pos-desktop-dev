@@ -1,16 +1,18 @@
 import { app, ipcMain, session, BrowserWindow } from "electron";
 import path from "node:path";
-import process from "node:process";
+import process$1 from "node:process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import usb from "usb";
 const require$1 = createRequire(import.meta.url);
 const thermalPrinter = require$1("node-thermal-printer");
 const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
+const __filename$1 = fileURLToPath(import.meta.url);
+path.dirname(__filename$1);
 function printLine(printer, left, right) {
   printer.leftRight(left, right);
 }
-function formatReceipt(order, storeSettings = null) {
+async function formatReceipt(order, storeSettings = null) {
   var _a, _b;
   let printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
@@ -18,26 +20,44 @@ function formatReceipt(order, storeSettings = null) {
     interface: "tcp://dummy"
   });
   printer.alignCenter();
-  if (storeSettings == null ? void 0 : storeSettings.receipt_header) {
-    printer.println(storeSettings.receipt_header);
+  try {
+    const logoPath = path.join(process.env.PUBLIC, "logo.png");
+    await printer.printImage(logoPath);
     printer.println("");
+  } catch (error) {
+    console.error("Could not print logo. Using text fallback.");
+    console.error("Full logo printing error:", error);
+    if (storeSettings == null ? void 0 : storeSettings.receipt_header) {
+      printer.println(storeSettings.receipt_header);
+      printer.println("");
+    }
   }
-  const storeName = (storeSettings == null ? void 0 : storeSettings.store_name) || "Ajeen Fresh";
   const storeAddress = (storeSettings == null ? void 0 : storeSettings.store_address) || "2105 Cliff Rd #300\nEagan, MN 55122";
   const storePhone = (storeSettings == null ? void 0 : storeSettings.store_phone) || "(651) 412-5336";
-  printer.println(storeName);
   {
-    const addressLines = storeAddress.split("\n");
-    addressLines.forEach((line) => {
-      if (line.trim()) printer.println(line.trim());
-    });
+    if (storeAddress.includes("\\n")) {
+      const addressLines = storeAddress.split("\\n");
+      addressLines.forEach((line) => {
+        if (line.trim()) printer.println(line.trim());
+      });
+    } else {
+      const parts = storeAddress.split(",");
+      if (parts.length > 1) {
+        const street = parts.shift().trim();
+        const cityStateZip = parts.join(",").trim();
+        if (street) printer.println(street);
+        if (cityStateZip) printer.println(cityStateZip);
+      } else {
+        printer.println(storeAddress);
+      }
+    }
   }
   {
     printer.println(`Tel: ${storePhone}`);
   }
   printer.println("");
   printer.alignLeft();
-  const orderId = order.id || "N/A";
+  const orderId = order.order_number || order.id || "N/A";
   const orderDate = new Date(order.created_at).toLocaleString("en-US", {
     timeZone: "America/Chicago"
   });
@@ -134,7 +154,37 @@ function formatOpenCashDrawer() {
   printerInstance.openCashDrawer();
   return printerInstance.getBuffer();
 }
-function formatKitchenTicket(order, zoneName = "KITCHEN") {
+function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
+  let itemsToPrint = order.items || [];
+  if (filterConfig) {
+    itemsToPrint = itemsToPrint.filter((item) => {
+      var _a, _b;
+      const product = item.product;
+      if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
+        if (!filterConfig.productTypes.includes("ALL")) {
+          const productTypeMatch = filterConfig.productTypes.includes(
+            (_a = product.product_type) == null ? void 0 : _a.id
+          );
+          if (!productTypeMatch) return false;
+        }
+      }
+      if (filterConfig.categories && filterConfig.categories.length > 0) {
+        if (!filterConfig.categories.includes("ALL")) {
+          const categoryMatch = filterConfig.categories.includes(
+            (_b = product.category) == null ? void 0 : _b.id
+          );
+          if (!categoryMatch) return false;
+        }
+      }
+      return true;
+    });
+  }
+  if (itemsToPrint.length === 0) {
+    console.log(
+      `[formatKitchenTicket] No items match filter for zone "${zoneName}" - skipping ticket`
+    );
+    return null;
+  }
   let printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
     characterSet: "PC437_USA",
@@ -148,9 +198,11 @@ function formatKitchenTicket(order, zoneName = "KITCHEN") {
   printer.bold(false);
   printer.alignLeft();
   printer.println("");
+  printer.setTextSize(2, 2);
   printer.bold(true);
-  printer.println(`Order #: ${order.id}`);
+  printer.println(`Order #${order.order_number || order.id}`);
   printer.bold(false);
+  printer.setTextNormal();
   const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -160,12 +212,33 @@ function formatKitchenTicket(order, zoneName = "KITCHEN") {
   });
   printer.println(`Time: ${orderDate}`);
   printer.drawLine();
-  for (const item of order.items) {
+  const groupedItems = itemsToPrint.reduce((acc, item) => {
+    var _a;
+    const categoryName = ((_a = item.product.category) == null ? void 0 : _a.name) || "Miscellaneous";
+    if (!acc[categoryName]) {
+      acc[categoryName] = [];
+    }
+    acc[categoryName].push(item);
+    return acc;
+  }, {});
+  for (const categoryName in groupedItems) {
     printer.bold(true);
-    printer.setTextSize(1, 1);
-    printer.println(`${item.quantity}x ${item.product.name}`);
-    printer.setTextNormal();
+    printer.underline(true);
+    printer.println(`${categoryName.toUpperCase()}:`);
+    printer.underline(false);
     printer.bold(false);
+    const itemsInCategory = groupedItems[categoryName];
+    for (const item of itemsInCategory) {
+      printer.bold(true);
+      printer.setTextSize(1, 1);
+      printer.println(`${item.quantity}x ${item.product.name}`);
+      printer.setTextNormal();
+      printer.bold(false);
+      if (item.notes && item.notes.trim()) {
+        printer.println(`   Notes: ${item.notes.trim()}`);
+      }
+    }
+    printer.println("");
   }
   printer.println("");
   printer.println("");
@@ -175,16 +248,16 @@ function formatKitchenTicket(order, zoneName = "KITCHEN") {
 const require2 = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-process.env.DIST = path.join(__dirname, "../dist");
-process.env.PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, "../public");
+process$1.env.DIST = path.join(__dirname, "../dist");
+process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
 let mainWindow;
 let customerWindow;
 let lastKnownState = null;
-const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
 function createMainWindow() {
   const persistentSession = session.fromPartition("persist:electron-app");
   mainWindow = new BrowserWindow({
-    icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
+    icon: path.join(process$1.env.PUBLIC, "electron-vite.svg"),
     webPreferences: {
       session: persistentSession,
       preload: path.join(__dirname, "preload.js"),
@@ -201,7 +274,7 @@ function createMainWindow() {
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(process.env.DIST, "index.html"));
+    mainWindow.loadFile(path.join(process$1.env.DIST, "index.html"));
   }
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -223,7 +296,7 @@ function createCustomerWindow() {
   if (VITE_DEV_SERVER_URL) {
     customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
   } else {
-    customerWindow.loadFile(path.join(process.env.DIST, "customer.html"));
+    customerWindow.loadFile(path.join(process$1.env.DIST, "customer.html"));
   }
   customerWindow.on("closed", () => {
     customerWindow = null;
@@ -291,12 +364,18 @@ ipcMain.handle("discover-printers", async () => {
 async function sendBufferToPrinter(printer, buffer) {
   let device = null;
   try {
-    if (!printer || !printer.vendor_id || !printer.product_id) {
-      throw new Error("Invalid printer object provided.");
+    const vendorId = parseInt(printer.vendorId || printer.vendor_id, 10);
+    const productId = parseInt(printer.productId || printer.product_id, 10);
+    if (!vendorId || !productId) {
+      throw new Error(
+        `Invalid printer object provided. Missing or invalid vendor/product ID. Got: ${JSON.stringify(
+          printer
+        )}`
+      );
     }
     const devices = usb.getDeviceList();
     device = devices.find(
-      (d) => d.deviceDescriptor.idVendor == printer.vendor_id && d.deviceDescriptor.idProduct == printer.product_id
+      (d) => d.deviceDescriptor.idVendor === vendorId && d.deviceDescriptor.idProduct === productId
     );
     if (!device) {
       throw new Error("USB Printer not found. It may be disconnected.");
@@ -317,7 +396,7 @@ async function sendBufferToPrinter(printer, buffer) {
   } finally {
     if (device) {
       try {
-        if (device.interfaces[0] && device.interfaces[0].isClaimed()) {
+        if (device.interfaces[0] && device.interfaces[0].isClaimed) {
           await new Promise((resolve) => {
             device.interfaces[0].release(true, () => resolve());
           });
@@ -338,7 +417,7 @@ ipcMain.handle(
       storeSettings ? "provided" : "not provided"
     );
     try {
-      const buffer = formatReceipt(data, storeSettings);
+      const buffer = await formatReceipt(data, storeSettings);
       console.log(
         `[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
       );
@@ -353,11 +432,12 @@ ipcMain.handle(
 );
 ipcMain.handle(
   "print-kitchen-ticket",
-  async (event, { printer, order, zoneName }) => {
+  async (event, { printer, order, zoneName, filterConfig }) => {
     console.log(
       `
 --- [Main Process] KITCHEN TICKET HANDLER for zone: "${zoneName}" ---`
     );
+    console.log(`Filter config:`, filterConfig);
     try {
       if ((printer == null ? void 0 : printer.connection_type) !== "network" || !printer.ip_address) {
         throw new Error("Invalid network printer configuration provided.");
@@ -378,7 +458,14 @@ ipcMain.handle(
       console.log(
         `Successfully connected to kitchen printer at ${printer.ip_address}`
       );
-      const buffer = formatKitchenTicket(order, zoneName);
+      const buffer = formatKitchenTicket(order, zoneName, filterConfig);
+      if (!buffer) {
+        console.log(`No items to print for zone "${zoneName}" - skipping`);
+        return {
+          success: true,
+          message: "No items matched filter - ticket skipped"
+        };
+      }
       console.log(`Sending kitchen ticket buffer (size: ${buffer.length})`);
       await printerInstance.raw(buffer);
       console.log("Kitchen ticket sent successfully.");
@@ -401,8 +488,8 @@ ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
       throw new Error(`Printer with name "${printerName}" not found.`);
     }
     const printer = {
-      vendor_id: foundDevice.deviceDescriptor.idVendor,
-      product_id: foundDevice.deviceDescriptor.idProduct
+      vendorId: foundDevice.deviceDescriptor.idVendor,
+      productId: foundDevice.deviceDescriptor.idProduct
     };
     const buffer = formatOpenCashDrawer();
     console.log(
@@ -446,7 +533,7 @@ app.whenReady().then(async () => {
   createCustomerWindow();
 });
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (process$1.platform !== "darwin") {
     app.quit();
   }
 });

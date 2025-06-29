@@ -1,9 +1,51 @@
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "./Navbar";
-import Footer from "./Footer";
 import CartSidebar from "../ui/cart-sidebar";
 import { useCartSidebar } from "../../contexts/CartSidebarContext";
+import SEO from "@/components/SEO";
+const Footer = React.lazy(() => import("./Footer"));
+
+const restaurantStructuredData = {
+	"@context": "https://schema.org",
+	"@type": "Restaurant",
+	name: "Ajeen",
+	image: "https://bakeajeen.com/logo512.png", // URL to your main logo
+	"@id": "https://bakeajeen.com", // Your website URL
+	url: "https://bakeajeen.com",
+	telephone: "+1-651-412-5336", // Your contact phone number
+	priceRange: "$$", // Price range (e.g., $, $$, $$$)
+	servesCuisine: "Middle Eastern",
+	address: {
+		"@type": "PostalAddress",
+		streetAddress: "2105 Cliff Rd, Suite 300",
+		addressLocality: "Eagan",
+		addressRegion: "MN",
+		postalCode: "55122",
+		addressCountry: "USA",
+	},
+	geo: {
+		"@type": "GeoCoordinates",
+		latitude: 44.804131,
+		longitude: -93.166885,
+	},
+	openingHoursSpecification: [
+		{
+			"@type": "OpeningHoursSpecification",
+			dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Sunday"],
+			opens: "11:00",
+			closes: "20:00",
+		},
+		{
+			"@type": "OpeningHoursSpecification",
+			dayOfWeek: ["Friday", "Saturday"],
+			opens: "11:00",
+			closes: "21:00",
+		},
+	],
+	menu: "https://bakeajeen.com/menu", // URL to your menu page
+	acceptsReservations: "False",
+};
 
 const Layout = ({ children }) => {
 	const location = useLocation();
@@ -33,15 +75,9 @@ const Layout = ({ children }) => {
 	// No padding on homepage to allow content to go under transparent navbar
 	const mainContentClass = `flex-1 ${isHomePage ? "" : "pt-16"}`;
 
-	// Handle checkout
-	const handleCheckout = () => {
-		closeCart();
-		// Navigate to checkout - you can implement this based on your routing needs
-		window.location.href = "/checkout";
-	};
-
 	return (
 		<div className="min-h-screen flex flex-col">
+			<SEO structuredData={restaurantStructuredData} />
 			{/* Fixed Navbar */}
 			<Navbar isCartOpen={isCartOpen} />
 
@@ -49,13 +85,14 @@ const Layout = ({ children }) => {
 			<main className={mainContentClass}>{children || <Outlet />}</main>
 
 			{/* Footer */}
-			<Footer />
+			<Suspense fallback={null}>
+				<Footer />
+			</Suspense>
 
 			{/* Cart Sidebar */}
 			<CartSidebar
 				isOpen={isCartOpen}
 				onClose={closeCart}
-				onCheckout={handleCheckout}
 			/>
 		</div>
 	);

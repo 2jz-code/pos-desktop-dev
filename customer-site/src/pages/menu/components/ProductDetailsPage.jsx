@@ -11,6 +11,8 @@ import {
 import { toast } from "sonner";
 import { useCart } from "@/hooks/useCart";
 import { productsAPI } from "../../../api";
+import { getProductImageUrl, createImageErrorHandler } from "@/lib/imageUtils"; // Updated import
+import OptimizedImage from "@/components/OptimizedImage";
 
 const ProductDetailsPage = () => {
 	const { productName } = useParams();
@@ -21,8 +23,6 @@ const ProductDetailsPage = () => {
 	const [isFavorite, setIsFavorite] = useState(false);
 	const [addingToCart, setAddingToCart] = useState(false);
 	const [relatedProducts, setRelatedProducts] = useState([]);
-	const [imageLoaded, setImageLoaded] = useState(false);
-	const [relatedImagesLoaded, setRelatedImagesLoaded] = useState({});
 	const navigate = useNavigate();
 	const { addToCart } = useCart();
 
@@ -33,8 +33,6 @@ const ProductDetailsPage = () => {
 				setError(null);
 				setProduct(null);
 				setRelatedProducts([]);
-				setImageLoaded(false);
-				setRelatedImagesLoaded({});
 
 				const response = await productsAPI.getByName(productName);
 				setProduct(response);
@@ -128,16 +126,6 @@ const ProductDetailsPage = () => {
 	};
 
 	// Format image URL for development
-	const formatImageUrl = (imageUrl) => {
-		if (!imageUrl) return null;
-		if (
-			process.env.NODE_ENV === "development" && // eslint-disable-line
-			imageUrl.startsWith("https")
-		) {
-			return imageUrl.replace("https://", "http://");
-		}
-		return imageUrl;
-	};
 
 	// Loading State
 	if (isLoading) {
@@ -216,7 +204,7 @@ const ProductDetailsPage = () => {
 			? product.category[0].name
 			: "Products";
 
-	const imageUrl = formatImageUrl(product.image);
+	const imageUrl = getProductImageUrl(product.image);
 
 	return (
 		<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -241,57 +229,14 @@ const ProductDetailsPage = () => {
 			<div className="bg-primary-beige rounded-xl shadow-lg overflow-hidden border border-accent-subtle-gray/20">
 				<div className="md:flex">
 					{/* Product image */}
-					<div className="md:w-1/2 relative group bg-accent-subtle-gray/30">
-						{/* Loading indicator */}
-						{!imageLoaded && (
-							<div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse overflow-hidden">
-								<div className="w-full h-full bg-gray-200 relative">
-									<div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
-									<div className="absolute inset-0 flex items-center justify-center">
-										<div className="animate-spin rounded-full h-12 w-12 border-3 border-gray-300 border-t-primary-green"></div>
-									</div>
-								</div>
-							</div>
-						)}
-
-						<div className="aspect-w-4 aspect-h-3">
-							<img
-								src={
-									imageUrl ||
-									`http://placehold.co/800x600/F3E1CA/5E6650?text=${encodeURIComponent(
-										product.name
-									)}`
-								}
-								alt={product.name}
-								className={`w-full h-full object-cover transition-opacity duration-300 ${
-									imageLoaded ? "opacity-100" : "opacity-0"
-								}`}
-								onLoad={() => setImageLoaded(true)}
-								onError={(e) => {
-									e.target.onerror = null;
-									const canvas = document.createElement("canvas");
-									const ctx = canvas.getContext("2d");
-									canvas.width = 800;
-									canvas.height = 600;
-									ctx.fillStyle = "#F3E1CA";
-									ctx.fillRect(0, 0, 800, 600);
-									ctx.fillStyle = "#5E6650";
-									ctx.font = "64px Arial";
-									ctx.textAlign = "center";
-									ctx.fillText("📷", 400, 280);
-									ctx.font = "20px Arial";
-									ctx.fillText(
-										product.name.length > 40
-											? product.name.substring(0, 40) + "..."
-											: product.name,
-										400,
-										320
-									);
-									e.target.src = canvas.toDataURL();
-									setImageLoaded(true);
-								}}
-							/>
-						</div>
+					<div className="md:w-1/2 relative group bg-accent-subtle-gray/30 h-96 md:h-auto">
+						<OptimizedImage
+							src={imageUrl}
+							alt={product.name || "Product Image"}
+							className={`w-full h-full object-cover`}
+							onError={createImageErrorHandler("Product Image")}
+							priority
+						/>
 						{/* Favorite button */}
 						<button
 							onClick={toggleFavorite}
@@ -434,9 +379,7 @@ const ProductDetailsPage = () => {
 					</h2>
 					<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
 						{relatedProducts.map((relatedProduct) => {
-							const relatedImageUrl = formatImageUrl(relatedProduct.image);
-							const relatedImageLoaded =
-								relatedImagesLoaded[relatedProduct.id] || false;
+							const relatedImageUrl = getProductImageUrl(relatedProduct.image);
 
 							return (
 								<motion.div
@@ -456,59 +399,11 @@ const ProductDetailsPage = () => {
 								>
 									<div>
 										<div className="aspect-w-1 aspect-h-1 w-full bg-accent-subtle-gray/30 relative">
-											{/* Loading indicator for related products */}
-											{!relatedImageLoaded && (
-												<div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse overflow-hidden">
-													<div className="w-full h-48 bg-gray-200 relative">
-														<div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
-														<div className="absolute inset-0 flex items-center justify-center">
-															<div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-primary-green"></div>
-														</div>
-													</div>
-												</div>
-											)}
-
-											<img
-												src={
-													relatedImageUrl ||
-													`http://placehold.co/400x400/F3E1CA/5E6650?text=${encodeURIComponent(
-														relatedProduct.name
-													)}`
-												}
-												alt={relatedProduct.name}
-												className={`w-full h-48 object-cover transition-opacity duration-300 ${
-													relatedImageLoaded ? "opacity-100" : "opacity-0"
-												}`}
-												onLoad={() =>
-													setRelatedImagesLoaded((prev) => ({
-														...prev,
-														[relatedProduct.id]: true,
-													}))
-												}
-												onError={(e) => {
-													e.target.onerror = null;
-													const canvas = document.createElement("canvas");
-													const ctx = canvas.getContext("2d");
-													canvas.width = 400;
-													canvas.height = 400;
-													ctx.fillStyle = "#F3E1CA";
-													ctx.fillRect(0, 0, 400, 400);
-													ctx.fillStyle = "#5E6650";
-													ctx.font = "32px Arial";
-													ctx.textAlign = "center";
-													ctx.fillText("📷", 200, 180);
-													ctx.font = "14px Arial";
-													const name =
-														relatedProduct.name.length > 25
-															? relatedProduct.name.substring(0, 25) + "..."
-															: relatedProduct.name;
-													ctx.fillText(name, 200, 210);
-													e.target.src = canvas.toDataURL();
-													setRelatedImagesLoaded((prev) => ({
-														...prev,
-														[relatedProduct.id]: true,
-													}));
-												}}
+											<OptimizedImage
+												src={relatedImageUrl}
+												alt={relatedProduct.name || "Product Image"}
+												className={`w-full h-48 object-cover`}
+												onError={createImageErrorHandler("Related Product")}
 											/>
 										</div>
 										<div className="p-4">

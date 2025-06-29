@@ -1,9 +1,10 @@
 import React from "react";
-import { DashboardProvider, useDashboard } from "@/contexts/DashboardContext";
+import DashboardProvider, { useDashboard } from "@/contexts/DashboardContext";
 import Sidebar from "@/components/dashboard/Sidebar";
 import ProfileTab from "@/components/dashboard/ProfileTab";
 import OrdersTab from "@/components/dashboard/OrdersTab";
 import { Loader2 } from "lucide-react"; // Correct import for a loading spinner icon
+import SEO from "@/components/SEO";
 
 const DashboardPage = () => {
 	return (
@@ -20,7 +21,12 @@ const DashboardContent = () => {
 		activeTab === "profile" ? isLoadingProfile : isLoadingOrders;
 
 	return (
-		<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+		<main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<SEO
+				title="My Account - Ajeen"
+				description="Manage your Ajeen account. View your order history, update your profile information, and manage your settings."
+				robots="noindex, nofollow"
+			/>
 			<div className="flex flex-col md:flex-row md:space-x-8">
 				<Sidebar />
 				<div className="flex-1 mt-8 md:mt-0">
@@ -37,7 +43,7 @@ const DashboardContent = () => {
 					)}
 				</div>
 			</div>
-		</div>
+		</main>
 	);
 };
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { useInView } from "react-intersection-observer";
 import Laptop from "../../../assets/Zaatar.jpeg"; //
-import Start from "../../../assets/how-it-started-1.jpeg";
+import OptimizedImage from "@/components/OptimizedImage";
 
 const AboutCard = ({
 	title,
@@ -55,7 +55,7 @@ const AboutCard = ({
 			<div className={`${reverse ? "md:order-last" : ""}`}>
 				<div className="relative group">
 					<div className="absolute -inset-2 bg-gradient-to-r from-primary-beige to-primary-green rounded-2xl transform rotate-2 opacity-50 blur-lg transition-all duration-700 group-hover:rotate-6 group-hover:scale-105"></div>
-					<img
+					<OptimizedImage
 						src={image}
 						alt={title}
 						className="relative w-full h-[300px] md:h-[400px] object-cover rounded-xl shadow-xl"
@@ -88,8 +88,8 @@ const Cards = () => {
 		{
 			title: "How it started",
 			description:
-				"After settling down in Minnesota, we wanted to bring the truest form of mana'eesh to our community. In order to make this happen, we knew we had to go back straight to the source. We traveled back to Amman, Jordan, where many of our family's recipes began. We spent months working in different local bakeries, learning from master bakers. Day by day, we perfected our skills. We didn’t just learn how to make mana'eesh, but how to perfect it.\n\nIn essence, we didn’t just bring back recipes, we’ve brought back a deep understanding, skill, and love for this craft. We brought back the real taste of the Levant, straight from its heart to our Minnesota community.",
-			image: Start, //
+				"After settling down in Minnesota, we wanted to bring the truest form of mana'eesh to our community. In order to make this happen, we knew we had to go back straight to the source. We traveled back to Amman, Jordan, where many of our family's recipes began. We spent months working in different local bakeries, learning from master bakers. Day by day, we perfected our skills. We didn't just learn how to make mana'eesh, but how to perfect it.\n\nIn essence, we didn't just bring back recipes, we've brought back a deep understanding, skill, and love for this craft. We brought back the real taste of the Levant, straight from its heart to our Minnesota community.",
+			image: null, // Image is not used, set to null
 			reverse: true,
 			delay: 200,
 			layout: "textOnly", // Set the layout to textOnly

@@ -10,6 +10,7 @@ import {
 } from "react-icons/fa";
 import Logo from "../../assets/logo.png"; // Import the logo
 import { useStoreInfo } from "@/hooks/useSettings";
+import OptimizedImage from "@/components/OptimizedImage";
 
 const Footer = () => {
 	const currentYear = new Date().getFullYear();
@@ -26,13 +27,15 @@ const Footer = () => {
 						>
 							{/* Circular div wrapping the logo */}
 							<div className="bg-primary-beige rounded-full p-2 inline-flex items-center justify-center">
-								<img
+								<OptimizedImage
 									src={Logo}
 									alt="Ajeen Logo"
 									// Adjust size as needed for the footer.
 									// h-10 or h-12 is usually a good size for footer logos.
 									// The circular div will be slightly larger due to padding.
 									className="h-12 w-auto"
+									width={56}
+									height={48}
 								/>
 							</div>
 						</Link>

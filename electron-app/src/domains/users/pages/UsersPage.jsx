@@ -61,6 +61,9 @@ const EDITABLE_ROLES = {
 
 export function UsersPage() {
 	const { user, isOwner, isManager, isCashier } = useAuth();
+
+	// Note: Backend now filters users to only return POS staff (is_pos_staff=True)
+	// This prevents customer accounts from cluttering the POS interface
 	const [users, setUsers] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
