@@ -17,7 +17,14 @@ export default defineConfig({
 	ssr: {
 		// Explicitly tell Vite to NOT bundle these new modules.
 		// The 'require()' or 'import' calls will be left as-is and handled by Node.js at runtime.
-		external: ["node-thermal-printer", "usb", "better-sqlite3", "axios"],
+		external: [
+			"node-thermal-printer",
+			"usb",
+			"better-sqlite3",
+			"axios",
+			"os",
+			"node-machine-id",
+		],
 	},
 	plugins: [
 		react(),
@@ -36,6 +43,8 @@ export default defineConfig({
 								"usb",
 								"better-sqlite3",
 								"axios",
+								"os",
+								"node-machine-id",
 							],
 						},
 					},
@@ -46,6 +55,17 @@ export default defineConfig({
 				entry: "electron/preload.js",
 				onstart(options) {
 					options.reload();
+				},
+				vite: {
+					// Add ssr config specifically for the preload script's dev server
+					ssr: {
+						external: ["os", "node-machine-id"],
+					},
+					build: {
+						rollupOptions: {
+							external: ["os", "node-machine-id"],
+						},
+					},
 				},
 			},
 		]),

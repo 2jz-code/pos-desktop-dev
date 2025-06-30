@@ -21,16 +21,16 @@ const CustomerDisplay = () => {
 	const [state, setState] = useState(null);
 
 	useEffect(() => {
-		if (window.ipcApi) {
-			// Use the correct, standardized channel name
-			const unsubscribe = window.ipcApi.receive(
+		if (window.electronAPI) {
+			const unsubscribe = window.electronAPI.onMessage(
 				"POS_TO_CUSTOMER_STATE",
 				(newState) => {
 					setState(newState);
 				}
 			);
 
-			window.ipcApi.send("CUSTOMER_REQUESTS_STATE");
+			// Ask the main process for the last known state upon mounting
+			window.electronAPI.requestInitialState();
 
 			return () => {
 				if (unsubscribe) unsubscribe();

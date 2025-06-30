@@ -29,8 +29,11 @@ export const useSyncToCustomerDisplay = () => {
 	}, shallow);
 
 	useEffect(() => {
-		if (window.ipcApi) {
-			window.ipcApi.send("POS_TO_CUSTOMER_STATE", customerDisplayState);
+		if (window.electronAPI) {
+			window.electronAPI.sendToCustomerDisplay(
+				"POS_TO_CUSTOMER_STATE",
+				customerDisplayState
+			);
 		}
 	}, [customerDisplayState]);
 };

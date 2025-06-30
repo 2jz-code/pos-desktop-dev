@@ -7,9 +7,8 @@ export const useCustomerTipListener = () => {
 	);
 
 	useEffect(() => {
-		if (window.ipcApi) {
-			// Use the new standardized channel name
-			const cleanup = window.ipcApi.receive(
+		if (window.electronAPI) {
+			const cleanup = window.electronAPI.onMessage(
 				"CUSTOMER_TO_POS_TIP",
 				(tipAmount) => {
 					applyTipAndProcessTerminalPayment(tipAmount);

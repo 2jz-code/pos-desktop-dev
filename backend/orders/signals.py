@@ -56,4 +56,13 @@ def handle_order_completion(sender, instance, created, **kwargs):
         except Exception as e:
             # Log the error but don't prevent the order from completing
             print(f"Failed to process inventory for order {instance.id}: {e}")
-            # Could add proper logging here in the future
+
+        # --- NEW: Handle web order notifications ---
+        if instance.order_type == Order.OrderType.WEB:
+            # This service handles real-time notifications and auto-printing for web orders.
+            from .services import web_order_notification_service
+            try:
+                web_order_notification_service.handle_web_order_completion(instance)
+            except Exception as e:
+                # Log the error but don't disrupt the main order flow
+                print(f"Failed to send web order notification for order {instance.id}: {e}")

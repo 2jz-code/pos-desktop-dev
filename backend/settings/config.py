@@ -5,15 +5,15 @@ eliminating the need for direct database queries from business logic.
 """
 
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from django.core.exceptions import ImproperlyConfigured
 
 
 class AppSettings:
     """
-    A singleton class that provides centralized access to global application settings.
-    This class caches the settings in memory and provides a clean interface
-    for accessing configuration throughout the application.
+    A LAZY singleton class that provides centralized access to global application settings.
+    It defers database loading until the first setting is accessed, allowing management
+    commands like 'makemigrations' to run before the database schema is up to date.
     """
 
     _instance: Optional["AppSettings"] = None
@@ -29,11 +29,32 @@ class AppSettings:
 
     def __init__(self):
         """
-        Initialize the singleton instance only once.
+        Initialization is deferred to the first attribute access.
+        """
+        pass
+
+    def _setup(self):
+        """
+        The actual setup and loading method. Called only once.
         """
         if not self._initialized:
             self.load_settings()
             self._initialized = True
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Lazily loads settings on first access, then retrieves the attribute.
+        """
+        # First, check if settings are initialized. If not, set them up.
+        if not self._initialized:
+            self._setup()
+
+        # After setup, the attribute should exist in the instance's __dict__.
+        # This check prevents infinite recursion for attributes that truly don't exist.
+        try:
+            return self.__dict__[name]
+        except KeyError:
+            raise AttributeError(f"'AppSettings' object has no attribute '{name}'")
 
     def load_settings(self) -> None:
         """
@@ -70,14 +91,42 @@ class AppSettings:
             self.closing_time = settings_obj.closing_time
             self.timezone: str = settings_obj.timezone
 
-            # === INVENTORY SETTINGS ===
+            # === DEFAULTS ===
             self.default_inventory_location = settings_obj.default_inventory_location
+            self.default_store_location = settings_obj.default_store_location
+
+            # === WEB ORDER NOTIFICATION SETTINGS ===
+            self.enable_web_order_notifications: bool = settings_obj.enable_web_order_notifications
+            self.web_order_notification_sound: str = settings_obj.web_order_notification_sound
+            self.web_order_auto_print_receipt: bool = settings_obj.web_order_auto_print_receipt
+            self.web_order_auto_print_kitchen: bool = settings_obj.web_order_auto_print_kitchen
+            self.default_inventory_location_id: int | None = settings_obj.default_inventory_location_id
 
             if created:
                 print("Created default GlobalSettings instance")
 
+            # Load printer configurations from its own singleton model
+            self._load_printer_config()
+
         except Exception as e:
             raise ImproperlyConfigured(f"Failed to load GlobalSettings: {e}")
+
+    def _load_printer_config(self) -> None:
+        """Load printer configurations from the singleton PrinterConfiguration model."""
+        from .models import PrinterConfiguration
+        try:
+            printer_config, created = PrinterConfiguration.objects.get_or_create(pk=1)
+            self.receipt_printers: List[Dict[str, Any]] = printer_config.receipt_printers
+            self.kitchen_printers: List[Dict[str, Any]] = printer_config.kitchen_printers
+            self.kitchen_zones: List[Dict[str, Any]] = printer_config.kitchen_zones
+            if created:
+                print("Created default PrinterConfiguration instance")
+        except Exception as e:
+            # If loading fails, default to empty lists to prevent crashes
+            print(f"Warning: Failed to load printer configuration: {e}")
+            self.receipt_printers = []
+            self.kitchen_printers = []
+            self.kitchen_zones = []
 
     def reload(self) -> None:
         """
@@ -87,9 +136,10 @@ class AppSettings:
         self.load_settings()
         print("AppSettings cache reloaded")
 
-    def get_default_location(self):
+    def get_default_inventory_location(self):
         """
         Get the default inventory location. Creates one if none exists.
+        Maintained for backwards compatibility and inventory separation.
         """
         if self.default_inventory_location is None:
             # Import here to avoid circular imports
@@ -113,6 +163,32 @@ class AppSettings:
                 print("Created default inventory location: Main Store")
         
         return self.default_inventory_location
+
+    def get_default_store_location(self):
+        """
+        Get the default store location. Creates one if none exists.
+        This is the primary method for getting the default physical location.
+        """
+        if self.default_store_location is None:
+            from .models import StoreLocation, GlobalSettings
+            
+            # Create or get a default store location
+            default_location, created = StoreLocation.objects.get_or_create(
+                is_default=True,
+                defaults={"name": "Main Location"}
+            )
+            
+            # Update the global settings to use this new location
+            settings_obj = GlobalSettings.objects.get(pk=1)
+            settings_obj.default_store_location = default_location
+            settings_obj.save()
+            
+            self.default_store_location = default_location
+            
+            if created:
+                print("Created default store location: Main Location")
+        
+        return self.default_store_location
 
     def get_store_info(self) -> dict:
         """
@@ -145,6 +221,23 @@ class AppSettings:
         return {
             "header": self.receipt_header,
             "footer": self.receipt_footer,
+        }
+
+    def get_web_order_config(self) -> dict:
+        """Get web order notification configuration as a dictionary."""
+        return {
+            "notifications_enabled": self.enable_web_order_notifications,
+            "notification_sound": self.web_order_notification_sound,
+            "auto_print_receipt": self.web_order_auto_print_receipt,
+            "auto_print_kitchen": self.web_order_auto_print_kitchen,
+        }
+
+    def get_printer_config(self) -> dict:
+        """Get all printer configurations as a dictionary."""
+        return {
+            "receipt_printers": self.receipt_printers,
+            "kitchen_printers": self.kitchen_printers,
+            "kitchen_zones": self.kitchen_zones,
         }
 
     def __str__(self) -> str:

@@ -3,6 +3,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import nodeMachineId from "node-machine-id";
+const { machineIdSync } = nodeMachineId;
 const require = createRequire(import.meta.url);
 import usb from "usb";
 import {
@@ -32,7 +34,7 @@ function createMainWindow() {
 		icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
 		webPreferences: {
 			session: persistentSession,
-			preload: path.join(__dirname, "preload.js"),
+			preload: path.join(__dirname, "../dist-electron/preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},
@@ -66,7 +68,7 @@ function createCustomerWindow() {
 		width: 800,
 		height: 600,
 		webPreferences: {
-			preload: path.join(__dirname, "preload.js"),
+			preload: path.join(__dirname, "../dist-electron/preload.js"),
 		},
 	});
 
@@ -81,10 +83,22 @@ function createCustomerWindow() {
 	});
 }
 
-ipcMain.on("POS_TO_CUSTOMER_STATE", (event, state) => {
-	lastKnownState = state;
+// === IPC Handlers for Window Communication ===
+
+// Listen for messages FROM the main window TO the customer display
+ipcMain.on("to-customer-display", (event, { channel, data }) => {
+	if (channel === "POS_TO_CUSTOMER_STATE") {
+		lastKnownState = data; // Cache the last known state
+	}
 	if (customerWindow) {
-		customerWindow.webContents.send("POS_TO_CUSTOMER_STATE", state);
+		customerWindow.webContents.send(channel, data);
+	}
+});
+
+// Listen for messages FROM the customer display TO the main window
+ipcMain.on("from-customer-display", (event, { channel, data }) => {
+	if (mainWindow) {
+		mainWindow.webContents.send(channel, data);
 	}
 });
 
@@ -94,6 +108,8 @@ ipcMain.on("CUSTOMER_REQUESTS_STATE", (event) => {
 	}
 });
 
+// This is now legacy and should be removed, but we'll keep it for now
+// to avoid breaking anything that might still be using it directly.
 ipcMain.on("CUSTOMER_TO_POS_TIP", (event, amount) => {
 	if (mainWindow) {
 		mainWindow.webContents.send("CUSTOMER_TO_POS_TIP", amount);
@@ -101,19 +117,24 @@ ipcMain.on("CUSTOMER_TO_POS_TIP", (event, amount) => {
 });
 
 ipcMain.handle("discover-printers", async () => {
-	console.log("[Main Process] Discovering printers using node-usb...");
+	console.log(
+		"[Main Process] Discovering printers using node-usb (robust method)..."
+	);
 	try {
 		const devices = usb.getDeviceList();
 		const printers = devices
 			.map((device) => {
-				let deviceIsOpen = false;
 				try {
-					device.open();
-					deviceIsOpen = true;
-					if (device.interfaces && device.interfaces.length > 0) {
-						const isPrinter = device.interfaces.some(
-							(iface) => iface.descriptor.bInterfaceClass === 7
+					// Check device and configuration descriptors without opening the device
+					if (device.configDescriptor && device.configDescriptor.interfaces) {
+						const isPrinter = device.configDescriptor.interfaces.some(
+							(iface) => {
+								return iface.some(
+									(alt) => alt.bInterfaceClass === 7 // 7 is the printer class
+								);
+							}
 						);
+
 						if (isPrinter) {
 							return {
 								name:
@@ -125,16 +146,10 @@ ipcMain.handle("discover-printers", async () => {
 						}
 					}
 					return null;
-				} catch {
+				} catch (e) {
+					// This might happen if descriptors are not accessible, but it's less common.
+					console.warn(`Could not inspect device: ${e.message}`);
 					return null;
-				} finally {
-					if (deviceIsOpen) {
-						try {
-							device.close();
-						} catch {
-							// Ignore close errors
-						}
-					}
 				}
 			})
 			.filter((p) => p !== null);
@@ -359,6 +374,11 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
 		console.error("[Main Process] Error getting session cookies:", error);
 		throw error;
 	}
+});
+
+// IPC handler for getting the unique machine ID
+ipcMain.handle("get-machine-id", () => {
+	return machineIdSync({ original: true });
 });
 
 app.whenReady().then(async () => {

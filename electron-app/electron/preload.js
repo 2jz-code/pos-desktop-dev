@@ -1,4 +1,3 @@
-//eslint-disable-next-line
 const { contextBridge, ipcRenderer } = require("electron");
 
 console.log("--- [Preload] Preload script started ---");
@@ -21,19 +20,73 @@ const validInvokeChannels = [
 // Database and sync channels removed - moving to online-only architecture
 
 // --- Unchanged: Expose state management IPC ---
-contextBridge.exposeInMainWorld("ipcApi", {
-	send: (channel, data) => {
-		if (validIpcChannels.includes(channel)) {
-			ipcRenderer.send(channel, data);
-		}
+contextBridge.exposeInMainWorld("electronAPI", {
+	// --- Main API Bridge ---
+
+	/**
+	 * Gets the unique machine ID from the main process.
+	 * @returns {Promise<string>} The unique machine ID.
+	 */
+	getMachineId: () => ipcRenderer.invoke("get-machine-id"),
+
+	/**
+	 * Gets a list of connected printers from the main process.
+	 * @returns {Promise<Array>} A list of printer objects.
+	 */
+	getPrinters: () => ipcRenderer.invoke("get-printers"),
+
+	/**
+	 * Sends a receipt object to the main process for printing.
+	 * @param {object} data - The receipt data.
+	 */
+	printReceipt: (data) => ipcRenderer.send("print-receipt", data),
+
+	/**
+	 * Sends a kitchen order object to the main process for printing.
+	 * @param {object} data - The kitchen order data.
+	 */
+	printKitchenOrder: (data) => ipcRenderer.send("print-kitchen-order", data),
+
+	/**
+	 * Sends a command to open the cash drawer connected to a specific printer.
+	 * @param {object} printer - The printer object.
+	 */
+	openCashDrawer: (printer) => ipcRenderer.send("open-cash-drawer", printer),
+
+	/**
+	 * Sends data to the customer-facing display.
+	 * @param {string} channel - The event channel to emit on the customer display.
+	 * @param {object} data - The payload to send.
+	 */
+	sendToCustomerDisplay: (channel, data) => {
+		ipcRenderer.send("to-customer-display", { channel, data });
 	},
-	receive: (channel, func) => {
+
+	sendActionToPos: (channel, data) => {
+		ipcRenderer.send("from-customer-display", { channel, data });
+	},
+
+	/**
+	 * Listens for actions coming from the customer-facing display.
+	 * @param {function} callback - The function to call with the action data.
+	 * @returns {function} A cleanup function to remove the listener.
+	 */
+	onCustomerDisplayAction: (callback) => {
+		const handler = (_event, action) => callback(action);
+		ipcRenderer.on("from-customer-display", handler);
+		// Return a cleanup function to be called on component unmount
+		return () => ipcRenderer.removeListener("from-customer-display", handler);
+	},
+
+	requestInitialState: () => {
+		ipcRenderer.send("CUSTOMER_REQUESTS_STATE");
+	},
+
+	onMessage: (channel, callback) => {
 		if (validIpcChannels.includes(channel)) {
-			const subscription = (event, ...args) => func(...args);
-			ipcRenderer.on(channel, subscription);
-			return () => {
-				ipcRenderer.removeListener(channel, subscription);
-			};
+			const handler = (_event, ...args) => callback(...args);
+			ipcRenderer.on(channel, handler);
+			return () => ipcRenderer.removeListener(channel, handler);
 		}
 	},
 });

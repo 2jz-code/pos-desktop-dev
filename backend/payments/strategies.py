@@ -8,7 +8,7 @@ from django.db import transaction
 
 from .models import Payment, PaymentTransaction
 from orders.models import Order
-from settings.models import TerminalLocation
+from settings.models import TerminalLocation, StoreLocation
 import logging
 
 logger = logging.getLogger(__name__)
@@ -126,28 +126,36 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         stripe.api_key = settings.STRIPE_SECRET_KEY
         try:
             stripe_locations = stripe.terminal.Location.list(limit=100)
-            synced_ids = []
+            created_count = 0
+            updated_count = 0
 
             with transaction.atomic():
                 for loc in stripe_locations.data:
-                    defaults = {"name": loc.display_name}
-                    location, created = TerminalLocation.objects.update_or_create(
-                        stripe_id=loc.id, defaults=defaults
-                    )
-                    synced_ids.append(location.stripe_id)
+                    # We only care about creating the link here. The StoreLocation must exist first.
+                    # This method does not create StoreLocation objects.
+                    # We find the first available store location that doesn't have a stripe config yet
+                    # This is a naive assumption but works for simple setups.
+                    store_location_to_link = StoreLocation.objects.filter(terminallocation__isnull=True).first()
 
-                if (
-                    TerminalLocation.objects.exists()
-                    and not TerminalLocation.objects.filter(is_default=True).exists()
-                ):
-                    first_loc = TerminalLocation.objects.order_by("name").first()
-                    if first_loc:
-                        first_loc.is_default = True
-                        first_loc.save()
+                    if store_location_to_link:
+                        location, created = TerminalLocation.objects.update_or_create(
+                            stripe_id=loc.id,
+                            defaults={
+                                "store_location": store_location_to_link
+                            }
+                        )
+                        if created:
+                            created_count += 1
+                        else:
+                            updated_count += 1
 
-            return {"status": "success", "synced_count": len(synced_ids)}
+            return {
+                "status": "success",
+                "created": created_count,
+                "updated": updated_count,
+            }
         except Exception as e:
-            print(f"Error syncing Stripe locations: {e}")
+            logger.error(f"Error syncing Stripe locations: {e}")
             return {"status": "error", "message": str(e)}
 
     def get_frontend_configuration(self):
@@ -219,6 +227,22 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         if not reader_id:
             raise ValueError("reader_id is required to cancel a terminal action.")
         return stripe.terminal.Reader.cancel_action(reader_id)
+
+    def list_readers(self, location_id=None):
+        """
+        Lists Stripe Terminal readers, optionally filtered by location.
+        """
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        params = {"limit": 100}
+        if location_id:
+            params["location"] = location_id
+        
+        try:
+            readers = stripe.terminal.Reader.list(**params)
+            return readers.to_dict().get('data', [])
+        except Exception as e:
+            logger.error(f"Failed to list Stripe readers: {e}")
+            raise  # Re-raise the exception to be handled by the view
 
     # --- NEW METHOD ---
     def cancel_payment_intent(self, payment_intent_id: str):

@@ -3,11 +3,19 @@ from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
-from .models import GlobalSettings, POSDevice, TerminalLocation
+from .models import (
+    GlobalSettings, 
+    StoreLocation, 
+    TerminalLocation, 
+    TerminalRegistration,
+    PrinterConfiguration
+)
 from .serializers import (
     GlobalSettingsSerializer,
-    POSDeviceSerializer,
+    StoreLocationSerializer,
     TerminalLocationSerializer,
+    TerminalRegistrationSerializer,
+    PrinterConfigurationSerializer
 )
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from payments.strategies import StripeTerminalStrategy
@@ -244,72 +252,118 @@ class GlobalSettingsViewSet(viewsets.ModelViewSet):
                 # Clear settings cache after update
                 from .config import app_settings
 
-                app_settings.reload_settings()
+                app_settings.reload()
 
                 # Return updated data
                 return self.business_hours(type("Request", (), {"method": "GET"})())
 
-            return Response({"message": "No valid fields to update"}, status=400)
 
-
-class POSDeviceViewSet(viewsets.ModelViewSet):
+class PrinterConfigurationViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for managing POS device and reader pairings.
+    API endpoint for viewing and editing the singleton PrinterConfiguration object.
     """
+    queryset = PrinterConfiguration.objects.all()
+    serializer_class = PrinterConfigurationSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
-    queryset = POSDevice.objects.all()
-    serializer_class = POSDeviceSerializer
+    def get_object(self):
+        obj, _ = PrinterConfiguration.objects.get_or_create(pk=1)
+        return obj
+
+    def list(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+class TerminalRegistrationViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing Terminal Registrations.
+    This replaces the old POSDeviceViewSet.
+    """
+    queryset = TerminalRegistration.objects.all()
+    serializer_class = TerminalRegistrationSerializer
     lookup_field = "device_id"
 
+    def perform_create(self, serializer):
+        """
+        Creates or updates a terminal registration.
+        If a device_id already exists, it updates the record.
+        """
+        device_id = serializer.validated_data.get("device_id")
+        instance, created = TerminalRegistration.objects.update_or_create(
+            device_id=device_id,
+            defaults=serializer.validated_data
+        )
+        # update_or_create returns the object and a boolean `created`
+        # We can use this to return a 201 or 200 status code.
+        self.instance = instance # Set instance for response
+        self.created = created
+
     def create(self, request, *args, **kwargs):
-        """
-        Creates or updates a POSDevice pairing.
-        This allows the frontend to simply POST to create or update a pairing.
-        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        device_id = serializer.validated_data.get("device_id")
-        reader_id = serializer.validated_data.get("reader_id")
-        nickname = serializer.validated_data.get("nickname", "")
-
-        obj, created = POSDevice.objects.update_or_create(
-            device_id=device_id, defaults={"reader_id": reader_id, "nickname": nickname}
-        )
-
-        response_serializer = self.get_serializer(obj)
-        headers = self.get_success_headers(response_serializer.data)
-
-        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-
+        self.perform_create(serializer)
+        
+        headers = self.get_success_headers(serializer.data)
+        status_code = status.HTTP_201_CREATED if self.created else status.HTTP_200_OK
+        
+        # We need to re-serialize the instance to include all fields
+        response_serializer = self.get_serializer(self.instance)
         return Response(response_serializer.data, status=status_code, headers=headers)
 
 
-class TerminalLocationViewSet(viewsets.ModelViewSet):
+class StoreLocationViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for managing Terminal Locations.
+    API endpoint for managing primary Store Locations.
     """
-
-    queryset = TerminalLocation.objects.all()
-    serializer_class = TerminalLocationSerializer
+    queryset = StoreLocation.objects.all()
+    serializer_class = StoreLocationSerializer
 
     @action(detail=True, methods=["post"], url_path="set-default")
     def set_default(self, request, pk=None):
         """
-        Sets the specified location as the default.
+        Sets this location as the default store location.
         """
         location = self.get_object()
         location.is_default = True
         location.save()
-        return Response(
-            {"status": "success", "message": f"'{location.name}' is now the default."},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"status": "success", "message": f"'{location.name}' is now the default store location."})
+
+
+class TerminalLocationViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows Stripe Terminal Locations to be viewed.
+    """
+    queryset = TerminalLocation.objects.select_related('store_location').all()
+    serializer_class = TerminalLocationSerializer
+
+
+class TerminalReaderListView(APIView):
+    """
+    API endpoint to list available Stripe Terminal Readers.
+    Can be filtered by a Stripe location ID.
+    """
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+
+    def get(self, request, *args, **kwargs):
+        location_id = request.query_params.get('location_id', None)
+        
+        try:
+            strategy = StripeTerminalStrategy()
+            readers = strategy.list_readers(location_id=location_id)
+            return Response(readers)
+        except Exception as e:
+            # Consider more specific error handling for Stripe errors
+            return Response(
+                {"error": f"Failed to retrieve readers from Stripe: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SyncStripeLocationsView(APIView):
     """
-    An API view to trigger the synchronization of locations from Stripe.
+    An API view to trigger a sync of locations from Stripe.
     """
 
     def post(self, request, *args, **kwargs):

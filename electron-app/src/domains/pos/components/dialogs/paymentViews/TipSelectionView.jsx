@@ -9,9 +9,8 @@ const TipSelectionView = ({ amountDue }) => {
 	const [customTip, setCustomTip] = useState("");
 
 	const sendTip = (amount) => {
-		if (window.ipcApi) {
-			// Use the new standardized channel name
-			window.ipcApi.send("CUSTOMER_TO_POS_TIP", amount);
+		if (window.electronAPI) {
+			window.electronAPI.sendActionToPos("CUSTOMER_TO_POS_TIP", amount);
 		}
 	};
 

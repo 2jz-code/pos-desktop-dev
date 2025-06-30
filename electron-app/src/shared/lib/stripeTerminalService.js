@@ -1,9 +1,6 @@
 import { loadStripeTerminal } from "@stripe/terminal-js";
 import apiClient from "./apiClient";
-import {
-	getTerminalLocations,
-	setDefaultTerminalLocation,
-} from "@/domains/settings/services/settingsService";
+import { getTerminalLocations } from "@/domains/settings/services/settingsService";
 
 /**
  * A singleton service to manage the Stripe Terminal instance and interactions.
@@ -43,16 +40,15 @@ const StripeTerminalService = {
 
 			if (!defaultLocation) {
 				console.warn(
-					"[_checkAndSetLocationContext] 3. No default location found. Setting the first one as default."
+					"[_checkAndSetLocationContext] 3. No default location found. Using the first available one."
 				);
 				defaultLocation = locations[0];
 				this._listeners.onUpdate?.({
-					message: `No default location set. Using '${defaultLocation.name}' as default.`,
+					message: `No default location set. Using '${
+						defaultLocation.store_location_details?.name || "N/A"
+					}' as the active location.`,
 				});
-				await setDefaultTerminalLocation(defaultLocation.id);
-				console.log(
-					`[_checkAndSetLocationContext] 4. Set location ${defaultLocation.id} as default via API.`
-				);
+				// DO NOT attempt to set the default here. This is now a user action in settings.
 			}
 
 			this.locationId = defaultLocation.stripe_id;
@@ -185,6 +181,7 @@ const StripeTerminalService = {
 
 		const discoveryConfig = {
 			simulated: true, // MUST be true for dashboard simulated readers
+			location: this.locationId,
 		};
 
 		console.log(

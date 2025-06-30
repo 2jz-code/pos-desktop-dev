@@ -3,10 +3,40 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 
 
+# === CHOICES ===
+
 class TerminalProvider(models.TextChoices):
     STRIPE_TERMINAL = "STRIPE_TERMINAL", "Stripe Terminal"
     CLOVER_TERMINAL = "CLOVER_TERMINAL", "Clover Terminal"
 
+
+# === CORE BUSINESS MODELS ===
+
+class StoreLocation(models.Model):
+    """
+    Represents a primary physical store location, independent of any payment provider.
+    This is the definitive source of truth for business locations.
+    """
+    name = models.CharField(max_length=100)
+    address = models.TextField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Is this the default location for inventory deduction?"
+    )
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            # ensure only one default location exists
+            StoreLocation.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+# === SINGLETON CONFIGURATION MODELS ===
 
 class GlobalSettings(models.Model):
     """
@@ -15,105 +45,75 @@ class GlobalSettings(models.Model):
     """
 
     # === TAX & FINANCIAL SETTINGS ===
-    tax_rate = models.DecimalField(
-        max_digits=8,
-        decimal_places=6,
-        default=Decimal("0.08"),
-        help_text="The default sales tax rate as a decimal (e.g., 0.08 for 8%).",
-    )
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=4, default=0.08, help_text="The sales tax rate as a decimal (e.g., 0.08 for 8%).")
     surcharge_percentage = models.DecimalField(
-        max_digits=8,
-        decimal_places=6,
-        default=Decimal("0.00"),
-        help_text="A percentage-based surcharge applied to the subtotal (e.g., 0.02 for 2%).",
+        max_digits=8, decimal_places=6, default=Decimal("0.00"),
+        help_text="A percentage-based surcharge applied to the subtotal (e.g., 0.02 for 2%)."
     )
     currency = models.CharField(
-        max_length=3,
-        default="USD",
-        help_text="Three-letter currency code (ISO 4217).",
+        max_length=3, default="USD", help_text="Three-letter currency code (ISO 4217)."
     )
 
     # === STORE INFORMATION ===
-    store_name = models.CharField(
-        max_length=255,
-        default="",
-        help_text="Business name displayed on receipts and reports.",
-    )
-    store_address = models.TextField(
-        blank=True,
-        help_text="Full business address for receipts.",
-    )
-    store_phone = models.CharField(
-        max_length=20,
-        blank=True,
-        help_text="Business phone number.",
-    )
-    store_email = models.EmailField(
-        blank=True,
-        help_text="Business email address.",
-    )
+    store_name = models.CharField(max_length=100, default="Ajeen POS")
+    store_address = models.TextField(blank=True, help_text="Full business address for receipts.")
+    store_phone = models.CharField(max_length=20, blank=True, help_text="Business phone number.")
+    store_email = models.EmailField(blank=True, help_text="Business email address.")
 
     # === RECEIPT CONFIGURATION ===
-    receipt_header = models.TextField(
-        blank=True,
-        help_text="Custom text to appear at the top of receipts.",
-    )
-    receipt_footer = models.TextField(
-        default="Thank you for your business!",
-        help_text="Custom text to appear at the bottom of receipts.",
-    )
+    receipt_header = models.TextField(blank=True, help_text="Custom text to appear at the top of receipts.")
+    receipt_footer = models.TextField(default="Thank you for your business!", help_text="The footer text that appears on printed receipts.")
 
     # === PAYMENT PROCESSING ===
     active_terminal_provider = models.CharField(
-        max_length=50,
-        choices=TerminalProvider.choices,
-        default=TerminalProvider.STRIPE_TERMINAL,
-        help_text="The currently active payment terminal provider.",
+        max_length=50, choices=TerminalProvider.choices, default=TerminalProvider.STRIPE_TERMINAL,
+        help_text="The currently active payment terminal provider."
     )
 
     # === BUSINESS HOURS ===
-    opening_time = models.TimeField(
-        null=True,
-        blank=True,
-        help_text="Business opening time (used for reporting).",
+    opening_time = models.TimeField(null=True, blank=True, help_text="Business opening time (used for reporting).")
+    closing_time = models.TimeField(null=True, blank=True, help_text="Business closing time (used for reporting).")
+    timezone = models.CharField(max_length=50, default="UTC", help_text="Business timezone (e.g., 'America/New_York').")
+
+    # === INVENTORY & LOCATION DEFAULTS ===
+    default_inventory_location = models.ForeignKey(
+        "inventory.Location", on_delete=models.SET_NULL, null=True, blank=True,
+        help_text="Default location for inventory operations and sales.",
+        related_name="default_for_settings"
     )
-    closing_time = models.TimeField(
-        null=True,
-        blank=True,
-        help_text="Business closing time (used for reporting).",
-    )
-    timezone = models.CharField(
-        max_length=50,
-        default="UTC",
-        help_text="Business timezone (e.g., 'America/New_York').",
+    default_store_location = models.ForeignKey(
+        "StoreLocation", on_delete=models.SET_NULL, null=True, blank=True,
+        help_text="Default store location for web orders and single-location setups."
     )
 
-    # === INVENTORY SETTINGS ===
-    default_inventory_location = models.ForeignKey(
-        "inventory.Location",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Default location for inventory operations and sales.",
-        related_name="default_for_settings",
+    # === WEB ORDER NOTIFICATION SETTINGS ===
+    enable_web_order_notifications = models.BooleanField(
+        default=False,
+        help_text="Enable real-time notifications for new web orders."
+    )
+    web_order_notification_sound = models.CharField(
+        max_length=255, blank=True,
+        help_text="Sound notification for web orders."
+    )
+    web_order_auto_print_receipt = models.BooleanField(
+        default=False,
+        help_text="Automatically print a receipt for new web orders."
+    )
+    web_order_auto_print_kitchen = models.BooleanField(
+        default=False,
+        help_text="Automatically print kitchen tickets for new web orders."
     )
 
     def clean(self):
-        """
-        Ensures that a new instance cannot be created if one already exists.
-        """
         if GlobalSettings.objects.exists() and not self.pk:
             raise ValidationError("There can only be one GlobalSettings instance.")
 
     def save(self, *args, **kwargs):
-        """
-        Overrides the save method to run the clean method first.
-        """
         self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Global Settings - {self.store_name or 'Unnamed Store'}"
+        return "Global Settings"
 
     def is_business_open(self) -> bool:
         """
@@ -148,76 +148,91 @@ class GlobalSettings(models.Model):
             return True
 
     class Meta:
-        verbose_name_plural = "Global Settings"
+        verbose_name = "Global Settings"
 
 
-class POSDevice(models.Model):
+class PrinterConfiguration(models.Model):
     """
-    Represents a physical Point of Sale station and its permanent configuration.
-    This model links a unique device ID (generated and stored by the client)
-    to a specific Stripe Terminal reader ID.
+    Singleton model for storing printer configurations, centralized in the backend.
     """
-
-    device_id = models.CharField(
-        max_length=255,
-        unique=True,
-        primary_key=True,
-        help_text="Unique identifier for the POS device, generated by the client application.",
+    receipt_printers = models.JSONField(
+        default=list, blank=True,
+        help_text="List of receipt printer configurations (e.g., [{'name': 'Receipt Printer', 'ip': '192.168.1.100'}])"
     )
+    kitchen_printers = models.JSONField(
+        default=list, blank=True,
+        help_text="List of kitchen printer configurations (e.g., [{'name': 'Kitchen Printer', 'ip': '192.168.1.101'}])"
+    )
+    kitchen_zones = models.JSONField(
+        default=list, blank=True,
+        help_text="Kitchen zone configurations with category filters (e.g., [{'name': 'Grill Station', 'printer_name': 'Kitchen Printer', 'category_ids': [1, 2]}])"
+    )
+
+    def clean(self):
+        if PrinterConfiguration.objects.exists() and not self.pk:
+            raise ValidationError("There can only be one PrinterConfiguration instance.")
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return "Printer & Kitchen Zone Configuration"
+
+    class Meta:
+        verbose_name_plural = "Printer Configuration"
+
+
+# === DEVICE & PROVIDER-SPECIFIC MODELS ===
+
+class TerminalRegistration(models.Model):
+    """
+    Links a physical device to a primary StoreLocation. This is the new standard for device management.
+    Replaces the old POSDevice model.
+    """
+    device_id = models.CharField(max_length=255, unique=True, primary_key=True)
+    nickname = models.CharField(max_length=100, blank=True, help_text="A friendly name for the device (e.g., 'Front Counter').")
+    store_location = models.ForeignKey(
+        "StoreLocation", on_delete=models.SET_NULL, null=True, blank=True,
+        help_text="The primary store location this terminal is physically in."
+    )
+    last_seen = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
     reader_id = models.CharField(
-        max_length=255,
-        help_text="The ID of the Stripe Terminal reader assigned to this device (e.g., tmr_...).",
-    )
-    nickname = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="An optional friendly name for the POS station (e.g., 'Front Counter').",
+        max_length=255, blank=True,
+        help_text="The ID of the Stripe Terminal reader assigned to this device (e.g., tmr_...)."
     )
 
     def __str__(self):
-        return f"{self.nickname or self.device_id} -> {self.reader_id}"
+        location_name = self.store_location.name if self.store_location else "Unassigned"
+        return f"{self.nickname or self.device_id} @ {location_name}"
 
     class Meta:
-        verbose_name = "POS Device Pairing"
-        verbose_name_plural = "POS Device Pairings"
+        verbose_name = "Terminal Registration"
+        verbose_name_plural = "Terminal Registrations"
 
 
 class TerminalLocation(models.Model):
     """
-    Represents a physical store location that has been synced from Stripe.
-    This allows for scoping terminal actions (like discovering readers) to a specific
-    location. There can be only one default location at a time.
+    Represents a Stripe-specific configuration linked to a primary StoreLocation.
+    This model acts as a bridge, scoping Stripe API actions (like discovering readers)
+    to a specific business location without tying core logic to Stripe.
     """
-
-    name = models.CharField(
-        max_length=255, help_text="The user-friendly name of the location."
+    store_location = models.OneToOneField(
+        StoreLocation,
+        on_delete=models.CASCADE,
+        null=True,  # Temporarily allow null for migration
+        help_text="The primary store this Stripe configuration is for."
     )
     stripe_id = models.CharField(
-        max_length=255,
-        unique=True,
-        help_text="The ID of the location from Stripe (e.g., tml_...).",
-    )
-    is_default = models.BooleanField(
-        default=False,
-        help_text="Whether this is the default location for transactions.",
+        max_length=255, unique=True,
+        help_text="The ID of the location from Stripe (e.g., tml_...)."
     )
 
     def __str__(self):
-        return f"{self.name} ({'Default' if self.is_default else 'Not Default'})"
-
-    def save(self, *args, **kwargs):
-        """
-        Overrides the save method to ensure that if this location is being set as
-        the default, any other location that is currently the default is unset.
-        """
-        if self.is_default:
-            # Unset any other default location.
-            TerminalLocation.objects.filter(is_default=True).exclude(pk=self.pk).update(
-                is_default=False
-            )
-        super().save(*args, **kwargs)
+        return f"{self.store_location.name} (Stripe Config: {self.stripe_id})"
 
     class Meta:
-        verbose_name = "Terminal Location"
-        verbose_name_plural = "Terminal Locations"
-        ordering = ["name"]
+        verbose_name = "Stripe Location Link"
+        verbose_name_plural = "Stripe Location Links"

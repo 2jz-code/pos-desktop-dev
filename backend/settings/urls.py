@@ -2,9 +2,12 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     GlobalSettingsViewSet,
-    POSDeviceViewSet,
-    TerminalLocationViewSet,
+    StoreLocationViewSet,
+    TerminalRegistrationViewSet,
     SyncStripeLocationsView,
+    PrinterConfigurationViewSet,
+    TerminalLocationViewSet,
+    TerminalReaderListView,
 )
 
 app_name = "settings"
@@ -12,10 +15,10 @@ app_name = "settings"
 # Create a router and register our viewsets with it.
 router = DefaultRouter()
 router.register(r"global-settings", GlobalSettingsViewSet, basename="global-settings")
-router.register(r"pos-devices", POSDeviceViewSet, basename="pos-devices")
-router.register(
-    r"terminal-locations", TerminalLocationViewSet, basename="terminal-locations"
-)
+router.register(r"store-locations", StoreLocationViewSet, basename="store-locations")
+router.register(r"terminal-registrations", TerminalRegistrationViewSet, basename="terminal-registrations")
+router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
+router.register(r"terminal-locations", TerminalLocationViewSet, basename="terminal-location")
 
 # The API URLs are now determined automatically by the router.
 urlpatterns = [
@@ -25,5 +28,10 @@ urlpatterns = [
         "sync-stripe-locations/",
         SyncStripeLocationsView.as_view(),
         name="sync-stripe-locations",
+    ),
+    path(
+        "terminal-readers/",
+        TerminalReaderListView.as_view(),
+        name="terminal-readers",
     ),
 ]
