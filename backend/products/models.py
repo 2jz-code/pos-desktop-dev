@@ -72,6 +72,7 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name="products",
         help_text=_("The type of product."),
+        default=1,
     )
     name = models.CharField(max_length=200, help_text=_("Name of the product."))
     description = models.TextField(
