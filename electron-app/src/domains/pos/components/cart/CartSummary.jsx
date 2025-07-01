@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { shallow } from "zustand/shallow";
 import apiClient from "@/shared/lib/apiClient";
 import { toast } from "@/shared/components/ui/use-toast";
 import { Loader2, Tag, X, ChefHat, CreditCard } from "lucide-react";
 import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
+import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
 
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
@@ -73,8 +73,8 @@ const CartSummary = () => {
 		shallow
 	);
 
-	const printers = useSettingsStore((state) => state.printers);
-	const kitchenZones = useSettingsStore((state) => state.kitchenZones);
+	// Get kitchen zones from cloud configuration (includes printer info)
+	const { data: kitchenZones = [] } = useKitchenZones();
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
@@ -138,15 +138,15 @@ const CartSummary = () => {
 
 			for (const zone of kitchenZones) {
 				try {
-					const printer = printers.find((p) => p.id === zone.printerId);
-
-					if (!printer) {
-						console.warn(`No printer found for zone "${zone.name}", skipping`);
+					if (!zone.printer) {
+						console.warn(
+							`No printer configured for zone "${zone.name}", skipping`
+						);
 						continue;
 					}
 
 					const filterConfig = {
-						categories: zone.categories || [],
+						categories: zone.category_ids || [],
 						productTypes: zone.productTypes || [],
 					};
 
@@ -163,7 +163,7 @@ const CartSummary = () => {
 					);
 
 					const result = await printKitchenTicket(
-						printer,
+						zone.printer,
 						kitchenOrder,
 						zone.name,
 						filterConfig

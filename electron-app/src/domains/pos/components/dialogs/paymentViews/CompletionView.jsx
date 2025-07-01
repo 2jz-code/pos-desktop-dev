@@ -10,13 +10,16 @@ import {
 } from "@/shared/lib/hardware/printerService";
 import { toast } from "@/shared/components/ui/use-toast";
 import { getReceiptFormatData } from "@/domains/settings/services/settingsService";
+import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
 
 const CompletionView = ({ order, changeDue, onClose }) => {
 	const resetCart = usePosStore((state) => state.resetCart);
-	// Select state individually to ensure stable references
+	// Keep USB printer config for receipt printing
 	const printers = useSettingsStore((state) => state.printers);
 	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
-	const kitchenZones = useSettingsStore((state) => state.kitchenZones);
+
+	// Get kitchen zones from cloud configuration (includes printer info)
+	const { data: kitchenZones = [], isLoading } = useKitchenZones();
 
 	// Auto-print kitchen tickets once when order completes
 	const didAutoPrint = useRef(false);
@@ -35,17 +38,16 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 
 		for (const zone of kitchenZones) {
 			try {
-				// Find the printer for this zone
-				const printer = printers.find((p) => p.id === zone.printerId);
-
-				if (!printer) {
-					console.warn(`No printer found for zone "${zone.name}", skipping`);
+				if (!zone.printer) {
+					console.warn(
+						`No printer configured for zone "${zone.name}", skipping`
+					);
 					continue;
 				}
 
 				// Create filter configuration from zone settings
 				const filterConfig = {
-					categories: zone.categories || [],
+					categories: zone.category_ids || [],
 					productTypes: zone.productTypes || [],
 				};
 
@@ -57,14 +59,11 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 					continue;
 				}
 
-				console.log(
-					`Printing kitchen ticket for zone "${zone.name}" with filter:`,
-					filterConfig
-				);
+				console.log(`Printing kitchen ticket for zone "${zone.name}"`);
 
 				// Print the kitchen ticket with filtering
 				const result = await printKitchenTicket(
-					printer,
+					zone.printer,
 					order,
 					zone.name,
 					filterConfig
@@ -83,7 +82,6 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 						`Failed to print kitchen ticket for zone "${zone.name}":`,
 						result.error
 					);
-					// Don't show error toasts for individual kitchen tickets, just log them
 				}
 			} catch (error) {
 				console.error(
@@ -92,15 +90,15 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 				);
 			}
 		}
-	}, [printers, kitchenZones, order]);
+	}, [kitchenZones, order]);
 
 	// Auto-print kitchen tickets when component mounts (order just completed)
 	useEffect(() => {
-		if (!didAutoPrint.current) {
+		if (!didAutoPrint.current && !isLoading) {
 			didAutoPrint.current = true;
 			autoPrintAllKitchenTickets();
 		}
-	}, [autoPrintAllKitchenTickets]);
+	}, [autoPrintAllKitchenTickets, isLoading]);
 
 	const handleNewOrder = () => {
 		if (resetCart) {

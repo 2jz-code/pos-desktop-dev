@@ -8,6 +8,7 @@ from .views import (
     PrinterConfigurationViewSet,
     TerminalLocationViewSet,
     TerminalReaderListView,
+    WebOrderSettingsViewSet,
 )
 
 app_name = "settings"
@@ -16,14 +17,47 @@ app_name = "settings"
 router = DefaultRouter()
 router.register(r"global-settings", GlobalSettingsViewSet, basename="global-settings")
 router.register(r"store-locations", StoreLocationViewSet, basename="store-locations")
-router.register(r"terminal-registrations", TerminalRegistrationViewSet, basename="terminal-registrations")
-router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
-router.register(r"terminal-locations", TerminalLocationViewSet, basename="terminal-location")
+router.register(
+    r"terminal-registrations",
+    TerminalRegistrationViewSet,
+    basename="terminal-registrations",
+)
+# Custom URL for singleton printer config instead of using the router
+# router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
+router.register(
+    r"terminal-locations", TerminalLocationViewSet, basename="terminal-location"
+)
 
 # The API URLs are now determined automatically by the router.
 urlpatterns = [
     # Include the router-generated URLs
     path("", include(router.urls)),
+    # Custom singleton printer configuration endpoints
+    path(
+        "printer-config/",
+        PrinterConfigurationViewSet.as_view(
+            {
+                "get": "list",
+                "put": "update",
+                "patch": "partial_update",
+                "post": "create",
+            }
+        ),
+        name="printer-config",
+    ),
+    # Custom singleton web order settings endpoints
+    path(
+        "web-order-settings/",
+        WebOrderSettingsViewSet.as_view(
+            {
+                "get": "list",
+                "put": "update",
+                "patch": "partial_update",
+                "post": "create",
+            }
+        ),
+        name="web-order-settings",
+    ),
     path(
         "sync-stripe-locations/",
         SyncStripeLocationsView.as_view(),

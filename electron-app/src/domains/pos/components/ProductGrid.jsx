@@ -9,12 +9,6 @@ import { Package } from "lucide-react";
 const ProductGrid = () => {
 	const filteredProducts = usePosStore((state) => state.filteredProducts);
 
-	console.log(
-		"🎨 ProductGrid - filteredProducts:",
-		filteredProducts?.length || 0
-	);
-	console.log("🎨 ProductGrid - First product sample:", filteredProducts?.[0]);
-
 	const groupedProducts = useMemo(() => {
 		if (!Array.isArray(filteredProducts)) {
 			return {};

@@ -13,29 +13,9 @@ export const createProductSlice = (set, get) => ({
 
 	fetchProducts: async () => {
 		try {
-			console.log("🔄 [ProductSlice] Fetching products from API...");
 			const response = await getProducts();
 			const products = response.data;
-			console.log("✅ [ProductSlice] Products fetched successfully:", {
-				count: products?.length || 0,
-				firstProduct: products?.[0],
-				sampleProductStructure: products?.[0]
-					? {
-							id: products[0].id,
-							name: products[0].name,
-							category: products[0].category,
-							hasCategory: !!products[0].category,
-							categoryStructure: products[0].category
-								? {
-										id: products[0].category.id,
-										name: products[0].category.name,
-										parent_id: products[0].category.parent_id,
-										hasParent: !!products[0].category.parent,
-								  }
-								: null,
-					  }
-					: null,
-			});
+
 			set({
 				products: products,
 				filteredProducts: products,
@@ -52,7 +32,6 @@ export const createProductSlice = (set, get) => ({
 
 	fetchParentCategories: async () => {
 		try {
-			console.log("🔄 [ProductSlice] Fetching parent categories from API...");
 			const response = await getCategories();
 			const allCategories = response.data;
 			const categories = allCategories.filter((cat) => cat.parent_id === null);

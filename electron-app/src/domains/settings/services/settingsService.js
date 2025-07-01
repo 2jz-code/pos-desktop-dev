@@ -70,9 +70,17 @@ export const getTerminalRegistration = async (machineId) => {
 };
 
 export const upsertTerminalRegistration = async (data) => {
-	const { machineId, ...payload } = data;
-	const response = await apiClient.put(
-		`/settings/terminal-registrations/${machineId}/`,
+	// The backend API expects `device_id`, but the hook sends `machineId`.
+	// This function acts as an adapter to map the keys correctly.
+	const payload = {
+		nickname: data.nickname,
+		store_location: data.store_location,
+		reader_id: data.reader_id,
+		device_id: data.machineId, // Map machineId to device_id
+	};
+
+	const response = await apiClient.post(
+		`/settings/terminal-registrations/`,
 		payload
 	);
 	return response.data;

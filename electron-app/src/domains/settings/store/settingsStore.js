@@ -12,9 +12,8 @@ export const useSettingsStore = create(
 			posDeviceId: null,
 			settings: null,
 			isLoading: true,
-			printers: [],
-			receiptPrinterId: null,
-			kitchenZones: [], // REPLACES kitchenPrinterId
+			printers: [], // Local USB printers only (for customer receipts)
+			receiptPrinterId: null, // Selected USB printer for receipts
 
 			fetchSettings: async () => {
 				if (!get().isLoading) set({ isLoading: true });
@@ -58,24 +57,6 @@ export const useSettingsStore = create(
 			},
 			setReceiptPrinterId: (id) => set({ receiptPrinterId: id }),
 
-			// --- NEW KITCHEN ZONE ACTIONS ---
-			addKitchenZone: (zone) => {
-				const newZone = { id: uuidv4(), ...zone };
-				set((state) => ({ kitchenZones: [...state.kitchenZones, newZone] }));
-			},
-			updateKitchenZone: (zoneId, updatedZone) => {
-				set((state) => ({
-					kitchenZones: state.kitchenZones.map((z) =>
-						z.id === zoneId ? { ...z, ...updatedZone } : z
-					),
-				}));
-			},
-			removeKitchenZone: (zoneId) => {
-				set((state) => ({
-					kitchenZones: state.kitchenZones.filter((z) => z.id !== zoneId),
-				}));
-			},
-
 			ensurePosDeviceId: () => {
 				if (!get().posDeviceId) set({ posDeviceId: `pos-${uuidv4()}` });
 			},
@@ -85,9 +66,9 @@ export const useSettingsStore = create(
 			storage: createJSONStorage(() => localStorage),
 			partialize: (state) => ({
 				posDeviceId: state.posDeviceId,
-				printers: state.printers,
+				printers: state.printers, // Only USB printers for receipts
 				receiptPrinterId: state.receiptPrinterId,
-				kitchenZones: state.kitchenZones, // Persist the new zones
+				// Kitchen zones are now managed in the cloud
 			}),
 		}
 	)

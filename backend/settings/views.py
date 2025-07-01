@@ -4,18 +4,20 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from .models import (
-    GlobalSettings, 
-    StoreLocation, 
-    TerminalLocation, 
+    GlobalSettings,
+    StoreLocation,
+    TerminalLocation,
     TerminalRegistration,
-    PrinterConfiguration
+    PrinterConfiguration,
+    WebOrderSettings,
 )
 from .serializers import (
     GlobalSettingsSerializer,
     StoreLocationSerializer,
     TerminalLocationSerializer,
     TerminalRegistrationSerializer,
-    PrinterConfigurationSerializer
+    PrinterConfigurationSerializer,
+    WebOrderSettingsSerializer,
 )
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from payments.strategies import StripeTerminalStrategy
@@ -262,6 +264,7 @@ class PrinterConfigurationViewSet(viewsets.ModelViewSet):
     """
     API endpoint for viewing and editing the singleton PrinterConfiguration object.
     """
+
     queryset = PrinterConfiguration.objects.all()
     serializer_class = PrinterConfigurationSerializer
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
@@ -275,48 +278,144 @@ class PrinterConfigurationViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
+    def create(self, request, *args, **kwargs):
+        # For singleton, redirect create to update
+        return self.update(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        # Handle singleton update without requiring an ID in the URL
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Handle singleton partial update without requiring an ID in the URL
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+
+class WebOrderSettingsViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for viewing and editing the singleton WebOrderSettings object.
+    Manages which terminals should print customer receipts for web orders.
+    """
+
+    queryset = WebOrderSettings.objects.all()
+    serializer_class = WebOrderSettingsSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+
+    def get_object(self):
+        """
+        Always returns the single WebOrderSettings instance.
+        """
+        obj, created = WebOrderSettings.objects.get_or_create(pk=1)
+        return obj
+
+    def list(self, request, *args, **kwargs):
+        """
+        Handle GET requests for the list view.
+        Since this is a singleton, this will retrieve the single settings object.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """
+        For singleton, redirect create to update.
+        """
+        return self.update(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Handle PUT/PATCH requests to update settings.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Handle PATCH requests for partial updates.
+        """
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
 
 class TerminalRegistrationViewSet(viewsets.ModelViewSet):
     """
     API endpoint for managing Terminal Registrations.
     This replaces the old POSDeviceViewSet.
     """
+
     queryset = TerminalRegistration.objects.all()
     serializer_class = TerminalRegistrationSerializer
     lookup_field = "device_id"
 
     def perform_create(self, serializer):
         """
-        Creates or updates a terminal registration.
-        If a device_id already exists, it updates the record.
+        Saves the serializer instance.
         """
-        device_id = serializer.validated_data.get("device_id")
-        instance, created = TerminalRegistration.objects.update_or_create(
-            device_id=device_id,
-            defaults=serializer.validated_data
-        )
-        # update_or_create returns the object and a boolean `created`
-        # We can use this to return a 201 or 200 status code.
-        self.instance = instance # Set instance for response
-        self.created = created
+        serializer.save()
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        """
+        Creates or updates a terminal registration (UPSERT).
+        This method is designed to be called via a POST request.
+        """
+        # The device_id is expected in the request data
+        device_id = request.data.get("device_id")
+        if not device_id:
+            return Response(
+                {"device_id": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the instance if it exists, otherwise None
+        instance = self.get_queryset().filter(device_id=device_id).first()
+
+        # When creating, partial=False. When updating, partial=True.
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=instance is not None
+        )
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        
-        headers = self.get_success_headers(serializer.data)
-        status_code = status.HTTP_201_CREATED if self.created else status.HTTP_200_OK
-        
-        # We need to re-serialize the instance to include all fields
-        response_serializer = self.get_serializer(self.instance)
-        return Response(response_serializer.data, status=status_code, headers=headers)
+
+        # Determine the status code based on whether an instance was updated or created
+        status_code = status.HTTP_200_OK if instance else status.HTTP_201_CREATED
+        headers = (
+            self.get_success_headers(serializer.data)
+            if status_code == status.HTTP_201_CREATED
+            else {}
+        )
+
+        return Response(serializer.data, status=status_code, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Handles standard updates for a terminal registration.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 class StoreLocationViewSet(viewsets.ModelViewSet):
     """
     API endpoint for managing primary Store Locations.
     """
+
     queryset = StoreLocation.objects.all()
     serializer_class = StoreLocationSerializer
 
@@ -328,14 +427,20 @@ class StoreLocationViewSet(viewsets.ModelViewSet):
         location = self.get_object()
         location.is_default = True
         location.save()
-        return Response({"status": "success", "message": f"'{location.name}' is now the default store location."})
+        return Response(
+            {
+                "status": "success",
+                "message": f"'{location.name}' is now the default store location.",
+            }
+        )
 
 
 class TerminalLocationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Stripe Terminal Locations to be viewed.
     """
-    queryset = TerminalLocation.objects.select_related('store_location').all()
+
+    queryset = TerminalLocation.objects.select_related("store_location").all()
     serializer_class = TerminalLocationSerializer
 
 
@@ -344,11 +449,12 @@ class TerminalReaderListView(APIView):
     API endpoint to list available Stripe Terminal Readers.
     Can be filtered by a Stripe location ID.
     """
+
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
     def get(self, request, *args, **kwargs):
-        location_id = request.query_params.get('location_id', None)
-        
+        location_id = request.query_params.get("location_id", None)
+
         try:
             strategy = StripeTerminalStrategy()
             readers = strategy.list_readers(location_id=location_id)
@@ -357,7 +463,7 @@ class TerminalReaderListView(APIView):
             # Consider more specific error handling for Stripe errors
             return Response(
                 {"error": f"Failed to retrieve readers from Stripe: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 

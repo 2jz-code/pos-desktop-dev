@@ -14,7 +14,10 @@ const validInvokeChannels = [
 	"discover-printers",
 	"print-receipt",
 	"open-cash-drawer",
-	"print-kitchen-ticket", // <-- ADD THIS LINE
+	"get-session-cookies",
+	"get-machine-id",
+	"print-kitchen-ticket",
+	"test-network-printer",
 ];
 
 // Database and sync channels removed - moving to online-only architecture

@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { QueryProvider } from "../providers/QueryProvider";
+import globalNotificationService from "@/shared/lib/globalNotificationService";
 
 // Import from domains using new structure
 import { useCustomerTipListener } from "@/domains/pos";
@@ -37,23 +38,43 @@ import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
  * This is the root component that sets up all the providers
  * and runs the one-time application initialization logic.
  */
-function App() {
-	// This hook will run ONCE when the app component mounts.
+function AppContent() {
+	const { isAuthenticated } = useAuth();
+
 	useEffect(() => {
 		console.log("App mounted. Running initialization logic...");
-		// 1. Ensure a device ID exists after the store has been hydrated from localStorage.
-		useSettingsStore.getState().ensurePosDeviceId();
-		// 2. Fetch global settings from the server.
-		useSettingsStore.getState().fetchSettings();
-	}, []); // The empty dependency array `[]` is crucial. It ensures this runs only once.
 
+		useSettingsStore.getState().ensurePosDeviceId();
+		useSettingsStore.getState().fetchSettings();
+
+		if (isAuthenticated) {
+			console.log(
+				"User is authenticated, initializing GlobalNotificationService."
+			);
+			globalNotificationService.initialize();
+		}
+
+		return () => {
+			if (globalNotificationService.isInitialized) {
+				console.log("App unmounting, disconnecting GlobalNotificationService.");
+				globalNotificationService.disconnect();
+			}
+		};
+	}, [isAuthenticated]);
+
+	return (
+		<Router>
+			<AppRoutes />
+			<Toaster />
+		</Router>
+	);
+}
+
+function App() {
 	return (
 		<AuthProvider>
 			<QueryProvider>
-				<Router>
-					<AppRoutes />
-					<Toaster />
-				</Router>
+				<AppContent />
 			</QueryProvider>
 		</AuthProvider>
 	);

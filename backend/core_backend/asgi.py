@@ -14,6 +14,7 @@ from channels.auth import AuthMiddlewareStack
 from django.core.asgi import get_asgi_application
 
 import orders.routing
+import notifications.routing
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core_backend.settings")
 
@@ -21,11 +22,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core_backend.settings")
 # before importing code that may import ORM models.
 django_asgi_app = get_asgi_application()
 
+# Combine WebSocket URL patterns from all apps
+websocket_urlpatterns = (
+    orders.routing.websocket_urlpatterns + notifications.routing.websocket_urlpatterns
+)
+
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
-        "websocket": AuthMiddlewareStack(
-            URLRouter(orders.routing.websocket_urlpatterns)
-        ),
+        "websocket": AuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
     }
 )

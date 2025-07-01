@@ -1,6 +1,9 @@
 import { loadStripeTerminal } from "@stripe/terminal-js";
 import apiClient from "./apiClient";
-import { getTerminalLocations } from "@/domains/settings/services/settingsService";
+import {
+	getTerminalLocations,
+	getTerminalRegistration,
+} from "@/domains/settings/services/settingsService";
 
 /**
  * A singleton service to manage the Stripe Terminal instance and interactions.
@@ -241,6 +244,70 @@ const StripeTerminalService = {
 				connectedReader: connectResult.reader,
 				message: "Connected.",
 			});
+			return connectResult.reader;
+		}
+	},
+
+	/**
+	 * A smart-connect method that first tries to connect to a saved reader,
+	 * and falls back to discovery if no reader is saved or available.
+	 */
+	async autoConnect() {
+		console.log("[autoConnect] 1. Starting smart connection process.");
+		try {
+			const deviceId = window.electronAPI.getMachineId();
+			const registration = await getTerminalRegistration(deviceId);
+			const savedReaderId = registration?.reader_id;
+
+			if (savedReaderId) {
+				console.log(
+					`[autoConnect] 2. Found saved reader ID: ${savedReaderId}. Attempting direct connection.`
+				);
+				this._listeners.onUpdate?.({
+					message: `Found saved reader ${savedReaderId}. Connecting...`,
+				});
+				// We need to discover it first to get the full reader object
+				await this.discoverReaders();
+				const readers = this.getDiscoveredReaders();
+				const readerToConnect = readers.find((r) => r.id === savedReaderId);
+
+				if (readerToConnect) {
+					console.log(
+						"[autoConnect] 3. Reader is available. Connecting directly."
+					);
+					return await this.connectToReader(readerToConnect);
+				} else {
+					console.warn(
+						"[autoConnect] 3. Saved reader not found in discovery. Falling back."
+					);
+					this._listeners.onUpdate?.({
+						message:
+							"Saved reader not found. Please select from available readers.",
+						readers: readers, // Show the list of other available readers
+					});
+					return null;
+				}
+			} else {
+				console.log(
+					"[autoConnect] 2. No saved reader ID. Initiating discovery."
+				);
+				await this.discoverReaders();
+				return null; // No reader to auto-connect to
+			}
+		} catch (error) {
+			if (error.response?.status === 404) {
+				// This is a new device, no registration exists. Fallback to discovery.
+				console.log(
+					"[autoConnect] New device detected (no registration). Falling back to discovery."
+				);
+				await this.discoverReaders();
+				return null;
+			}
+			console.error("[autoConnect] Error during auto-connect:", error);
+			this._listeners.onUpdate?.({
+				error: "An error occurred during connection.",
+			});
+			return null;
 		}
 	},
 

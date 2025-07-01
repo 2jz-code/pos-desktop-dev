@@ -8,6 +8,7 @@ import {
 } from "../services/settingsService";
 import { useEffect, useState } from "react";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { CategoryMultiSelect } from "./CategoryMultiSelect";
 
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -27,8 +28,8 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { Input } from "@/shared/components/ui/input";
-import { toast } from "sonner";
-import { Trash2, PlusCircle, Usb } from "lucide-react";
+import { useToast } from "@/shared/components/ui/use-toast";
+import { Trash2, PlusCircle, Usb, Wifi } from "lucide-react";
 import {
 	Card,
 	CardContent,
@@ -46,9 +47,8 @@ const printerSchema = z.object({
 const zoneSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	printer_name: z.string().min(1, "A printer must be selected"),
-	// A more robust solution would involve fetching categories and using a multi-select component.
-	// For now, we'll use a string for simplicity. The backend can parse this.
-	category_ids_str: z.string().optional(),
+	// Now using proper array of category IDs with CategoryMultiSelect component
+	category_ids: z.array(z.number()).optional(),
 });
 
 const formSchema = z.object({
@@ -67,6 +67,50 @@ export function PrinterSettings() {
 		null
 	);
 	const queryClient = useQueryClient();
+	const { toast } = useToast();
+
+	const handleTestPrinter = async (ip_address) => {
+		if (!ip_address) {
+			toast({
+				title: "IP Address Missing",
+				description: "Please enter an IP address before testing.",
+				variant: "warning",
+			});
+			return;
+		}
+
+		toast({
+			title: "Testing Connection",
+			description: `Pinging printer at ${ip_address}...`,
+		});
+
+		try {
+			const result = await window.hardwareApi.invoke("test-network-printer", {
+				ip_address,
+			});
+
+			if (result.success) {
+				toast({
+					title: "Connection Successful!",
+					description: result.message,
+					variant: "success",
+				});
+			} else {
+				toast({
+					title: "Connection Failed",
+					description: result.error,
+					variant: "destructive",
+				});
+			}
+		} catch (error) {
+			toast({
+				title: "An unexpected error occurred",
+				description: error.message,
+				variant: "destructive",
+			});
+			console.error("Error testing printer:", error);
+		}
+	};
 
 	const { data: config, isLoading } = useQuery({
 		queryKey: ["printerConfig"],
@@ -94,10 +138,19 @@ export function PrinterSettings() {
 		mutationFn: updatePrinterConfig,
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["printerConfig"] });
-			toast.success("Printer configuration updated successfully!");
+			queryClient.invalidateQueries({ queryKey: ["kitchen-zones-cloud"] });
+
+			toast({
+				title: "Success!",
+				description: "Printer configuration updated successfully!",
+			});
 		},
 		onError: (error) => {
-			toast.error(`Failed to update printer config: ${error.message}`);
+			toast({
+				title: "Update Failed",
+				description: `Failed to update printer config: ${error.message}`,
+				variant: "destructive",
+			});
 		},
 	});
 
@@ -109,7 +162,7 @@ export function PrinterSettings() {
 			kitchen_zones:
 				config?.kitchen_zones.map((z) => ({
 					...z,
-					category_ids_str: z.category_ids?.join(",") || "",
+					category_ids: z.category_ids || [],
 				})) || [],
 		},
 		disabled: isLoading || mutation.isPending,
@@ -136,24 +189,32 @@ export function PrinterSettings() {
 	const kitchenPrinters = form.watch("kitchen_printers");
 
 	const onSubmit = (values) => {
-		// Convert category_ids_str back to an array of numbers for the backend
 		const payload = {
-			...values,
+			receipt_printers: values.receipt_printers.map((p) => ({
+				name: p.name.trim(),
+				ip_address: p.ip_address.trim(),
+			})),
+			kitchen_printers: values.kitchen_printers.map((p) => ({
+				name: p.name.trim(),
+				ip_address: p.ip_address.trim(),
+			})),
 			kitchen_zones: values.kitchen_zones.map((z) => ({
-				name: z.name,
-				printer_name: z.printer_name,
-				category_ids: z.category_ids_str
-					.split(",")
-					.map((id) => parseInt(id.trim(), 10))
-					.filter((id) => !isNaN(id)),
+				name: z.name.trim(),
+				printer_name: z.printer_name.trim(),
+				category_ids: z.category_ids || [],
 			})),
 		};
+
+		console.log("Saving printer configuration payload:", payload);
 		mutation.mutate(payload);
 	};
 
 	const handleScanPrinters = async () => {
 		setIsScanning(true);
-		toast.info("Scanning for local USB printers...");
+		toast({
+			title: "Scanning for local USB printers",
+			description: "Please wait while we scan for local USB printers...",
+		});
 		try {
 			const scannedPrinters = await window.hardwareApi.invoke(
 				"discover-printers"
@@ -169,13 +230,22 @@ export function PrinterSettings() {
 			});
 
 			if (scannedPrinters.length > 0) {
-				toast.success(`Found ${scannedPrinters.length} local printer(s).`);
+				toast({
+					title: "Printers Found",
+					description: `Found ${scannedPrinters.length} local printer(s).`,
+				});
 			} else {
-				toast.warning("No new local USB printers found on scan.");
+				toast({
+					title: "No New Printers Found",
+					description: "No new local USB printers were found on this scan.",
+					variant: "warning",
+				});
 			}
 		} catch (error) {
-			toast.error("Failed to scan for printers", {
+			toast({
+				title: "Failed to scan for printers",
 				description: error.message,
+				variant: "destructive",
 			});
 			console.error(error);
 		} finally {
@@ -261,16 +331,19 @@ export function PrinterSettings() {
 									{kitchenFields.map((field, index) => (
 										<div
 											key={field.id}
-											className="flex items-end gap-4 p-4 border rounded-lg"
+											className="grid grid-cols-1 md:grid-cols-4 items-end gap-4 p-4 border rounded-lg"
 										>
 											<FormField
 												name={`kitchen_printers.${index}.name`}
 												control={form.control}
 												render={({ field }) => (
-													<FormItem className="flex-1">
-														<FormLabel>Name</FormLabel>
+													<FormItem className="md:col-span-1">
+														<FormLabel>Printer Name</FormLabel>
 														<FormControl>
-															<Input {...field} />
+															<Input
+																{...field}
+																placeholder="e.g., Kitchen"
+															/>
 														</FormControl>
 														<FormMessage />
 													</FormItem>
@@ -280,23 +353,38 @@ export function PrinterSettings() {
 												name={`kitchen_printers.${index}.ip_address`}
 												control={form.control}
 												render={({ field }) => (
-													<FormItem className="flex-1">
+													<FormItem className="md:col-span-2">
 														<FormLabel>IP Address</FormLabel>
-														<FormControl>
-															<Input {...field} />
-														</FormControl>
+														<div className="flex items-center gap-2">
+															<FormControl>
+																<Input
+																	{...field}
+																	placeholder="e.g., 192.168.1.100"
+																/>
+															</FormControl>
+															<Button
+																type="button"
+																variant="outline"
+																size="icon"
+																onClick={() => handleTestPrinter(field.value)}
+															>
+																<Wifi className="h-4 w-4" />
+															</Button>
+														</div>
 														<FormMessage />
 													</FormItem>
 												)}
 											/>
-											<Button
-												type="button"
-												variant="destructive"
-												size="icon"
-												onClick={() => removeKitchen(index)}
-											>
-												<Trash2 className="h-4 w-4" />
-											</Button>
+
+											<div className="flex justify-end">
+												<Button
+													type="button"
+													variant="destructive"
+													onClick={() => removeKitchen(index)}
+												>
+													<Trash2 className="h-4 w-4" />
+												</Button>
+											</div>
 										</div>
 									))}
 								</div>
@@ -371,20 +459,25 @@ export function PrinterSettings() {
 													</FormItem>
 												)}
 											/>
-											{/* Category IDs input can be simplified or improved later */}
+											{/* Category selection with multi-select dropdown */}
 											<div className="flex items-end gap-2">
 												<FormField
-													name={`kitchen_zones.${index}.category_ids_str`}
+													name={`kitchen_zones.${index}.category_ids`}
 													control={form.control}
 													render={({ field }) => (
 														<FormItem className="flex-1">
-															<FormLabel>Category IDs</FormLabel>
+															<FormLabel>Categories</FormLabel>
 															<FormControl>
-																<Input
-																	{...field}
-																	placeholder="e.g. 1,5,8"
+																<CategoryMultiSelect
+																	value={field.value || []}
+																	onChange={field.onChange}
+																	placeholder="Select categories for this zone..."
 																/>
 															</FormControl>
+															<FormDescription>
+																Select which product categories should print to
+																this zone
+															</FormDescription>
 															<FormMessage />
 														</FormItem>
 													)}
@@ -410,7 +503,7 @@ export function PrinterSettings() {
 										appendZone({
 											name: "",
 											printer_name: "",
-											category_ids_str: "",
+											category_ids: [],
 										})
 									}
 								>

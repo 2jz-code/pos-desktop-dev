@@ -9,8 +9,10 @@ const validInvokeChannels = [
   "discover-printers",
   "print-receipt",
   "open-cash-drawer",
-  "print-kitchen-ticket"
-  // <-- ADD THIS LINE
+  "get-session-cookies",
+  "get-machine-id",
+  "print-kitchen-ticket",
+  "test-network-printer"
 ];
 contextBridge.exposeInMainWorld("electronAPI", {
   // --- Main API Bridge ---

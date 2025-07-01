@@ -303,6 +303,57 @@ ipcMain.handle(
 	}
 );
 
+ipcMain.handle("test-network-printer", async (event, { ip_address }) => {
+	console.log(
+		`\n--- [Main Process] TESTING NETWORK PRINTER at: ${ip_address} ---`
+	);
+	try {
+		if (!ip_address) {
+			throw new Error("No IP address provided for testing.");
+		}
+
+		const thermalPrinter = require("node-thermal-printer");
+		const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
+
+		let printerInstance = new ThermalPrinter({
+			type: PrinterTypes.EPSON,
+			interface: `tcp://${ip_address}`,
+			timeout: 3000, // Shorter timeout for a quick test
+		});
+
+		const isConnected = await printerInstance.isPrinterConnected();
+
+		if (isConnected) {
+			console.log(`SUCCESS: Connection to ${ip_address} is OK.`);
+			// Optional: print a tiny test message
+			printerInstance.println("Connection Test OK");
+			printerInstance.cut();
+			await printerInstance.execute();
+			return {
+				success: true,
+				message: `Successfully connected to ${ip_address}. A test slip may have been printed.`,
+			};
+		} else {
+			// This else block might not be hit if isPrinterConnected throws on failure.
+			// It's here for logical completeness.
+			throw new Error("Connection failed. The printer did not respond.");
+		}
+	} catch (error) {
+		console.error(`ERROR: Could not connect to printer at ${ip_address}.`);
+		console.error(error);
+		// Provide a more user-friendly error message
+		let errorMessage = error.message;
+		if (error.message.includes("timed out")) {
+			errorMessage =
+				"Connection timed out. Check the IP address and ensure the printer is on the same network.";
+		} else if (error.message.includes("ECONNREFUSED")) {
+			errorMessage =
+				"Connection refused. The printer is reachable but is not accepting connections on this port.";
+		}
+		return { success: false, error: errorMessage };
+	}
+});
+
 ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
 	console.log("\n--- [Main Process] Using HYBRID open-drawer method ---");
 	try {

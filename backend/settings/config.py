@@ -96,11 +96,21 @@ class AppSettings:
             self.default_store_location = settings_obj.default_store_location
 
             # === WEB ORDER NOTIFICATION SETTINGS ===
-            self.enable_web_order_notifications: bool = settings_obj.enable_web_order_notifications
-            self.web_order_notification_sound: str = settings_obj.web_order_notification_sound
-            self.web_order_auto_print_receipt: bool = settings_obj.web_order_auto_print_receipt
-            self.web_order_auto_print_kitchen: bool = settings_obj.web_order_auto_print_kitchen
-            self.default_inventory_location_id: int | None = settings_obj.default_inventory_location_id
+            self.enable_web_order_notifications: bool = (
+                settings_obj.enable_web_order_notifications
+            )
+            self.web_order_notification_sound: str = (
+                settings_obj.web_order_notification_sound
+            )
+            self.web_order_auto_print_receipt: bool = (
+                settings_obj.web_order_auto_print_receipt
+            )
+            self.web_order_auto_print_kitchen: bool = (
+                settings_obj.web_order_auto_print_kitchen
+            )
+            self.default_inventory_location_id: int | None = (
+                settings_obj.default_inventory_location_id
+            )
 
             if created:
                 print("Created default GlobalSettings instance")
@@ -114,10 +124,15 @@ class AppSettings:
     def _load_printer_config(self) -> None:
         """Load printer configurations from the singleton PrinterConfiguration model."""
         from .models import PrinterConfiguration
+
         try:
             printer_config, created = PrinterConfiguration.objects.get_or_create(pk=1)
-            self.receipt_printers: List[Dict[str, Any]] = printer_config.receipt_printers
-            self.kitchen_printers: List[Dict[str, Any]] = printer_config.kitchen_printers
+            self.receipt_printers: List[Dict[str, Any]] = (
+                printer_config.receipt_printers
+            )
+            self.kitchen_printers: List[Dict[str, Any]] = (
+                printer_config.kitchen_printers
+            )
             self.kitchen_zones: List[Dict[str, Any]] = printer_config.kitchen_zones
             if created:
                 print("Created default PrinterConfiguration instance")
@@ -145,23 +160,23 @@ class AppSettings:
             # Import here to avoid circular imports
             from inventory.models import Location
             from .models import GlobalSettings
-            
+
             # Create a default location if none exists
             default_location, created = Location.objects.get_or_create(
                 name="Main Store",
-                defaults={"description": "Default main store location"}
+                defaults={"description": "Default main store location"},
             )
-            
+
             # Update the settings to use this location
             settings_obj = GlobalSettings.objects.get(pk=1)
             settings_obj.default_inventory_location = default_location
             settings_obj.save()
-            
+
             self.default_inventory_location = default_location
-            
+
             if created:
                 print("Created default inventory location: Main Store")
-        
+
         return self.default_inventory_location
 
     def get_default_store_location(self):
@@ -171,24 +186,30 @@ class AppSettings:
         """
         if self.default_store_location is None:
             from .models import StoreLocation, GlobalSettings
-            
+
             # Create or get a default store location
             default_location, created = StoreLocation.objects.get_or_create(
-                is_default=True,
-                defaults={"name": "Main Location"}
+                is_default=True, defaults={"name": "Main Location"}
             )
-            
+
             # Update the global settings to use this new location
             settings_obj = GlobalSettings.objects.get(pk=1)
             settings_obj.default_store_location = default_location
             settings_obj.save()
-            
+
             self.default_store_location = default_location
-            
+
             if created:
                 print("Created default store location: Main Location")
-        
+
         return self.default_store_location
+
+    def get_default_location(self):
+        """
+        Backwards compatibility method for inventory system.
+        Returns the default inventory location.
+        """
+        return self.get_default_inventory_location()
 
     def get_store_info(self) -> dict:
         """

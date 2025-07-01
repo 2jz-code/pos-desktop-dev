@@ -2,10 +2,18 @@ from django.dispatch import Signal
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Order
+from .serializers import OrderSerializer  # Import the serializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Custom signals for order events
 order_needs_recalculation = Signal()
 payment_completed = Signal()
+
+# Custom signals that other apps can listen to
+web_order_ready_for_notification = Signal()
+web_order_paid = Signal()
 
 # This file will contain all order-related signal receivers
 
@@ -41,28 +49,58 @@ def handle_payment_completion(sender, **kwargs):
 
 
 @receiver(post_save, sender=Order)
-def handle_order_completion(sender, instance, created, **kwargs):
+def handle_order_completion_inventory(sender, instance, created, **kwargs):
     """
-    Handles inventory deduction when an order is completed.
+    Handles inventory deduction when any order is completed.
     This receiver listens for Order model post_save signals.
     """
-    # Only process if this is an update (not creation) and status is COMPLETED
-    if not created and instance.status == Order.OrderStatus.COMPLETED:
-        # Import here to avoid circular imports
+    if instance.status == Order.OrderStatus.COMPLETED and not created:
         from inventory.services import InventoryService
-        
+
         try:
             InventoryService.process_order_completion(instance)
+            logger.info(
+                f"Inventory processed for completed order {instance.order_number}"
+            )
         except Exception as e:
-            # Log the error but don't prevent the order from completing
-            print(f"Failed to process inventory for order {instance.id}: {e}")
+            logger.error(f"Failed to process inventory for order {instance.id}: {e}")
 
-        # --- NEW: Handle web order notifications ---
-        if instance.order_type == Order.OrderType.WEB:
-            # This service handles real-time notifications and auto-printing for web orders.
-            from .services import web_order_notification_service
-            try:
-                web_order_notification_service.handle_web_order_completion(instance)
-            except Exception as e:
-                # Log the error but don't disrupt the main order flow
-                print(f"Failed to send web order notification for order {instance.id}: {e}")
+
+@receiver(post_save, sender=Order)
+def handle_web_order_notifications(sender, instance, created, **kwargs):
+    """
+    Broadcasts a signal with serialized order data when a web order is completed.
+    This keeps the order business logic in the orders app and uses a serializer
+    for a robust data contract.
+    """
+    # Only handle completed web orders
+    if (
+        instance.order_type != Order.OrderType.WEB
+        or instance.status != Order.OrderStatus.COMPLETED
+    ):
+        return
+
+    # To ensure we are broadcasting an event only when the order is first marked as completed,
+    # we can check the 'update_fields' if available (it's not always present).
+    # A more reliable way is often to check previous state, but for now this is a good guard.
+    if kwargs.get("update_fields") and "status" not in kwargs["update_fields"]:
+        return
+
+    logger.info(
+        f"Broadcasting 'web_order_ready_for_notification' for order {instance.order_number}"
+    )
+
+    # Use the OrderSerializer to create a robust data payload
+    serialized_data = OrderSerializer(instance).data
+
+    # Broadcast the custom signal for other apps to listen to
+    web_order_ready_for_notification.send(
+        sender=Order,
+        order_id=instance.id,
+        order_number=instance.order_number,
+        order_data=serialized_data,  # Pass the serialized data
+    )
+
+    logger.info(
+        f"Web order notification event broadcasted for order {instance.order_number}"
+    )

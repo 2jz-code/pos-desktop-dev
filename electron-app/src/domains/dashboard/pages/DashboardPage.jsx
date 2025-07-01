@@ -32,7 +32,7 @@ const ProfessionalDashboardCard = ({
 	to,
 	title,
 	description,
-	icon: IconComponent,
+	icon: IconComponent, // eslint-disable-line
 	roleRequired = false,
 }) => (
 	<Link
@@ -75,7 +75,9 @@ const ProfessionalDashboardCard = ({
 );
 
 // Professional Stats Card Component
-const StatsCard = ({ icon: IconComponent, label, value, status }) => (
+const StatsCard = (
+	{ icon: IconComponent, label, value, status } // eslint-disable-line
+) => (
 	<Card className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
 		<CardContent className="p-4">
 			<div className="flex items-center justify-between">

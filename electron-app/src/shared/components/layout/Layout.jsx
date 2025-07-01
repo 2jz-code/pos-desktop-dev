@@ -18,6 +18,9 @@ import {
 	Settings,
 	CreditCard,
 	Warehouse,
+	Bell,
+	Wifi,
+	WifiOff,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -33,6 +36,12 @@ import {
 	SheetContent,
 	SheetTrigger,
 } from "@/shared/components/ui/sheet";
+import { Badge } from "@/shared/components/ui/badge";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import PropTypes from "prop-types";
 import { useState, useEffect } from "react";
 import { cn } from "@/shared/lib/utils";
@@ -40,6 +49,8 @@ import {
 	useSyncToCustomerDisplay,
 	useCustomerTipListener,
 } from "@/domains/pos";
+import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
+import WebOrderNotification from "@/shared/components/notifications/WebOrderNotification";
 
 //eslint-disable-next-line
 function NavLink({ to, icon: Icon, children, isCollapsed }) {
@@ -76,6 +87,16 @@ export function Layout({ children }) {
 	const [isCollapsed, setIsCollapsed] = useState(
 		JSON.parse(localStorage.getItem("sidebar-collapsed")) || false
 	);
+
+	// Initialize notification system
+	const {
+		notifications,
+		// connectionStatus, // Available for future debugging/logging
+		dismissNotification,
+		handleViewOrder,
+		isConnected,
+		isConnecting,
+	} = useNotificationManager();
 
 	useSyncToCustomerDisplay();
 	useCustomerTipListener();
@@ -334,6 +355,58 @@ export function Layout({ children }) {
 						{/* Search bar can be added here */}
 					</div>
 
+					{/* Notification & Connection Status */}
+					<div className="flex items-center gap-2">
+						{/* Connection Status Indicator */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div className="flex items-center">
+									{isConnected ? (
+										<Wifi className="h-4 w-4 text-green-600 dark:text-green-400" />
+									) : isConnecting ? (
+										<Wifi className="h-4 w-4 text-yellow-600 dark:text-yellow-400 animate-pulse" />
+									) : (
+										<WifiOff className="h-4 w-4 text-red-600 dark:text-red-400" />
+									)}
+								</div>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>
+									Notifications:{" "}
+									{isConnected
+										? "Connected"
+										: isConnecting
+										? "Connecting..."
+										: "Disconnected"}
+								</p>
+							</TooltipContent>
+						</Tooltip>
+
+						{/* Notification Bell */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="relative hover:bg-slate-100 dark:hover:bg-slate-800"
+								>
+									<Bell className="h-4 w-4" />
+									{notifications.length > 0 && (
+										<Badge
+											variant="destructive"
+											className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+										>
+											{notifications.length}
+										</Badge>
+									)}
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>{notifications.length} active notifications</p>
+							</TooltipContent>
+						</Tooltip>
+					</div>
+
 					{/* User Menu */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -383,6 +456,22 @@ export function Layout({ children }) {
 					{children}
 				</main>
 			</div>
+
+			{/* Floating Notifications */}
+			{notifications.map((notification) => {
+				if (notification.type === "web_order") {
+					return (
+						<WebOrderNotification
+							key={notification.id}
+							order={notification.order}
+							onDismiss={() => dismissNotification(notification.id)}
+							onViewOrder={handleViewOrder}
+							autoHideDelay={10000}
+						/>
+					);
+				}
+				return null;
+			})}
 		</div>
 	);
 }

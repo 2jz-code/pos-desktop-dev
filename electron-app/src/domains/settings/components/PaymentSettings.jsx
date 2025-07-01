@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
@@ -42,6 +42,21 @@ export function PaymentSettings() {
 		queryKey: ["globalSettings"],
 		queryFn: getGlobalSettings,
 	});
+
+	// --- DIAGNOSTIC LOG ---
+	// This will print the settings object to the developer console when it loads.
+	useEffect(() => {
+		if (globalSettings) {
+			console.log(
+				"[Debug] PaymentSettings - Global Settings Loaded:",
+				globalSettings
+			);
+			console.log(
+				"[Debug] Active Terminal Provider from Backend:",
+				globalSettings.active_terminal_provider
+			);
+		}
+	}, [globalSettings]);
 
 	const {
 		data: terminalLocations,
