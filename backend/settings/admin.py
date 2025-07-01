@@ -37,18 +37,6 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Web Order Notifications",
-            {
-                "fields": (
-                    "enable_web_order_notifications",
-                    "web_order_auto_print_receipt",
-                    "web_order_auto_print_kitchen",
-                    "web_order_notification_sound",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-        (
             "Business Hours",
             {
                 "fields": ("opening_time", "closing_time", "timezone"),

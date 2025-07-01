@@ -7,6 +7,8 @@ from django.db.models.signals import post_save
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from datetime import datetime
+from decimal import Decimal
+from uuid import UUID
 
 # Import the custom signal from orders app
 from orders.signals import web_order_ready_for_notification
@@ -15,6 +17,22 @@ from settings.models import GlobalSettings, WebOrderSettings
 
 logger = logging.getLogger(__name__)
 channel_layer = get_channel_layer()
+
+
+def convert_payload_to_str(data):
+    """
+    Recursively converts UUID and Decimal objects in a data structure to strings.
+    This prepares the payload for default JSON serialization by the channels library.
+    """
+    if isinstance(data, dict):
+        return {k: convert_payload_to_str(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_payload_to_str(elem) for elem in data]
+    elif isinstance(data, UUID):
+        return str(data)
+    elif isinstance(data, Decimal):
+        return str(data)
+    return data
 
 
 @receiver(payment_completed)
@@ -100,6 +118,9 @@ def handle_web_order_notification(sender, **kwargs):
             },
         }
 
+        # Ensure the entire payload is serializable before sending to channels
+        serializable_payload = convert_payload_to_str(notification_payload)
+
         # Send WebSocket notifications to selected terminals
         for terminal in selected_terminals:
             terminal_group = f"terminal_{terminal.device_id}"
@@ -107,7 +128,7 @@ def handle_web_order_notification(sender, **kwargs):
             try:
                 async_to_sync(channel_layer.group_send)(
                     terminal_group,
-                    {"type": "web_order_notification", "data": notification_payload},
+                    {"type": "web_order_notification", "data": serializable_payload},
                 )
                 logger.info(f"Notification sent to terminal {terminal.device_id}")
             except Exception as e:

@@ -12,6 +12,7 @@ import {
 	formatOpenCashDrawer,
 	formatKitchenTicket,
 } from "./receipt-formatter.js";
+import sound from "sound-play";
 // Offline services removed - moving to online-only architecture
 
 const __filename = fileURLToPath(import.meta.url);
@@ -105,6 +106,21 @@ ipcMain.on("from-customer-display", (event, { channel, data }) => {
 ipcMain.on("CUSTOMER_REQUESTS_STATE", (event) => {
 	if (lastKnownState) {
 		event.sender.send("POS_TO_CUSTOMER_STATE", lastKnownState);
+	}
+});
+
+// === Sound Notification Handler ===
+ipcMain.handle("play-notification-sound", async (event, soundFile) => {
+	try {
+		const soundName = soundFile || "notification.wav"; // Default sound
+		const soundPath = path.join(process.env.PUBLIC, "sounds", soundName);
+
+		console.log(`[IPC] Attempting to play sound: ${soundPath}`);
+		await sound.play(soundPath);
+		return { success: true };
+	} catch (error) {
+		console.error("[IPC] Error playing sound:", error);
+		return { success: false, error: error.message };
 	}
 });
 

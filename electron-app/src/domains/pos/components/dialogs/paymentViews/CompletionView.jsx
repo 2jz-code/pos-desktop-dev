@@ -14,7 +14,7 @@ import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
 
 const CompletionView = ({ order, changeDue, onClose }) => {
 	const resetCart = usePosStore((state) => state.resetCart);
-	// Keep USB printer config for receipt printing
+	// --- FIX: Get both printers and the selected ID from the same store ---
 	const printers = useSettingsStore((state) => state.printers);
 	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 

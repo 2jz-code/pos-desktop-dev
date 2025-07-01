@@ -383,28 +383,48 @@ export function Layout({ children }) {
 						</Tooltip>
 
 						{/* Notification Bell */}
-						<Tooltip>
-							<TooltipTrigger asChild>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
 								<Button
-									variant="ghost"
+									variant="outline"
 									size="icon"
-									className="relative hover:bg-slate-100 dark:hover:bg-slate-800"
+									className="relative border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
 								>
 									<Bell className="h-4 w-4" />
 									{notifications.length > 0 && (
-										<Badge
-											variant="destructive"
-											className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-										>
+										<Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
 											{notifications.length}
 										</Badge>
 									)}
 								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>{notifications.length} active notifications</p>
-							</TooltipContent>
-						</Tooltip>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								align="end"
+								className="w-[350px]"
+							>
+								<DropdownMenuLabel>Web Order Notifications</DropdownMenuLabel>
+								<DropdownMenuSeparator />
+								{notifications.length > 0 ? (
+									notifications.map((notification) => (
+										<DropdownMenuItem
+											key={notification.id}
+											className="p-0"
+											onSelect={(e) => e.preventDefault()}
+										>
+											<WebOrderNotification
+												order={notification.data.order}
+												onDismiss={() => dismissNotification(notification.id)}
+												onViewOrder={handleViewOrder}
+											/>
+										</DropdownMenuItem>
+									))
+								) : (
+									<div className="p-4 text-sm text-center text-slate-500">
+										No new notifications
+									</div>
+								)}
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
 
 					{/* User Menu */}
@@ -456,22 +476,6 @@ export function Layout({ children }) {
 					{children}
 				</main>
 			</div>
-
-			{/* Floating Notifications */}
-			{notifications.map((notification) => {
-				if (notification.type === "web_order") {
-					return (
-						<WebOrderNotification
-							key={notification.id}
-							order={notification.order}
-							onDismiss={() => dismissNotification(notification.id)}
-							onViewOrder={handleViewOrder}
-							autoHideDelay={10000}
-						/>
-					);
-				}
-				return null;
-			})}
 		</div>
 	);
 }

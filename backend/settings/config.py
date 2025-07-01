@@ -94,20 +94,6 @@ class AppSettings:
             # === DEFAULTS ===
             self.default_inventory_location = settings_obj.default_inventory_location
             self.default_store_location = settings_obj.default_store_location
-
-            # === WEB ORDER NOTIFICATION SETTINGS ===
-            self.enable_web_order_notifications: bool = (
-                settings_obj.enable_web_order_notifications
-            )
-            self.web_order_notification_sound: str = (
-                settings_obj.web_order_notification_sound
-            )
-            self.web_order_auto_print_receipt: bool = (
-                settings_obj.web_order_auto_print_receipt
-            )
-            self.web_order_auto_print_kitchen: bool = (
-                settings_obj.web_order_auto_print_kitchen
-            )
             self.default_inventory_location_id: int | None = (
                 settings_obj.default_inventory_location_id
             )
@@ -115,11 +101,12 @@ class AppSettings:
             if created:
                 print("Created default GlobalSettings instance")
 
-            # Load printer configurations from its own singleton model
+            # Load extended configurations from their own singleton models
             self._load_printer_config()
+            self._load_web_order_config()
 
         except Exception as e:
-            raise ImproperlyConfigured(f"Failed to load GlobalSettings: {e}")
+            raise ImproperlyConfigured(f"Failed to load settings: {e}")
 
     def _load_printer_config(self) -> None:
         """Load printer configurations from the singleton PrinterConfiguration model."""
@@ -142,6 +129,27 @@ class AppSettings:
             self.receipt_printers = []
             self.kitchen_printers = []
             self.kitchen_zones = []
+
+    def _load_web_order_config(self) -> None:
+        """Load web order settings from the singleton WebOrderSettings model."""
+        from .models import WebOrderSettings
+
+        try:
+            web_settings, created = WebOrderSettings.objects.get_or_create(pk=1)
+            # Map model fields to AppSettings attributes
+            self.enable_web_order_notifications: bool = web_settings.enable_notifications
+            self.web_order_notification_sound: bool = web_settings.play_notification_sound
+            self.web_order_auto_print_receipt: bool = web_settings.auto_print_receipt
+            self.web_order_auto_print_kitchen: bool = web_settings.auto_print_kitchen
+            if created:
+                print("Created default WebOrderSettings instance")
+        except Exception as e:
+            print(f"Warning: Failed to load web order configuration: {e}")
+            # Set sensible defaults to prevent crashes
+            self.enable_web_order_notifications = False
+            self.web_order_notification_sound = False
+            self.web_order_auto_print_receipt = False
+            self.web_order_auto_print_kitchen = False
 
     def reload(self) -> None:
         """
@@ -248,7 +256,7 @@ class AppSettings:
         """Get web order notification configuration as a dictionary."""
         return {
             "notifications_enabled": self.enable_web_order_notifications,
-            "notification_sound": self.web_order_notification_sound,
+            "play_notification_sound": self.web_order_notification_sound,
             "auto_print_receipt": self.web_order_auto_print_receipt,
             "auto_print_kitchen": self.web_order_auto_print_kitchen,
         }

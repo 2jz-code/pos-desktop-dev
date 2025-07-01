@@ -6,8 +6,8 @@ import {
 	getPrinterConfig,
 	updatePrinterConfig,
 } from "../services/settingsService";
-import { useEffect, useState } from "react";
-import { useLocalStorage } from "@uidotdev/usehooks";
+import { useState } from "react";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { CategoryMultiSelect } from "./CategoryMultiSelect";
 
 import { Button } from "@/shared/components/ui/button";
@@ -42,6 +42,7 @@ import { Separator } from "@/shared/components/ui/separator";
 const printerSchema = z.object({
 	name: z.string().min(1, "Name is required"),
 	ip_address: z.string().min(1, "IP Address is required"),
+	category_ids: z.array(z.number()).optional(),
 });
 
 const zoneSchema = z.object({
@@ -57,15 +58,17 @@ const formSchema = z.object({
 	kitchen_zones: z.array(zoneSchema),
 });
 
-const getPrinterId = (p) => (p ? `${p.vendorId}:${p.productId}` : "no-printer");
-
 export function PrinterSettings() {
-	const [localPrinters, setLocalPrinters] = useState([]);
-	const [isScanning, setIsScanning] = useState(false);
-	const [selectedReceiptPrinter, setSelectedReceiptPrinter] = useLocalStorage(
-		"localReceiptPrinter",
-		null
+	const localPrinters = useSettingsStore((state) => state.printers);
+	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
+	const setReceiptPrinterId = useSettingsStore(
+		(state) => state.setReceiptPrinterId
 	);
+	const discoverAndSetPrinters = useSettingsStore(
+		(state) => state.discoverAndSetPrinters
+	);
+
+	const [isScanning, setIsScanning] = useState(false);
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
 
@@ -116,23 +119,6 @@ export function PrinterSettings() {
 		queryKey: ["printerConfig"],
 		queryFn: getPrinterConfig,
 	});
-
-	// When the component loads, ensure the locally stored printer is in the list
-	// so the dropdown can display it without needing a new scan.
-	useEffect(() => {
-		if (selectedReceiptPrinter) {
-			setLocalPrinters((prev) => {
-				const printerMap = new Map(prev.map((p) => [getPrinterId(p), p]));
-				if (!printerMap.has(getPrinterId(selectedReceiptPrinter))) {
-					printerMap.set(
-						getPrinterId(selectedReceiptPrinter),
-						selectedReceiptPrinter
-					);
-				}
-				return Array.from(printerMap.values());
-			});
-		}
-	}, [selectedReceiptPrinter]);
 
 	const mutation = useMutation({
 		mutationFn: updatePrinterConfig,
@@ -216,19 +202,7 @@ export function PrinterSettings() {
 			description: "Please wait while we scan for local USB printers...",
 		});
 		try {
-			const scannedPrinters = await window.hardwareApi.invoke(
-				"discover-printers"
-			);
-
-			// Merge new printers with the existing list, preventing duplicates
-			setLocalPrinters((prev) => {
-				const printerMap = new Map(prev.map((p) => [getPrinterId(p), p]));
-				scannedPrinters.forEach((p) => {
-					printerMap.set(getPrinterId(p), p);
-				});
-				return Array.from(printerMap.values());
-			});
-
+			const scannedPrinters = await discoverAndSetPrinters();
 			if (scannedPrinters.length > 0) {
 				toast({
 					title: "Printers Found",
@@ -238,7 +212,6 @@ export function PrinterSettings() {
 				toast({
 					title: "No New Printers Found",
 					description: "No new local USB printers were found on this scan.",
-					variant: "warning",
 				});
 			}
 		} catch (error) {
@@ -253,235 +226,225 @@ export function PrinterSettings() {
 		}
 	};
 
-	if (isLoading) {
-		return <div>Loading printer settings...</div>;
-	}
+	const allReceiptPrinters = [
+		...(localPrinters || []),
+		...(config?.receipt_printers || []).map((p) => ({
+			...p,
+			connectionType: "network",
+		})),
+	];
+
+	if (isLoading) return <div>Loading...</div>;
 
 	return (
-		<div className="space-y-8">
-			<Card>
-				<CardHeader>
-					<CardTitle>Local Receipt Printer (This Terminal)</CardTitle>
-					<CardDescription>
-						Select a locally connected USB printer for printing customer
-						receipts from this specific terminal. This setting is saved on this
-						device only.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="flex items-center gap-4">
-						<Select
-							value={
-								selectedReceiptPrinter
-									? JSON.stringify(selectedReceiptPrinter)
-									: ""
-							}
-							onValueChange={(value) => {
-								setSelectedReceiptPrinter(value ? JSON.parse(value) : null);
-							}}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Select a discovered printer..." />
-							</SelectTrigger>
-							<SelectContent>
-								{localPrinters.map((p) => (
-									<SelectItem
-										key={getPrinterId(p)}
-										value={JSON.stringify(p)}
+		<Form {...form}>
+			<form
+				onSubmit={form.handleSubmit(onSubmit)}
+				className="space-y-8"
+			>
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Usb className="h-5 w-5" />
+							Local USB Receipt Printer
+						</CardTitle>
+						<CardDescription>
+							Select a local USB printer for printing customer receipts at this
+							terminal.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="grid gap-4 md:grid-cols-2">
+						<FormField
+							control={form.control}
+							name="local_receipt_printer"
+							render={() => (
+								<FormItem className="flex flex-col space-y-2">
+									<FormLabel>Selected Receipt Printer</FormLabel>
+									<Select
+										value={receiptPrinterId || ""}
+										onValueChange={setReceiptPrinterId}
 									>
-										{p.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<Button
-							onClick={handleScanPrinters}
-							disabled={isScanning}
-							variant="outline"
-						>
-							<Usb className="mr-2 h-4 w-4" />
-							{isScanning ? "Scanning..." : "Scan for USB Printers"}
-						</Button>
-					</div>
-				</CardContent>
-			</Card>
-
-			<Separator />
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Network Printers & Kitchen Zones</CardTitle>
-					<CardDescription>
-						Manage network printers for kitchen tickets and bar orders. This
-						configuration is shared across all terminals.
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Form {...form}>
-						<form
-							onSubmit={form.handleSubmit(onSubmit)}
-							className="space-y-12"
-						>
-							{/* Kitchen Printers */}
-							<div>
-								<h3 className="text-lg font-medium">
-									Kitchen & Bar Printers (Network)
-								</h3>
-								<div className="space-y-4 mt-4">
-									{kitchenFields.map((field, index) => (
-										<div
-											key={field.id}
-											className="grid grid-cols-1 md:grid-cols-4 items-end gap-4 p-4 border rounded-lg"
-										>
-											<FormField
-												name={`kitchen_printers.${index}.name`}
-												control={form.control}
-												render={({ field }) => (
-													<FormItem className="md:col-span-1">
-														<FormLabel>Printer Name</FormLabel>
-														<FormControl>
-															<Input
-																{...field}
-																placeholder="e.g., Kitchen"
-															/>
-														</FormControl>
-														<FormMessage />
-													</FormItem>
-												)}
-											/>
-											<FormField
-												name={`kitchen_printers.${index}.ip_address`}
-												control={form.control}
-												render={({ field }) => (
-													<FormItem className="md:col-span-2">
-														<FormLabel>IP Address</FormLabel>
-														<div className="flex items-center gap-2">
-															<FormControl>
-																<Input
-																	{...field}
-																	placeholder="e.g., 192.168.1.100"
-																/>
-															</FormControl>
-															<Button
-																type="button"
-																variant="outline"
-																size="icon"
-																onClick={() => handleTestPrinter(field.value)}
-															>
-																<Wifi className="h-4 w-4" />
-															</Button>
-														</div>
-														<FormMessage />
-													</FormItem>
-												)}
-											/>
-
-											<div className="flex justify-end">
-												<Button
-													type="button"
-													variant="destructive"
-													onClick={() => removeKitchen(index)}
+										<SelectTrigger>
+											<SelectValue placeholder="Select a printer" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value={null}>None</SelectItem>
+											{allReceiptPrinters.map((p) => (
+												<SelectItem
+													key={p.id || p.name}
+													value={p.id || p.name}
 												>
-													<Trash2 className="h-4 w-4" />
-												</Button>
-											</div>
+													<div className="flex items-center gap-2">
+														{p.connectionType === "network" ? (
+															<Wifi className="h-4 w-4" />
+														) : (
+															<Usb className="h-4 w-4" />
+														)}
+														{p.name}
+													</div>
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</FormItem>
+							)}
+						/>
+						<div className="flex items-end">
+							<Button
+								type="button"
+								onClick={handleScanPrinters}
+								disabled={isScanning}
+								className="w-full"
+							>
+								{isScanning ? "Scanning..." : "Scan for USB Printers"}
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
+
+				<Separator />
+
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center gap-2">
+							<Wifi className="h-5 w-5" />
+							Network Printers & Kitchen Zones
+						</CardTitle>
+						<CardDescription>
+							Manage network printers for receipts and kitchen tickets. This is
+							a global setting.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-6">
+						<div>
+							<h3 className="text-lg font-medium mb-2">Kitchen Printers</h3>
+							<div className="space-y-4">
+								{kitchenFields.map((field, index) => (
+									<div
+										key={field.id}
+										className="flex flex-col md:flex-row items-start gap-4 p-4 border rounded-md"
+									>
+										<FormField
+											control={form.control}
+											name={`kitchen_printers.${index}.name`}
+											render={({ field }) => (
+												<FormItem className="flex-1">
+													<FormLabel>Printer Name</FormLabel>
+													<Input
+														{...field}
+														placeholder="e.g., Kitchen Epson"
+													/>
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name={`kitchen_printers.${index}.ip_address`}
+											render={({ field }) => (
+												<FormItem className="flex-1">
+													<FormLabel>IP Address</FormLabel>
+													<Input
+														{...field}
+														placeholder="e.g., 192.168.1.100"
+													/>
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<div className="flex items-end gap-2 pt-2 md:pt-0">
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													handleTestPrinter(
+														form.getValues(
+															`kitchen_printers.${index}.ip_address`
+														)
+													)
+												}
+											>
+												Test
+											</Button>
+											<Button
+												type="button"
+												variant="destructive"
+												size="icon"
+												onClick={() => removeKitchen(index)}
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
 										</div>
-									))}
-								</div>
+									</div>
+								))}
 								<Button
 									type="button"
 									variant="outline"
-									size="sm"
-									className="mt-4"
 									onClick={() => appendKitchen({ name: "", ip_address: "" })}
 								>
-									<PlusCircle className="mr-2 h-4 w-4" /> Add Kitchen/Bar
-									Printer
+									<PlusCircle className="mr-2 h-4 w-4" />
+									Add Kitchen Printer
 								</Button>
 							</div>
+						</div>
 
-							{/* Kitchen Zones */}
-							<div>
-								<h3 className="text-lg font-medium">Kitchen Zones</h3>
-								<p className="text-sm text-muted-foreground">
-									Route product categories to specific network printers.
-								</p>
-								<div className="space-y-4 mt-4">
-									{zoneFields.map((field, index) => (
-										<div
-											key={field.id}
-											className="grid grid-cols-1 md:grid-cols-3 items-end gap-4 p-4 border rounded-lg"
-										>
+						<Separator />
+
+						<div>
+							<h3 className="text-lg font-medium mb-2">Kitchen Zones</h3>
+							<div className="space-y-4">
+								{zoneFields.map((field, index) => (
+									<div
+										key={field.id}
+										className="flex flex-col p-4 border rounded-md gap-4"
+									>
+										<div className="flex flex-col md:flex-row gap-4">
 											<FormField
-												name={`kitchen_zones.${index}.name`}
 												control={form.control}
+												name={`kitchen_zones.${index}.name`}
 												render={({ field }) => (
-													<FormItem>
+													<FormItem className="flex-1">
 														<FormLabel>Zone Name</FormLabel>
-														<FormControl>
-															<Input {...field} />
-														</FormControl>
+														<Input
+															{...field}
+															placeholder="e.g., Hot Line"
+														/>
 														<FormMessage />
 													</FormItem>
 												)}
 											/>
 											<FormField
-												name={`kitchen_zones.${index}.printer_name`}
 												control={form.control}
+												name={`kitchen_zones.${index}.printer_name`}
 												render={({ field }) => (
-													<FormItem>
-														<FormLabel>Send to Printer</FormLabel>
+													<FormItem className="flex-1">
+														<FormLabel>Assigned Printer</FormLabel>
 														<Select
 															onValueChange={field.onChange}
 															defaultValue={field.value}
 														>
 															<FormControl>
 																<SelectTrigger>
-																	<SelectValue placeholder="Select a printer" />
+																	<SelectValue placeholder="Select a kitchen printer" />
 																</SelectTrigger>
 															</FormControl>
 															<SelectContent>
-																<SelectContent>
-																	{kitchenPrinters
-																		.filter((p) => p.name)
-																		.map((p) => (
-																			<SelectItem
-																				key={p.name}
-																				value={p.name}
-																			>
-																				{p.name}
-																			</SelectItem>
-																		))}
-																</SelectContent>
+																{kitchenPrinters.map((p) => (
+																	<SelectItem
+																		key={p.name}
+																		value={p.name}
+																	>
+																		{p.name}
+																	</SelectItem>
+																))}
 															</SelectContent>
 														</Select>
 														<FormMessage />
 													</FormItem>
 												)}
 											/>
-											{/* Category selection with multi-select dropdown */}
-											<div className="flex items-end gap-2">
-												<FormField
-													name={`kitchen_zones.${index}.category_ids`}
-													control={form.control}
-													render={({ field }) => (
-														<FormItem className="flex-1">
-															<FormLabel>Categories</FormLabel>
-															<FormControl>
-																<CategoryMultiSelect
-																	value={field.value || []}
-																	onChange={field.onChange}
-																	placeholder="Select categories for this zone..."
-																/>
-															</FormControl>
-															<FormDescription>
-																Select which product categories should print to
-																this zone
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
-												/>
+											<div className="flex items-end">
 												<Button
 													type="button"
 													variant="destructive"
@@ -492,13 +455,29 @@ export function PrinterSettings() {
 												</Button>
 											</div>
 										</div>
-									))}
-								</div>
+										<FormField
+											control={form.control}
+											name={`kitchen_zones.${index}.category_ids`}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel>Categories to Print</FormLabel>
+													<CategoryMultiSelect
+														value={field.value || []}
+														onChange={field.onChange}
+													/>
+													<FormDescription>
+														Select which product categories should print to this
+														zone.
+													</FormDescription>
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+									</div>
+								))}
 								<Button
 									type="button"
 									variant="outline"
-									size="sm"
-									className="mt-4"
 									onClick={() =>
 										appendZone({
 											name: "",
@@ -507,26 +486,22 @@ export function PrinterSettings() {
 										})
 									}
 								>
-									<PlusCircle className="mr-2 h-4 w-4" /> Add Zone
+									<PlusCircle className="mr-2 h-4 w-4" /> Add Kitchen Zone
 								</Button>
 							</div>
+						</div>
+					</CardContent>
+				</Card>
 
-							<div className="pt-8">
-								<Button
-									type="submit"
-									disabled={
-										form.formState.isSubmitting || !form.formState.isDirty
-									}
-								>
-									{form.formState.isSubmitting
-										? "Saving Network Settings..."
-										: "Save Network Settings"}
-								</Button>
-							</div>
-						</form>
-					</Form>
-				</CardContent>
-			</Card>
-		</div>
+				<div className="flex justify-end">
+					<Button
+						type="submit"
+						disabled={mutation.isPending}
+					>
+						{mutation.isPending ? "Saving..." : "Save All Settings"}
+					</Button>
+				</div>
+			</form>
+		</Form>
 	);
 }

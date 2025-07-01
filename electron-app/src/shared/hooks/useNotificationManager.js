@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import globalNotificationService from "../lib/globalNotificationService";
 
 export const useNotificationManager = () => {
+	const navigate = useNavigate();
 	const [notifications, setNotifications] = useState(
 		globalNotificationService.getNotifications()
 	);
@@ -40,9 +42,15 @@ export const useNotificationManager = () => {
 		globalNotificationService.clearAllNotifications();
 	}, []);
 
-	const handleViewOrder = useCallback((order) => {
-		globalNotificationService.handleViewOrder(order);
-	}, []);
+	const handleViewOrder = useCallback(
+		(order) => {
+			if (order && order.id) {
+				navigate(`/orders/${order.id}`);
+				globalNotificationService.dismissNotification(`web-order-${order.id}`);
+			}
+		},
+		[navigate]
+	);
 
 	return {
 		notifications,

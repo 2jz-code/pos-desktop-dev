@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import nodeMachineId from "node-machine-id";
 import usb from "usb";
+import require$$0 from "child_process";
+import require$$1 from "util";
 const require$1 = createRequire(import.meta.url);
 const thermalPrinter = require$1("node-thermal-printer");
 const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
@@ -246,6 +248,62 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   printer.cut();
   return printer.getBuffer();
 }
+function getDefaultExportFromCjs(x) {
+  return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
+}
+var main;
+var hasRequiredMain;
+function requireMain() {
+  if (hasRequiredMain) return main;
+  hasRequiredMain = 1;
+  main = function(e) {
+    var r = {};
+    function t(n) {
+      if (r[n]) return r[n].exports;
+      var o = r[n] = { i: n, l: false, exports: {} };
+      return e[n].call(o.exports, o, o.exports, t), o.l = true, o.exports;
+    }
+    return t.m = e, t.c = r, t.d = function(e2, r2, n) {
+      t.o(e2, r2) || Object.defineProperty(e2, r2, { enumerable: true, get: n });
+    }, t.r = function(e2) {
+      "undefined" != typeof Symbol && Symbol.toStringTag && Object.defineProperty(e2, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e2, "__esModule", { value: true });
+    }, t.t = function(e2, r2) {
+      if (1 & r2 && (e2 = t(e2)), 8 & r2) return e2;
+      if (4 & r2 && "object" == typeof e2 && e2 && e2.__esModule) return e2;
+      var n = /* @__PURE__ */ Object.create(null);
+      if (t.r(n), Object.defineProperty(n, "default", { enumerable: true, value: e2 }), 2 & r2 && "string" != typeof e2) for (var o in e2) t.d(n, o, (function(r3) {
+        return e2[r3];
+      }).bind(null, o));
+      return n;
+    }, t.n = function(e2) {
+      var r2 = e2 && e2.__esModule ? function() {
+        return e2.default;
+      } : function() {
+        return e2;
+      };
+      return t.d(r2, "a", r2), r2;
+    }, t.o = function(e2, r2) {
+      return Object.prototype.hasOwnProperty.call(e2, r2);
+    }, t.p = "", t(t.s = 0);
+  }([function(e, r, t) {
+    const { exec: n } = t(1), o = t(2).promisify(n);
+    e.exports = { play: async (e2, r2 = 0.5) => {
+      const t2 = "darwin" === process.platform ? Math.min(2, 2 * r2) : r2, n2 = "darwin" === process.platform ? ((e3, r3) => `afplay "${e3}" -v ${r3}`)(e2, t2) : ((e3, r3) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((e4) => `$player.open('${e4}');`)(e3)} $player.Volume = ${r3}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(e2, t2);
+      try {
+        await o(n2);
+      } catch (e3) {
+        throw e3;
+      }
+    } };
+  }, function(e, r) {
+    e.exports = require$$0;
+  }, function(e, r) {
+    e.exports = require$$1;
+  }]);
+  return main;
+}
+var mainExports = requireMain();
+const sound = /* @__PURE__ */ getDefaultExportFromCjs(mainExports);
 const { machineIdSync } = nodeMachineId;
 const require2 = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -320,6 +378,18 @@ ipcMain.on("from-customer-display", (event, { channel, data }) => {
 ipcMain.on("CUSTOMER_REQUESTS_STATE", (event) => {
   if (lastKnownState) {
     event.sender.send("POS_TO_CUSTOMER_STATE", lastKnownState);
+  }
+});
+ipcMain.handle("play-notification-sound", async (event, soundFile) => {
+  try {
+    const soundName = soundFile || "notification.wav";
+    const soundPath = path.join(process$1.env.PUBLIC, "sounds", soundName);
+    console.log(`[IPC] Attempting to play sound: ${soundPath}`);
+    await sound.play(soundPath);
+    return { success: true };
+  } catch (error) {
+    console.error("[IPC] Error playing sound:", error);
+    return { success: false, error: error.message };
   }
 });
 ipcMain.on("CUSTOMER_TO_POS_TIP", (event, amount) => {

@@ -1,4 +1,5 @@
 import EventEmitter from "eventemitter3";
+import apiClient from "@/shared/lib/apiClient";
 
 class GlobalNotificationService extends EventEmitter {
 	constructor() {
@@ -54,7 +55,7 @@ class GlobalNotificationService extends EventEmitter {
 			console.log("GlobalNotificationService: Received message:", data);
 
 			if (data.type === "web_order_notification") {
-				this.handleWebOrderNotification(data.payload);
+				this.handleWebOrderNotification(data.data);
 			} else {
 				console.log(
 					`GlobalNotificationService: Unknown message type: ${data.type}`
@@ -130,7 +131,7 @@ class GlobalNotificationService extends EventEmitter {
 
 	// --- Event Handlers ---
 
-	handleWebOrderNotification(data) {
+	async handleWebOrderNotification(data) {
 		const { order, settings, timestamp } = data;
 
 		console.log(
@@ -139,31 +140,52 @@ class GlobalNotificationService extends EventEmitter {
 		);
 
 		// Play sound notification if enabled in settings
-		if (settings && settings.play_notification_sound) {
-			// Pass null to play the default sound defined in the main process
+		if (settings?.play_notification_sound) {
 			window.electronAPI.playNotificationSound(null);
+		}
+
+		// Handle auto-printing if enabled
+		if (settings?.auto_print_receipt) {
+			try {
+				// 1. Get the configured receipt printer from localStorage
+				const storedPrinter = localStorage.getItem("localReceiptPrinter");
+				const receiptPrinter = storedPrinter ? JSON.parse(storedPrinter) : null;
+
+				if (receiptPrinter) {
+					// 2. Get the latest store info for the receipt
+					const storeInfoRes = await apiClient.get(
+						"settings/global-settings/store-info/"
+					);
+					const storeSettings = storeInfoRes.data;
+
+					// 3. Invoke the print command
+					await window.hardwareApi.invoke("print-receipt", {
+						printer: receiptPrinter,
+						data: order,
+						storeSettings: storeSettings,
+					});
+					console.log(
+						`Auto-printed receipt for order ${order.order_number} to printer ${receiptPrinter.name}`
+					);
+				} else {
+					console.warn(
+						"Auto-print enabled, but no receipt printer is configured in local storage."
+					);
+				}
+			} catch (error) {
+				console.error("Failed to auto-print receipt:", error);
+			}
 		}
 
 		// Create notification object for the UI
 		const notification = {
 			id: `web-order-${order.id}`,
 			type: "web_order",
-			order,
-			settings,
-			timestamp,
+			data: { order, settings, timestamp },
 			createdAt: Date.now(),
 		};
 
 		this.addNotification(notification);
-	}
-
-	handleViewOrder(order) {
-		console.log(
-			"GlobalNotificationService: View order requested:",
-			order.order_number
-		);
-		// Future: Navigate to order details view
-		this.dismissNotification(`web-order-${order.id}`);
 	}
 }
 

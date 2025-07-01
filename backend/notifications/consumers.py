@@ -8,21 +8,6 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 
-def convert_complex_types_to_str(data):
-    """
-    Recursively converts UUID and Decimal objects in a data structure to strings.
-    """
-    if isinstance(data, dict):
-        return {k: convert_complex_types_to_str(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [convert_complex_types_to_str(elem) for elem in data]
-    elif isinstance(data, UUID):
-        return str(data)
-    elif isinstance(data, Decimal):
-        return str(data)
-    return data
-
-
 class GlobalPOSConsumer(AsyncWebsocketConsumer):
     """
     Global WebSocket consumer for system-wide POS notifications.
@@ -133,13 +118,10 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
         try:
             data = event["data"]
 
-            # Convert any complex types to strings for JSON serialization
-            serializable_data = convert_complex_types_to_str(data)
-
             # Send notification to the connected terminal
             await self.send(
                 text_data=json.dumps(
-                    {"type": "web_order_notification", "data": serializable_data}
+                    {"type": "web_order_notification", "data": data}
                 )
             )
 
@@ -158,14 +140,9 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
         try:
             data = event["data"]
 
-            # Convert any complex types to strings for JSON serialization
-            serializable_data = convert_complex_types_to_str(data)
-
             # Send notification to the connected terminal
             await self.send(
-                text_data=json.dumps(
-                    {"type": "system_notification", "data": serializable_data}
-                )
+                text_data=json.dumps({"type": "system_notification", "data": data})
             )
 
             logger.info(f"System notification sent to terminal {self.device_id}")

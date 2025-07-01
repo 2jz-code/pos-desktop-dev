@@ -153,7 +153,7 @@ class PaymentService:
     ) -> Payment:
         """
         Confirms a successful transaction and updates the parent Payment status.
-        Determines if the status should move to PARTIALLY_PAID or PAID.
+        This method is idempotent and safe to call multiple times for the same transaction.
 
         Args:
             transaction: PaymentTransaction that succeeded
@@ -162,11 +162,17 @@ class PaymentService:
         Returns:
             Updated Payment object
         """
+        payment = transaction.payment
+        
+        # Idempotency Check: If the payment is already fully paid, do nothing further.
+        if payment.status == Payment.PaymentStatus.PAID:
+            print(f"Payment {payment.id} is already marked as PAID. Skipping confirmation.")
+            return payment
+            
         # Mark the transaction as successful
         transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
         transaction.save(update_fields=["status"])
 
-        payment = transaction.payment
         payment = Payment.objects.select_for_update().get(id=payment.id)
 
         # Recalculate amounts

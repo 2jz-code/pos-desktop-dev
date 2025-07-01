@@ -5,6 +5,10 @@ import {
 	getGlobalSettings,
 	updateGlobalSettings,
 } from "@/domains/settings/services/settingsService";
+import {
+	discoverPrinters,
+	getNetworkReceiptPrinters,
+} from "@/shared/lib/hardware/printerService";
 
 export const useSettingsStore = create(
 	persist(
@@ -12,8 +16,35 @@ export const useSettingsStore = create(
 			posDeviceId: null,
 			settings: null,
 			isLoading: true,
-			printers: [], // Local USB printers only (for customer receipts)
-			receiptPrinterId: null, // Selected USB printer for receipts
+			printers: [], // Now holds a combined list of local and network printers
+			receiptPrinterId: null, // Selected printer for receipts
+
+			discoverAndSetPrinters: async () => {
+				try {
+					const localPrinters = await discoverPrinters();
+					const networkPrinters = await getNetworkReceiptPrinters(); // Fetch network printers
+
+					const formattedLocal = localPrinters.map((p) => ({
+						id: p.name,
+						...p,
+						connectionType: "usb",
+					}));
+
+					const formattedNetwork = networkPrinters.map((p) => ({
+						id: p.name,
+						...p,
+						connectionType: "network",
+					}));
+
+					const combinedPrinters = [...formattedLocal, ...formattedNetwork];
+					set({ printers: combinedPrinters });
+					return combinedPrinters;
+				} catch (error) {
+					console.error("Failed to discover and set printers:", error);
+					set({ printers: [] });
+					return [];
+				}
+			},
 
 			fetchSettings: async () => {
 				if (!get().isLoading) set({ isLoading: true });
@@ -66,9 +97,8 @@ export const useSettingsStore = create(
 			storage: createJSONStorage(() => localStorage),
 			partialize: (state) => ({
 				posDeviceId: state.posDeviceId,
-				printers: state.printers, // Only USB printers for receipts
+				// Do not persist printers, they should be discovered on launch
 				receiptPrinterId: state.receiptPrinterId,
-				// Kitchen zones are now managed in the cloud
 			}),
 		}
 	)

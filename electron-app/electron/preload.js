@@ -92,6 +92,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			return () => ipcRenderer.removeListener(channel, handler);
 		}
 	},
+
+	/**
+	 * Plays a notification sound via the main process.
+	 * @param {string|null} soundFile - The name of the sound file in public/sounds, or null for default.
+	 * @returns {Promise<{success: boolean, error?: string}>}
+	 */
+	playNotificationSound: async (soundFile) => {
+		try {
+			const result = await ipcRenderer.invoke(
+				"play-notification-sound",
+				soundFile
+			);
+			return result;
+		} catch (error) {
+			console.error("Error invoking playNotificationSound:", error);
+			return { success: false, error: error.message };
+		}
+	},
 });
 
 // --- Expose the hardware API with logging ---

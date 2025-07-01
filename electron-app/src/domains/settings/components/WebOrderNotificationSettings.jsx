@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -85,12 +85,40 @@ export function WebOrderNotificationSettings() {
 				play_notification_sound: data.settings.play_notification_sound,
 				auto_print_receipt: data.settings.auto_print_receipt,
 				auto_print_kitchen: data.settings.auto_print_kitchen,
-				web_receipt_terminals: data.settings.web_receipt_terminals || [],
+				web_receipt_terminals:
+					data.settings.web_receipt_terminals?.map(
+						(terminal) => terminal.device_id
+					) || [],
 			});
 		}
 	}, [data, form]);
 
 	const onSubmit = (formData) => {
+		// Find the selected terminal object for receipt printing
+		if (
+			formData.web_receipt_terminals &&
+			formData.web_receipt_terminals.length > 0
+		) {
+			const selectedDeviceId = formData.web_receipt_terminals[0]; // Assuming one for now
+			const selectedTerminal = data.terminals.find(
+				(t) => t.device_id === selectedDeviceId
+			);
+
+			if (selectedTerminal?.receipt_printer) {
+				localStorage.setItem(
+					"localReceiptPrinter",
+					JSON.stringify(selectedTerminal.receipt_printer)
+				);
+				toast.info(
+					`Receipt printer set to: ${selectedTerminal.receipt_printer.name}`
+				);
+			} else {
+				localStorage.removeItem("localReceiptPrinter");
+			}
+		} else {
+			localStorage.removeItem("localReceiptPrinter");
+		}
+
 		updateSettings(formData);
 	};
 
@@ -252,62 +280,55 @@ export function WebOrderNotificationSettings() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<FormField
-								control={form.control}
+							<Controller
 								name="web_receipt_terminals"
+								control={form.control}
 								render={({ field }) => (
-									<FormItem>
-										<div className="mb-4">
-											<FormLabel className="text-base font-semibold">
-												Available Printers
-											</FormLabel>
-											<FormDescription>
-												These are the printers connected to registered POS
-												terminals.
-											</FormDescription>
-										</div>
-										<div className="space-y-2">
-											{data?.terminals.map((terminal) => (
-												<FormItem
-													key={terminal.device_id}
-													className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border p-4"
-												>
-													<FormControl>
-														<Checkbox
-															checked={field.value?.includes(
-																terminal.device_id
-															)}
-															onCheckedChange={(checked) => {
-																return checked
-																	? field.onChange([
-																			...(field.value || []),
-																			terminal.device_id,
-																	  ])
-																	: field.onChange(
-																			field.value?.filter(
-																				(value) => value !== terminal.device_id
-																			)
-																	  );
-															}}
-														/>
-													</FormControl>
-													<FormLabel className="font-normal w-full">
-														<div className="flex justify-between">
-															<span>{terminal.nickname}</span>
-															<span className="text-xs text-muted-foreground">
-																ID: {terminal.device_id}
-															</span>
-														</div>
-													</FormLabel>
-												</FormItem>
-											))}
-										</div>
-										{data?.terminals.length === 0 && (
-											<p className="text-sm text-muted-foreground">
-												No registered POS terminals with printers found.
+									<div className="space-y-2">
+										<FormLabel className="text-destructive">
+											Available Printers
+										</FormLabel>
+										<FormDescription>
+											These are the printers connected to registered POS
+											terminals.
+										</FormDescription>
+										{data?.terminals?.map((terminal) => (
+											<FormItem
+												key={terminal.device_id}
+												className="flex flex-row items-center justify-between rounded-lg border p-4"
+											>
+												<FormLabel className="font-normal">
+													<div className="flex flex-col">
+														<span className="font-medium">
+															{terminal.nickname}
+														</span>
+														<span className="text-xs text-muted-foreground">
+															ID: {terminal.device_id}
+														</span>
+													</div>
+												</FormLabel>
+												<FormControl>
+													<Checkbox
+														checked={field.value.includes(terminal.device_id)}
+														onCheckedChange={(checked) => {
+															const currentValue = field.value || [];
+															const newValue = checked
+																? [...currentValue, terminal.device_id]
+																: currentValue.filter(
+																		(id) => id !== terminal.device_id
+																  );
+															field.onChange(newValue);
+														}}
+													/>
+												</FormControl>
+											</FormItem>
+										))}
+										{data?.terminals?.length === 0 && (
+											<p className="text-sm text-muted-foreground pt-2">
+												No registered POS terminals found.
 											</p>
 										)}
-									</FormItem>
+									</div>
 								)}
 							/>
 						</CardContent>

@@ -45,6 +45,7 @@ function AppContent() {
 		console.log("App mounted. Running initialization logic...");
 
 		useSettingsStore.getState().ensurePosDeviceId();
+		useSettingsStore.getState().discoverAndSetPrinters();
 		useSettingsStore.getState().fetchSettings();
 
 		if (isAuthenticated) {

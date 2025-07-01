@@ -53,7 +53,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 			chicagoDay = (chicagoDay + 1) % 7; // Go to next day, wrapping Saturday to Sunday
 		}
 
-		const openHour = 1; // 11:00 AM Chicago time
+		const openHour = 0; // 11:00 AM Chicago time
 		let closeHour; // 24-hour format
 
 		// Determine closing hour based on Chicago day of the week
