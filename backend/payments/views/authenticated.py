@@ -30,6 +30,7 @@ from ..serializers import (
 from ..services import PaymentService
 from orders.models import Order
 from users.authentication import CustomerCookieJWTAuthentication
+from core_backend.mixins import OptimizedQuerysetMixin
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +63,28 @@ class AuthenticatedOrderAccessMixin(OrderAccessMixin):
         return True
 
 
-class PaymentViewSet(TerminalPaymentViewSet, viewsets.ModelViewSet):
+class PaymentViewSet(
+    OptimizedQuerysetMixin, TerminalPaymentViewSet, viewsets.ModelViewSet
+):
     """
     ViewSet for handling authenticated user payments.
     Provides list, retrieve, and other standard actions with user-specific filtering.
     Includes terminal payment functionality via TerminalPaymentViewSet mixin.
+    (Now with automated query optimization)
     """
 
     serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Payment.objects.all()
 
     def get_queryset(self):
         """Filter payments based on user permissions."""
+        # The base queryset is now optimized by the mixin
+        queryset = super().get_queryset()
         user = self.request.user
         if user.is_staff:
-            return Payment.objects.all().order_by("-created_at")
-        return Payment.objects.filter(order__customer=user).order_by("-created_at")
+            return queryset.order_by("-created_at")
+        return queryset.filter(order__customer=user).order_by("-created_at")
 
     @action(detail=False, methods=["post"], url_path="cancel-intent")
     def cancel_intent(self, request):

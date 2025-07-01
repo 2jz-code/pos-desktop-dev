@@ -16,7 +16,14 @@ import {
 import { Badge } from "@/shared/components/ui/badge";
 import { shallow } from "zustand/shallow";
 import { formatCurrency } from "@/shared/lib/utils";
-import { ArrowLeft, CreditCard, DollarSign } from "lucide-react";
+import {
+	ArrowLeft,
+	CreditCard,
+	DollarSign,
+	User,
+	Mail,
+	Phone,
+} from "lucide-react";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
 // --- Reusable component to display a single transaction ---
@@ -126,6 +133,9 @@ const OrderDetailsPage = () => {
 		cashier,
 		payment_details,
 		total_with_tip,
+		customer_display_name,
+		customer_email,
+		customer_phone,
 	} = order;
 
 	const getPaymentStatusBadgeVariant = (status) => {
@@ -155,9 +165,9 @@ const OrderDetailsPage = () => {
 				<ArrowLeft className="mr-2 h-4 w-4" />
 				Back to Orders
 			</Button>
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-				{/* Order Details Card (Unchanged) */}
-				<Card>
+			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+				{/* Order Details Card */}
+				<Card className="md:col-span-2">
 					<CardHeader>
 						<div className="flex justify-between items-start">
 							<div>
@@ -247,45 +257,89 @@ const OrderDetailsPage = () => {
 					</CardFooter>
 				</Card>
 
-				{/* --- UPDATED Payment Details Card --- */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Payment Details</CardTitle>
-						<CardDescription>
-							Overall Status:{" "}
-							<Badge variant={getPaymentStatusBadgeVariant(payment_status)}>
-								{payment_status}
-							</Badge>
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						{payment_details && payment_details.transactions?.length > 0 ? (
-							<>
-								{/* Only show payment record link to managers/owners */}
-								{permissions.canAccessPayments() && (
-									<div className="text-sm">
-										<Link
-											to={`/payments/${payment_details.id}`}
-											className="text-blue-500 font-bold hover:underline"
-										>
-											View Full Payment Record &rarr;
-										</Link>
+				{/* Right Column for Customer & Payment */}
+				<div className="space-y-6">
+					{/* --- NEW Customer Details Card --- */}
+					{customer_display_name &&
+						customer_display_name !== "Guest Customer" && (
+							<Card>
+								<CardHeader>
+									<CardTitle className="flex items-center gap-2">
+										<User className="h-5 w-5" />
+										<span>Customer Details</span>
+									</CardTitle>
+								</CardHeader>
+								<CardContent className="space-y-3 text-sm">
+									<div className="flex items-center gap-3">
+										<User className="h-4 w-4 text-muted-foreground" />
+										<span>{customer_display_name}</span>
 									</div>
-								)}
-								{payment_details.transactions.map((txn) => (
-									<TransactionDetail
-										key={txn.id}
-										transaction={txn}
-									/>
-								))}
-							</>
-						) : (
-							<p className="text-sm text-gray-500">
-								No payment details found for this order.
-							</p>
+									{customer_email && (
+										<div className="flex items-center gap-3">
+											<Mail className="h-4 w-4 text-muted-foreground" />
+											<a
+												href={`mailto:${customer_email}`}
+												className="hover:underline"
+											>
+												{customer_email}
+											</a>
+										</div>
+									)}
+									{customer_phone && (
+										<div className="flex items-center gap-3">
+											<Phone className="h-4 w-4 text-muted-foreground" />
+											<a
+												href={`tel:${customer_phone}`}
+												className="hover:underline"
+											>
+												{customer_phone}
+											</a>
+										</div>
+									)}
+								</CardContent>
+							</Card>
 						)}
-					</CardContent>
-				</Card>
+
+					{/* --- Payment Details Card --- */}
+					<Card>
+						<CardHeader>
+							<CardTitle>Payment Details</CardTitle>
+							<CardDescription>
+								Overall Status:{" "}
+								<Badge variant={getPaymentStatusBadgeVariant(payment_status)}>
+									{payment_status}
+								</Badge>
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							{payment_details && payment_details.transactions?.length > 0 ? (
+								<>
+									{/* Only show payment record link to managers/owners */}
+									{permissions.canAccessPayments() && (
+										<div className="text-sm">
+											<Link
+												to={`/payments/${payment_details.id}`}
+												className="text-blue-500 font-bold hover:underline"
+											>
+												View Full Payment Record &rarr;
+											</Link>
+										</div>
+									)}
+									{payment_details.transactions.map((txn) => (
+										<TransactionDetail
+											key={txn.id}
+											transaction={txn}
+										/>
+									))}
+								</>
+							) : (
+								<p className="text-sm text-gray-500">
+									No payment details found for this order.
+								</p>
+							)}
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 		</div>
 	);

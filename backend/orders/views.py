@@ -34,6 +34,9 @@ import logging
 from payments.models import Payment
 from payments.strategies import StripeTerminalStrategy
 
+# --- Import our new mixin ---
+from core_backend.mixins import OptimizedQuerysetMixin
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,16 +73,15 @@ class GetPendingOrderView(generics.RetrieveAPIView):
         return order
 
 
-class OrderViewSet(viewsets.ModelViewSet):
+class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
     A comprehensive ViewSet for handling orders and their items.
     Provides CRUD for orders and cart management functionalities.
     Supports both authenticated users and guest users.
+    (Now with automated query optimization)
     """
 
-    queryset = Order.objects.prefetch_related(
-        "items__product", "applied_discounts__discount", "cashier", "customer"
-    ).all()
+    queryset = Order.objects.all()
     authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
     permission_classes = [IsAuthenticatedOrGuestOrder]
 

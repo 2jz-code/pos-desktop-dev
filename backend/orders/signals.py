@@ -2,7 +2,8 @@ from django.dispatch import Signal
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Order
-from .serializers import OrderSerializer  # Import the serializer
+
+# from .serializers import OrderSerializer  # Import the serializer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,9 @@ def handle_web_order_notifications(sender, instance, created, **kwargs):
     logger.info(
         f"Broadcasting 'web_order_ready_for_notification' for order {instance.order_number}"
     )
+
+    # Import locally to prevent circular dependency
+    from .serializers import OrderSerializer
 
     # Use the OrderSerializer to create a robust data payload
     serialized_data = OrderSerializer(instance).data

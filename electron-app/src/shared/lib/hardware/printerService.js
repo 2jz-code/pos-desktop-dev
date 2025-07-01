@@ -1,4 +1,5 @@
 import apiClient from "@/shared/lib/apiClient";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 
 const { hardwareApi } = window;
 
@@ -127,5 +128,28 @@ export const getNetworkReceiptPrinters = async () => {
 			error
 		);
 		return [];
+	}
+};
+
+/**
+ * Gets the locally configured (USB) receipt printer from the settings store.
+ * Note: This is not async, it pulls from the hydrated Zustand store.
+ * @returns {object|null} The selected local printer object or null.
+ */
+export const getLocalReceiptPrinter = () => {
+	try {
+		// Zustand's `getState` provides synchronous access to the store's current state.
+		const localPrinter = useSettingsStore.getState().getLocalReceiptPrinter();
+		console.log(
+			"[printerService] Local receipt printer from store:",
+			localPrinter
+		);
+		return localPrinter;
+	} catch (error) {
+		console.error(
+			"[printerService] Error getting local receipt printer:",
+			error
+		);
+		return null;
 	}
 };

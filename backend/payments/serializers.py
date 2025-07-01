@@ -3,26 +3,18 @@ from decimal import Decimal
 from .models import Payment, PaymentTransaction, Order
 from .services import PaymentService
 from django.shortcuts import get_object_or_404
+from orders.serializers import SimpleOrderSerializer
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentTransaction
-        fields = [
-            "id",
-            "amount",
-            "method",
-            "status",
-            "transaction_id",
-            "created_at",
-            "refunded_amount",
-            "card_brand",
-            "card_last4",
-        ]
+        fields = "__all__"
 
 
 class PaymentSerializer(serializers.ModelSerializer):
     transactions = PaymentTransactionSerializer(many=True, read_only=True)
+    order = SimpleOrderSerializer(read_only=True)
 
     balance_due = serializers.SerializerMethodField()
     change_due = serializers.SerializerMethodField()
@@ -30,21 +22,9 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Payment
-        fields = [
-            "id",
-            "order",
-            "order_number",
-            "payment_number",
-            "status",
-            "total_amount_due",
-            "amount_paid",
-            "balance_due",  # This now refers to the method field
-            "tip",
-            "change_due",  # This now refers to the method field
-            "transactions",
-            "created_at",
-            "updated_at",
-        ]
+        fields = "__all__"
+        select_related_fields = ["order", "order__customer", "order__cashier"]
+        prefetch_related_fields = ["transactions"]
         read_only_fields = [
             "id",
             "balance_due",

@@ -88,6 +88,12 @@ export const useSettingsStore = create(
 			},
 			setReceiptPrinterId: (id) => set({ receiptPrinterId: id }),
 
+			getLocalReceiptPrinter: () => {
+				const { printers, receiptPrinterId } = get();
+				if (!receiptPrinterId) return null;
+				return printers.find((p) => p.id === receiptPrinterId) || null;
+			},
+
 			ensurePosDeviceId: () => {
 				if (!get().posDeviceId) set({ posDeviceId: `pos-${uuidv4()}` });
 			},

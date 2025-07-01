@@ -93,6 +93,7 @@ export function Layout({ children }) {
 		notifications,
 		// connectionStatus, // Available for future debugging/logging
 		dismissNotification,
+		clearAllNotifications,
 		handleViewOrder,
 		isConnected,
 		isConnecting,
@@ -402,22 +403,36 @@ export function Layout({ children }) {
 								align="end"
 								className="w-[350px]"
 							>
-								<DropdownMenuLabel>Web Order Notifications</DropdownMenuLabel>
+								<DropdownMenuLabel className="flex justify-between items-center">
+									<span>Web Order Notifications</span>
+									{notifications.length > 0 && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={clearAllNotifications}
+											className="h-auto px-2 py-1 text-xs"
+										>
+											Clear All
+										</Button>
+									)}
+								</DropdownMenuLabel>
 								<DropdownMenuSeparator />
 								{notifications.length > 0 ? (
-									notifications.map((notification) => (
-										<DropdownMenuItem
-											key={notification.id}
-											className="p-0"
-											onSelect={(e) => e.preventDefault()}
-										>
-											<WebOrderNotification
-												order={notification.data.order}
-												onDismiss={() => dismissNotification(notification.id)}
-												onViewOrder={handleViewOrder}
-											/>
-										</DropdownMenuItem>
-									))
+									<div className="max-h-[400px] overflow-y-auto">
+										{notifications.map((notification) => (
+											<DropdownMenuItem
+												key={notification.id}
+												className="p-0"
+												onSelect={(e) => e.preventDefault()}
+											>
+												<WebOrderNotification
+													order={notification.data.order}
+													onDismiss={() => dismissNotification(notification.id)}
+													onViewOrder={handleViewOrder}
+												/>
+											</DropdownMenuItem>
+										))}
+									</div>
 								) : (
 									<div className="p-4 text-sm text-center text-slate-500">
 										No new notifications

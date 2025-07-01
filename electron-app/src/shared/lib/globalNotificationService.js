@@ -1,5 +1,12 @@
 import EventEmitter from "eventemitter3";
 import apiClient from "@/shared/lib/apiClient";
+import {
+	printReceipt,
+	printKitchenTicket,
+	getNetworkReceiptPrinters,
+	getKitchenZonesWithPrinters,
+	getLocalReceiptPrinter,
+} from "@/shared/lib/hardware/printerService";
 
 class GlobalNotificationService extends EventEmitter {
 	constructor() {
@@ -98,11 +105,6 @@ class GlobalNotificationService extends EventEmitter {
 	addNotification(notification) {
 		this.notifications = [notification, ...this.notifications];
 		this.emit("notifications-updated", this.notifications);
-
-		// Auto-remove after 15 seconds
-		setTimeout(() => {
-			this.dismissNotification(notification.id);
-		}, 15000);
 	}
 
 	dismissNotification(notificationId) {
@@ -144,37 +146,72 @@ class GlobalNotificationService extends EventEmitter {
 			window.electronAPI.playNotificationSound(null);
 		}
 
-		// Handle auto-printing if enabled
-		if (settings?.auto_print_receipt) {
-			try {
-				// 1. Get the configured receipt printer from localStorage
-				const storedPrinter = localStorage.getItem("localReceiptPrinter");
-				const receiptPrinter = storedPrinter ? JSON.parse(storedPrinter) : null;
+		// --- Auto-printing Logic ---
+		try {
+			// 1. Handle Receipt Printing
+			if (settings?.auto_print_receipt) {
+				// --- NEW: Prioritize local USB printer ---
+				let receiptPrinter = getLocalReceiptPrinter();
+
+				// If no local printer, check for a network printer
+				if (!receiptPrinter) {
+					console.log(
+						"No local receipt printer found, checking for network printers..."
+					);
+					const networkPrinters = await getNetworkReceiptPrinters();
+					if (networkPrinters.length > 0) {
+						receiptPrinter = networkPrinters[0]; // Use the first available network printer
+					}
+				}
 
 				if (receiptPrinter) {
-					// 2. Get the latest store info for the receipt
 					const storeInfoRes = await apiClient.get(
 						"settings/global-settings/store-info/"
 					);
 					const storeSettings = storeInfoRes.data;
 
-					// 3. Invoke the print command
-					await window.hardwareApi.invoke("print-receipt", {
-						printer: receiptPrinter,
-						data: order,
-						storeSettings: storeSettings,
-					});
+					await printReceipt(receiptPrinter, order, storeSettings);
+
 					console.log(
-						`Auto-printed receipt for order ${order.order_number} to printer ${receiptPrinter.name}`
+						`Auto-printed receipt for order ${order.order_number} to printer ${receiptPrinter.name} (${receiptPrinter.connection_type})`
 					);
 				} else {
 					console.warn(
-						"Auto-print enabled, but no receipt printer is configured in local storage."
+						"Auto-print for web order enabled, but no receipt printer (local or network) is configured."
 					);
 				}
-			} catch (error) {
-				console.error("Failed to auto-print receipt:", error);
 			}
+
+			// 2. Handle Kitchen Ticket Printing
+			// Assuming kitchen printing should always happen for web orders if configured,
+			// independent of the `auto_print_receipt` setting for customer receipts.
+			const kitchenZones = await getKitchenZonesWithPrinters();
+			if (kitchenZones.length > 0) {
+				console.log(
+					`Printing kitchen tickets for order ${order.order_number} to ${kitchenZones.length} zones.`
+				);
+				for (const zone of kitchenZones) {
+					// The filterConfig for a zone defines which categories/products go to which printer.
+					// This logic is encapsulated in the main process 'print-kitchen-ticket' handler,
+					// which will filter order items based on the zone's config.
+					await printKitchenTicket(
+						zone.printer,
+						order,
+						zone.name,
+						zone.product_categories // Pass categories to filter by
+					);
+					console.log(
+						`Sent kitchen ticket for zone '${zone.name}' to printer ${zone.printer.name}`
+					);
+				}
+			} else {
+				console.log("No kitchen zones configured for printing.");
+			}
+		} catch (error) {
+			console.error(
+				`Failed to handle auto-printing for web order ${order.order_number}:`,
+				error
+			);
 		}
 
 		// Create notification object for the UI

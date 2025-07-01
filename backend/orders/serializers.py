@@ -6,7 +6,6 @@ from .services import OrderService
 from products.models import Product
 from django.db import transaction
 from discounts.serializers import DiscountSerializer
-from payments.serializers import PaymentSerializer
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -25,12 +24,32 @@ class OrderDiscountSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class SimpleOrderSerializer(serializers.ModelSerializer):
+    """
+    A lightweight, non-recursive serializer for an Order.
+    Crucially, it does NOT include 'payment_details', breaking the circular import loop.
+    """
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "order_number",
+            "status",
+            "order_type",
+            "payment_status",
+            "grand_total",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     cashier = UserSerializer(read_only=True)
     customer = UserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
-    payment_details = PaymentSerializer(read_only=True)
+    payment_details = serializers.SerializerMethodField()
     total_with_tip = serializers.SerializerMethodField()
     is_guest_order = serializers.ReadOnlyField()
     customer_email = serializers.ReadOnlyField()
@@ -40,6 +59,36 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = "__all__"
+        read_only_fields = [
+            "id",
+            "order_number",
+            "status",
+            "payment_status",
+            "subtotal",
+            "total_discounts_amount",
+            "surcharges_total",
+            "tax_total",
+            "grand_total",
+            "created_at",
+            "updated_at",
+        ]
+        select_related_fields = ["customer", "cashier"]
+        prefetch_related_fields = [
+            "items",
+            "items__product",
+            "applied_discounts",
+            "applied_discounts__discount",
+        ]
+
+    def get_payment_details(self, obj):
+        """
+        Lazily import PaymentSerializer to avoid circular dependency.
+        """
+        from payments.serializers import PaymentSerializer
+
+        if hasattr(obj, "payment_details"):
+            return PaymentSerializer(obj.payment_details).data
+        return None
 
     def get_total_with_tip(self, obj):
         """
