@@ -1,0 +1,147 @@
+---
+bodyClass: bg-accent-light-beige
+preheader: "Thanks for your order, {{ user.name }}! Here are the details."
+---
+
+<x-main>
+  <div class="bg-accent-light-beige sm:px-4 font-sans">
+    <table align="center" class="m-0 mx-auto">
+      <tr>
+        <td class="w-[552px] max-w-full">
+          <x-spacer height="24px" />
+
+          <table class="w-full">
+            <tr>
+              <td class="py-6 px-9 sm:p-6 text-center">
+                <a href="https://bakeajeen.com">
+                  <img
+                    img
+                    src="ajeen-logo.png"
+                    src-production="images/ajeen-logo.png"
+                    width="300"
+                    alt="Ajeen"
+                  />
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="py-6 px-9 sm:p-6 bg-white [border:1px_solid_theme(colors.accent-subtle-gray)] rounded-lg"
+              >
+                <div class="text-center">
+                  <img
+                    src="checkmark.png"
+                    src-production="images/checkmark.png"
+                    alt="Checkmark"
+                    class="h-16 w-16 mx-auto mb-4"
+                  />
+                  <h1
+                    class="m-0 mb-6 text-2xl/8 text-accent-dark-green font-semibold"
+                  >
+                    Order Confirmed, {{ user.name }}!
+                  </h1>
+                  <p class="m-0 mb-6 text-base/6 text-accent-dark-brown">
+                    We've received your order and our kitchen team is preparing
+                    your delicious meal.
+                  </p>
+                </div>
+
+                <x-divider />
+
+                <table class="w-full">
+                  <tr>
+                    <td class="font-semibold text-accent-dark-brown">
+                      Order Number
+                    </td>
+                    <td
+                      class="text-right font-mono text-lg text-accent-dark-green"
+                    >
+                      #{{ order.orderNumber }}
+                    </td>
+                  </tr>
+                </table>
+
+                <x-divider />
+
+                <h2
+                  class="m-0 mb-4 text-lg font-semibold text-accent-dark-green"
+                >
+                  Items Ordered
+                </h2>
+
+                <table class="w-full">
+                  <each loop="item in order.items">
+                    <tr>
+                      <td class="py-2">
+                        <p class="m-0 font-semibold text-accent-dark-brown">
+                          {{ item.name }}
+                        </p>
+                        <p class="m-0 text-sm text-accent-dark-brown/70">
+                          Quantity: {{ item.quantity }}
+                        </p>
+                      </td>
+                      <td class="text-right text-accent-dark-green">
+                        ${{ item.price.toFixed(2) }}
+                      </td>
+                    </tr>
+                  </each>
+                </table>
+
+                <x-divider />
+
+                <table class="w-full">
+                  <tr>
+                    <td class="text-accent-dark-brown">Subtotal</td>
+                    <td class="text-right text-accent-dark-brown">
+                      ${{ order.subtotal.toFixed(2) }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="text-accent-dark-brown">Tax</td>
+                    <td class="text-right text-accent-dark-brown">
+                      ${{ order.tax.toFixed(2) }}
+                    </td>
+                  </tr>
+                  <tr class="h-2"></tr>
+                  <tr class="font-semibold text-lg text-accent-dark-green">
+                    <td>Total Paid</td>
+                    <td class="text-right">${{ order.total.toFixed(2) }}</td>
+                  </tr>
+                </table>
+
+                <x-spacer height="24px" />
+
+                <div class="text-center">
+                  <p class="m-0 mb-4 text-base/6 text-accent-dark-brown">
+                    You can view your order history and track its status in your
+                    dashboard.
+                  </p>
+                  <x-button
+                    href="https://bakeajeen.com/dashboard"
+                    class="bg-primary-green hover:bg-accent-dark-green text-white"
+                    target="_blank"
+                    >View My Orders</x-button
+                  >
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <table class="w-full">
+            <tr>
+              <td class="py-6 px-9 sm:px-6 text-center">
+                <p class="m-0 text-xs text-slate-500">
+                  &copy; {{ new Date().getFullYear() }} Ajeen. All rights
+                  reserved.
+                </p>
+                <p class="m-0 text-xs text-slate-500">
+                  2105 Cliff Rd Suite 300, Eagan, MN, 55124
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+</x-main>
