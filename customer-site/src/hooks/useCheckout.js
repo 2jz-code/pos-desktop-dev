@@ -337,55 +337,26 @@ export const useCheckout = () => {
 				const completionResponse =
 					await paymentsAPI.completeAuthenticatedPayment({
 						payment_intent_id: paymentIntent.id,
-						order_id: cart.id,
+						order_id: cart.id, // Use the cart ID
 					});
 
-				console.log("Payment completed:", completionResponse);
+				console.log("Payment completed on backend:", completionResponse);
 
-				// Step 4: Prepare confirmation data in the format expected by OrderConfirmation component
-				const confirmationData = {
-					id: cart.id,
-					orderNumber: cart.order_number || cart.id,
-					customerName:
-						user.first_name && user.last_name
-							? `${user.first_name} ${user.last_name}`
-							: user.username,
-					customerEmail: user.email,
-					customerPhone: user.phone_number || "",
-					items: cart.items,
-					grandTotal: cart.grand_total,
-					total: cart.grand_total, // Alternative field name for compatibility
-					subtotal: cart.subtotal,
-					taxAmount: cart.tax_total,
-					surchargeAmount: cart.surcharges_total,
-					status: "PREPARING", // Order is being prepared after payment confirmation
-					paymentIntentId: paymentIntent.id,
-					paymentDetails: completionResponse,
-				};
+				// --- THE FIX: Re-fetch the final order data AFTER payment completion ---
+				const finalOrderData = await ordersAPI.getOrderForConfirmation(cart.id);
+				setOrderConfirmation(finalOrderData);
+				// --- END FIX ---
 
-				console.log(
-					"Navigating to dedicated confirmation page with order data:",
-					confirmationData
-				);
+				toast.success("Payment successful!");
 
-				// Navigate to dedicated confirmation page with order data
-				const queryParams = new URLSearchParams({
-					orderData: encodeURIComponent(JSON.stringify(confirmationData)),
-				});
-
+				// Clear cart and navigate
 				setCheckoutCompleted(true);
-				// Clear cart data immediately to update UI
-				queryClient.invalidateQueries({ queryKey: cartKeys.current() });
-
-				navigate(`/confirmation?${queryParams.toString()}`);
-
-				toast.success("Order placed successfully!");
-
-				console.log("Authenticated checkout completed successfully");
-			} catch (error) {
-				console.error("Authenticated checkout error:", error);
-				setError(error.message || "Payment failed. Please try again.");
-				toast.error(error.message || "Payment failed. Please try again.");
+				queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
+				navigate(`/checkout?step=confirmation&orderId=${cart.id}`);
+			} catch (err) {
+				console.error("Authenticated checkout error:", err);
+				setError(err.message || "Payment failed. Please try again.");
+				toast.error(err.message || "Payment failed. Please try again.");
 			} finally {
 				setIsLoading(false);
 			}
@@ -452,37 +423,22 @@ export const useCheckout = () => {
 					// Complete the guest payment (authenticated users are handled separately)
 					await completeGuestPayment(confirmedPayment.id, order.id);
 
-					// Prepare order confirmation data
-					const confirmationData = {
-						id: order.id,
-						orderNumber: order.order_number || order.id,
-						customerName: billingDetails.name,
-						customerEmail: billingDetails.email,
-						customerPhone: billingDetails.phone,
-						items: cart.items,
-						grandTotal: calculateOrderTotals(cart).total,
-						subtotal: calculateOrderTotals(cart).subtotal,
-						taxAmount: calculateOrderTotals(cart).taxAmount,
-						surchargeAmount: calculateOrderTotals(cart).surchargeAmount,
-						status: "PREPARING", // Order is being prepared after payment confirmation
-						paymentIntentId: confirmedPayment.id,
-					};
+					// Set the raw order data for the confirmation page
+					const orderId = guestOrder.id;
 
-					// Navigate to dedicated confirmation page with order data
-					const queryParams = new URLSearchParams({
-						orderData: encodeURIComponent(JSON.stringify(confirmationData)),
-					});
+					// --- THE FIX: Re-fetch the final order data AFTER payment completion ---
+					const finalOrderData = await ordersAPI.getOrderForConfirmation(
+						orderId
+					);
+					setOrderConfirmation(finalOrderData);
+					// --- END FIX ---
 
+					toast.success("Payment successful!");
+
+					// Clear cart and navigate
 					setCheckoutCompleted(true);
-					// Clear cart data immediately to update UI
-					queryClient.invalidateQueries({ queryKey: cartKeys.current() });
-
-					navigate(`/confirmation?${queryParams.toString()}`);
-
-					// Show success message
-					toast.success("Order placed successfully!");
-
-					console.log("Order completed successfully");
+					queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
+					navigate(`/checkout?step=confirmation&orderId=${orderId}`);
 				} else {
 					throw new Error("Payment was not completed successfully");
 				}

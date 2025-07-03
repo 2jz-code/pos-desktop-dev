@@ -230,19 +230,18 @@ class OrderService:
         for the order record, but does not modify the User model itself.
         """
         if order.customer:
-            # For authenticated users, we primarily rely on the user object,
-            # but we can store the provided details on the guest fields for this specific order's record
-            # This is useful if they use a different phone/name for a one-off delivery, for example.
-            order.guest_first_name = data.get(
-                "guest_first_name", order.customer.first_name
+            # For authenticated users, prioritize form data over profile data
+            # This allows users to modify their info for this specific order
+            order.guest_first_name = (
+                data.get("guest_first_name") or order.customer.first_name
             )
-            order.guest_last_name = data.get(
-                "guest_last_name", order.customer.last_name
+            order.guest_last_name = (
+                data.get("guest_last_name") or order.customer.last_name
             )
-            order.guest_email = data.get("guest_email", order.customer.email)
-            order.guest_phone = data.get(
-                "guest_phone"
-            )  # Always take phone from form for logged-in user
+            order.guest_email = data.get("guest_email") or order.customer.email
+            order.guest_phone = data.get("guest_phone") or getattr(
+                order.customer, "phone_number", ""
+            )
         else:
             # For guest users, directly update the guest fields
             order.guest_first_name = data.get("guest_first_name")
@@ -693,6 +692,7 @@ class WebOrderNotificationService:
     Singleton service for handling web order notifications, including sound alerts and auto-printing.
     This service is designed to be called from a signal when a web order is completed.
     """
+
     _instance = None
 
     def __new__(cls):
@@ -714,7 +714,9 @@ class WebOrderNotificationService:
         # Determine the target store location for the notification.
         target_location = self._determine_target_location(order)
         if not target_location:
-            print(f"Warning: Could not determine target location for web order {order.id}. No notification sent.")
+            print(
+                f"Warning: Could not determine target location for web order {order.id}. No notification sent."
+            )
             return
 
         # Broadcast a real-time notification to all terminals at the target location.
@@ -726,6 +728,7 @@ class WebOrderNotificationService:
     def _determine_target_location(self, order):
         """Determine which StoreLocation should handle this web order."""
         from settings.config import app_settings
+
         # For now, all web orders are routed to the default store location.
         # Future logic could inspect the order (e.g., for a specific pickup location)
         # to route it to a different StoreLocation.
@@ -738,7 +741,9 @@ class WebOrderNotificationService:
 
         channel_layer = get_channel_layer()
         if not channel_layer:
-            print("Warning: Channel layer not available. Cannot send web order notification.")
+            print(
+                "Warning: Channel layer not available. Cannot send web order notification."
+            )
             return
 
         # The group name is based on the primary key of the StoreLocation.
@@ -751,11 +756,15 @@ class WebOrderNotificationService:
             "order_data": {
                 "id": str(order.id),
                 "order_number": order.order_number,
-                "customer_name": order.customer.get_full_name() if order.customer else f"{order.guest_first_name} {order.guest_last_name}".strip(),
+                "customer_name": (
+                    order.customer.get_full_name()
+                    if order.customer
+                    else f"{order.guest_first_name} {order.guest_last_name}".strip()
+                ),
                 "total": str(order.grand_total),
                 "item_count": order.items.count(),
                 "created_at": order.created_at.isoformat(),
-            }
+            },
         }
 
         print(f"Broadcasting to group: {group_name}")
@@ -769,7 +778,9 @@ class WebOrderNotificationService:
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
 
-        if not config.get("auto_print_receipt") and not config.get("auto_print_kitchen"):
+        if not config.get("auto_print_receipt") and not config.get(
+            "auto_print_kitchen"
+        ):
             return
 
         channel_layer = get_channel_layer()
@@ -789,6 +800,7 @@ class WebOrderNotificationService:
                 "print_kitchen": config.get("auto_print_kitchen", False),
             },
         )
+
 
 # Create a single, globally accessible instance of the service.
 web_order_notification_service = WebOrderNotificationService()

@@ -137,6 +137,12 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Email tracking
+    confirmation_sent = models.BooleanField(
+        default=False,
+        help_text=_("Whether an order confirmation email has been sent for this order"),
+    )
+
     class Meta:
         # Consider ordering by `created_at` or `pk` for consistent numbering if `order_number` is null
         ordering = ["order_number", "created_at"]
@@ -162,23 +168,45 @@ class Order(models.Model):
 
     @property
     def customer_email(self):
-        """Returns the appropriate email whether for guest or authenticated customer."""
+        """Returns the appropriate email, prioritizing form data over profile data."""
+        # Prioritize guest_email if provided (could be form data from authenticated users)
+        if self.guest_email:
+            return self.guest_email
+        # Fall back to customer profile email
         if self.customer:
             return self.customer.email
-        return self.guest_email
+        return None
 
     @property
     def customer_phone(self):
-        """Returns the appropriate phone whether for guest or authenticated customer."""
-        if self.customer and hasattr(self.customer, "phone"):
-            return getattr(self.customer, "phone", None)
-        return self.guest_phone
+        """Returns the appropriate phone, prioritizing form data over profile data."""
+        # Prioritize guest_phone if provided (could be form data from authenticated users)
+        if self.guest_phone:
+            return self.guest_phone
+        # Fall back to customer profile phone
+        if self.customer and hasattr(self.customer, "phone_number"):
+            return getattr(self.customer, "phone_number", None)
+        return None
 
     @property
     def customer_display_name(self):
-        """Returns the formatted customer name for display."""
+        """Returns the formatted customer name, prioritizing form data over profile data."""
+        # Check if we have guest name fields (could be form data from authenticated or guest users)
+        if self.guest_first_name or self.guest_last_name:
+            first_name = self.guest_first_name or ""
+            last_name = self.guest_last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+
+            if full_name:
+                # If this is a guest order, add "(guest)" suffix
+                if not self.customer:
+                    return f"{full_name} (guest)"
+                else:
+                    # Authenticated user with form data - no suffix needed
+                    return full_name
+
+        # Fall back to authenticated user's profile data
         if self.customer:
-            # Authenticated user: show "first-name last-name"
             first_name = self.customer.first_name or ""
             last_name = self.customer.last_name or ""
             full_name = f"{first_name} {last_name}".strip()
@@ -187,20 +215,13 @@ class Order(models.Model):
             if not full_name:
                 return self.customer.username or self.customer.email
             return full_name
-        elif self.guest_first_name or self.guest_last_name:
-            # Guest user: show "first-name last-name (guest)"
-            first_name = self.guest_first_name or ""
-            last_name = self.guest_last_name or ""
-            full_name = f"{first_name} {last_name}".strip()
 
-            if full_name:
-                return f"{full_name} (guest)"
-            else:
-                # Fallback to email if no name provided
-                return f"{self.guest_email or 'Guest'} (guest)"
-        else:
-            # No customer info available
-            return "Guest Customer"
+        # Final fallback for true guest orders with no name data
+        return (
+            f"{self.guest_email or 'Guest'} (guest)"
+            if not self.customer
+            else "Guest Customer"
+        )
 
     @property
     def payment_in_progress_derived(self):

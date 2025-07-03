@@ -16,8 +16,8 @@ preheader: "Thanks for your order, {{ user.name }}! Here are the details."
                 <a href="https://bakeajeen.com">
                   <img
                     img
-                    src="ajeen-logo.png"
-                    src-production="images/ajeen-logo.png"
+                    src="https://bakeajeen-media.s3.amazonaws.com/email-images/ajeen-logo.png"
+                    src-production="https://bakeajeen-media.s3.amazonaws.com/email-images/ajeen-logo.png"
                     width="300"
                     alt="Ajeen"
                   />
@@ -30,8 +30,8 @@ preheader: "Thanks for your order, {{ user.name }}! Here are the details."
               >
                 <div class="text-center">
                   <img
-                    src="checkmark.png"
-                    src-production="images/checkmark.png"
+                    src="https://bakeajeen-media.s3.amazonaws.com/email-images/checkmark.png"
+                    src-production="https://bakeajeen-media.s3.amazonaws.com/email-images/checkmark.png"
                     alt="Checkmark"
                     class="h-16 w-16 mx-auto mb-4"
                   />
@@ -70,21 +70,40 @@ preheader: "Thanks for your order, {{ user.name }}! Here are the details."
                 </h2>
 
                 <table class="w-full">
-                  <each loop="item in order.items">
-                    <tr>
-                      <td class="py-2">
-                        <p class="m-0 font-semibold text-accent-dark-brown">
-                          {{ item.name }}
-                        </p>
-                        <p class="m-0 text-sm text-accent-dark-brown/70">
-                          Quantity: {{ item.quantity }}
-                        </p>
-                      </td>
-                      <td class="text-right text-accent-dark-green">
-                        ${{ item.price.toFixed(2) }}
-                      </td>
+                  <thead>
+                    <tr class="border-b border-b-slate-200">
+                      <th
+                        class="pb-2 text-left font-semibold uppercase text-accent-dark-brown/70 text-sm"
+                      >
+                        Item
+                      </th>
+                      <th
+                        class="pb-2 text-center font-semibold uppercase text-accent-dark-brown/70 text-sm"
+                      >
+                        Quantity
+                      </th>
+                      <th
+                        class="pb-2 text-right font-semibold uppercase text-accent-dark-brown/70 text-sm"
+                      >
+                        Subtotal
+                      </th>
                     </tr>
-                  </each>
+                  </thead>
+                  {% for item in order.items %}
+                  <tr>
+                    <td class="py-2">
+                      <p class="m-0 font-semibold text-accent-dark-brown">
+                        {{ item.name }}
+                      </p>
+                    </td>
+                    <td class="py-2 text-center text-accent-dark-brown/70">
+                      {{ item.quantity }}
+                    </td>
+                    <td class="py-2 text-right text-accent-dark-green">
+                      ${{ item.total|floatformat:2 }}
+                    </td>
+                  </tr>
+                  {% endfor %}
                 </table>
 
                 <x-divider />
@@ -93,19 +112,158 @@ preheader: "Thanks for your order, {{ user.name }}! Here are the details."
                   <tr>
                     <td class="text-accent-dark-brown">Subtotal</td>
                     <td class="text-right text-accent-dark-brown">
-                      ${{ order.subtotal.toFixed(2) }}
+                      ${{ order.subtotal|floatformat:2 }}
                     </td>
                   </tr>
                   <tr>
                     <td class="text-accent-dark-brown">Tax</td>
                     <td class="text-right text-accent-dark-brown">
-                      ${{ order.tax.toFixed(2) }}
+                      ${{ order.tax|floatformat:2 }}
                     </td>
                   </tr>
                   <tr class="h-2"></tr>
                   <tr class="font-semibold text-lg text-accent-dark-green">
                     <td>Total Paid</td>
-                    <td class="text-right">${{ order.total.toFixed(2) }}</td>
+                    <td class="text-right">${{ order.total|floatformat:2 }}</td>
+                  </tr>
+                </table>
+
+                <x-spacer height="24px" />
+                <x-divider />
+                <x-spacer height="24px" />
+
+                <h2
+                  class="m-0 mb-4 text-lg font-semibold text-accent-dark-green"
+                >
+                  What's Next?
+                </h2>
+                <table
+                  class="w-full"
+                  cellpadding="0"
+                  cellspacing="0"
+                  role="presentation"
+                >
+                  <!-- Estimated Pickup Time -->
+                  <tr>
+                    <td class="w-8 pr-4 align-top">
+                      <img
+                        src="https://bakeajeen-media.s3.amazonaws.com/email-images/clock.png"
+                        alt="Clock"
+                        width="24"
+                        height="24"
+                        style="width: 24px; height: 24px"
+                      />
+                    </td>
+                    <td>
+                      <h4 class="m-0 mb-1 font-semibold text-accent-dark-brown">
+                        Estimated Pickup Time
+                      </h4>
+                      <p class="m-0 text-sm text-accent-dark-brown/70">
+                        Your order will be ready for pickup at approximately
+                        <span class="font-bold text-accent-dark-green"
+                          >{{ order.estimated_pickup_time }}</span
+                        >. We'll prepare it fresh for you!
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+                <x-spacer height="20px" />
+                <table
+                  class="w-full"
+                  cellpadding="0"
+                  cellspacing="0"
+                  role="presentation"
+                >
+                  <!-- Pickup Location -->
+                  <tr>
+                    <td class="w-8 pr-4 align-top">
+                      <img
+                        src="https://bakeajeen-media.s3.amazonaws.com/email-images/map-pin.png"
+                        alt="Map Pin"
+                        width="24"
+                        height="24"
+                        style="width: 24px; height: 24px"
+                      />
+                    </td>
+                    <td>
+                      <h4 class="m-0 mb-2 font-semibold text-accent-dark-brown">
+                        Pickup Location
+                      </h4>
+                      <div
+                        class="p-4 rounded-lg bg-primary-beige/30 [border:1px_solid_theme(colors.primary-beige.50)]"
+                      >
+                        <table
+                          class="w-full"
+                          cellpadding="0"
+                          cellspacing="0"
+                          role="presentation"
+                        >
+                          <!-- Address Row -->
+                          <tr>
+                            <td class="w-6 pr-2 align-top">
+                              <img
+                                src="https://bakeajeen-media.s3.amazonaws.com/email-images/map-pin.png"
+                                alt="Map Pin"
+                                width="16"
+                                height="16"
+                                style="width: 16px; height: 16px"
+                              />
+                            </td>
+                            <td class="text-sm pb-2">
+                              <a
+                                href="https://maps.app.goo.gl/UEHKAs1eg7pVsq2D7"
+                                class="text-accent-dark-brown hover:text-primary-green"
+                                style="text-decoration: none; color: #44413d"
+                              >
+                                {{ store_info.address }}
+                              </a>
+                            </td>
+                          </tr>
+                          <!-- Phone Row -->
+                          <tr>
+                            <td class="w-6 pr-2 align-top">
+                              <img
+                                src="https://bakeajeen-media.s3.amazonaws.com/email-images/phone.png"
+                                alt="Phone"
+                                width="16"
+                                height="16"
+                                style="width: 16px; height: 16px"
+                              />
+                            </td>
+                            <td class="text-sm">
+                              <a
+                                href="tel:{{ store_info.phone }}"
+                                class="text-accent-dark-brown hover:text-primary-green"
+                                style="text-decoration: none; color: #44413d"
+                              >
+                                {{ store_info.phone_display }}
+                              </a>
+                            </td>
+                          </tr>
+                          <!-- Divider Row -->
+                          <tr>
+                            <td colspan="2" class="py-2">
+                              <div class="h-px bg-accent-subtle-gray/30"></div>
+                            </td>
+                          </tr>
+                          <!-- Instructions Row -->
+                          <tr>
+                            <td
+                              colspan="2"
+                              class="text-sm text-accent-dark-brown/70"
+                            >
+                              Please come to our restaurant counter to collect
+                              your order. Have your order number
+                              <span
+                                class="font-mono font-bold text-accent-dark-green"
+                                >#{{ order.orderNumber }}</span
+                              >
+                              ready for quick pickup.
+                            </td>
+                          </tr>
+                        </table>
+                      </div>
+                    </td>
                   </tr>
                 </table>
 

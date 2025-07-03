@@ -1,0 +1,24 @@
+<script props>
+  // https://maizzle.com/docs/components/vml#v-fill
+  module.exports = {
+    width: props.width || '600px',
+    type: props.type || 'frame',
+    sizes: props.sizes,
+    origin: props.origin,
+    position: props.position,
+    aspect: props.aspect,
+    color: props.color,
+    inset: props.inset || '0,0,0,0',
+    stroke: props.stroke || 'f',
+    strokecolor: props.strokecolor,
+    fill: props.fill || 't',
+    fillcolor: props.fillcolor || 'none',
+    image: props.image || 'https://via.placeholder.com/600x400'
+  }
+</script>
+<!--[if mso]>
+<v:rect fill="{{ fillcolor ? &#039;t&#039; : fill }}" stroke="{{ strokecolor ? &#039;t&#039; : stroke }}" style="width: {{ width }}" xmlns:v="urn:schemas-microsoft-com:vml"{{{ strokecolor ? ` strokecolor=&quot;${strokecolor}&quot;` : &#039;&#039; }}}{{{ fillcolor ? ` fillcolor=&quot;${fillcolor}&quot;` : &#039;&#039; }}}>
+<v:fill type="{{ type }}" src="{{{ image }}}"{{{ sizes ? ` sizes=&quot;${sizes}&quot;` : &#039;&#039; }}}{{{ aspect ? ` aspect=&quot;${aspect}&quot;` : &#039;&#039; }}}{{{ origin ? ` origin=&quot;${origin}&quot;` : &#039;&#039; }}}{{{ position ? ` position=&quot;${position}&quot;` : &#039;&#039; }}}{{{ color ? ` color=&quot;${color}&quot;` : &#039;&#039; }}} />
+<v:textbox inset="{{ inset }}" style="mso-fit-shape-to-text: true"><div><![endif]-->
+<yield></yield>
+<!--[if mso]></div></v:textbox></v:rect><![endif]-->

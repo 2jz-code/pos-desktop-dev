@@ -52,24 +52,16 @@ export const ordersAPI = {
 			const confirmationData = {
 				id: order.id,
 				orderNumber: order.order_number || order.id,
-				customerName:
-					order.customer_display_name ||
-					(order.customer
-						? `${order.customer.first_name || ""} ${
-								order.customer.last_name || ""
-						  }`.trim() || order.customer.username
-						: `${order.guest_first_name || ""} ${
-								order.guest_last_name || ""
-						  }`.trim() || "Guest Customer"),
+				customerName: order.customer_display_name || "Guest Customer",
 				customerEmail:
-					order.customer?.email ||
-					order.guest_email ||
 					order.customer_email ||
+					order.guest_email ||
+					order.customer?.email ||
 					"",
 				customerPhone:
-					order.customer?.phone ||
-					order.guest_phone ||
 					order.customer_phone ||
+					order.guest_phone ||
+					order.customer?.phone_number ||
 					"",
 				items: order.items || [],
 				grandTotal: order.grand_total,

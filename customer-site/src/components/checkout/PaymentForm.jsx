@@ -116,19 +116,19 @@ const PaymentForm = ({
 						</h4>
 
 						{isAuthenticated && user ? (
-							// Show authenticated user information
+							// Show form data for authenticated users (may have been modified in previous step)
 							<div className="space-y-2">
 								<p className="text-sm text-accent-dark-brown/80 font-medium">
-									{user.first_name && user.last_name
-										? `${user.first_name} ${user.last_name}`
-										: user.username}
+									{formData.firstName && formData.lastName
+										? `${formData.firstName} ${formData.lastName}`
+										: formData.firstName || formData.lastName || user.username}
 								</p>
 								<p className="text-sm text-accent-dark-brown/70">
-									{user.email}
+									{formData.email || user.email}
 								</p>
-								{user.phone_number && (
+								{(formData.phone || user.phone_number) && (
 									<p className="text-sm text-accent-dark-brown/70">
-										{user.phone_number}
+										{formData.phone || user.phone_number}
 									</p>
 								)}
 								{formData.orderNotes && (

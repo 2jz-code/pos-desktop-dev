@@ -26,15 +26,25 @@ const CustomerInfo = ({
 	// Pre-fill form data for authenticated users
 	useEffect(() => {
 		if (isAuthenticated && user) {
-			setLocalFormData((prev) => ({
-				...prev,
+			const userFormData = {
 				firstName: user.first_name || "",
 				lastName: user.last_name || "",
 				email: user.email || "",
 				phone: user.phone_number || "",
+			};
+
+			// Update local form data
+			setLocalFormData((prev) => ({
+				...prev,
+				...userFormData,
 			}));
+
+			// Also update parent form data so it's available for submission
+			Object.entries(userFormData).forEach(([key, value]) => {
+				updateFormData(key, value);
+			});
 		}
-	}, [isAuthenticated, user]);
+	}, [isAuthenticated, user, updateFormData]);
 
 	const handleInputChange = (e) => {
 		const { name, value } = e.target;

@@ -39,37 +39,37 @@ def convert_payload_to_str(data):
 def handle_payment_completed(sender, order, **kwargs):
     """
     Receiver function to send an order confirmation email when a payment is completed.
+    Uses the new Maizzle templates for beautiful, responsive emails.
     """
-    email_service = EmailService()
-    customer_email = (
-        order.customer.email
-        if order.customer and order.customer.email
-        else order.guest_email
-    )
+    # Check if confirmation email has already been sent
+    if order.confirmation_sent:
+        logger.info(
+            f"Order confirmation email already sent for Order #{order.order_number}, skipping"
+        )
+        return
 
-    if customer_email:
-        try:
-            email_service.send_email(
-                recipient_list=[customer_email],
-                subject=f"Order Confirmation - Order #{order.order_number}",
-                template_name="emails/order_confirmation.html",
-                context={
-                    "order": order,
-                    "customer_name": (
-                        order.customer.first_name
-                        if order.customer
-                        else "Valued Customer"
-                    ),
-                },
+    email_service = EmailService()
+
+    try:
+        # Use the new method that automatically handles guest vs registered users
+        # and uses the appropriate Maizzle template
+        success = email_service.send_order_confirmation_email(order)
+
+        if success:
+            # Mark confirmation as sent to prevent duplicates
+            order.confirmation_sent = True
+            order.save(update_fields=["confirmation_sent"])
+            logger.info(
+                f"Order confirmation email sent for Order #{order.order_number}"
             )
-            print(
-                f"Order confirmation email sent to {customer_email} for Order #{order.order_number}"
+        else:
+            logger.warning(
+                f"Failed to send order confirmation email for Order #{order.order_number}"
             )
-        except Exception as e:
-            print(f"Failed to send order confirmation email to {customer_email}: {e}")
-    else:
-        print(
-            f"No email address found for Order #{order.order_number}. Skipping confirmation email."
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error sending order confirmation email for Order #{order.order_number}: {e}"
         )
 
 
@@ -143,6 +143,45 @@ def handle_web_order_notification(sender, **kwargs):
             f"Error processing web order notification for order {order_number}: {e}"
         )
         # Don't raise the exception to avoid disrupting the order completion process
+
+
+@receiver(post_save, sender="orders.Order")
+def handle_order_status_completion(sender, instance, created, **kwargs):
+    """
+    Signal handler for when an order status changes to COMPLETED.
+    This provides a backup trigger for order confirmation emails,
+    ensuring all completed orders get confirmations regardless of payment method.
+    """
+    # Only process orders that are just marked as completed (not new orders)
+    if not created and instance.status == "COMPLETED":
+        # Check if confirmation email has already been sent
+        if instance.confirmation_sent:
+            logger.info(
+                f"Order confirmation email already sent for Order #{instance.order_number}, skipping"
+            )
+            return
+
+        email_service = EmailService()
+
+        try:
+            success = email_service.send_order_confirmation_email(instance)
+
+            if success:
+                # Mark confirmation as sent to prevent duplicates
+                instance.confirmation_sent = True
+                instance.save(update_fields=["confirmation_sent"])
+                logger.info(
+                    f"Order completion confirmation email sent for Order #{instance.order_number}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to send order completion confirmation email for Order #{instance.order_number}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error sending order completion confirmation email for Order #{instance.order_number}: {e}"
+            )
 
 
 # Additional signal handlers can be added here for future features:
