@@ -18,7 +18,7 @@ from .permissions import (
     IsAuthenticatedOrGuestOrder,
     IsGuestOrAuthenticated,
 )
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from users.authentication import (
     CustomerCookieJWTAuthentication,
     CookieJWTAuthentication,
@@ -36,6 +36,9 @@ from payments.strategies import StripeTerminalStrategy
 
 # --- Import our new mixin ---
 from core_backend.mixins import OptimizedQuerysetMixin
+
+# --- Import EmailService ---
+from notifications.services import EmailService
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +250,39 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     def resume(self, request: Request, pk=None) -> Response:
         """Resumes a held order by setting its status to PENDING."""
         return self._handle_status_change(request, OrderService.resume_order)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="resend-confirmation",
+        permission_classes=[IsAdminUser],
+    )
+    def resend_confirmation(self, request: Request, pk=None) -> Response:
+        """
+        Resends the order confirmation email to the customer.
+        """
+        order = self.get_object()
+        email_service = EmailService()
+
+        # Check if there's an email to send to
+        if not order.customer_email:
+            return Response(
+                {"error": "No customer email associated with this order."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        success = email_service.send_order_confirmation_email(order)
+
+        if success:
+            return Response(
+                {"message": f"Confirmation email sent to {order.customer_email}."},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response(
+                {"error": "Failed to send confirmation email."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(
         detail=True,

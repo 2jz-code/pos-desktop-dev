@@ -44,43 +44,8 @@ export const ordersAPI = {
 
 	// Get full order details for confirmation view (with all needed data)
 	getOrderForConfirmation: async (orderId) => {
-		try {
-			const response = await apiClient.get(`/orders/${orderId}/`);
-			const order = response.data;
-
-			// Transform the backend order data into the format expected by OrderConfirmation component
-			const confirmationData = {
-				id: order.id,
-				orderNumber: order.order_number || order.id,
-				customerName: order.customer_display_name || "Guest Customer",
-				customerEmail:
-					order.customer_email ||
-					order.guest_email ||
-					order.customer?.email ||
-					"",
-				customerPhone:
-					order.customer_phone ||
-					order.guest_phone ||
-					order.customer?.phone_number ||
-					"",
-				items: order.items || [],
-				grandTotal: order.grand_total,
-				total: order.grand_total, // Alternative field name for compatibility
-				subtotal: order.subtotal,
-				taxAmount: order.tax_total,
-				surchargeAmount: order.surcharges_total,
-				status: order.status,
-				paymentStatus: order.payment_status,
-				createdAt: order.created_at,
-				updatedAt: order.updated_at,
-				orderType: order.order_type,
-			};
-
-			return confirmationData;
-		} catch (error) {
-			console.error("Error fetching order for confirmation:", error);
-			throw error;
-		}
+		const response = await apiClient.get(`/orders/${orderId}/`);
+		return response.data;
 	},
 
 	// Get current user's orders (works for both auth and guest)
@@ -123,10 +88,10 @@ export const ordersAPI = {
 		return response.data;
 	},
 
-	// Update guest contact information
+	// Update guest contact information (deprecated - use updateCustomerInfo instead)
 	updateGuestInfo: async (orderId, contactData) => {
-		const response = await apiClient.post(
-			`/orders/${orderId}/update-guest-info/`,
+		const response = await apiClient.patch(
+			`/orders/${orderId}/update-customer-info/`,
 			contactData
 		);
 		return response.data;

@@ -250,8 +250,20 @@ class CompleteUserPaymentView(BasePaymentView, AuthenticatedOrderAccessMixin):
             # Delegate completion logic to the PaymentService
             # This service method handles everything: transaction status, payment status, and order status.
             completed_payment = PaymentService.complete_payment(payment_intent_id)
-            serializer = PaymentSerializer(completed_payment)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+
+            # Get the completed order data for the confirmation page
+            completed_order = completed_payment.order
+
+            # Serialize both payment and order data
+            payment_serializer = PaymentSerializer(completed_payment)
+            order_serializer = OrderSerializer(
+                completed_order, context={"request": request}
+            )
+
+            return Response(
+                {"payment": payment_serializer.data, "order": order_serializer.data},
+                status=status.HTTP_200_OK,
+            )
 
         except PaymentTransaction.DoesNotExist:
             return self.create_error_response(

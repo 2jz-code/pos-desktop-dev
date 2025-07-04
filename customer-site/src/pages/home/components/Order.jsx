@@ -2,24 +2,16 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion"; // eslint-disable-line
 import { SiUbereats, SiDoordash, SiGrubhub } from "react-icons/si";
-import ComingSoonWrapper from "../../../components/utility/ComingSoonWrapper";
 
 // Define your delivery service links (IMPORTANT: Replace these placeholders)
 const UBER_EATS_RESTAURANT_LINK =
 	import.meta.env.VITE_UBEREATS_LINK || "https://www.ubereats.com";
 const DOORDASH_RESTAURANT_LINK =
 	import.meta.env.VITE_DOORDASH_LINK || "https://www.doordash.com";
-const GRUBHUB_RESTAURANT_LINK =
-	import.meta.env.VITE_GRUBHUB_LINK || "https://www.grubhub.com";
+// const GRUBHUB_RESTAURANT_LINK =
+// 	import.meta.env.VITE_GRUBHUB_LINK || "https://www.grubhub.com";
 
 const deliveryServices = [
-	{
-		name: "Uber Eats",
-		IconComponent: SiUbereats,
-		href: UBER_EATS_RESTAURANT_LINK,
-		iconColorClassName: "text-[#06C167]",
-		ariaLabel: "Order Ajeen on Uber Eats",
-	},
 	{
 		name: "DoorDash",
 		IconComponent: SiDoordash,
@@ -28,12 +20,20 @@ const deliveryServices = [
 		ariaLabel: "Order Ajeen on DoorDash",
 	},
 	{
-		name: "Grubhub",
-		IconComponent: SiGrubhub,
-		href: GRUBHUB_RESTAURANT_LINK,
-		iconColorClassName: "text-[#F68B1F]",
-		ariaLabel: "Order Ajeen on Grubhub",
+		name: "Uber Eats",
+		IconComponent: SiUbereats,
+		href: UBER_EATS_RESTAURANT_LINK,
+		iconColorClassName: "text-[#06C167]",
+		ariaLabel: "Order Ajeen on Uber Eats",
 	},
+
+	// {
+	// 	name: "Grubhub",
+	// 	IconComponent: SiGrubhub,
+	// 	href: GRUBHUB_RESTAURANT_LINK,
+	// 	iconColorClassName: "text-[#F68B1F]",
+	// 	ariaLabel: "Order Ajeen on Grubhub",
+	// },
 ];
 
 const Order = () => {
@@ -69,7 +69,7 @@ const Order = () => {
 						{/* "Order Online" button: Primary Green background, Light Beige text */}
 						<Link
 							to="/menu"
-							className="inline-flex items-center justify-center px-8 py-3.5 rounded-lg bg-primary-green text-accent-light-beige font-semibold text-base sm:text-lg shadow-xl hover:bg-accent-dark-green transform hover:scale-105 transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary-green focus:ring-opacity-50"
+							className="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-primary-green text-accent-light-beige font-semibold text-base sm:text-lg shadow-xl hover:bg-accent-dark-green transform hover:scale-105 transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary-green focus:ring-opacity-50"
 						>
 							Order Online
 							<svg
@@ -89,57 +89,50 @@ const Order = () => {
 					</div>
 
 					{/* Delivery Service Icons */}
-					<ComingSoonWrapper>
-						<div className="mt-12 flex flex-wrap justify-center items-center gap-x-6 gap-y-6 sm:gap-x-8">
-							{deliveryServices.map((service) => (
-								<a
-									key={service.name}
-									href={
-										service.href === "#" || service.href.includes("YOUR_")
-											? "#"
-											: service.href
+					<div className="mt-12 flex flex-wrap justify-center items-center gap-x-6 gap-y-6 sm:gap-x-8">
+						{deliveryServices.map((service) => (
+							<a
+								key={service.name}
+								href={
+									service.href === "#" || service.href.includes("YOUR_")
+										? "#"
+										: service.href
+								}
+								target={
+									service.href === "#" || service.href.includes("YOUR_")
+										? "_self"
+										: "_blank"
+								}
+								rel="noopener noreferrer"
+								aria-label={service.ariaLabel}
+								title={`Order on ${service.name}`}
+								className={`rounded-full transition-all duration-300 ease-out group focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-primary-beige focus:ring-primary-green ${
+									service.href === "#" || service.href.includes("YOUR_")
+										? "cursor-default"
+										: "hover:scale-105"
+								}`}
+								onClick={(e) => {
+									if (service.href === "#" || service.href.includes("YOUR_")) {
+										e.preventDefault();
+										console.warn(`Link for ${service.name} is not configured.`);
 									}
-									target={
+								}}
+							>
+								{/* Plaquette background remains light beige, good for colorful icons */}
+								<div
+									className={`flex items-center justify-center p-3 sm:p-3.5 bg-accent-light-beige rounded-full shadow-lg group-hover:shadow-xl transition-all duration-300 ease-out ${
 										service.href === "#" || service.href.includes("YOUR_")
-											? "_self"
-											: "_blank"
-									}
-									rel="noopener noreferrer"
-									aria-label={service.ariaLabel}
-									title={`Order on ${service.name}`}
-									className={`rounded-full transition-all duration-300 ease-out group focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-primary-beige focus:ring-primary-green ${
-										service.href === "#" || service.href.includes("YOUR_")
-											? "cursor-default"
-											: "hover:scale-105"
+											? "opacity-60"
+											: ""
 									}`}
-									onClick={(e) => {
-										if (
-											service.href === "#" ||
-											service.href.includes("YOUR_")
-										) {
-											e.preventDefault();
-											console.warn(
-												`Link for ${service.name} is not configured.`
-											);
-										}
-									}}
 								>
-									{/* Plaquette background remains light beige, good for colorful icons */}
-									<div
-										className={`flex items-center justify-center p-3 sm:p-3.5 bg-accent-light-beige rounded-full shadow-lg group-hover:shadow-xl transition-all duration-300 ease-out ${
-											service.href === "#" || service.href.includes("YOUR_")
-												? "opacity-60"
-												: ""
-										}`}
-									>
-										<service.IconComponent
-											className={`w-10 h-10 sm:w-11 md:w-12 ${service.iconColorClassName} transition-transform duration-300 ease-out`}
-										/>
-									</div>
-								</a>
-							))}
-						</div>
-					</ComingSoonWrapper>
+									<service.IconComponent
+										className={`w-10 h-10 sm:w-11 md:w-12 ${service.iconColorClassName} transition-transform duration-300 ease-out`}
+									/>
+								</div>
+							</a>
+						))}
+					</div>
 					{deliveryServices.some(
 						(s) => s.href.includes("YOUR_") || s.href === "#"
 					) && (

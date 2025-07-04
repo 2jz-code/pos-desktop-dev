@@ -44,3 +44,7 @@ export const voidOrder = async (orderId) => {
 export const resumeOrder = async (orderId) => {
 	return apiClient.post(`/orders/${orderId}/resume/`);
 };
+
+export const resendConfirmationEmail = async (orderId) => {
+	return apiClient.post(`/orders/${orderId}/resend-confirmation/`);
+};

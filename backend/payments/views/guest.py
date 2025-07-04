@@ -187,7 +187,18 @@ class CompleteGuestPaymentView(
             # Complete the payment using the service
             from ..services import PaymentService
 
-            PaymentService.complete_payment(payment_intent_id)
+            completed_payment = PaymentService.complete_payment(payment_intent_id)
+
+            # Get the completed order data before clearing the session
+            completed_order = completed_payment.order
+
+            # Serialize the order data for the confirmation page
+            from orders.serializers import OrderSerializer
+
+            order_serializer = OrderSerializer(
+                completed_order, context={"request": request}
+            )
+            order_data = order_serializer.data
 
             # After successful payment completion, clear the guest session
             # This prevents the completed order from being reused
@@ -196,7 +207,11 @@ class CompleteGuestPaymentView(
             GuestSessionService.clear_guest_session(request)
 
             return self.create_success_response(
-                {"status": "success", "message": "Payment completed successfully"}
+                {
+                    "status": "success",
+                    "message": "Payment completed successfully",
+                    "order": order_data,
+                }
             )
 
         except PaymentTransaction.DoesNotExist:

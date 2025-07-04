@@ -305,8 +305,8 @@ const Navbar = () => {
 				onClick={() => navigate("/login")}
 				className={`${
 					isHomePage && !scrolled && !mobileMenuOpen
-						? "bg-white/20 text-white hover:bg-white/30"
-						: "bg-primary-green text-white hover:bg-primary-green/90"
+						? "bg-white/20 text-white hover:bg-white/30 rounded-full"
+						: "bg-primary-green text-white hover:bg-primary-green/90 rounded-full"
 				} transition-colors`}
 			>
 				Login

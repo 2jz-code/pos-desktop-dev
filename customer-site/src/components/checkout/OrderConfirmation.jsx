@@ -154,7 +154,7 @@ const OrderConfirmation = ({ orderData }) => {
 							Order Number
 						</span>
 						<span className="font-mono text-xl font-bold text-accent-dark-green">
-							#{orderData.orderNumber || orderData.order_number || orderData.id}
+							#{orderData.order_number || orderData.id}
 						</span>
 					</div>
 
@@ -164,17 +164,19 @@ const OrderConfirmation = ({ orderData }) => {
 							Customer Information
 						</h4>
 						<div className="text-sm text-accent-dark-brown/80 space-y-2 pl-2">
-							<p className="font-medium">{orderData.customerName}</p>
-							{orderData.customerEmail && (
+							<p className="font-medium">
+								{orderData.customer_display_name || "Guest Customer"}
+							</p>
+							{orderData.customer_email && (
 								<p className="flex items-center">
 									<Mail className="h-4 w-4 mr-2 text-primary-green" />
-									{orderData.customerEmail}
+									{orderData.customer_email}
 								</p>
 							)}
-							{orderData.customerPhone && (
+							{orderData.customer_phone && (
 								<p className="flex items-center">
 									<Phone className="h-4 w-4 mr-2 text-primary-green" />
-									{orderData.customerPhone}
+									{orderData.customer_phone}
 								</p>
 							)}
 						</div>
@@ -229,21 +231,21 @@ const OrderConfirmation = ({ orderData }) => {
 							)}
 
 							{/* Tax */}
-							{orderData.taxAmount && (
+							{orderData.tax_total && (
 								<div className="flex justify-between text-sm">
 									<span className="text-accent-dark-brown">Tax</span>
 									<span className="text-accent-dark-brown">
-										${formatPrice(orderData.taxAmount)}
+										${formatPrice(orderData.tax_total)}
 									</span>
 								</div>
 							)}
 
 							{/* Surcharge */}
-							{orderData.surchargeAmount && orderData.surchargeAmount > 0 && (
+							{orderData.surcharges_total && orderData.surcharges_total > 0 && (
 								<div className="flex justify-between text-sm">
 									<span className="text-accent-dark-brown">Service Fee</span>
 									<span className="text-accent-dark-brown">
-										${formatPrice(orderData.surchargeAmount)}
+										${formatPrice(orderData.surcharges_total)}
 									</span>
 								</div>
 							)}
@@ -252,7 +254,7 @@ const OrderConfirmation = ({ orderData }) => {
 							<div className="flex justify-between items-center font-bold text-xl pt-2 border-t border-accent-subtle-gray/30">
 								<span className="text-accent-dark-green">Total Paid</span>
 								<span className="text-accent-dark-green">
-									${formatPrice(orderData.grandTotal || orderData.total)}
+									${formatPrice(orderData.grand_total)}
 								</span>
 							</div>
 						</div>
@@ -269,7 +271,7 @@ const OrderConfirmation = ({ orderData }) => {
 						</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-5">
-						{orderData.customerEmail && (
+						{orderData.customer_email && (
 							<div className="flex items-start space-x-4">
 								<Mail className="h-6 w-6 text-primary-green mt-0.5 flex-shrink-0" />
 								<div>
@@ -279,7 +281,7 @@ const OrderConfirmation = ({ orderData }) => {
 									<p className="text-sm text-accent-dark-brown/70 mt-1">
 										We've sent a detailed confirmation email to{" "}
 										<span className="font-medium">
-											{orderData.customerEmail}
+											{orderData.customer_email}
 										</span>{" "}
 										with your order receipt and pickup instructions.
 									</p>

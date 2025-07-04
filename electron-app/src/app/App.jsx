@@ -12,7 +12,7 @@ import globalNotificationService from "@/shared/lib/globalNotificationService";
 
 // Import from domains using new structure
 import { useCustomerTipListener } from "@/domains/pos";
-import { useSettingsStore } from "@/domains/settings";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 
 // Import Components and Pages from new structure
 import { FullScreenLoader, Layout } from "@/shared";
@@ -39,49 +39,43 @@ import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
  * and runs the one-time application initialization logic.
  */
 function AppContent() {
-	const { isAuthenticated } = useAuth();
-
-	useEffect(() => {
-		console.log("App mounted. Running initialization logic...");
-
-		useSettingsStore.getState().ensurePosDeviceId();
-		useSettingsStore.getState().discoverAndSetPrinters();
-		useSettingsStore.getState().fetchSettings();
-
-		if (isAuthenticated) {
-			console.log(
-				"User is authenticated, initializing GlobalNotificationService."
-			);
-			globalNotificationService.initialize();
-		}
-
-		return () => {
-			if (globalNotificationService.isInitialized) {
-				console.log("App unmounting, disconnecting GlobalNotificationService.");
-				globalNotificationService.disconnect();
-			}
-		};
-	}, [isAuthenticated]);
-
-	return (
-		<Router>
-			<AppRoutes />
-			<Toaster />
-		</Router>
-	);
+	// This component can be used for logic that needs access to the Auth context
+	// but for now, the main initialization is handled in App's useEffect.
+	return <AnimatedOutlet />;
 }
 
 function App() {
+	useEffect(() => {
+		console.log("App mounted. Running initialization logic...");
+		// Call these once when the app mounts
+		useSettingsStore.getState().fetchSettings();
+		useSettingsStore.getState().discoverAndSetPrinters();
+		useSettingsStore.getState().ensurePosDeviceId();
+
+		// Initialize the global notification service
+		globalNotificationService.initialize();
+
+		// Cleanup on app unmount
+		return () => {
+			console.log("App unmounting. Disconnecting notification service.");
+			globalNotificationService.disconnect();
+		};
+	}, []);
+
 	return (
-		<AuthProvider>
-			<QueryProvider>
-				<AppContent />
-			</QueryProvider>
-		</AuthProvider>
+		<QueryProvider>
+			<AuthProvider>
+				<Router>
+					<Toaster />
+					<AppRoutes />
+				</Router>
+			</AuthProvider>
+		</QueryProvider>
 	);
 }
 
-const PrivateRoute = ({ children }) => {
+// Higher-order component for private routes
+function PrivateRoute({ children }) {
 	const { isAuthenticated, loading } = useAuth(); // Changed `user` to `isAuthenticated` for consistency
 	if (loading) {
 		return <FullScreenLoader />;
@@ -94,7 +88,7 @@ const PrivateRoute = ({ children }) => {
 			replace
 		/>
 	);
-};
+}
 
 function AppRoutes() {
 	const { isAuthenticated, loading } = useAuth();

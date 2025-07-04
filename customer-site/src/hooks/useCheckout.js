@@ -221,13 +221,14 @@ export const useCheckout = () => {
 			) {
 				try {
 					const updateData = {};
-					if (formData.firstName) updateData.first_name = formData.firstName;
-					if (formData.lastName) updateData.last_name = formData.lastName;
-					if (formData.email) updateData.email = formData.email;
+					if (formData.firstName)
+						updateData.guest_first_name = formData.firstName;
+					if (formData.lastName) updateData.guest_last_name = formData.lastName;
+					if (formData.email) updateData.guest_email = formData.email;
 					if (formData.phone)
-						updateData.phone = formData.phone.replace(/[^\d]/g, ""); // Send raw digits
+						updateData.guest_phone = formData.phone.replace(/[^\d]/g, ""); // Send raw digits
 
-					await ordersAPI.updateGuestInfo(response.id, updateData);
+					await ordersAPI.updateCustomerInfo(response.id, updateData);
 				} catch (updateError) {
 					console.warn("Failed to update guest info:", updateError);
 				}
@@ -342,17 +343,29 @@ export const useCheckout = () => {
 
 				console.log("Payment completed on backend:", completionResponse);
 
-				// --- THE FIX: Re-fetch the final order data AFTER payment completion ---
-				const finalOrderData = await ordersAPI.getOrderForConfirmation(cart.id);
-				setOrderConfirmation(finalOrderData);
-				// --- END FIX ---
+				// Use the order data returned from payment completion if available, otherwise fetch it
+				if (completionResponse.order) {
+					setOrderConfirmation(completionResponse.order);
+				} else {
+					const finalOrderData = await ordersAPI.getOrderForConfirmation(
+						cart.id
+					);
+					setOrderConfirmation(finalOrderData);
+				}
 
 				toast.success("Payment successful!");
 
-				// Clear cart and navigate
+				// Clear cart and navigate with order data
 				setCheckoutCompleted(true);
 				queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
-				navigate(`/checkout?step=confirmation&orderId=${cart.id}`);
+
+				// Pass order data in URL to avoid the 404 API call issue
+				const orderDataParam = encodeURIComponent(
+					JSON.stringify(completionResponse.order)
+				);
+				navigate(
+					`/checkout?step=confirmation&orderId=${cart.id}&orderData=${orderDataParam}`
+				);
 			} catch (err) {
 				console.error("Authenticated checkout error:", err);
 				setError(err.message || "Payment failed. Please try again.");
@@ -420,25 +433,29 @@ export const useCheckout = () => {
 					// Step 3: Finalize order on backend
 					console.log("Payment succeeded, finalizing order...");
 
-					// Complete the guest payment (authenticated users are handled separately)
-					await completeGuestPayment(confirmedPayment.id, order.id);
-
-					// Set the raw order data for the confirmation page
-					const orderId = guestOrder.id;
-
-					// --- THE FIX: Re-fetch the final order data AFTER payment completion ---
-					const finalOrderData = await ordersAPI.getOrderForConfirmation(
-						orderId
+					// Complete the guest payment (now returns order data directly)
+					const completionResponse = await completeGuestPayment(
+						confirmedPayment.id,
+						order.id
 					);
-					setOrderConfirmation(finalOrderData);
-					// --- END FIX ---
+
+					// Use the order data returned from payment completion
+					const orderId = order.id;
+					setOrderConfirmation(completionResponse.order);
 
 					toast.success("Payment successful!");
 
-					// Clear cart and navigate
+					// Clear cart and navigate with order data
 					setCheckoutCompleted(true);
 					queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
-					navigate(`/checkout?step=confirmation&orderId=${orderId}`);
+
+					// Pass order data in URL to avoid the 404 API call issue
+					const orderDataParam = encodeURIComponent(
+						JSON.stringify(completionResponse.order)
+					);
+					navigate(
+						`/checkout?step=confirmation&orderId=${orderId}&orderData=${orderDataParam}`
+					);
 				} else {
 					throw new Error("Payment was not completed successfully");
 				}

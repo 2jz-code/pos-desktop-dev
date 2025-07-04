@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import * as orderService from "@/domains/orders/services/orderService";
@@ -14,7 +14,6 @@ import {
 	CardFooter,
 } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
-import { shallow } from "zustand/shallow";
 import { formatCurrency } from "@/shared/lib/utils";
 import {
 	ArrowLeft,
@@ -23,8 +22,12 @@ import {
 	User,
 	Mail,
 	Phone,
+	Printer,
+	Send,
 } from "lucide-react";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
+import { useMutation } from "@tanstack/react-query";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 
 // --- Reusable component to display a single transaction ---
 const TransactionDetail = ({ transaction }) => {
@@ -60,24 +63,60 @@ const OrderDetailsPage = () => {
 	const { orderId } = useParams();
 	const navigate = useNavigate();
 	const permissions = useRolePermissions();
+	const [isPrinting, setIsPrinting] = useState(false);
 
-	const { order, fetchOrderById, updateSingleOrder, isLoading, resumeCart } =
-		usePosStore(
-			(state) => ({
-				order: state.selectedOrder,
-				fetchOrderById: state.fetchOrderById,
-				updateSingleOrder: state.updateSingleOrder,
-				isLoading: !state.selectedOrder,
-				resumeCart: state.resumeCart,
-			}),
-			shallow
-		);
+	// --- ZUSTAND FIX: Select state and functions individually to prevent re-renders ---
+	const order = usePosStore((state) => state.selectedOrder);
+	const fetchOrderById = usePosStore((state) => state.fetchOrderById);
+	const updateSingleOrder = usePosStore((state) => state.updateSingleOrder);
+	const resumeCart = usePosStore((state) => state.resumeCart);
+	const isLoading = usePosStore((state) => !state.selectedOrder);
+
+	const getLocalReceiptPrinter = useSettingsStore(
+		(state) => state.getLocalReceiptPrinter
+	);
+	const settings = useSettingsStore((state) => state.settings);
+	// --- END ZUSTAND FIX ---
 
 	useEffect(() => {
 		if (orderId) {
 			fetchOrderById(orderId);
 		}
 	}, [orderId, fetchOrderById]);
+
+	const handlePrintReceipt = async () => {
+		const receiptPrinter = getLocalReceiptPrinter();
+		if (!receiptPrinter) {
+			toast({
+				title: "Printer Error",
+				description: "No receipt printer is configured.",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		setIsPrinting(true);
+		try {
+			await window.hardwareApi.invoke("print-receipt", {
+				printer: receiptPrinter,
+				data: order,
+				storeSettings: settings,
+			});
+			toast({
+				title: "Success",
+				description: "Receipt sent to printer.",
+			});
+		} catch (error) {
+			console.error("Failed to print receipt:", error);
+			toast({
+				title: "Print Failed",
+				description: error.message || "Could not print the receipt.",
+				variant: "destructive",
+			});
+		} finally {
+			setIsPrinting(false);
+		}
+	};
 
 	const handleStatusChange = async (serviceFunction, successMessage) => {
 		try {
@@ -113,6 +152,24 @@ const OrderDetailsPage = () => {
 			});
 		}
 	};
+
+	const resendEmailMutation = useMutation({
+		mutationFn: () => orderService.resendConfirmationEmail(orderId),
+		onSuccess: (data) => {
+			toast({
+				title: "Success",
+				description: data.data.message || "Confirmation email has been resent.",
+			});
+		},
+		onError: (error) => {
+			toast({
+				title: "Operation Failed",
+				description:
+					error?.response?.data?.error || "Could not resend the email.",
+				variant: "destructive",
+			});
+		},
+	});
 
 	if (isLoading && !order) return <FullScreenLoader />;
 	if (!order)
@@ -235,13 +292,37 @@ const OrderDetailsPage = () => {
 							</div>
 						</div>
 					</CardContent>
-					<CardFooter className="flex justify-end gap-2">
+					<CardFooter className="flex flex-wrap justify-end gap-2">
+						{status === "COMPLETED" &&
+							["POS", "WEB"].includes(order.order_type) &&
+							permissions?.canCancelOrders() && (
+								<Button
+									variant="outline"
+									onClick={handlePrintReceipt}
+									disabled={isPrinting || !getLocalReceiptPrinter()}
+								>
+									<Printer className="mr-2 h-4 w-4" />
+									{isPrinting ? "Printing..." : "Print Physical Receipt"}
+								</Button>
+							)}
+						{status === "COMPLETED" && permissions?.canCancelOrders() && (
+							<Button
+								variant="outline"
+								onClick={() => resendEmailMutation.mutate()}
+								disabled={resendEmailMutation.isPending}
+							>
+								<Send className="mr-2 h-4 w-4" />
+								{resendEmailMutation.isPending
+									? "Sending..."
+									: "Resend Email Receipt"}
+							</Button>
+						)}
 						{(status === "HOLD" || status === "PENDING") && (
 							<Button onClick={handleResume}>Resume Order</Button>
 						)}
 						{/* Only allow managers/owners to cancel orders */}
 						{(status === "PENDING" || status === "HOLD") &&
-							permissions.canCancelOrders() && (
+							permissions?.canCancelOrders() && (
 								<Button
 									variant="destructive"
 									onClick={() =>

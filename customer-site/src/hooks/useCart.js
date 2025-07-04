@@ -212,7 +212,7 @@ export const useCartMutations = () => {
 
 	const updateGuestInfoMutation = useMutation({
 		mutationFn: ({ orderId, contactData }) =>
-			ordersAPI.updateGuestInfo(orderId, contactData),
+			ordersAPI.updateCustomerInfo(orderId, contactData),
 		onSuccess: () => {
 			invalidateCart();
 		},

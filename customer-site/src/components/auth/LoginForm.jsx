@@ -213,21 +213,7 @@ const LoginForm = () => {
 								<div className="absolute inset-0 flex items-center">
 									<div className="w-full border-t border-accent-subtle-gray/50" />
 								</div>
-								<div className="relative flex justify-center text-sm">
-									<span className="px-2 bg-accent-light-beige text-accent-dark-brown">
-										Or
-									</span>
-								</div>
 							</div>
-
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => navigate("/menu")}
-								className="w-full border-accent-subtle-gray text-accent-dark-brown hover:bg-primary-beige/70"
-							>
-								Continue as Guest
-							</Button>
 						</form>
 					</CardContent>
 				</Card>

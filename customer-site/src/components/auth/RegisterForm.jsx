@@ -20,6 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import TermsOfService from "@/pages/TermsOfService";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
 const RegisterForm = () => {
 	const [formData, setFormData] = useState({
@@ -367,18 +369,18 @@ const RegisterForm = () => {
 
 								{/* Password Strength Indicator */}
 								{formData.password && (
-									<div className="mt-2">
-										<div className="flex justify-between items-center mb-1">
-											<span className="text-xs text-accent-dark-brown">
-												Password strength:
-											</span>
+									<div className="space-y-2">
+										<div className="flex justify-between items-center">
+											<Label className="text-xs text-accent-dark-green">
+												Password Strength
+											</Label>
 											<span
-												className={`text-xs font-medium ${
+												className={`text-xs font-semibold ${
 													passwordStrength < 30
 														? "text-red-500"
 														: passwordStrength < 60
 														? "text-yellow-500"
-														: "text-primary-green"
+														: "text-green-500"
 												}`}
 											>
 												{getStrengthText()}
@@ -388,33 +390,21 @@ const RegisterForm = () => {
 											value={passwordStrength}
 											className="h-2"
 										/>
-									</div>
-								)}
-
-								{/* Password Requirements */}
-								{formData.password && (
-									<div className="mt-2 space-y-1">
-										{passwordRequirements.map((req) => (
-											<div
-												key={req.id}
-												className="flex items-center text-xs"
-											>
-												{req.test(formData.password) ? (
-													<Check className="h-3 w-3 text-primary-green mr-2" />
-												) : (
-													<X className="h-3 w-3 text-red-500 mr-2" />
-												)}
-												<span
-													className={
-														req.test(formData.password)
-															? "text-primary-green"
-															: "text-red-500"
-													}
+										<div className="grid grid-cols-2 gap-x-4 text-xs text-accent-dark-brown mt-1">
+											{passwordRequirements.map((req) => (
+												<div
+													key={req.id}
+													className="flex items-center"
 												>
-													{req.label}
-												</span>
-											</div>
-										))}
+													{req.test(formData.password) ? (
+														<Check className="h-3 w-3 text-green-500 mr-1" />
+													) : (
+														<X className="h-3 w-3 text-red-500 mr-1" />
+													)}
+													<span>{req.label}</span>
+												</div>
+											))}
+										</div>
 									</div>
 								)}
 
@@ -454,60 +444,58 @@ const RegisterForm = () => {
 							</div>
 
 							{/* Rewards Opt-in */}
-							<div className="flex items-center space-x-2">
+							<div className="flex items-start space-x-3">
 								<Checkbox
 									id="is_rewards_opted_in"
 									name="is_rewards_opted_in"
 									checked={formData.is_rewards_opted_in}
 									onCheckedChange={(checked) =>
-										setFormData((prev) => ({
-											...prev,
-											is_rewards_opted_in: checked,
-										}))
+										handleChange({
+											target: {
+												name: "is_rewards_opted_in",
+												value: checked,
+												type: "checkbox",
+												checked,
+											},
+										})
 									}
+									className="mt-1"
 								/>
-								<Label
-									htmlFor="is_rewards_opted_in"
-									className="text-sm text-accent-dark-brown cursor-pointer flex items-center"
-								>
-									<Gift className="h-4 w-4 mr-1 text-primary-green" />
-									Join our rewards program for exclusive offers
-								</Label>
+								<div className="grid gap-1.5 leading-none">
+									<label
+										htmlFor="is_rewards_opted_in"
+										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-accent-dark-brown"
+									>
+										Join our rewards program for exclusive offers
+									</label>
+									<p className="text-xs text-muted-foreground">
+										Get points on every order and redeem for discounts.
+									</p>
+								</div>
 							</div>
 
-							{/* Terms Agreement */}
-							<div className="flex items-center space-x-2">
+							{/* Terms and Conditions */}
+							<div className="flex items-start space-x-3">
 								<Checkbox
 									id="terms"
 									checked={agreeToTerms}
 									onCheckedChange={setAgreeToTerms}
-									required
+									className="mt-1"
 								/>
-								<Label
-									htmlFor="terms"
-									className="text-sm text-accent-dark-brown cursor-pointer"
-								>
-									I agree to the{" "}
-									<Link
-										to="/terms"
-										className="text-primary-green hover:text-accent-dark-green underline"
+								<div className="grid gap-1.5 leading-none">
+									<label
+										htmlFor="terms"
+										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-accent-dark-brown"
 									>
-										Terms of Service
-									</Link>{" "}
-									and{" "}
-									<Link
-										to="/privacy"
-										className="text-primary-green hover:text-accent-dark-green underline"
-									>
-										Privacy Policy
-									</Link>
-								</Label>
+										I agree to the <TermsOfService /> and <PrivacyPolicy />
+									</label>
+									{errors.terms && (
+										<p className="text-red-500 text-xs mt-1">{errors.terms}</p>
+									)}
+								</div>
 							</div>
-							{errors.terms && (
-								<p className="text-red-500 text-xs mt-1">{errors.terms}</p>
-							)}
 
-							{/* Register Button */}
+							{/* Create Account Button */}
 							<Button
 								type="submit"
 								disabled={isLoading}
