@@ -19,4 +19,3 @@ export { createCartSlice, defaultCartState } from "./store/cartSlice.js";
 export { default as terminalStore } from "./store/terminalStore.js";
 export { useCustomerTipListener } from "./store/useCustomerTipListener.js";
 export { useSyncToCustomerDisplay } from "./store/useSyncToCustomerDisplay.js";
-export { tenderStateMachine } from "./store/tenderStateMachine.js";
