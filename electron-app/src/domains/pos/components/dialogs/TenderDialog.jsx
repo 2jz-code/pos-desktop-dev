@@ -170,16 +170,13 @@ const TenderDialog = () => {
 						) : (
 							<div className="space-y-1">
 								<h3 className="text-lg font-semibold">
-									Balance Due:{" "}
-									{tenderState === "awaitingPaymentMethod"
-										? formatCurrency(balanceDue)
-										: formatCurrency(balanceDue + (surchargeAmount || 0))}
+									Balance Due: {formatCurrency(balanceDue)}
 								</h3>
 								{surchargeAmount > 0 &&
 									tenderState !== "awaitingPaymentMethod" && (
 										<p className="text-xs text-muted-foreground">
-											Base: {formatCurrency(balanceDue)} + Surcharge:{" "}
-											{formatCurrency(surchargeAmount)}
+											Base: {formatCurrency(balanceDue - surchargeAmount)} +
+											Surcharge: {formatCurrency(surchargeAmount)}
 										</p>
 									)}
 							</div>

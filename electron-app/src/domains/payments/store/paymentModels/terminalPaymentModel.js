@@ -10,7 +10,6 @@ export const terminalPaymentModel = {
 	process: async (context) => {
 		const { orderId, balanceDue, tipAmount } = context;
 		const terminalStore = useTerminalStore.getState();
-		const baseAmount = balanceDue - (tipAmount || 0);
 		let paymentIntentId = null;
 
 		try {
@@ -20,7 +19,7 @@ export const terminalPaymentModel = {
 
 			const intentResponse = await apiClient.post(
 				`/payments/orders/${orderId}/create-terminal-intent/`,
-				{ amount: baseAmount, tip: tipAmount || 0 }
+				{ amount: balanceDue, tip: tipAmount || 0 }
 			);
 			const paymentIntent = intentResponse.data;
 			paymentIntentId = paymentIntent.payment_intent_id;

@@ -41,11 +41,25 @@ class Payment(models.Model):
         help_text=_("The total amount of the order at the time of payment initiation."),
     )
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    tip = models.DecimalField(
+    total_tips = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
-        help_text=_("The tip amount for this payment."),
+        help_text=_("Total tips collected across all transactions for this payment."),
+    )
+    total_surcharges = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text=_("Total surcharges collected across all transactions."),
+    )
+    total_collected = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text=_(
+            "The grand total collected, including amount paid, tips, and surcharges."
+        ),
     )
 
     # --- Guest Session Fields ---
@@ -164,11 +178,14 @@ class PaymentTransaction(models.Model):
         Payment, on_delete=models.CASCADE, related_name="transactions"
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    tip = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     surcharge = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
-        help_text=_("Surcharge applied to this specific transaction (e.g., card processing fee)."),
+        help_text=_(
+            "Surcharge applied to this specific transaction (e.g., card processing fee)."
+        ),
     )
     method = models.CharField(max_length=20, choices=PaymentMethod.choices)
     status = models.CharField(

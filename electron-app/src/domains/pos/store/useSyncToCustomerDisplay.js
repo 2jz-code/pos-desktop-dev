@@ -14,9 +14,10 @@ export const useSyncToCustomerDisplay = () => {
 		const isSplitPayment = state.partialAmount > 0;
 		const baseAmount = isSplitPayment ? state.partialAmount : state.balanceDue;
 
-		// Add surcharge to the display amount for card payments (when surchargeAmount exists)
-		const surchargeAmount = state.surchargeAmount || 0;
-		const customerPaymentAmount = baseAmount + surchargeAmount;
+		// The baseAmount already includes the surcharge. No further addition is needed.
+		const customerPaymentAmount = isSplitPayment
+			? baseAmount + (state.surchargeAmount || 0)
+			: baseAmount;
 
 		// We construct a state object that matches the precise format
 		// that the original CustomerDisplay.jsx was designed to work with.

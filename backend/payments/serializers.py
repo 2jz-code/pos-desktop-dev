@@ -77,6 +77,7 @@ class ProcessPaymentSerializer(serializers.Serializer):
     order_id = serializers.UUIDField()
     method = serializers.ChoiceField(choices=PaymentTransaction.PaymentMethod.choices)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    tip = serializers.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
 
     # Fields specific to online card payments
     payment_method_id = serializers.CharField(required=False, allow_blank=True)
@@ -107,6 +108,7 @@ class ProcessPaymentSerializer(serializers.Serializer):
             order=order,
             method=validated_data["method"],
             amount=validated_data["amount"],
+            tip=validated_data["tip"],
             # Pass extra data for the strategy
             payment_method_id=validated_data.get("payment_method_id"),
             payment_intent_id=validated_data.get("payment_intent_id"),

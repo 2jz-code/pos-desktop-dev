@@ -9,7 +9,16 @@ class PaymentTransactionInline(admin.TabularInline):
 
     model = PaymentTransaction
     extra = 0  # Don't show extra blank forms
-    readonly_fields = ("id", "created_at", "transaction_id", "status")
+    readonly_fields = (
+        "id",
+        "amount",
+        "tip",
+        "surcharge",
+        "method",
+        "status",
+        "created_at",
+        "transaction_id",
+    )
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -27,17 +36,37 @@ class PaymentAdmin(admin.ModelAdmin):
         "order",
         "total_amount_due",
         "amount_paid",
-        "tip",
+        "total_tips",
+        "total_surcharges",
+        "total_collected",
         "status",
         "created_at",
     )
     list_filter = ("status", "created_at")
     search_fields = ("id", "order__id")
-    readonly_fields = ("id", "created_at", "updated_at")
+    readonly_fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "total_tips",
+        "total_surcharges",
+        "total_collected",
+    )
     inlines = [PaymentTransactionInline]
     fieldsets = (
         (None, {"fields": ("id", "order", "status")}),
-        ("Financials", {"fields": ("total_amount_due", "amount_paid", "tip")}),
+        (
+            "Financials",
+            {
+                "fields": (
+                    "total_amount_due",
+                    "amount_paid",
+                    "total_tips",
+                    "total_surcharges",
+                    "total_collected",
+                )
+            },
+        ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
 

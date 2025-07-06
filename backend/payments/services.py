@@ -140,9 +140,7 @@ class PaymentService:
             Payment.PaymentStatus.UNPAID,
             Payment.PaymentStatus.PARTIALLY_PAID,
         ]:
-            PaymentService._transition_payment_status(
-                payment, "PENDING"
-            )
+            PaymentService._transition_payment_status(payment, "PENDING")
         elif payment.status != Payment.PaymentStatus.PENDING:
             raise ValueError(
                 f"Cannot initiate payment attempt. Payment status is {payment.status}, expected UNPAID or PARTIALLY_PAID"
@@ -186,14 +184,10 @@ class PaymentService:
 
         # Determine new status based on amounts
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
-            PaymentService._transition_payment_status(
-                updated_payment, "PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PAID")
             PaymentService._handle_payment_completion(updated_payment)
         elif updated_payment.amount_paid > 0:
-            PaymentService._transition_payment_status(
-                updated_payment, "PARTIALLY_PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PARTIALLY_PAID")
 
         return updated_payment
 
@@ -223,17 +217,11 @@ class PaymentService:
 
         # Determine new status based on remaining successful payments
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
-            PaymentService._transition_payment_status(
-                updated_payment, "PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PAID")
         elif updated_payment.amount_paid > 0:
-            PaymentService._transition_payment_status(
-                updated_payment, "PARTIALLY_PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PARTIALLY_PAID")
         else:
-            PaymentService._transition_payment_status(
-                updated_payment, "UNPAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "UNPAID")
 
         return updated_payment
 
@@ -265,17 +253,11 @@ class PaymentService:
 
         # Determine new status based on remaining successful payments
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
-            PaymentService._transition_payment_status(
-                updated_payment, "PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PAID")
         elif updated_payment.amount_paid > 0:
-            PaymentService._transition_payment_status(
-                updated_payment, "PARTIALLY_PAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "PARTIALLY_PAID")
         else:
-            PaymentService._transition_payment_status(
-                updated_payment, "UNPAID"
-            )
+            PaymentService._transition_payment_status(updated_payment, "UNPAID")
 
         return updated_payment
 
@@ -487,30 +469,21 @@ class PaymentService:
 
     @staticmethod
     @transaction.atomic
-    def create_terminal_payment_intent(
-        order: Order, amount: Decimal, tip: Decimal, surcharge: Decimal
-    ):
+    def create_terminal_payment_intent(order: Order, amount: Decimal, tip: Decimal):
         """
         Creates a payment intent for a terminal transaction.
-        This method now correctly handles both full and partial (split) payments.
+        The surcharge is now calculated on the backend to prevent double-counting.
         """
-        payment = PaymentService.get_or_create_payment(order)
-        payment = Payment.objects.select_for_update().get(id=payment.id)
-
-        # Atomically add the new tip to the payment's running tip total.
-        payment.tip = (payment.tip or Decimal("0.00")) + tip
-        payment.save(update_fields=["tip"])
-
-        # This is the actual amount for this specific transaction (e.g., the partial payment).
-        amount_for_this_intent = amount + tip + surcharge
-
-        # Get the active terminal strategy
         active_strategy = PaymentService._get_active_terminal_strategy()
 
-        # The strategy is responsible for creating the PaymentIntent and the
-        # associated PaymentTransaction record with the correct partial amount.
+        payment = PaymentService.initiate_payment_attempt(order=order)
+
+        # Calculate surcharge on the backend based on the base amount of the transaction.
+        surcharge = PaymentService.calculate_surcharge(amount)
+
+        # The strategy is responsible for creating the transaction and handling the tip
         return active_strategy.create_payment_intent(
-            payment, amount, surcharge, amount_for_this_intent
+            payment=payment, amount=amount, tip=tip, surcharge=surcharge
         )
 
     @classmethod
@@ -659,12 +632,15 @@ class PaymentService:
             refunded_amount=amount_to_refund,  # Mark this new transaction as refunded this amount
         )
 
-        PaymentService._update_payment_status(self.payment)
+        PaymentService._recalculate_payment_amounts(self.payment)
         return self.payment
 
     @transaction.atomic
     def refund_transaction_with_provider(
-        self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str | None = None
+        self,
+        transaction_id: uuid.UUID,
+        amount_to_refund: Decimal,
+        reason: str | None = None,
     ) -> PaymentTransaction:
         """
         Initiates a refund for a specific PaymentTransaction via its associated provider.

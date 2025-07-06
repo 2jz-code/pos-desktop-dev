@@ -101,7 +101,7 @@ export const createPaymentSlice = (set, get) => ({
 				const surchargeAmount = parseFloat(surchargeResponse.surcharge) || 0;
 				set({
 					surchargeAmount: surchargeAmount,
-					balanceDue: get().balanceDue + surchargeAmount,
+					// DO NOT add surcharge to balanceDue. It's for display only.
 				});
 				const { initializeTerminal } = useTerminalStore.getState();
 				await initializeTerminal();
@@ -127,6 +127,7 @@ export const createPaymentSlice = (set, get) => ({
 				const surchargeAmount = parseFloat(surchargeResponse.surcharge) || 0;
 				set({
 					surchargeAmount: surchargeAmount,
+					// DO NOT modify partialAmount. It should be the base split amount.
 				});
 				const { initializeTerminal } = useTerminalStore.getState();
 				await initializeTerminal();
@@ -199,6 +200,7 @@ export const createPaymentSlice = (set, get) => ({
 			orderId: state.orderId,
 			balanceDue: baseAmountToProcess,
 			tipAmount: state.tipAmount,
+			surchargeAmount: state.surchargeAmount,
 			setPaymentIntentId: (id) => set({ currentPaymentIntentId: id }),
 		};
 
