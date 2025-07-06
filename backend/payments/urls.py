@@ -7,6 +7,7 @@ from .views.authenticated import (
     PaymentProcessView,
     CreateUserPaymentIntentView,
     CompleteUserPaymentView,
+    SurchargeCalculationView,
 )
 from .views.terminal import (
     CreateTerminalIntentView,
@@ -41,6 +42,11 @@ urlpatterns = [
     ),
     # Authenticated payment endpoints
     path("process/", PaymentProcessView.as_view(), name="payment-process"),
+    path(
+        "calculate-surcharge/",
+        SurchargeCalculationView.as_view(),
+        name="calculate-surcharge",
+    ),
     path(
         "create-payment-intent/",
         CreateUserPaymentIntentView.as_view(),

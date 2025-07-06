@@ -31,7 +31,6 @@ export const defaultCartState = {
 	subtotal: 0,
 	total: 0,
 	taxAmount: 0,
-	surchargesAmount: 0,
 	totalDiscountsAmount: 0,
 	tip: 0, // Keep tip for now, might be used later
 	isSocketConnected: false,
@@ -261,7 +260,6 @@ export const createCartSlice = (set, get) => {
 				total: safeParseFloat(orderData.grand_total),
 				subtotal: safeParseFloat(orderData.subtotal),
 				taxAmount: safeParseFloat(orderData.tax_total),
-				surchargesAmount: safeParseFloat(orderData.surcharges_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
 				addingItemId: null,
@@ -346,7 +344,6 @@ export const createCartSlice = (set, get) => {
 				subtotal: 0,
 				total: 0,
 				taxAmount: 0,
-				surchargesAmount: 0,
 				appliedDiscounts: [],
 				totalDiscountsAmount: 0,
 			});
@@ -440,7 +437,6 @@ export const createCartSlice = (set, get) => {
 				total: safeParseFloat(orderData.grand_total),
 				subtotal: safeParseFloat(orderData.subtotal),
 				taxAmount: safeParseFloat(orderData.tax_total),
-				surchargesAmount: safeParseFloat(orderData.surcharges_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
 				isLoadingCart: false,

@@ -163,12 +163,14 @@ class PaymentService:
             Updated Payment object
         """
         payment = transaction.payment
-        
+
         # Idempotency Check: If the payment is already fully paid, do nothing further.
         if payment.status == Payment.PaymentStatus.PAID:
-            print(f"Payment {payment.id} is already marked as PAID. Skipping confirmation.")
+            print(
+                f"Payment {payment.id} is already marked as PAID. Skipping confirmation."
+            )
             return payment
-            
+
         # Mark the transaction as successful
         transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
         transaction.save(update_fields=["status"])
@@ -410,7 +412,11 @@ class PaymentService:
     @staticmethod
     @transaction.atomic
     def process_transaction(
-        order: Order, method: str, amount: Decimal, provider: str = None, **kwargs
+        order: Order,
+        method: str,
+        amount: Decimal,
+        provider: str = None,
+        **kwargs,
     ) -> Payment:
         """
         The main entry point for processing a payment. It creates a transaction,
@@ -421,8 +427,21 @@ class PaymentService:
         # Lock the payment row for the duration of this transaction
         payment = Payment.objects.select_for_update().get(id=payment.id)
 
+        surcharge = Decimal("0.00")
+        if method in [
+            PaymentTransaction.PaymentMethod.CARD_TERMINAL,
+            PaymentTransaction.PaymentMethod.CARD_ONLINE,
+        ]:
+            from settings.config import app_settings
+
+            surcharge = amount * app_settings.surcharge_percentage
+            surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
         transaction = PaymentTransaction.objects.create(
-            payment=payment, amount=amount, method=method
+            payment=payment,
+            amount=amount,
+            method=method,
+            surcharge=surcharge,
         )
 
         strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
@@ -464,7 +483,9 @@ class PaymentService:
 
     @staticmethod
     @transaction.atomic
-    def create_terminal_payment_intent(order: Order, amount: Decimal, tip: Decimal):
+    def create_terminal_payment_intent(
+        order: Order, amount: Decimal, tip: Decimal, surcharge: Decimal
+    ):
         """
         Creates a payment intent for a terminal transaction.
         This method now correctly handles both full and partial (split) payments.
@@ -484,7 +505,9 @@ class PaymentService:
 
         # The strategy is responsible for creating the PaymentIntent and the
         # associated PaymentTransaction record with the correct partial amount.
-        return active_strategy.create_payment_intent(payment, amount_for_this_intent)
+        return active_strategy.create_payment_intent(
+            payment, amount_for_this_intent, surcharge
+        )
 
     @classmethod
     @transaction.atomic  # Add atomic transaction for safety
@@ -735,3 +758,13 @@ class PaymentService:
             "payment_intent_id": intent.id,
             "payment_id": str(payment.id),
         }
+
+    @staticmethod
+    def calculate_surcharge(amount: Decimal) -> Decimal:
+        """
+        Calculates the surcharge for a given amount based on the current settings.
+        """
+        from settings.config import app_settings
+
+        surcharge = amount * app_settings.surcharge_percentage
+        return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

@@ -128,9 +128,6 @@ class Order(models.Model):
     total_discounts_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00
     )
-    surcharges_total = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00
-    )
     tax_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 

@@ -164,6 +164,12 @@ class PaymentTransaction(models.Model):
         Payment, on_delete=models.CASCADE, related_name="transactions"
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    surcharge = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text=_("Surcharge applied to this specific transaction (e.g., card processing fee)."),
+    )
     method = models.CharField(max_length=20, choices=PaymentMethod.choices)
     status = models.CharField(
         max_length=20,

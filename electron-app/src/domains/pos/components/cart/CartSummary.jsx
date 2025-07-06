@@ -52,7 +52,6 @@ const CartSummary = () => {
 		forceCancelAndStartPayment,
 		subtotal,
 		taxAmount,
-		surchargesAmount,
 		appliedDiscounts,
 		setIsDiscountDialogOpen,
 		removeDiscountViaSocket,
@@ -65,7 +64,6 @@ const CartSummary = () => {
 			forceCancelAndStartPayment: state.forceCancelAndStartPayment,
 			subtotal: state.subtotal,
 			taxAmount: state.taxAmount,
-			surchargesAmount: state.surchargesAmount,
 			appliedDiscounts: state.appliedDiscounts,
 			setIsDiscountDialogOpen: state.setIsDiscountDialogOpen,
 			removeDiscountViaSocket: state.removeDiscountViaSocket,
@@ -259,10 +257,6 @@ const CartSummary = () => {
 					<SummaryRow
 						label="Taxes"
 						amount={taxAmount}
-					/>
-					<SummaryRow
-						label="Surcharges"
-						amount={surchargesAmount}
 					/>
 				</div>
 

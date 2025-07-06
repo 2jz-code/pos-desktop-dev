@@ -337,14 +337,9 @@ class OrderService:
 
         order.tax_total = tax_total.quantize(Decimal("0.01"))
 
-        # 5. Calculate surcharges on the post-discount subtotal
-        # Use the fresh configuration for surcharge percentage
-        surcharges_total = post_discount_subtotal * app_settings.surcharge_percentage
-        order.surcharges_total = surcharges_total.quantize(Decimal("0.01"))
-
-        # 6. Calculate the final grand total
+        # 5. Calculate the final grand total
         order.grand_total = (
-            post_discount_subtotal + order.tax_total + order.surcharges_total
+            post_discount_subtotal + order.tax_total
         )
 
         order.save(
@@ -352,7 +347,6 @@ class OrderService:
                 "subtotal",
                 "total_discounts_amount",
                 "tax_total",
-                "surcharges_total",
                 "grand_total",
                 "updated_at",
             ]

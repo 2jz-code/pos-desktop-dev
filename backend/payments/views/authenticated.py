@@ -5,6 +5,7 @@ Handles payment processing for authenticated users with enhanced features
 like saved payment methods, payment history, and user-specific settings.
 """
 
+from rest_framework.views import APIView
 from rest_framework import status, viewsets, generics
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -26,6 +27,7 @@ from ..serializers import (
     PaymentSerializer,
     ProcessPaymentSerializer,
     RefundTransactionSerializer,
+    SurchargeCalculationSerializer,
 )
 from ..services import PaymentService
 from orders.models import Order
@@ -33,6 +35,22 @@ from users.authentication import CustomerCookieJWTAuthentication
 from core_backend.mixins import OptimizedQuerysetMixin
 
 logger = logging.getLogger(__name__)
+
+
+class SurchargeCalculationView(APIView):
+    """
+    Calculates the surcharge for a given amount.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = SurchargeCalculationSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        amount = serializer.validated_data["amount"]
+        surcharge = PaymentService.calculate_surcharge(amount)
+        return Response({"surcharge": surcharge}, status=status.HTTP_200_OK)
 
 
 class AuthenticatedOrderAccessMixin(OrderAccessMixin):

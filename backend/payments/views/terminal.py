@@ -146,11 +146,15 @@ class CreateTerminalIntentView(BasePaymentView, PaymentValidationMixin):
             # Use formal state transition method to initiate payment attempt
             payment = PaymentService.initiate_payment_attempt(order)
 
+            # Calculate the surcharge
+            surcharge = PaymentService.calculate_surcharge(amount_to_pay)
+
             # Create the payment intent using existing method
             payment_intent = PaymentService.create_terminal_payment_intent(
                 order=order,
                 amount=amount_to_pay,
                 tip=tip_amount,
+                surcharge=surcharge,
             )
 
             return self.create_success_response(

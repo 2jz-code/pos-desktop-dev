@@ -93,7 +93,9 @@ class TerminalPaymentStrategy(PaymentStrategy):
             "This payment provider does not use connection tokens."
         )
 
-    def create_payment_intent(self, transaction: PaymentTransaction):
+    def create_payment_intent(
+        self, payment: Payment, amount: Decimal, surcharge: Decimal
+    ):
         """Default implementation for creating a payment intent."""
         raise NotImplementedError(
             "This payment provider does not support creating payment intents directly."
@@ -135,14 +137,14 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                     # This method does not create StoreLocation objects.
                     # We find the first available store location that doesn't have a stripe config yet
                     # This is a naive assumption but works for simple setups.
-                    store_location_to_link = StoreLocation.objects.filter(terminallocation__isnull=True).first()
+                    store_location_to_link = StoreLocation.objects.filter(
+                        terminallocation__isnull=True
+                    ).first()
 
                     if store_location_to_link:
                         location, created = TerminalLocation.objects.update_or_create(
                             stripe_id=loc.id,
-                            defaults={
-                                "store_location": store_location_to_link
-                            }
+                            defaults={"store_location": store_location_to_link},
                         )
                         if created:
                             created_count += 1
@@ -175,7 +177,9 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 
         return stripe.terminal.ConnectionToken.create(**params).secret
 
-    def create_payment_intent(self, payment: Payment, amount: Decimal):
+    def create_payment_intent(
+        self, payment: Payment, amount: Decimal, surcharge: Decimal
+    ):
         """Create a payment intent for a card-present transaction."""
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -183,11 +187,12 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         transaction = PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
+            surcharge=surcharge,
             method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             status=PaymentTransaction.TransactionStatus.PENDING,
         )
 
-        amount_cents = int(amount * 100)
+        amount_cents = int((amount + surcharge) * 100)
         metadata = {
             "source": "terminal",
             "transaction_id": str(transaction.id),
@@ -236,10 +241,10 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         params = {"limit": 100}
         if location_id:
             params["location"] = location_id
-        
+
         try:
             readers = stripe.terminal.Reader.list(**params)
-            return readers.to_dict().get('data', [])
+            return readers.to_dict().get("data", [])
         except Exception as e:
             logger.error(f"Failed to list Stripe readers: {e}")
             raise  # Re-raise the exception to be handled by the view

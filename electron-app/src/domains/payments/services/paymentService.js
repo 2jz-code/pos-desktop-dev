@@ -107,3 +107,15 @@ export const refundTransaction = async (paymentId, refundData) => {
 	);
 	return response.data;
 };
+
+export const calculateSurcharge = async (amount) => {
+	try {
+		const response = await apiClient.post("/payments/calculate-surcharge/", {
+			amount,
+		});
+		return response.data;
+	} catch (error) {
+		console.error("Error calculating surcharge:", error);
+		throw error;
+	}
+};

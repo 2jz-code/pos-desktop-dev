@@ -126,3 +126,17 @@ class RefundTransactionSerializer(serializers.Serializer):
         if value <= 0:
             raise serializers.ValidationError("Refund amount must be a positive value.")
         return value
+
+
+class SurchargeCalculationSerializer(serializers.Serializer):
+    """
+    Serializer for calculating the surcharge on a given amount.
+    Takes an amount and returns the calculated surcharge.
+    """
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    surcharge = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be a positive value.")
+        return value

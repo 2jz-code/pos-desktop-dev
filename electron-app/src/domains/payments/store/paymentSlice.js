@@ -4,6 +4,7 @@ import {
 	cancelTerminalIntent,
 	refundTransaction,
 	getPaymentById,
+	calculateSurcharge,
 } from "@/domains/payments/services/paymentService";
 import useTerminalStore from "@/domains/pos/store/terminalStore";
 
@@ -91,8 +92,14 @@ export const createPaymentSlice = (set, get) => ({
 		}
 		if (method === "CREDIT") {
 			set({ tenderState: "initializingTerminal" });
-			const { initializeTerminal } = useTerminalStore.getState();
 			try {
+				const surchargeResponse = await calculateSurcharge(get().balanceDue);
+				const surchargeAmount = parseFloat(surchargeResponse.surcharge) || 0;
+				set({
+					surchargeAmount: surchargeAmount,
+					balanceDue: get().balanceDue + surchargeAmount,
+				});
+				const { initializeTerminal } = useTerminalStore.getState();
 				await initializeTerminal();
 				set({ tenderState: "awaitingTip" });
 			} catch (error) {
@@ -111,8 +118,14 @@ export const createPaymentSlice = (set, get) => ({
 
 		if (method === "CREDIT") {
 			set({ tenderState: "initializingTerminal" });
-			const { initializeTerminal } = useTerminalStore.getState();
 			try {
+				const surchargeResponse = await calculateSurcharge(get().balanceDue);
+				const surchargeAmount = parseFloat(surchargeResponse.surcharge) || 0;
+				set({
+					surchargeAmount: surchargeAmount,
+					balanceDue: get().balanceDue + surchargeAmount,
+				});
+				const { initializeTerminal } = useTerminalStore.getState();
 				await initializeTerminal();
 				set({ tenderState: "awaitingTip" });
 			} catch (error) {
