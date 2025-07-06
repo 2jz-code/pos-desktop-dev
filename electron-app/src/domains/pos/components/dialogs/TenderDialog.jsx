@@ -49,6 +49,8 @@ const TenderDialog = () => {
 		lastCompletedOrder,
 		tenderState,
 		balanceDue,
+		partialAmount,
+		surchargeAmount,
 		changeDue,
 		error,
 		orderNumber,
@@ -63,6 +65,8 @@ const TenderDialog = () => {
 			lastCompletedOrder: state.lastCompletedOrder,
 			tenderState: state.tenderState,
 			balanceDue: state.balanceDue,
+			partialAmount: state.partialAmount,
+			surchargeAmount: state.surchargeAmount,
 			changeDue: state.changeDue,
 			error: state.error,
 			orderNumber: state.orderNumber,
@@ -147,9 +151,39 @@ const TenderDialog = () => {
 
 				{tenderState !== "complete" && tenderState !== "idle" && (
 					<div className="p-4 bg-muted/50 rounded-md text-right">
-						<h3 className="text-lg font-semibold">
-							Balance Due: {formatCurrency(balanceDue)}
-						</h3>
+						{partialAmount > 0 ? (
+							<div className="space-y-1">
+								<h3 className="text-lg font-semibold">
+									Payment Amount:{" "}
+									{formatCurrency(partialAmount + (surchargeAmount || 0))}
+								</h3>
+								{surchargeAmount > 0 && (
+									<p className="text-xs text-muted-foreground">
+										Base: {formatCurrency(partialAmount)} + Surcharge:{" "}
+										{formatCurrency(surchargeAmount)}
+									</p>
+								)}
+								<p className="text-sm text-muted-foreground">
+									Remaining Balance: {formatCurrency(balanceDue)}
+								</p>
+							</div>
+						) : (
+							<div className="space-y-1">
+								<h3 className="text-lg font-semibold">
+									Balance Due:{" "}
+									{tenderState === "awaitingPaymentMethod"
+										? formatCurrency(balanceDue)
+										: formatCurrency(balanceDue + (surchargeAmount || 0))}
+								</h3>
+								{surchargeAmount > 0 &&
+									tenderState !== "awaitingPaymentMethod" && (
+										<p className="text-xs text-muted-foreground">
+											Base: {formatCurrency(balanceDue)} + Surcharge:{" "}
+											{formatCurrency(surchargeAmount)}
+										</p>
+									)}
+							</div>
+						)}
 					</div>
 				)}
 			</DialogContent>

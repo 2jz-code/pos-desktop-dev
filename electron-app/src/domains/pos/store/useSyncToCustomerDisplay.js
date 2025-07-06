@@ -9,7 +9,15 @@ export const useSyncToCustomerDisplay = () => {
 			state.tenderState !== "idle" &&
 			state.tenderState !== "awaitingPaymentMethod";
 
-		// --- THIS IS THE FIX ---
+		// Calculate the correct payment amount for customer display
+		// For split payments, show the split amount; for full payments, show balance due
+		const isSplitPayment = state.partialAmount > 0;
+		const baseAmount = isSplitPayment ? state.partialAmount : state.balanceDue;
+
+		// Add surcharge to the display amount for card payments (when surchargeAmount exists)
+		const surchargeAmount = state.surchargeAmount || 0;
+		const customerPaymentAmount = baseAmount + surchargeAmount;
+
 		// We construct a state object that matches the precise format
 		// that the original CustomerDisplay.jsx was designed to work with.
 		return {
@@ -20,7 +28,7 @@ export const useSyncToCustomerDisplay = () => {
 
 			// Payment properties, mapped to the expected format
 			status: isPaymentActive ? "in-progress" : "active",
-			balanceDue: state.balanceDue,
+			balanceDue: customerPaymentAmount, // Now shows correct amount for tips
 			orderForPayment: state.order,
 
 			// This now directly controls which view the CustomerDisplay shows

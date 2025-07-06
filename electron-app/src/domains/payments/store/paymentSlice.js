@@ -44,6 +44,7 @@ export const createPaymentSlice = (set, get) => ({
 			error: null,
 			currentPaymentIntentId: null,
 			partialAmount: 0,
+			surchargeAmount: 0, // Reset surcharge when starting new tender
 		});
 	},
 
@@ -87,7 +88,10 @@ export const createPaymentSlice = (set, get) => ({
 			return;
 		}
 		if (method === "SPLIT") {
-			set({ tenderState: "splittingPayment" });
+			set({
+				tenderState: "splittingPayment",
+				surchargeAmount: 0, // Reset surcharge when entering split payment
+			});
 			return;
 		}
 		if (method === "CREDIT") {
@@ -138,6 +142,7 @@ export const createPaymentSlice = (set, get) => ({
 			tenderState: "awaitingPaymentMethod",
 			error: null,
 			partialAmount: 0,
+			surchargeAmount: 0, // Reset surcharge when going back
 		});
 	},
 
@@ -169,6 +174,7 @@ export const createPaymentSlice = (set, get) => ({
 				changeDue: state.changeDue + changeForThisTransaction,
 				tenderState: isComplete ? "complete" : "splittingPayment",
 				partialAmount: 0,
+				surchargeAmount: 0, // Reset surcharge when returning to split payment
 			});
 		} else {
 			set({ tenderState: "paymentError", error: result.error });
@@ -211,6 +217,7 @@ export const createPaymentSlice = (set, get) => ({
 				currentPaymentIntentId: null,
 				partialAmount: 0,
 				tipAmount: 0,
+				surchargeAmount: 0, // Reset surcharge when returning to split payment
 			});
 		} else {
 			set({
