@@ -33,6 +33,7 @@ class PaymentService:
             Payment.PaymentStatus.PAID,
         ],
         Payment.PaymentStatus.PARTIALLY_PAID: [
+            Payment.PaymentStatus.PENDING,  # Allow going back to PENDING for split payments
             Payment.PaymentStatus.PAID,
             Payment.PaymentStatus.PARTIALLY_REFUNDED,
             Payment.PaymentStatus.REFUNDED,
@@ -135,13 +136,16 @@ class PaymentService:
             payment.save(update_fields=["total_amount_due"])
 
         # Only transition to PENDING if currently UNPAID
-        if payment.status == Payment.PaymentStatus.UNPAID:
+        if payment.status in [
+            Payment.PaymentStatus.UNPAID,
+            Payment.PaymentStatus.PARTIALLY_PAID,
+        ]:
             PaymentService._transition_payment_status(
-                payment, Payment.PaymentStatus.PENDING
+                payment, "PENDING"
             )
         elif payment.status != Payment.PaymentStatus.PENDING:
             raise ValueError(
-                f"Cannot initiate payment attempt. Payment status is {payment.status}, expected UNPAID"
+                f"Cannot initiate payment attempt. Payment status is {payment.status}, expected UNPAID or PARTIALLY_PAID"
             )
 
         return payment
@@ -183,12 +187,12 @@ class PaymentService:
         # Determine new status based on amounts
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PAID
+                updated_payment, "PAID"
             )
             PaymentService._handle_payment_completion(updated_payment)
         elif updated_payment.amount_paid > 0:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+                updated_payment, "PARTIALLY_PAID"
             )
 
         return updated_payment
@@ -220,15 +224,15 @@ class PaymentService:
         # Determine new status based on remaining successful payments
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PAID
+                updated_payment, "PAID"
             )
         elif updated_payment.amount_paid > 0:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+                updated_payment, "PARTIALLY_PAID"
             )
         else:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.UNPAID
+                updated_payment, "UNPAID"
             )
 
         return updated_payment
@@ -262,15 +266,15 @@ class PaymentService:
         # Determine new status based on remaining successful payments
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PAID
+                updated_payment, "PAID"
             )
         elif updated_payment.amount_paid > 0:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.PARTIALLY_PAID
+                updated_payment, "PARTIALLY_PAID"
             )
         else:
             PaymentService._transition_payment_status(
-                updated_payment, Payment.PaymentStatus.UNPAID
+                updated_payment, "UNPAID"
             )
 
         return updated_payment
@@ -368,15 +372,15 @@ class PaymentService:
         target_status = None
         if total_refunded > 0:
             if total_refunded >= payment.amount_paid:
-                target_status = Payment.PaymentStatus.REFUNDED
+                target_status = "REFUNDED"
             else:
-                target_status = Payment.PaymentStatus.PARTIALLY_REFUNDED
+                target_status = "PARTIALLY_REFUNDED"
         elif payment.amount_paid >= payment.total_amount_due:
-            target_status = Payment.PaymentStatus.PAID
+            target_status = "PAID"
         elif payment.amount_paid > 0:
-            target_status = Payment.PaymentStatus.PARTIALLY_PAID
+            target_status = "PARTIALLY_PAID"
         else:
-            target_status = Payment.PaymentStatus.UNPAID
+            target_status = "UNPAID"
 
         # Apply transition if status changed
         if target_status and payment.status != target_status:
@@ -415,7 +419,7 @@ class PaymentService:
         order: Order,
         method: str,
         amount: Decimal,
-        provider: str = None,
+        provider: str | None = None,
         **kwargs,
     ) -> Payment:
         """
@@ -463,7 +467,7 @@ class PaymentService:
 
         provider = app_settings.active_terminal_provider
         strategy = PaymentStrategyFactory.get_strategy(
-            method=PaymentTransaction.PaymentMethod.CARD_TERMINAL, provider=provider
+            method="CARD_TERMINAL", provider=provider
         )
         if not isinstance(strategy, TerminalPaymentStrategy):
             raise TypeError(
@@ -498,7 +502,7 @@ class PaymentService:
         payment.save(update_fields=["tip"])
 
         # This is the actual amount for this specific transaction (e.g., the partial payment).
-        amount_for_this_intent = amount + tip
+        amount_for_this_intent = amount + tip + surcharge
 
         # Get the active terminal strategy
         active_strategy = PaymentService._get_active_terminal_strategy()
@@ -506,7 +510,7 @@ class PaymentService:
         # The strategy is responsible for creating the PaymentIntent and the
         # associated PaymentTransaction record with the correct partial amount.
         return active_strategy.create_payment_intent(
-            payment, amount_for_this_intent, surcharge
+            payment, amount, surcharge, amount_for_this_intent
         )
 
     @classmethod
@@ -660,7 +664,7 @@ class PaymentService:
 
     @transaction.atomic
     def refund_transaction_with_provider(
-        self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str = None
+        self, transaction_id: uuid.UUID, amount_to_refund: Decimal, reason: str | None = None
     ) -> PaymentTransaction:
         """
         Initiates a refund for a specific PaymentTransaction via its associated provider.

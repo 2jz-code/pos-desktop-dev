@@ -119,11 +119,10 @@ export const createPaymentSlice = (set, get) => ({
 		if (method === "CREDIT") {
 			set({ tenderState: "initializingTerminal" });
 			try {
-				const surchargeResponse = await calculateSurcharge(get().balanceDue);
+				const surchargeResponse = await calculateSurcharge(amount);
 				const surchargeAmount = parseFloat(surchargeResponse.surcharge) || 0;
 				set({
 					surchargeAmount: surchargeAmount,
-					balanceDue: get().balanceDue + surchargeAmount,
 				});
 				const { initializeTerminal } = useTerminalStore.getState();
 				await initializeTerminal();

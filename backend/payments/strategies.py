@@ -178,7 +178,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         return stripe.terminal.ConnectionToken.create(**params).secret
 
     def create_payment_intent(
-        self, payment: Payment, amount: Decimal, surcharge: Decimal
+        self, payment: Payment, amount: Decimal, surcharge: Decimal, total_amount: Decimal
     ):
         """Create a payment intent for a card-present transaction."""
         stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -192,7 +192,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
             status=PaymentTransaction.TransactionStatus.PENDING,
         )
 
-        amount_cents = int((amount + surcharge) * 100)
+        amount_cents = int(total_amount * 100)
         metadata = {
             "source": "terminal",
             "transaction_id": str(transaction.id),

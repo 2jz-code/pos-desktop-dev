@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { formatCurrency } from "@/shared/lib/utils";
 import { shallow } from "zustand/shallow";
+import { calculateSurcharge } from "@/domains/payments/services/paymentService";
 
 const SplitPaymentView = () => {
 	const { balanceDue, prepareToPaySplit, goBack } = usePosStore(
@@ -16,6 +17,19 @@ const SplitPaymentView = () => {
 	);
 
 	const [customAmount, setCustomAmount] = useState("");
+	const [surcharge, setSurcharge] = useState(0);
+
+	useEffect(() => {
+		const calculate = async () => {
+			if (customAmount > 0) {
+				const response = await calculateSurcharge(customAmount);
+				setSurcharge(parseFloat(response.surcharge) || 0);
+			} else {
+				setSurcharge(0);
+			}
+		};
+		calculate();
+	}, [customAmount]);
 
 	const handleSplitEqually = (numSplits) => {
 		const amount = balanceDue / numSplits;
@@ -78,6 +92,11 @@ const SplitPaymentView = () => {
 						className="text-center"
 					/>
 				</div>
+				{surcharge > 0 && (
+					<p className="text-sm text-center text-gray-500 mt-2">
+						Surcharge: {formatCurrency(surcharge)}
+					</p>
+				)}
 				{/* --- NEW BUTTON --- */}
 				<Button
 					variant="secondary"

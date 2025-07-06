@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 class SurchargeCalculationView(APIView):
     """
-    Calculates the surcharge for a given amount.
+    Calculates the surcharge for a given amount or a list of amounts.
     """
 
     permission_classes = [IsAuthenticated]
@@ -48,9 +48,15 @@ class SurchargeCalculationView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        amount = serializer.validated_data["amount"]
-        surcharge = PaymentService.calculate_surcharge(amount)
-        return Response({"surcharge": surcharge}, status=status.HTTP_200_OK)
+        amounts = serializer.validated_data.get("amounts")
+
+        if amounts:
+            surcharges = [PaymentService.calculate_surcharge(amount) for amount in amounts]
+            return Response({"surcharges": surcharges}, status=status.HTTP_200_OK)
+        else:
+            amount = serializer.validated_data["amount"]
+            surcharge = PaymentService.calculate_surcharge(amount)
+            return Response({"surcharge": surcharge}, status=status.HTTP_200_OK)
 
 
 class AuthenticatedOrderAccessMixin(OrderAccessMixin):

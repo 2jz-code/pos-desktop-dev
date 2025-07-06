@@ -133,10 +133,20 @@ class SurchargeCalculationSerializer(serializers.Serializer):
     Serializer for calculating the surcharge on a given amount.
     Takes an amount and returns the calculated surcharge.
     """
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    amounts = serializers.ListField(
+        child=serializers.DecimalField(max_digits=10, decimal_places=2),
+        required=False
+    )
     surcharge = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    surcharges = serializers.ListField(
+        child=serializers.DecimalField(max_digits=10, decimal_places=2),
+        read_only=True
+    )
 
-    def validate_amount(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Amount must be a positive value.")
-        return value
+    def validate(self, data):
+        if 'amount' not in data and 'amounts' not in data:
+            raise serializers.ValidationError("Either 'amount' or 'amounts' is required.")
+        if 'amount' in data and 'amounts' in data:
+            raise serializers.ValidationError("Provide either 'amount' or 'amounts', not both.")
+        return data
