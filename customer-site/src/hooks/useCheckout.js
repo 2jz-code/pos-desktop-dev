@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -33,6 +33,7 @@ export const useCheckout = () => {
 	const [isSubmitting, setIsSubmitting] = useState(false); // <-- New state for payment submission
 	const [error, setError] = useState(null);
 	const [orderConfirmation, setOrderConfirmation] = useState(null);
+	const [surchargeDisplay, setSurchargeDisplay] = useState(null); // <-- New state for surcharge display
 	const setCheckoutCompleted = useCartStore(
 		(state) => state.setCheckoutCompleted
 	); // <-- 2. GET THE ACTION
@@ -55,6 +56,8 @@ export const useCheckout = () => {
 	const clearError = useCallback(() => {
 		setError(null);
 	}, []);
+
+
 
 	// Validate form data - skip for authenticated users as we have their data
 	const validateFormData = useCallback(() => {
@@ -132,6 +135,35 @@ export const useCheckout = () => {
 		},
 		[financialSettings]
 	);
+
+	// Fetch surcharge for display purposes
+	const fetchSurchargeDisplay = useCallback(async () => {
+		if (!cart || !cart.subtotal) return;
+		
+		try {
+			const totals = calculateOrderTotals(cart);
+			if (!totals) return;
+			
+			// Calculate base amount (subtotal + tax) for surcharge calculation
+			// Round to 2 decimal places to avoid floating point precision issues
+			const baseAmount = parseFloat((totals.subtotal + totals.taxAmount).toFixed(2));
+			
+			const response = await paymentsAPI.calculateSurcharge(baseAmount);
+			setSurchargeDisplay({
+				amount: response.surcharge,
+				baseAmount: baseAmount,
+				totalWithSurcharge: baseAmount + response.surcharge
+			});
+		} catch (err) {
+			console.warn('Failed to fetch surcharge display:', err);
+			// Don't show error to user for display-only calculation
+		}
+	}, [cart, calculateOrderTotals]);
+
+	// Fetch surcharge display when cart changes
+	useEffect(() => {
+		fetchSurchargeDisplay();
+	}, [fetchSurchargeDisplay]);
 
 	// Step navigation
 	const nextStep = useCallback(() => {
@@ -505,6 +537,7 @@ export const useCheckout = () => {
 		isSubmitting, // <-- Expose new state
 		error,
 		orderConfirmation,
+		surchargeDisplay, // <-- Expose surcharge display
 
 		// User context
 		isAuthenticated,

@@ -23,6 +23,7 @@ const CheckoutFlow = () => {
 		orderConfirmation,
 		isAuthenticated,
 		user,
+		surchargeDisplay,
 		updateFormData,
 		prevStep,
 		submitOrder,
@@ -77,7 +78,7 @@ const CheckoutFlow = () => {
 				);
 			}
 
-			return <OrderConfirmation orderData={confirmationOrderData} />;
+			return <OrderConfirmation orderData={confirmationOrderData} surchargeDisplay={surchargeDisplay} />;
 		}
 
 		// Normal checkout flow (only steps 1 and 2 now)
@@ -184,6 +185,7 @@ const CheckoutFlow = () => {
 					<OrderSummary
 						cart={cart}
 						isLoading={isLoading}
+						surchargeDisplay={surchargeDisplay}
 					/>
 				</div>
 			</div>

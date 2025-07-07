@@ -83,7 +83,14 @@ class CreateGuestPaymentIntentView(
             # Convert amount to Decimal for consistency
             amount_decimal = self.validate_amount(amount)
 
+            # Calculate surcharge for online card payments
+            from ..services import PaymentService
+            surcharge = PaymentService.calculate_surcharge(amount_decimal)
+            total_amount_with_surcharge = amount_decimal + surcharge
+
             # Create or get payment object
+            # The total_amount_due should be the base amount (without surcharge)
+            # Surcharges are tracked separately in the transaction
             payment, created = Payment.objects.get_or_create(
                 order=order,
                 defaults={
@@ -104,7 +111,7 @@ class CreateGuestPaymentIntentView(
             stripe.api_key = settings.STRIPE_SECRET_KEY
 
             intent_data = {
-                "amount": int(amount_decimal * 100),  # Convert to cents
+                "amount": int(total_amount_with_surcharge * 100),  # Convert to cents
                 "currency": currency,
                 "automatic_payment_methods": {
                     "enabled": True,
@@ -134,6 +141,7 @@ class CreateGuestPaymentIntentView(
             PaymentTransaction.objects.create(
                 payment=payment,
                 amount=amount_decimal,
+                surcharge=surcharge,
                 method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
                 status=PaymentTransaction.TransactionStatus.PENDING,
                 transaction_id=intent.id,
@@ -144,6 +152,8 @@ class CreateGuestPaymentIntentView(
                     "client_secret": intent.client_secret,
                     "payment_intent_id": intent.id,
                     "payment_id": str(payment.id),
+                    "surcharge": surcharge,
+                    "total_with_surcharge": total_amount_with_surcharge,
                 },
                 status.HTTP_201_CREATED,
             )

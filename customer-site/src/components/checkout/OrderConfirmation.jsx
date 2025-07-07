@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useStoreInfo } from "@/hooks/useSettings";
 import { Link } from "react-router-dom";
 
-const OrderConfirmation = ({ orderData }) => {
+const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 	const navigate = useNavigate();
 	const { data: storeInfo } = useStoreInfo();
 
@@ -240,7 +240,7 @@ const OrderConfirmation = ({ orderData }) => {
 								</div>
 							)}
 
-							{/* Surcharge */}
+							{/* Service Fee */}
 							{orderData.surcharges_total && orderData.surcharges_total > 0 && (
 								<div className="flex justify-between text-sm">
 									<span className="text-accent-dark-brown">Service Fee</span>
@@ -250,11 +250,35 @@ const OrderConfirmation = ({ orderData }) => {
 								</div>
 							)}
 
+							{/* Card Processing Fee */}
+							{(() => {
+								// Use surchargeDisplay if available, otherwise calculate from payment transactions
+								const cardProcessingFee = surchargeDisplay?.surcharge_total ||
+									(orderData.payment_details?.transactions
+										?.filter(t => t.surcharge > 0)
+										?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0)) || 0;
+								
+								return cardProcessingFee > 0 && (
+									<div className="flex justify-between text-sm">
+										<span className="text-accent-dark-brown">Card Processing Fee</span>
+										<span className="text-accent-dark-brown">
+											${formatPrice(cardProcessingFee)}
+										</span>
+									</div>
+								);
+							})()}
+
 							{/* Total */}
 							<div className="flex justify-between items-center font-bold text-xl pt-2 border-t border-accent-subtle-gray/30">
 								<span className="text-accent-dark-green">Total Paid</span>
 								<span className="text-accent-dark-green">
-									${formatPrice(orderData.grand_total)}
+									${formatPrice(
+										surchargeDisplay?.totalWithSurcharge ||
+										(parseFloat(orderData.grand_total) + 
+											(orderData.payment_details?.transactions
+												?.filter(t => t.surcharge > 0)
+												?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0)) || 0)
+									)}
 								</span>
 							</div>
 						</div>

@@ -95,13 +95,13 @@ class OrderSerializer(serializers.ModelSerializer):
         Calculate the grand total including the tip from the associated payment.
         """
         total = obj.grand_total
-        # Check if the payment_details object exists and has a tip
+        # Check if the payment_details object exists and has total_tips
         if (
             hasattr(obj, "payment_details")
             and obj.payment_details
-            and obj.payment_details.tip
+            and obj.payment_details.total_tips
         ):
-            total += obj.payment_details.tip
+            total += obj.payment_details.total_tips
         return total
 
 
@@ -142,9 +142,9 @@ class OrderListSerializer(serializers.ModelSerializer):
         if (
             hasattr(obj, "payment_details")
             and obj.payment_details
-            and obj.payment_details.tip
+            and obj.payment_details.total_tips
         ):
-            total += obj.payment_details.tip
+            total += obj.payment_details.total_tips
         return total
 
     def get_payment_in_progress(self, obj):

@@ -2,6 +2,14 @@ import apiClient from "./client";
 
 // Payments API service
 export const paymentsAPI = {
+	// Calculate surcharge for a given amount
+	calculateSurcharge: async (amount) => {
+		const response = await apiClient.post("/payments/calculate-surcharge/", {
+			amount: amount,
+		});
+		return response.data;
+	},
+
 	// Create payment intent for guest checkout
 	createGuestPaymentIntent: async (orderData) => {
 		const response = await apiClient.post(

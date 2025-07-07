@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cartAPI, ordersAPI } from "@/api/orders";
 import { useCartStore } from "@/store/cartStore";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 // Cart query keys
@@ -37,14 +38,36 @@ export const useCartQuery = () => {
 export const useCartMutations = () => {
 	const queryClient = useQueryClient();
 	const cartStore = useCartStore();
+	const { isAuthenticated } = useAuth();
 
 	const invalidateCart = () => {
 		queryClient.invalidateQueries({ queryKey: cartKeys.current() });
 	};
 
 	const addToCartMutation = useMutation({
-		mutationFn: ({ productId, quantity, notes }) =>
-			cartAPI.addToCart(productId, quantity, notes),
+		mutationFn: async ({ productId, quantity, notes }) => {
+			// Initialize guest session for unauthenticated users (only if needed)
+			if (!isAuthenticated) {
+				try {
+					// Try adding to cart first - if it fails due to session, then initialize
+					return await cartAPI.addToCart(productId, quantity, notes);
+				} catch (error) {
+					// If it's a permission/session error, initialize guest session and retry
+					if (error.response?.status === 403 || error.response?.status === 401) {
+						try {
+							await ordersAPI.initGuestSession();
+							return await cartAPI.addToCart(productId, quantity, notes);
+						} catch (sessionError) {
+							console.warn('Guest session initialization failed:', sessionError);
+							throw error; // Re-throw original error
+						}
+					} else {
+						throw error; // Re-throw non-session related errors
+					}
+				}
+			}
+			return cartAPI.addToCart(productId, quantity, notes);
+		},
 		// Optimistic update for adding items
 		onMutate: async ({ product, quantity }) => {
 			// Cancel any outgoing refetches

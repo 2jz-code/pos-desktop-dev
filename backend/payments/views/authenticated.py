@@ -33,7 +33,7 @@ from ..services import PaymentService
 from orders.models import Order
 from users.authentication import CustomerCookieJWTAuthentication
 from core_backend.mixins import OptimizedQuerysetMixin
-
+from rest_framework.permissions import AllowAny
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +42,7 @@ class SurchargeCalculationView(APIView):
     Calculates the surcharge for a given amount or a list of amounts.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = SurchargeCalculationSerializer
 
     def post(self, request, *args, **kwargs):

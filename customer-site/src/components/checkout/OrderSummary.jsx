@@ -7,7 +7,7 @@ import {
 	formatSurchargeRate,
 } from "@/hooks/useSettings";
 
-const OrderSummary = ({ cart, isLoading }) => {
+const OrderSummary = ({ cart, isLoading, surchargeDisplay }) => {
 	// Fetch financial settings for display purposes
 	const { data: financialSettings } = useFinancialSettings();
 
@@ -112,6 +112,8 @@ const OrderSummary = ({ cart, isLoading }) => {
 						</div>
 					)}
 
+
+
 					{taxAmount > 0 && (
 						<div className="flex justify-between">
 							<span className="text-accent-dark-brown/70">
@@ -122,13 +124,22 @@ const OrderSummary = ({ cart, isLoading }) => {
 							</span>
 						</div>
 					)}
-
+					{surchargeDisplay && (
+						<div className="flex justify-between">
+							<span className="text-accent-dark-brown/70">
+								Service Fee
+							</span>
+							<span className="text-accent-dark-brown">
+								${formatPrice(surchargeDisplay.amount)}
+							</span>
+						</div>
+					)}
 					<Separator className="bg-accent-subtle-gray/30" />
 
 					<div className="flex justify-between font-semibold text-base">
 						<span className="text-accent-dark-green">Total</span>
 						<span className="text-accent-dark-green">
-							${formatPrice(total)}
+							${formatPrice(surchargeDisplay ? surchargeDisplay.totalWithSurcharge : total)}
 						</span>
 					</div>
 				</div>

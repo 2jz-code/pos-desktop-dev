@@ -689,11 +689,17 @@ class PaymentService:
     ) -> dict:
         """
         Creates a Stripe Payment Intent for an online payment for an authenticated user.
+        Includes surcharge calculation for card payments.
         """
+        # Calculate surcharge for online card payments
+        surcharge = PaymentService.calculate_surcharge(amount)
+        total_amount_with_surcharge = amount + surcharge
+
         # Use the existing service method to get or create the payment record
         payment = PaymentService.get_or_create_payment(order)
 
-        # If the amount being paid differs from the payment record, update it
+        # The total_amount_due should be the base amount (without surcharge)
+        # Surcharges are tracked separately in the transaction
         if payment.total_amount_due != amount:
             payment.total_amount_due = amount
             payment.save(update_fields=["total_amount_due"])
@@ -707,7 +713,7 @@ class PaymentService:
         description = f"Order payment for {user_name}"
 
         intent_data = {
-            "amount": int(amount * 100),  # Convert to cents
+            "amount": int(total_amount_with_surcharge * 100),  # Convert to cents
             "currency": currency,
             "automatic_payment_methods": {"enabled": True},
             "description": description,
@@ -727,6 +733,7 @@ class PaymentService:
         PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
+            surcharge=surcharge,
             method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
             status=PaymentTransaction.TransactionStatus.PENDING,
             transaction_id=intent.id,
@@ -737,6 +744,8 @@ class PaymentService:
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id,
             "payment_id": str(payment.id),
+            "surcharge": surcharge,
+            "total_with_surcharge": total_amount_with_surcharge,
         }
 
     @staticmethod
