@@ -44,3 +44,13 @@ export const updateDiscount = (discountId, data) => {
 export const deleteDiscount = (discountId) => {
 	return apiClient.delete(`/discounts/${discountId}/`);
 };
+
+/**
+ * Applies a discount code to a specific order.
+ * @param {string} orderId - The ID of the current order.
+ * @param {string} code - The discount code to apply.
+ * @returns {Promise<Object>} The response data from the API.
+ */
+export const applyDiscountCode = (orderId, code) => {
+	return apiClient.post("/apply-code/", { order_id: orderId, code });
+};

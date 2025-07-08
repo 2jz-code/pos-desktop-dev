@@ -242,18 +242,33 @@ const CartSummary = () => {
 						label="Subtotal"
 						amount={subtotal}
 					/>
-					{hasDiscounts &&
-						appliedDiscounts.map((appliedDiscount) => (
+					{hasDiscounts && (
+						<>
+							{appliedDiscounts.map((appliedDiscount) => (
+								<SummaryRow
+									key={appliedDiscount.id}
+									label={appliedDiscount.discount.name}
+									amount={-appliedDiscount.amount}
+									className="text-emerald-600 dark:text-emerald-400"
+									onRemove={() =>
+										removeDiscountViaSocket(appliedDiscount.discount.id)
+									}
+								/>
+							))}
+							{/* Show discounted subtotal for clarity */}
 							<SummaryRow
-								key={appliedDiscount.id}
-								label={appliedDiscount.discount.name}
-								amount={-appliedDiscount.amount}
-								className="text-emerald-600 dark:text-emerald-400"
-								onRemove={() =>
-									removeDiscountViaSocket(appliedDiscount.discount.id)
+								label="Discounted Subtotal"
+								amount={
+									subtotal -
+									(appliedDiscounts?.reduce(
+										(sum, d) => sum + parseFloat(d.amount || 0),
+										0
+									) || 0)
 								}
+								className="border-t border-slate-200 dark:border-slate-700 pt-2 font-medium text-slate-700 dark:text-slate-300"
 							/>
-						))}
+						</>
+					)}
 					<SummaryRow
 						label="Taxes"
 						amount={taxAmount}

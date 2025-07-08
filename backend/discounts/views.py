@@ -115,3 +115,29 @@ class AvailableDiscountListView(generics.ListAPIView):
         that are currently active for the cashier to select from.
         """
         return Discount.objects.filter(is_active=True)
+
+
+from rest_framework.decorators import api_view
+
+@api_view(['POST'])
+def apply_discount_code(request):
+    order_id = request.data.get('order_id')
+    code = request.data.get('code')
+
+    if not order_id or not code:
+        return Response({'error': 'Order ID and code are required.'}, status=400)
+
+    try:
+        order = Order.objects.get(id=order_id)
+        discount = Discount.objects.get(code__iexact=code) # Case-insensitive search
+        
+        # This assumes your DiscountService has a method like this
+        DiscountService.apply_discount_to_order(order, discount)
+
+        return Response({'message': 'Discount applied successfully.'})
+    except Order.DoesNotExist:
+        return Response({'error': 'Order not found.'}, status=404)
+    except Discount.DoesNotExist:
+        return Response({'error': 'Invalid discount code.'}, status=404)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -18,6 +18,9 @@ class Discount(models.Model):
         CATEGORY = "CATEGORY", "Specific Categories"
 
     name = models.CharField(max_length=255, unique=True)
+    code = models.CharField(
+        max_length=50, unique=True, null=True, blank=True, help_text="Optional code for manual discounts"
+    )
     type = models.CharField(
         max_length=20,
         choices=DiscountType.choices,

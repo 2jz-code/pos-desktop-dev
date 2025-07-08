@@ -268,6 +268,20 @@ class OrderService:
 
     @staticmethod
     @transaction.atomic
+    def apply_discount_to_order_by_code(order: Order, code: str):
+        """
+        Applies a discount to an order by its code, delegating to the DiscountService.
+        """
+        try:
+            discount = Discount.objects.get(code__iexact=code)
+            DiscountService.apply_discount_to_order(order, discount)
+        except Discount.DoesNotExist:
+            raise ValueError("Invalid discount code.")
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    @transaction.atomic
     def remove_discount_from_order_by_id(order: Order, discount_id: int):
         """
         Removes a discount from an order by its ID, delegating to the DiscountService.
@@ -286,6 +300,7 @@ class OrderService:
         """
         Recalculates all financial fields for an order, ensuring calculations
         are performed in the correct sequence.
+        Surcharges are excluded from cart totals and only calculated during payment.
         """
         # Import app_settings locally to ensure we always get the fresh configuration
         # This avoids Python's module-level import caching that could cause stale config
@@ -313,17 +328,14 @@ class OrderService:
                 total_discount_amount += calculated_amount
         order.total_discounts_amount = total_discount_amount
 
-        # 3. Determine the base for tax and surcharge calculations (subtotal AFTER discounts)
+        # 3. Determine the base for tax calculations (subtotal AFTER discounts)
         post_discount_subtotal = order.subtotal - order.total_discounts_amount
 
-        # 4. Calculate surcharges based on the post-discount subtotal
-        surcharge_total = Decimal("0.00")
-        if post_discount_subtotal > 0:
-            surcharge_total = post_discount_subtotal * app_settings.surcharge_percentage
-        order.surcharges_total = surcharge_total.quantize(Decimal("0.01"))
+        # 4. Surcharges are NOT calculated here - only during payment processing
+        # Keep surcharges_total at 0 for cart operations
+        order.surcharges_total = Decimal("0.00")
 
-        # 5. Calculate tax based on the discounted price of each item (including surcharges)
-        tax_base = post_discount_subtotal + order.surcharges_total
+        # 5. Calculate tax based on the discounted price of each item (without surcharges)
         tax_total = Decimal("0.00")
         if order.subtotal > 0:
             proportional_discount_rate = order.total_discounts_amount / order.subtotal
@@ -342,16 +354,11 @@ class OrderService:
                     # Use the fresh configuration for tax rate
                     tax_total += discounted_item_price * app_settings.tax_rate
 
-        # Apply tax to surcharges as well
-        if order.surcharges_total > 0:
-            tax_total += order.surcharges_total * app_settings.tax_rate
-
         order.tax_total = tax_total.quantize(Decimal("0.01"))
 
-        # 6. Calculate the final grand total
-        order.grand_total = (
-            post_discount_subtotal + order.surcharges_total + order.tax_total
-        )
+        # 6. Calculate the final grand total (WITHOUT surcharges for cart view)
+        # Surcharges will be calculated separately during payment processing
+        order.grand_total = post_discount_subtotal + order.tax_total
 
         order.save(
             update_fields=[

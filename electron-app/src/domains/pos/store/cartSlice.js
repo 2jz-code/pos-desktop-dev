@@ -324,6 +324,13 @@ export const createCartSlice = (set, get) => {
 			});
 		},
 
+		applyDiscountCodeViaSocket: (code) => {
+			cartSocket.sendMessage({
+				type: "apply_discount_code",
+				payload: { code },
+			});
+		},
+
 		removeDiscountViaSocket: (discountId) => {
 			cartSocket.sendMessage({
 				type: "remove_discount",

@@ -102,6 +102,7 @@ export default function AddEditDiscountDialog({
 					// --- FIX: Initialize as empty arrays ---
 					applicable_products: [],
 					applicable_categories: [],
+                    code: "",
 				};
 			}
 		};
@@ -215,6 +216,22 @@ export default function AddEditDiscountDialog({
 								value={formData.name || ""}
 								onChange={handleInputChange}
 								className="col-span-3"
+							/>
+						</div>
+						<div className="grid grid-cols-4 items-center gap-4">
+							<Label
+								htmlFor="code"
+								className="text-right"
+							>
+								Code
+							</Label>
+							<Input
+								id="code"
+								name="code"
+								value={formData.code || ""}
+								onChange={handleInputChange}
+								className="col-span-3"
+								placeholder="Optional, e.g., SUMMER20"
 							/>
 						</div>
 						<div className="grid grid-cols-4 items-center gap-4">

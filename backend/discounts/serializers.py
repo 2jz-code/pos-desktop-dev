@@ -38,6 +38,7 @@ class DiscountSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "code",
             "type",
             "scope",
             "value",
