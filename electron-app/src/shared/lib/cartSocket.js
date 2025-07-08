@@ -5,6 +5,7 @@ let store = null;
 let _shouldAttemptReconnect = false; // Flag to control reconnection attempts
 let _retryCount = 0;
 let _reconnectTimeoutId = null;
+let _messageQueue = []; // Queue for messages when WebSocket is not ready
 
 const MAX_RETRIES = 5; // Maximum number of reconnection attempts
 const RECONNECT_BASE_DELAY_MS = 1000; // 1 second base delay
@@ -41,6 +42,24 @@ const clearReconnectTimeout = () => {
 	if (_reconnectTimeoutId) {
 		clearTimeout(_reconnectTimeoutId);
 		_reconnectTimeoutId = null;
+	}
+};
+
+const processMessageQueue = () => {
+	if (
+		_messageQueue.length > 0 &&
+		socket &&
+		socket.readyState === WebSocket.OPEN
+	) {
+		console.log(
+			`WebSocket: Processing ${_messageQueue.length} queued messages`
+		);
+		const queuedMessages = [..._messageQueue];
+		_messageQueue = []; // Clear the queue
+
+		queuedMessages.forEach((message) => {
+			socket.send(JSON.stringify(message));
+		});
 	}
 };
 
@@ -86,6 +105,10 @@ const connect = (orderId) => {
 			}
 			_retryCount = 0; // Reset on successful connection
 			clearReconnectTimeout(); // Ensure no pending retries
+
+			// Process any queued messages
+			processMessageQueue();
+
 			resolve(); // Resolve the promise on successful connection
 		};
 
@@ -199,6 +222,9 @@ const disconnect = () => {
 	_shouldAttemptReconnect = false;
 	clearReconnectTimeout(); // Ensure no pending reconnects
 
+	// Clear the message queue when disconnecting
+	_messageQueue = [];
+
 	if (socket) {
 		if (
 			socket.readyState === WebSocket.OPEN ||
@@ -220,8 +246,16 @@ const sendMessage = (message) => {
 	if (socket && socket.readyState === WebSocket.OPEN) {
 		socket.send(JSON.stringify(message));
 	} else {
-		console.warn("WebSocket not open. Message not sent:", message);
-		// Optionally, you could queue messages to be sent on reconnect
+		console.log("WebSocket not ready. Queuing message:", message);
+		_messageQueue.push(message);
+
+		// If the socket is connecting, messages will be processed when it opens
+		// If the socket is closed/error, we should probably handle reconnection
+		if (!socket || socket.readyState === WebSocket.CLOSED) {
+			console.warn(
+				"WebSocket is closed. Message queued but connection may need to be re-established."
+			);
+		}
 	}
 };
 

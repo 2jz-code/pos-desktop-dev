@@ -133,14 +133,28 @@ const PaymentDetailsPage = () => {
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Net Amount Paid</span>
+							<span className="text-muted-foreground">Amount Due</span>
 							<span className="font-medium">
-								{formatCurrency(payment.amount_paid)}
+								{formatCurrency(payment.total_amount_due)}
 							</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Tip</span>
-							<span className="font-medium">{formatCurrency(payment.tip)}</span>
+							<span className="text-muted-foreground">Total Tips</span>
+							<span className="font-medium">
+								{formatCurrency(payment.total_tips)}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Total Surcharges</span>
+							<span className="font-medium">
+								{formatCurrency(payment.total_surcharges)}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Total Collected</span>
+							<span className="font-medium">
+								{formatCurrency(payment.total_collected)}
+							</span>
 						</div>
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">Status</span>
@@ -157,7 +171,7 @@ const PaymentDetailsPage = () => {
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">Related Order</span>
 							<Link
-								to={`/orders/${payment.order}`}
+								to={`/orders/${payment.order.id}`}
 								className="hover:underline font-mono text-sm font-bold text-blue-500"
 							>
 								{payment.order_number}
@@ -202,7 +216,20 @@ const PaymentDetailsPage = () => {
 										return (
 											<TableRow key={txn.id}>
 												<TableCell className="font-medium">
-													{formatCurrency(txn.amount)}
+													<div className="space-y-1">
+														<div>
+															{formatCurrency(
+																parseFloat(txn.amount) +
+																	parseFloat(txn.surcharge || 0)
+															)}
+														</div>
+														{parseFloat(txn.surcharge || 0) > 0 && (
+															<div className="text-xs text-muted-foreground">
+																Base: {formatCurrency(txn.amount)} + Fee:{" "}
+																{formatCurrency(txn.surcharge)}
+															</div>
+														)}
+													</div>
 												</TableCell>
 												<TableCell>
 													<Badge
@@ -229,7 +256,7 @@ const PaymentDetailsPage = () => {
 																className="h-5 w-8 object-contain"
 															/>
 															<span className="font-mono text-sm">
-																**** {txn.card_last4}
+																{txn.card_last4}
 															</span>
 														</div>
 													) : (

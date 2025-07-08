@@ -14,10 +14,8 @@ export const useSyncToCustomerDisplay = () => {
 		const isSplitPayment = state.partialAmount > 0;
 		const baseAmount = isSplitPayment ? state.partialAmount : state.balanceDue;
 
-		// The baseAmount already includes the surcharge. No further addition is needed.
-		const customerPaymentAmount = isSplitPayment
-			? baseAmount + (state.surchargeAmount || 0)
-			: baseAmount;
+		// Add surcharge to the base amount for the total customer payment amount
+		const customerPaymentAmount = baseAmount + (state.surchargeAmount || 0);
 
 		// We construct a state object that matches the precise format
 		// that the original CustomerDisplay.jsx was designed to work with.
@@ -29,7 +27,7 @@ export const useSyncToCustomerDisplay = () => {
 
 			// Payment properties, mapped to the expected format
 			status: isPaymentActive ? "in-progress" : "active",
-			balanceDue: customerPaymentAmount, // Now shows correct amount for tips
+			balanceDue: customerPaymentAmount, // Now shows correct amount including surcharge
 			orderForPayment: state.order,
 
 			// This now directly controls which view the CustomerDisplay shows

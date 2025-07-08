@@ -66,7 +66,7 @@ const PaymentsPage = () => {
 			filtered = filtered.filter((p) => {
 				const paymentNo = p.payment_number?.toString().toLowerCase() || "";
 				const orderNo = p.order_number?.toString().toLowerCase() || "";
-				const amountStr = p.amount_paid?.toString() || "";
+				const amountStr = p.total_collected?.toString() || "";
 				return (
 					paymentNo.includes(q) || orderNo.includes(q) || amountStr.includes(q)
 				);
@@ -136,7 +136,7 @@ const PaymentsPage = () => {
 			<TableCell className="font-mono text-xs">
 				{payment.order ? `${payment.order_number}` : "N/A"}
 			</TableCell>
-			<TableCell>{formatCurrency(payment.amount_paid)}</TableCell>
+			<TableCell>{formatCurrency(payment.total_collected)}</TableCell>
 			<TableCell className="capitalize">
 				{getPaymentMethod(payment.transactions)}
 			</TableCell>
