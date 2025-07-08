@@ -174,7 +174,7 @@ export default function OrdersPage() {
 				<Badge variant="outline">{order.order_type}</Badge>
 			</TableCell>
 			<TableCell className="text-right font-medium">
-				${parseFloat(order.total_with_tip).toFixed(2)}
+				${parseFloat(order.total_collected || order.total_with_tip).toFixed(2)}
 			</TableCell>
 			<TableCell>{order.item_count}</TableCell>
 			<TableCell>{format(new Date(order.created_at), "PPP p")}</TableCell>

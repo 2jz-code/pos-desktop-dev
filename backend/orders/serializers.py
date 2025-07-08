@@ -51,6 +51,10 @@ class OrderSerializer(serializers.ModelSerializer):
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
     payment_details = serializers.SerializerMethodField()
     total_with_tip = serializers.SerializerMethodField()
+    amount_paid = serializers.SerializerMethodField()
+    total_tips = serializers.SerializerMethodField()
+    total_surcharges = serializers.SerializerMethodField()
+    total_collected = serializers.SerializerMethodField()
     is_guest_order = serializers.ReadOnlyField()
     customer_email = serializers.ReadOnlyField()
     customer_phone = serializers.ReadOnlyField()
@@ -66,13 +70,12 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_status",
             "subtotal",
             "total_discounts_amount",
-            "surcharges_total",
             "tax_total",
             "grand_total",
             "created_at",
             "updated_at",
         ]
-        select_related_fields = ["customer", "cashier"]
+        select_related_fields = ["customer", "cashier", "payment_details"]
         prefetch_related_fields = [
             "items",
             "items__product",
@@ -104,6 +107,38 @@ class OrderSerializer(serializers.ModelSerializer):
             total += obj.payment_details.total_tips
         return total
 
+    def get_amount_paid(self, obj):
+        """
+        Returns the amount paid (excluding tips and surcharges) from the Payment model.
+        """
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.amount_paid
+        return 0.00
+
+    def get_total_tips(self, obj):
+        """
+        Returns the cumulative tip total from the Payment model.
+        """
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_tips
+        return 0.00
+
+    def get_total_surcharges(self, obj):
+        """
+        Returns the total surcharges collected from the Payment model.
+        """
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_surcharges
+        return 0.00
+
+    def get_total_collected(self, obj):
+        """
+        Returns the total amount collected from the Payment model (amount + tips + surcharges).
+        """
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_collected
+        return 0.00
+
 
 class OrderListSerializer(serializers.ModelSerializer):
     """
@@ -115,6 +150,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     cashier_name = serializers.CharField(source="cashier.get_full_name", read_only=True)
     customer_display_name = serializers.ReadOnlyField()
     total_with_tip = serializers.SerializerMethodField()
+    total_collected = serializers.SerializerMethodField()
     payment_in_progress = serializers.SerializerMethodField()
 
     class Meta:
@@ -126,6 +162,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "order_type",
             "payment_status",
             "total_with_tip",
+            "total_collected",
             "item_count",
             "cashier_name",
             "customer_display_name",
@@ -133,6 +170,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "updated_at",
             "payment_in_progress",
         ]
+        select_related_fields = ["customer", "cashier", "payment_details"]
 
     def get_total_with_tip(self, obj):
         """
@@ -146,6 +184,14 @@ class OrderListSerializer(serializers.ModelSerializer):
         ):
             total += obj.payment_details.total_tips
         return total
+
+    def get_total_collected(self, obj):
+        """
+        Returns the total amount collected from the Payment model (amount + tips + surcharges).
+        """
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_collected
+        return 0.00
 
     def get_payment_in_progress(self, obj):
         """

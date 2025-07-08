@@ -164,12 +164,28 @@ const ProductsPage = () => {
 		}
 
 		// Category filtering logic
-		if (selectedChildCategory && selectedChildCategory !== "all") {
+		if (
+			selectedChildCategory &&
+			selectedChildCategory !== "all" &&
+			selectedChildCategory !== "parent-only"
+		) {
+			// Show products from specific child category
 			filtered = filtered.filter((product) => {
 				const category = product.category;
 				return category && category.id === parseInt(selectedChildCategory);
 			});
+		} else if (
+			selectedChildCategory === "parent-only" &&
+			selectedParentCategory &&
+			selectedParentCategory !== "all"
+		) {
+			// Show only products directly assigned to the parent category
+			filtered = filtered.filter((product) => {
+				const category = product.category;
+				return category && category.id === parseInt(selectedParentCategory);
+			});
 		} else if (selectedParentCategory && selectedParentCategory !== "all") {
+			// Show all products under parent category (including child categories) - "All Subcategories"
 			filtered = filtered.filter((product) => {
 				const category = product.category;
 				if (!category) return false;
@@ -438,6 +454,7 @@ const ProductsPage = () => {
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="all">All Subcategories</SelectItem>
+							<SelectItem value="parent-only">Parent Category Only</SelectItem>
 							{childCategories.map((category) => (
 								<SelectItem
 									key={category.id}

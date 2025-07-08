@@ -93,14 +93,15 @@ class OrderAdmin(admin.ModelAdmin):
         (
             "Financial Summary",
             {
-                # A clear breakdown of the total calculation
                 "fields": (
                     "get_subtotal_formatted",
                     "get_total_discounts_formatted",
                     "get_tax_total_formatted",
+                    "get_tips_total_formatted",
                     "get_surcharges_total_formatted",
-                    "get_grand_total_formatted",
+                    "get_total_collected_formatted",
                 ),
+                "description": "Order totals and payment amounts collected.",
             },
         ),
         (
@@ -130,8 +131,9 @@ class OrderAdmin(admin.ModelAdmin):
             "get_subtotal_formatted",
             "get_total_discounts_formatted",
             "get_tax_total_formatted",
+            "get_tips_total_formatted",
             "get_surcharges_total_formatted",
-            "get_grand_total_formatted",
+            "get_total_collected_formatted",
             "get_payment_in_progress_display",  # NEW: Always readonly as it's derived
         ]
         if obj:  # If the object already exists (i.e., we are editing)
@@ -141,7 +143,9 @@ class OrderAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         """Optimize query performance by pre-fetching related objects."""
-        return super().get_queryset(request).select_related("customer", "cashier")
+        return super().get_queryset(request).select_related(
+            "customer", "cashier", "payment_details"
+        )
 
     # --- ADD THIS METHOD ---
     @admin.display(description="Customer")
@@ -177,15 +181,42 @@ class OrderAdmin(admin.ModelAdmin):
 
     get_tax_total_formatted.short_description = "Tax"
 
-    def get_surcharges_total_formatted(self, obj):
-        return self._format_currency(obj.surcharges_total)
-
-    get_surcharges_total_formatted.short_description = "Surcharges"
-
     def get_grand_total_formatted(self, obj):
         return self._format_currency(obj.grand_total)
 
     get_grand_total_formatted.short_description = "Grand Total"
+
+    def get_amount_paid_formatted(self, obj):
+        """Display amount paid from Payment model (excluding tips and surcharges)."""
+        if hasattr(obj, 'payment_details') and obj.payment_details:
+            return self._format_currency(obj.payment_details.amount_paid)
+        return self._format_currency(0.00)
+
+    get_amount_paid_formatted.short_description = "Amount Paid"
+
+    def get_tips_total_formatted(self, obj):
+        """Display total tips from Payment model."""
+        if hasattr(obj, 'payment_details') and obj.payment_details:
+            return self._format_currency(obj.payment_details.total_tips)
+        return self._format_currency(0.00)
+
+    get_tips_total_formatted.short_description = "Tips Collected"
+
+    def get_surcharges_total_formatted(self, obj):
+        """Display total surcharges from Payment model."""
+        if hasattr(obj, 'payment_details') and obj.payment_details:
+            return self._format_currency(obj.payment_details.total_surcharges)
+        return self._format_currency(0.00)
+
+    get_surcharges_total_formatted.short_description = "Surcharges Collected"
+
+    def get_total_collected_formatted(self, obj):
+        """Display total amount collected from Payment model (amount + tips + surcharges)."""
+        if hasattr(obj, 'payment_details') and obj.payment_details:
+            return self._format_currency(obj.payment_details.total_collected)
+        return self._format_currency(0.00)
+
+    get_total_collected_formatted.short_description = "Total Collected"
 
     def get_payment_in_progress_display(self, obj):
         """Display payment status derived from Payment model instead of deprecated field."""

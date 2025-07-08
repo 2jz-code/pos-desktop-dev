@@ -128,6 +128,9 @@ class Order(models.Model):
     total_discounts_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00
     )
+    surcharges_total = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00
+    )
     tax_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
@@ -232,6 +235,54 @@ class Order(models.Model):
 
             return self.payment_details.status == Payment.PaymentStatus.PENDING
         return False
+
+    @property
+    def total_collected(self):
+        """
+        Returns the total amount collected from the related Payment.
+        This includes amount paid, tips, and surcharges.
+        """
+        if hasattr(self, "payment_details") and self.payment_details:
+            return self.payment_details.total_collected
+        return 0.00
+
+    @property
+    def total_tips(self):
+        """
+        Returns the cumulative tip total from the related Payment.
+        """
+        if hasattr(self, "payment_details") and self.payment_details:
+            return self.payment_details.total_tips
+        return 0.00
+
+    @property
+    def amount_paid(self):
+        """
+        Returns the amount paid (excluding tips and surcharges) from the related Payment.
+        """
+        if hasattr(self, "payment_details") and self.payment_details:
+            return self.payment_details.amount_paid
+        return 0.00
+
+    @property
+    def payment_surcharges_total(self):
+        """
+        Returns the total surcharges collected from the related Payment.
+        """
+        if hasattr(self, "payment_details") and self.payment_details:
+            return self.payment_details.total_surcharges
+        return 0.00
+
+    @property
+    def total_with_tip(self):
+        """
+        Calculate the grand total including the tip from the associated payment.
+        """
+        total = self.grand_total
+        # Add tips to the grand total
+        if hasattr(self, "payment_details") and self.payment_details and self.payment_details.total_tips:
+            total += self.payment_details.total_tips
+        return total
 
     def save(self, *args, **kwargs):
         # Generate order_number only if it's not already set

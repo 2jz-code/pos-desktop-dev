@@ -46,7 +46,10 @@ const TransactionDetail = ({ transaction }) => {
 					<span className="font-semibold capitalize text-sm">{method}</span>
 				</div>
 				<span className="font-medium text-sm">
-					{formatCurrency(transaction.amount)}
+					{formatCurrency(
+						parseFloat(transaction.amount) +
+							parseFloat(transaction.surcharge || 0)
+					)}
 				</span>
 			</div>
 			{isCredit && transaction.metadata?.card_brand && (
@@ -186,10 +189,8 @@ const OrderDetailsPage = () => {
 		subtotal,
 		total_discounts_amount,
 		tax_total,
-		surcharges_total,
 		cashier,
 		payment_details,
-		total_with_tip,
 		customer_display_name,
 		customer_email,
 		customer_phone,
@@ -278,17 +279,17 @@ const OrderDetailsPage = () => {
 							</div>
 							<div className="flex justify-between">
 								<span>Surcharges</span>
-								<span>{formatCurrency(surcharges_total)}</span>
+								<span>{formatCurrency(order.total_surcharges || 0)}</span>
 							</div>
-							{payment_details && parseFloat(payment_details.tip) > 0 && (
+							{order.total_tips > 0 && (
 								<div className="flex justify-between">
-									<span>Tip</span>
-									<span>{formatCurrency(payment_details.tip)}</span>
+									<span>Tips</span>
+									<span>{formatCurrency(order.total_tips)}</span>
 								</div>
 							)}
 							<div className="flex justify-between font-bold text-lg mt-2 border-t pt-2">
 								<span>Grand Total</span>
-								<span>{formatCurrency(total_with_tip)}</span>
+								<span>{formatCurrency(order.total_collected || 0)}</span>
 							</div>
 						</div>
 					</CardContent>
