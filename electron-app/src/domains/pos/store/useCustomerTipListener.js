@@ -8,12 +8,11 @@ export const useCustomerTipListener = () => {
 
 	useEffect(() => {
 		if (window.electronAPI) {
-			const cleanup = window.electronAPI.onMessage(
-				"CUSTOMER_TO_POS_TIP",
-				(tipAmount) => {
-					applyTipAndProcessTerminalPayment(tipAmount);
+			const cleanup = window.electronAPI.onCustomerDisplayAction((action) => {
+				if (action.channel === "CUSTOMER_TO_POS_TIP") {
+					applyTipAndProcessTerminalPayment(action.data);
 				}
-			);
+			});
 			return () => {
 				if (cleanup) cleanup();
 			};

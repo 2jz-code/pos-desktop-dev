@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPayments } from "@/domains/payments/services/paymentService";
 import { Badge } from "@/shared/components/ui/badge";
@@ -12,6 +12,8 @@ import {
 } from "@/shared/components/ui/select";
 import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { formatCurrency } from "@/shared/lib/utils";
+import { CreditCard } from "lucide-react";
+import { format } from "date-fns";
 
 const PaymentsPage = () => {
 	const [payments, setPayments] = useState([]);
@@ -97,13 +99,13 @@ const PaymentsPage = () => {
 	const getStatusVariant = (status) => {
 		switch (status?.toLowerCase()) {
 			case "succeeded":
-				return "success";
+			case "paid":
+				return "default";
 			case "refunded":
 			case "partially_refunded":
 				return "destructive";
 			case "pending":
-			case "paid":
-				return "default";
+				return "secondary";
 			default:
 				return "outline";
 		}
@@ -122,7 +124,7 @@ const PaymentsPage = () => {
 	const headers = [
 		{ label: "Payment ID" },
 		{ label: "Order ID" },
-		{ label: "Amount" },
+		{ label: "Amount", className: "text-right" },
 		{ label: "Method" },
 		{ label: "Status" },
 		{ label: "Date" },
@@ -130,50 +132,63 @@ const PaymentsPage = () => {
 
 	const renderPaymentRow = (payment) => (
 		<>
-			<TableCell className="font-mono text-xs">
+			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
 				{payment.payment_number}
 			</TableCell>
-			<TableCell className="font-mono text-xs">
+			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
 				{payment.order ? `${payment.order_number}` : "N/A"}
 			</TableCell>
-			<TableCell>{formatCurrency(payment.total_collected)}</TableCell>
-			<TableCell className="capitalize">
-				{getPaymentMethod(payment.transactions)}
+			<TableCell className="text-right font-semibold text-slate-900 dark:text-slate-100">
+				{formatCurrency(payment.total_collected)}
 			</TableCell>
 			<TableCell>
-				<Badge variant={getStatusVariant(payment.status)}>
+				<Badge
+					variant="outline"
+					className="border-slate-200 dark:border-slate-700 capitalize"
+				>
+					{getPaymentMethod(payment.transactions)}
+				</Badge>
+			</TableCell>
+			<TableCell>
+				<Badge
+					variant={getStatusVariant(payment.status)}
+					className="font-medium"
+				>
 					{payment.status}
 				</Badge>
 			</TableCell>
-			<TableCell>{new Date(payment.created_at).toLocaleString()}</TableCell>
+			<TableCell className="text-slate-600 dark:text-slate-400">
+				{format(new Date(payment.created_at), "PPP p")}
+			</TableCell>
 		</>
 	);
 
 	const filterControls = (
 		<>
 			<Select
-				value={filters.status}
+				value={filters.status || "ALL"}
 				onValueChange={(value) => handleFilterChange("status", value)}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
 					<SelectValue placeholder="Filter by Status" />
 				</SelectTrigger>
-				<SelectContent>
+				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Statuses</SelectItem>
 					<SelectItem value="pending">Pending</SelectItem>
 					<SelectItem value="paid">Paid</SelectItem>
+					<SelectItem value="succeeded">Succeeded</SelectItem>
 					<SelectItem value="refunded">Refunded</SelectItem>
 					<SelectItem value="partially_refunded">Partially Refunded</SelectItem>
 				</SelectContent>
 			</Select>
 			<Select
-				value={filters.method}
+				value={filters.method || "ALL"}
 				onValueChange={(value) => handleFilterChange("method", value)}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
 					<SelectValue placeholder="Filter by Method" />
 				</SelectTrigger>
-				<SelectContent>
+				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Methods</SelectItem>
 					<SelectItem value="cash">Cash</SelectItem>
 					<SelectItem value="card_terminal">Card</SelectItem>
@@ -186,8 +201,10 @@ const PaymentsPage = () => {
 
 	return (
 		<DomainPageLayout
-			title="All Payments"
-			description="A list of all payments processed by the system."
+			pageTitle="All Payments"
+			pageDescription="Manage and track all payment transactions"
+			pageIcon={CreditCard}
+			title="Filters & Search"
 			searchPlaceholder="Search by payment number, order number, or amount..."
 			searchValue={filters.search}
 			onSearchChange={handleSearchChange}
@@ -201,6 +218,7 @@ const PaymentsPage = () => {
 				emptyMessage="No payments found for the selected filters."
 				onRowClick={(payment) => navigate(`/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
+				className="border-slate-200 dark:border-slate-700"
 			/>
 		</DomainPageLayout>
 	);

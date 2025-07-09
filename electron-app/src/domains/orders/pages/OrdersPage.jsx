@@ -14,7 +14,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { Button } from "@/shared/components/ui/button";
-import { EllipsisVertical } from "lucide-react";
+import { EllipsisVertical, ClipboardList } from "lucide-react";
 import { toast } from "@/shared/components/ui/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -79,11 +79,11 @@ export default function OrdersPage() {
 	const getStatusBadgeVariant = (status) => {
 		switch (status) {
 			case "COMPLETED":
-				return "success";
-			case "PENDING":
 				return "default";
-			case "HOLD":
+			case "PENDING":
 				return "secondary";
+			case "HOLD":
+				return "outline";
 			case "CANCELLED":
 			case "VOID":
 				return "destructive";
@@ -95,14 +95,14 @@ export default function OrdersPage() {
 	const getPaymentStatusBadgeVariant = (status) => {
 		switch (status) {
 			case "PAID":
-				return "success";
-			case "PARTIALLY_PAID":
 				return "default";
+			case "PARTIALLY_PAID":
+				return "secondary";
 			case "UNPAID":
 				return "destructive";
 			case "REFUNDED":
 			case "PARTIALLY_REFUNDED":
-				return "secondary";
+				return "outline";
 			default:
 				return "outline";
 		}
@@ -159,25 +159,45 @@ export default function OrdersPage() {
 
 	const renderOrderRow = (order) => (
 		<>
-			<TableCell className="font-mono text-xs">{order.order_number}</TableCell>
+			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
+				{order.order_number}
+			</TableCell>
 			<TableCell>
-				<Badge variant={getStatusBadgeVariant(order.status)}>
+				<Badge
+					variant={getStatusBadgeVariant(order.status)}
+					className="font-medium"
+				>
 					{order.status}
 				</Badge>
 			</TableCell>
 			<TableCell>
-				<Badge variant={getPaymentStatusBadgeVariant(order.payment_status)}>
+				<Badge
+					variant={getPaymentStatusBadgeVariant(order.payment_status)}
+					className="font-medium"
+				>
 					{order.payment_status}
 				</Badge>
 			</TableCell>
 			<TableCell>
-				<Badge variant="outline">{order.order_type}</Badge>
+				<Badge
+					variant="outline"
+					className="border-slate-200 dark:border-slate-700"
+				>
+					{order.order_type}
+				</Badge>
 			</TableCell>
-			<TableCell className="text-right font-medium">
-				${parseFloat(order.total_collected || order.total_with_tip).toFixed(2)}
+			<TableCell className="text-right font-semibold text-slate-900 dark:text-slate-100">
+				$
+				{Number.parseFloat(
+					order.total_collected || order.total_with_tip
+				).toFixed(2)}
 			</TableCell>
-			<TableCell>{order.item_count}</TableCell>
-			<TableCell>{format(new Date(order.created_at), "PPP p")}</TableCell>
+			<TableCell className="text-slate-600 dark:text-slate-400">
+				{order.item_count}
+			</TableCell>
+			<TableCell className="text-slate-600 dark:text-slate-400">
+				{format(new Date(order.created_at), "PPP p")}
+			</TableCell>
 			{isAuthenticated && (
 				<TableCell
 					onClick={(e) => e.stopPropagation()}
@@ -188,11 +208,15 @@ export default function OrdersPage() {
 							<Button
 								variant="ghost"
 								size="icon"
+								className="hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								<EllipsisVertical className="h-4 w-4" />
 							</Button>
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
+						<DropdownMenuContent
+							align="end"
+							className="border-slate-200 dark:border-slate-700"
+						>
 							{(order.status === "HOLD" || order.status === "PENDING") && (
 								<DropdownMenuItem onClick={() => handleResumeAction(order.id)}>
 									Resume
@@ -201,7 +225,7 @@ export default function OrdersPage() {
 							{isOwner &&
 								(order.status === "PENDING" || order.status === "HOLD") && (
 									<DropdownMenuItem
-										className="text-red-600"
+										className="text-red-600 dark:text-red-400"
 										onClick={() =>
 											handleAction(
 												order.id,
@@ -223,13 +247,13 @@ export default function OrdersPage() {
 	const filterControls = (
 		<>
 			<Select
-				value={filters.status}
+				value={filters.status || "ALL"}
 				onValueChange={(value) => handleFilterChange("status", value)}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
 					<SelectValue placeholder="Filter by Status" />
 				</SelectTrigger>
-				<SelectContent>
+				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Statuses</SelectItem>
 					<SelectItem value="PENDING">Pending</SelectItem>
 					<SelectItem value="HOLD">Hold</SelectItem>
@@ -239,13 +263,13 @@ export default function OrdersPage() {
 				</SelectContent>
 			</Select>
 			<Select
-				value={filters.order_type}
+				value={filters.order_type || "ALL"}
 				onValueChange={(value) => handleFilterChange("order_type", value)}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
 					<SelectValue placeholder="Filter by Type" />
 				</SelectTrigger>
-				<SelectContent>
+				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Types</SelectItem>
 					<SelectItem value="POS">Point of Sale</SelectItem>
 					<SelectItem value="WEB">Website</SelectItem>
@@ -258,7 +282,10 @@ export default function OrdersPage() {
 
 	return (
 		<DomainPageLayout
-			title="All Orders"
+			pageTitle="All Orders"
+			pageDescription="Manage and track all customer orders"
+			pageIcon={ClipboardList}
+			title="Filters & Search"
 			searchPlaceholder="Search by order number, customer, or amount..."
 			searchValue={filters.search}
 			onSearchChange={handleSearchChange}
@@ -273,6 +300,7 @@ export default function OrdersPage() {
 				onRowClick={(order) => navigate(`/orders/${order.id}`)}
 				renderRow={renderOrderRow}
 				colSpan={isAuthenticated ? 8 : 7}
+				className="border-slate-200 dark:border-slate-700"
 			/>
 		</DomainPageLayout>
 	);

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -38,11 +38,11 @@ export function RefundDialog({
 	const { toast } = useToast();
 
 	const maxRefundable =
-		parseFloat(transaction.amount) -
-		parseFloat(transaction.refunded_amount || 0);
+		Number.parseFloat(transaction.amount) -
+		Number.parseFloat(transaction.refunded_amount || 0);
 
 	const handleSubmit = () => {
-		const refundAmount = parseFloat(amount);
+		const refundAmount = Number.parseFloat(amount);
 
 		if (isNaN(refundAmount) || refundAmount <= 0) {
 			toast({
@@ -69,18 +69,17 @@ export function RefundDialog({
 	};
 
 	const handleAmountChange = (e) => {
-		let value = e.target.value;
+		const value = e.target.value;
 
-		// --- NEW: Capping logic for decimal places ---
+		// Capping logic for decimal places
 		const decimalRegex = /^\d*(\.\d{0,2})?$/;
 		if (value !== "" && !decimalRegex.test(value)) {
 			// If the input doesn't match the pattern (e.g., has > 2 decimal places),
 			// we simply don't update the state, effectively ignoring the invalid character.
 			return;
 		}
-		// --- END NEW ---
 
-		const numericValue = parseFloat(value);
+		const numericValue = Number.parseFloat(value);
 
 		// Cap the total value if it exceeds the maximum refundable amount
 		if (!isNaN(numericValue) && numericValue > maxRefundable) {
@@ -103,46 +102,50 @@ export function RefundDialog({
 			open={isOpen}
 			onOpenChange={handleOpenChange}
 		>
-			<DialogContent>
+			<DialogContent className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
 				<DialogHeader>
-					<DialogTitle>Refund Transaction</DialogTitle>
-					<DialogDescription>
+					<DialogTitle className="text-slate-900 dark:text-slate-100">
+						Refund Transaction
+					</DialogTitle>
+					<DialogDescription className="text-slate-600 dark:text-slate-400">
 						Max refundable amount:{" "}
-						<span className="font-bold">{formatCurrency(maxRefundable)}</span>
+						<span className="font-bold text-slate-900 dark:text-slate-100">
+							{formatCurrency(maxRefundable)}
+						</span>
 					</DialogDescription>
 				</DialogHeader>
-				<div className="grid gap-4 py-4">
-					<div className="grid grid-cols-4 items-center gap-4">
+				<div className="grid gap-6 py-4">
+					<div className="space-y-2">
 						<Label
 							htmlFor="amount"
-							className="text-right"
+							className="text-sm font-medium text-slate-900 dark:text-slate-100"
 						>
-							Amount
+							Refund Amount
 						</Label>
 						<Input
 							id="amount"
 							type="number"
 							value={amount}
 							onChange={handleAmountChange}
-							className="col-span-3"
+							className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
 							placeholder={`e.g., ${maxRefundable.toFixed(2)}`}
 						/>
 					</div>
-					<div className="grid grid-cols-4 items-center gap-4">
+					<div className="space-y-2">
 						<Label
 							htmlFor="reason"
-							className="text-right"
+							className="text-sm font-medium text-slate-900 dark:text-slate-100"
 						>
-							Reason
+							Refund Reason
 						</Label>
 						<Select
 							value={reason}
 							onValueChange={setReason}
 						>
-							<SelectTrigger className="col-span-3">
+							<SelectTrigger className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
 								<SelectValue placeholder="Select a reason..." />
 							</SelectTrigger>
-							<SelectContent>
+							<SelectContent className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
 								{refundReasons.map((r) => (
 									<SelectItem
 										key={r.value}
@@ -160,16 +163,18 @@ export function RefundDialog({
 						variant="outline"
 						onClick={() => onOpenChange(false)}
 						disabled={isRefunding}
+						className="border-slate-200 dark:border-slate-700"
 					>
 						Cancel
 					</Button>
 					<Button
 						onClick={handleSubmit}
 						disabled={isRefunding}
+						className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900"
 					>
 						{isRefunding
 							? "Refunding..."
-							: `Refund ${formatCurrency(parseFloat(amount) || 0)}`}
+							: `Refund ${formatCurrency(Number.parseFloat(amount) || 0)}`}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

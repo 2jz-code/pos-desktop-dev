@@ -1,31 +1,25 @@
-import React, { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import CustomerCartView from "@/domains/pos/components/customerViews/CustomerCartView";
-import PaymentProcessingView from "@/domains/pos/components/customerViews/PaymentProcessingView";
-import PaymentSuccessView from "@/domains/pos/components/customerViews/PaymentSuccessView";
-import TipSelectionView from "@/domains/pos/components/dialogs/paymentViews/TipSelectionView";
-
-const WelcomeView = ({ key }) => (
-	<div
-		key={key}
-		className="text-center"
-	>
-		<h1 className="text-5xl font-bold">Welcome</h1>
-		<p className="text-2xl mt-4 text-muted-foreground">
-			Please see the cashier to begin.
-		</p>
-	</div>
-);
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
+import WelcomeView from "../components/customerViews/WelcomeView";
+import CustomerCartView from "../components/customerViews/CustomerCartView";
+import PaymentProcessingView from "../components/customerViews/PaymentProcessingView";
+import PaymentSuccessView from "../components/customerViews/PaymentSuccessView";
+import TipSelectionView from "../components/customerViews/TipSelectionView";
 
 const CustomerDisplay = () => {
 	const [state, setState] = useState(null);
+	const [isTransitioning, setIsTransitioning] = useState(false);
 
 	useEffect(() => {
 		if (window.electronAPI) {
 			const unsubscribe = window.electronAPI.onMessage(
 				"POS_TO_CUSTOMER_STATE",
 				(newState) => {
-					setState(newState);
+					setIsTransitioning(true);
+					setTimeout(() => {
+						setState(newState);
+						setIsTransitioning(false);
+					}, 150); // Brief transition delay
 				}
 			);
 
@@ -37,6 +31,13 @@ const CustomerDisplay = () => {
 			};
 		}
 	}, []);
+
+	// Handler for tip selection
+	const handleTipSelect = (tipAmount) => {
+		if (window.electronAPI) {
+			window.electronAPI.sendActionToPos("CUSTOMER_TO_POS_TIP", tipAmount);
+		}
+	};
 
 	const renderContent = () => {
 		if (!state) {
@@ -54,11 +55,17 @@ const CustomerDisplay = () => {
 					<TipSelectionView
 						key="tip-select"
 						amountDue={state.balanceDue}
+						onTipSelect={handleTipSelect}
 					/>
 				);
 			}
 			if (state.activeView === "processingPayment") {
-				return <PaymentProcessingView key="processing" />;
+				return (
+					<PaymentProcessingView
+						key="processing"
+						status={state.paymentStatus}
+					/>
+				);
 			}
 			if (state.activeView === "complete") {
 				return <PaymentSuccessView key="success" />;
@@ -78,19 +85,53 @@ const CustomerDisplay = () => {
 		return <WelcomeView key="welcome-default" />;
 	};
 
+	const pageTransition = {
+		initial: { opacity: 0, scale: 0.95, y: 20 },
+		animate: { opacity: 1, scale: 1, y: 0 },
+		exit: { opacity: 0, scale: 1.05, y: -20 },
+	};
+
 	return (
-		<div className="flex flex-col items-center justify-center h-screen bg-background text-foreground p-12">
+		<div className="w-full h-screen overflow-hidden">
 			<AnimatePresence mode="wait">
-				<motion.div
-					key={state ? `${state.status}-${state.activeView}` : "initial"}
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					exit={{ opacity: 0, y: -20 }}
-					transition={{ duration: 0.3 }}
-					className="w-full h-full flex items-center justify-center"
-				>
-					{renderContent()}
-				</motion.div>
+				{!isTransitioning && (
+					<motion.div
+						key={state ? `${state.status}-${state.activeView}` : "initial"}
+						initial="initial"
+						animate="animate"
+						exit="exit"
+						variants={pageTransition}
+						transition={{
+							duration: 0.4,
+							ease: [0.4, 0, 0.2, 1], // Custom easing for smooth transitions
+						}}
+						className="w-full h-full"
+					>
+						{renderContent()}
+					</motion.div>
+				)}
+			</AnimatePresence>
+
+			{/* Loading overlay during transitions */}
+			<AnimatePresence>
+				{isTransitioning && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50"
+					>
+						<motion.div
+							animate={{ rotate: 360 }}
+							transition={{
+								duration: 1,
+								repeat: Number.POSITIVE_INFINITY,
+								ease: "linear",
+							}}
+							className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full"
+						/>
+					</motion.div>
+				)}
 			</AnimatePresence>
 		</div>
 	);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import * as orderService from "@/domains/orders/services/orderService";
@@ -14,6 +14,7 @@ import {
 	CardFooter,
 } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { formatCurrency } from "@/shared/lib/utils";
 import {
 	ArrowLeft,
@@ -24,36 +25,44 @@ import {
 	Phone,
 	Printer,
 	Send,
+	Package,
+	Receipt,
+	Clock,
 } from "lucide-react";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useMutation } from "@tanstack/react-query";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
 
-// --- Reusable component to display a single transaction ---
+// Professional Transaction Detail Component
 const TransactionDetail = ({ transaction }) => {
 	const method = transaction.method?.replace("_", " ") || "N/A";
 	const isCredit = method.toLowerCase() === "credit";
 
 	return (
-		<div className="p-3 border rounded-md bg-muted/50 space-y-1">
+		<div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50 space-y-2">
 			<div className="flex justify-between items-center">
-				<div className="flex items-center gap-2">
-					{isCredit ? (
-						<CreditCard className="h-4 w-4 text-blue-500" />
-					) : (
-						<DollarSign className="h-4 w-4 text-green-500" />
-					)}
-					<span className="font-semibold capitalize text-sm">{method}</span>
+				<div className="flex items-center gap-3">
+					<div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+						{isCredit ? (
+							<CreditCard className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						) : (
+							<DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+						)}
+					</div>
+					<span className="font-semibold capitalize text-sm text-slate-900 dark:text-slate-100">
+						{method}
+					</span>
 				</div>
-				<span className="font-medium text-sm">
+				<span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
 					{formatCurrency(
-						parseFloat(transaction.amount) +
-							parseFloat(transaction.surcharge || 0)
+						Number.parseFloat(transaction.amount) +
+							Number.parseFloat(transaction.surcharge || 0)
 					)}
 				</span>
 			</div>
 			{isCredit && transaction.metadata?.card_brand && (
-				<div className="text-xs text-muted-foreground pl-6">
+				<div className="text-xs text-slate-500 dark:text-slate-400 pl-12">
 					{transaction.metadata.card_brand} ****
 					{transaction.metadata.card_last4}
 				</div>
@@ -68,7 +77,7 @@ const OrderDetailsPage = () => {
 	const permissions = useRolePermissions();
 	const [isPrinting, setIsPrinting] = useState(false);
 
-	// --- ZUSTAND FIX: Select state and functions individually to prevent re-renders ---
+	// ZUSTAND FIX: Select state and functions individually to prevent re-renders
 	const order = usePosStore((state) => state.selectedOrder);
 	const fetchOrderById = usePosStore((state) => state.fetchOrderById);
 	const updateSingleOrder = usePosStore((state) => state.updateSingleOrder);
@@ -79,7 +88,6 @@ const OrderDetailsPage = () => {
 		(state) => state.getLocalReceiptPrinter
 	);
 	const settings = useSettingsStore((state) => state.settings);
-	// --- END ZUSTAND FIX ---
 
 	useEffect(() => {
 		if (orderId) {
@@ -177,9 +185,13 @@ const OrderDetailsPage = () => {
 	if (isLoading && !order) return <FullScreenLoader />;
 	if (!order)
 		return (
-			<p className="text-red-500 text-center p-4">
-				Order not found or failed to load.
-			</p>
+			<div className="flex items-center justify-center h-full">
+				<Card className="p-6 max-w-md mx-auto border-slate-200 dark:border-slate-700">
+					<CardContent className="text-center">
+						<p className="text-red-500">Order not found or failed to load.</p>
+					</CardContent>
+				</Card>
+			</div>
 		);
 
 	const {
@@ -196,232 +208,331 @@ const OrderDetailsPage = () => {
 		customer_phone,
 	} = order;
 
+	const getStatusBadgeVariant = (status) => {
+		switch (status) {
+			case "COMPLETED":
+				return "default";
+			case "PENDING":
+				return "secondary";
+			case "HOLD":
+				return "outline";
+			case "CANCELLED":
+			case "VOID":
+				return "destructive";
+			default:
+				return "outline";
+		}
+	};
+
 	const getPaymentStatusBadgeVariant = (status) => {
 		switch (status) {
 			case "PAID":
 			case "succeeded":
-				return "success";
-			case "PARTIALLY_PAID":
 				return "default";
+			case "PARTIALLY_PAID":
+				return "secondary";
 			case "UNPAID":
 				return "destructive";
 			case "REFUNDED":
 			case "PARTIALLY_REFUNDED":
-				return "secondary";
+				return "outline";
 			default:
 				return "outline";
 		}
 	};
 
 	return (
-		<div className="p-4 md:p-8">
-			<Button
-				onClick={() => navigate("/orders")}
-				variant="outline"
-				className="mb-4"
-			>
-				<ArrowLeft className="mr-2 h-4 w-4" />
-				Back to Orders
-			</Button>
-			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-				{/* Order Details Card */}
-				<Card className="md:col-span-2">
-					<CardHeader>
-						<div className="flex justify-between items-start">
-							<div>
-								<CardTitle>Order Details</CardTitle>
-								<CardDescription className={"pt-2.5"}>
-									ID: {order.id}
-								</CardDescription>
-								<CardDescription className={"pt-2.5"}>
-									Order #: {order.order_number}
-								</CardDescription>
-								<CardDescription className={"py-2"}>
-									Cashier: {cashier?.username || "N/A"}
-								</CardDescription>
-							</div>
-							<Badge variant={status === "COMPLETED" ? "success" : "secondary"}>
-								{status}
-							</Badge>
-						</div>
-					</CardHeader>
-					<CardContent>
-						<div className="mb-4">
-							<h4 className="font-semibold mb-2">Items</h4>
-							<ul className="divide-y">
-								{items.map((item) => (
-									<li
-										key={item.id}
-										className="py-2 flex justify-between"
-									>
-										<span>
-											{item.product.name} (x{item.quantity})
-										</span>
-										<span>
-											{formatCurrency(item.price_at_sale * item.quantity)}
-										</span>
-									</li>
-								))}
-							</ul>
-						</div>
-						<div className="border-t pt-4">
-							<div className="flex justify-between">
-								<span>Subtotal</span>
-								<span>{formatCurrency(subtotal)}</span>
-							</div>
-							<div className="flex justify-between text-red-500">
-								<span>Discounts</span>
-								<span>-{formatCurrency(total_discounts_amount)}</span>
-							</div>
-							<div className="flex justify-between">
-								<span>Tax</span>
-								<span>{formatCurrency(tax_total)}</span>
-							</div>
-							<div className="flex justify-between">
-								<span>Surcharges</span>
-								<span>{formatCurrency(order.total_surcharges || 0)}</span>
-							</div>
-							{order.total_tips > 0 && (
-								<div className="flex justify-between">
-									<span>Tips</span>
-									<span>{formatCurrency(order.total_tips)}</span>
-								</div>
-							)}
-							<div className="flex justify-between font-bold text-lg mt-2 border-t pt-2">
-								<span>Grand Total</span>
-								<span>{formatCurrency(order.total_collected || 0)}</span>
-							</div>
-						</div>
-					</CardContent>
-					<CardFooter className="flex flex-wrap justify-end gap-2">
-						{status === "COMPLETED" &&
-							["POS", "WEB"].includes(order.order_type) &&
-							permissions?.canCancelOrders() && (
-								<Button
-									variant="outline"
-									onClick={handlePrintReceipt}
-									disabled={isPrinting || !getLocalReceiptPrinter()}
-								>
-									<Printer className="mr-2 h-4 w-4" />
-									{isPrinting ? "Printing..." : "Print Physical Receipt"}
-								</Button>
-							)}
-						{status === "COMPLETED" && permissions?.canCancelOrders() && (
-							<Button
-								variant="outline"
-								onClick={() => resendEmailMutation.mutate()}
-								disabled={resendEmailMutation.isPending}
-							>
-								<Send className="mr-2 h-4 w-4" />
-								{resendEmailMutation.isPending
-									? "Sending..."
-									: "Resend Email Receipt"}
-							</Button>
-						)}
-						{(status === "HOLD" || status === "PENDING") && (
-							<Button onClick={handleResume}>Resume Order</Button>
-						)}
-						{/* Only allow managers/owners to cancel orders */}
-						{(status === "PENDING" || status === "HOLD") &&
-							permissions?.canCancelOrders() && (
-								<Button
-									variant="destructive"
-									onClick={() =>
-										handleStatusChange(
-											orderService.cancelOrder,
-											"Order has been cancelled."
-										)
-									}
-								>
-									Cancel Order
-								</Button>
-							)}
-					</CardFooter>
-				</Card>
+		<div className="flex flex-col h-full">
+			{/* Page Header */}
+			<PageHeader
+				icon={Receipt}
+				title="Order Details"
+				description={`Order #${order.order_number}`}
+				actions={
+					<div className="flex items-center gap-3">
+						<Button
+							onClick={() => navigate("/orders")}
+							variant="outline"
+							size="sm"
+							className="border-slate-200 dark:border-slate-700"
+						>
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to Orders
+						</Button>
+						<Badge
+							variant={getStatusBadgeVariant(status)}
+							className="px-3 py-1"
+						>
+							{status}
+						</Badge>
+						<Badge
+							variant={getPaymentStatusBadgeVariant(payment_status)}
+							className="px-3 py-1"
+						>
+							{payment_status}
+						</Badge>
+					</div>
+				}
+				className="flex-shrink-0"
+			/>
 
-				{/* Right Column for Customer & Payment */}
-				<div className="space-y-6">
-					{/* --- NEW Customer Details Card --- */}
-					{customer_display_name &&
-						customer_display_name !== "Guest Customer" && (
-							<Card>
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2">
-										<User className="h-5 w-5" />
-										<span>Customer Details</span>
-									</CardTitle>
-								</CardHeader>
-								<CardContent className="space-y-3 text-sm">
-									<div className="flex items-center gap-3">
-										<User className="h-4 w-4 text-muted-foreground" />
-										<span>{customer_display_name}</span>
+			{/* Scrollable Content Area */}
+			<div className="flex-1 min-h-0 p-4 md:p-6">
+				<ScrollArea className="h-full">
+					<div className="pb-8">
+						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+							{/* Order Details Card */}
+							<Card className="lg:col-span-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+								<CardHeader className="pb-4">
+									<div className="flex items-start justify-between">
+										<div className="flex items-center gap-3">
+											<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+												<Receipt className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+											</div>
+											<div>
+												<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+													Order Information
+												</CardTitle>
+												<CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+													ID: {order.id} • Cashier: {cashier?.username || "N/A"}
+												</CardDescription>
+											</div>
+										</div>
 									</div>
-									{customer_email && (
-										<div className="flex items-center gap-3">
-											<Mail className="h-4 w-4 text-muted-foreground" />
-											<a
-												href={`mailto:${customer_email}`}
-												className="hover:underline"
-											>
-												{customer_email}
-											</a>
+								</CardHeader>
+								<CardContent className="space-y-6">
+									{/* Items Section */}
+									<div>
+										<div className="flex items-center gap-2 mb-4">
+											<Package className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+											<h4 className="font-semibold text-slate-900 dark:text-slate-100">
+												Items Ordered
+											</h4>
 										</div>
-									)}
-									{customer_phone && (
-										<div className="flex items-center gap-3">
-											<Phone className="h-4 w-4 text-muted-foreground" />
-											<a
-												href={`tel:${customer_phone}`}
-												className="hover:underline"
-											>
-												{customer_phone}
-											</a>
+										<div className="space-y-3">
+											{items.map((item) => (
+												<div
+													key={item.id}
+													className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700"
+												>
+													<div>
+														<span className="font-medium text-slate-900 dark:text-slate-100">
+															{item.product.name}
+														</span>
+														<span className="text-slate-500 dark:text-slate-400 ml-2">
+															(x{item.quantity})
+														</span>
+													</div>
+													<span className="font-semibold text-slate-900 dark:text-slate-100">
+														{formatCurrency(item.price_at_sale * item.quantity)}
+													</span>
+												</div>
+											))}
 										</div>
-									)}
-								</CardContent>
-							</Card>
-						)}
+									</div>
 
-					{/* --- Payment Details Card --- */}
-					<Card>
-						<CardHeader>
-							<CardTitle>Payment Details</CardTitle>
-							<CardDescription>
-								Overall Status:{" "}
-								<Badge variant={getPaymentStatusBadgeVariant(payment_status)}>
-									{payment_status}
-								</Badge>
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							{payment_details && payment_details.transactions?.length > 0 ? (
-								<>
-									{/* Only show payment record link to managers/owners */}
-									{permissions.canAccessPayments() && (
-										<div className="text-sm">
-											<Link
-												to={`/payments/${payment_details.id}`}
-												className="text-blue-500 font-bold hover:underline"
-											>
-												View Full Payment Record &rarr;
-											</Link>
+									{/* Order Summary */}
+									<div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+										<h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-4">
+											Order Summary
+										</h4>
+										<div className="space-y-3">
+											<div className="flex justify-between text-slate-600 dark:text-slate-400">
+												<span>Subtotal</span>
+												<span>{formatCurrency(subtotal)}</span>
+											</div>
+											<div className="flex justify-between text-red-600 dark:text-red-400">
+												<span>Discounts</span>
+												<span>-{formatCurrency(total_discounts_amount)}</span>
+											</div>
+											<div className="flex justify-between text-slate-600 dark:text-slate-400">
+												<span>Tax</span>
+												<span>{formatCurrency(tax_total)}</span>
+											</div>
+											<div className="flex justify-between text-slate-600 dark:text-slate-400">
+												<span>Surcharges</span>
+												<span>
+													{formatCurrency(order.total_surcharges || 0)}
+												</span>
+											</div>
+											{order.total_tips > 0 && (
+												<div className="flex justify-between text-slate-600 dark:text-slate-400">
+													<span>Tips</span>
+													<span>{formatCurrency(order.total_tips)}</span>
+												</div>
+											)}
+											<div className="flex justify-between font-bold text-lg text-slate-900 dark:text-slate-100 pt-3 border-t border-slate-200 dark:border-slate-700">
+												<span>Grand Total</span>
+												<span>
+													{formatCurrency(order.total_collected || 0)}
+												</span>
+											</div>
 										</div>
+									</div>
+								</CardContent>
+								<CardFooter className="flex flex-wrap justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
+									{status === "COMPLETED" &&
+										["POS", "WEB"].includes(order.order_type) &&
+										permissions?.canCancelOrders() && (
+											<Button
+												variant="outline"
+												onClick={handlePrintReceipt}
+												disabled={isPrinting || !getLocalReceiptPrinter()}
+												className="border-slate-200 dark:border-slate-700 bg-transparent"
+											>
+												<Printer className="mr-2 h-4 w-4" />
+												{isPrinting ? "Printing..." : "Print Receipt"}
+											</Button>
+										)}
+									{status === "COMPLETED" && permissions?.canCancelOrders() && (
+										<Button
+											variant="outline"
+											onClick={() => resendEmailMutation.mutate()}
+											disabled={resendEmailMutation.isPending}
+											className="border-slate-200 dark:border-slate-700"
+										>
+											<Send className="mr-2 h-4 w-4" />
+											{resendEmailMutation.isPending
+												? "Sending..."
+												: "Resend Email"}
+										</Button>
 									)}
-									{payment_details.transactions.map((txn) => (
-										<TransactionDetail
-											key={txn.id}
-											transaction={txn}
-										/>
-									))}
-								</>
-							) : (
-								<p className="text-sm text-gray-500">
-									No payment details found for this order.
-								</p>
-							)}
-						</CardContent>
-					</Card>
-				</div>
+									{(status === "HOLD" || status === "PENDING") && (
+										<Button
+											onClick={handleResume}
+											className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900"
+										>
+											<Clock className="mr-2 h-4 w-4" />
+											Resume Order
+										</Button>
+									)}
+									{(status === "PENDING" || status === "HOLD") &&
+										permissions?.canCancelOrders() && (
+											<Button
+												variant="destructive"
+												onClick={() =>
+													handleStatusChange(
+														orderService.cancelOrder,
+														"Order has been cancelled."
+													)
+												}
+											>
+												Cancel Order
+											</Button>
+										)}
+								</CardFooter>
+							</Card>
+
+							{/* Right Column */}
+							<div className="space-y-6">
+								{/* Customer Details Card */}
+								{customer_display_name &&
+									customer_display_name !== "Guest Customer" && (
+										<Card className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+											<CardHeader className="pb-4">
+												<div className="flex items-center gap-3">
+													<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+														<User className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+													</div>
+													<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+														Customer Details
+													</CardTitle>
+												</div>
+											</CardHeader>
+											<CardContent className="space-y-4">
+												<div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+													<User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+													<span className="text-slate-900 dark:text-slate-100">
+														{customer_display_name}
+													</span>
+												</div>
+												{customer_email && (
+													<div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+														<Mail className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+														<a
+															href={`mailto:${customer_email}`}
+															className="text-blue-600 dark:text-blue-400 hover:underline"
+														>
+															{customer_email}
+														</a>
+													</div>
+												)}
+												{customer_phone && (
+													<div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+														<Phone className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+														<a
+															href={`tel:${customer_phone}`}
+															className="text-blue-600 dark:text-blue-400 hover:underline"
+														>
+															{customer_phone}
+														</a>
+													</div>
+												)}
+											</CardContent>
+										</Card>
+									)}
+
+								{/* Payment Details Card */}
+								<Card className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+									<CardHeader className="pb-4">
+										<div className="flex items-center gap-3">
+											<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
+												<CreditCard className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+											</div>
+											<div>
+												<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+													Payment Details
+												</CardTitle>
+												<CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+													Status:{" "}
+													<Badge
+														variant={getPaymentStatusBadgeVariant(
+															payment_status
+														)}
+														className="ml-1"
+													>
+														{payment_status}
+													</Badge>
+												</CardDescription>
+											</div>
+										</div>
+									</CardHeader>
+									<CardContent className="space-y-4">
+										{payment_details &&
+										payment_details.transactions?.length > 0 ? (
+											<>
+												{permissions.canAccessPayments() && (
+													<div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+														<Link
+															to={`/payments/${payment_details.id}`}
+															className="text-blue-600 dark:text-blue-400 font-semibold hover:underline text-sm"
+														>
+															View Full Payment Record →
+														</Link>
+													</div>
+												)}
+												<div className="space-y-3">
+													{payment_details.transactions.map((txn) => (
+														<TransactionDetail
+															key={txn.id}
+															transaction={txn}
+														/>
+													))}
+												</div>
+											</>
+										) : (
+											<div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
+												<p className="text-sm text-slate-500 dark:text-slate-400">
+													No payment details found for this order.
+												</p>
+											</div>
+										)}
+									</CardContent>
+								</Card>
+							</div>
+						</div>
+					</div>
+				</ScrollArea>
 			</div>
 		</div>
 	);

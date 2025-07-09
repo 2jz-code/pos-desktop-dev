@@ -75,10 +75,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	 * @returns {function} A cleanup function to remove the listener.
 	 */
 	onCustomerDisplayAction: (callback) => {
-		const handler = (_event, action) => callback(action);
-		ipcRenderer.on("from-customer-display", handler);
+		const customerChannels = ["CUSTOMER_TO_POS_TIP"];
+		const handlers = [];
+
+		customerChannels.forEach((channel) => {
+			const handler = (_event, data) => {
+				const action = { channel, data };
+				callback(action);
+			};
+			ipcRenderer.on(channel, handler);
+			handlers.push({ channel, handler });
+		});
+
 		// Return a cleanup function to be called on component unmount
-		return () => ipcRenderer.removeListener("from-customer-display", handler);
+		return () => {
+			handlers.forEach(({ channel, handler }) => {
+				ipcRenderer.removeListener(channel, handler);
+			});
+		};
 	},
 
 	requestInitialState: () => {
