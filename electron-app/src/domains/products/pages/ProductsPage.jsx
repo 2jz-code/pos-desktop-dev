@@ -514,9 +514,11 @@ const ProductsPage = () => {
 	return (
 		<>
 			<DomainPageLayout
-				title={showArchivedProducts ? "Archived Products" : "Active Products"}
-				description="Manage your product catalog"
-				headerActions={headerActions}
+				pageTitle={showArchivedProducts ? "Archived Products" : "Active Products"}
+				pageDescription="Manage your product catalog"
+				pageIcon={Tags}
+				pageActions={headerActions}
+				title="Filters & Search"
 				searchPlaceholder="Search products by name or description..."
 				searchValue={filters.search}
 				onSearchChange={handleSearchChange}

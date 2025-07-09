@@ -3,7 +3,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { TableCell } from "@/shared/components/ui/table";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, Percent } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -259,8 +259,9 @@ export default function DiscountsPage() {
 	if (error) {
 		return (
 			<DomainPageLayout
-				title="Discount Management"
-				description="Create, manage, and schedule all promotional discounts."
+				pageTitle="Discount Management"
+				pageDescription="Create, manage, and schedule all promotional discounts."
+				pageIcon={Percent}
 				error="Failed to load discounts."
 			>
 				<div className="flex items-center justify-center h-24">
@@ -273,9 +274,11 @@ export default function DiscountsPage() {
 	return (
 		<>
 			<DomainPageLayout
-				title="Discount Management"
-				description="Create, manage, and schedule all promotional discounts."
-				headerActions={headerActions}
+				pageTitle="Discount Management"
+				pageDescription="Create, manage, and schedule all promotional discounts."
+				pageIcon={Percent}
+				pageActions={headerActions}
+				title="Filters & Search"
 				searchPlaceholder="Search by name, description, type, or scope..."
 				searchValue={filters.search}
 				onSearchChange={handleSearchChange}

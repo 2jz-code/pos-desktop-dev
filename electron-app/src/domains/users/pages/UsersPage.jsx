@@ -27,7 +27,7 @@ import {
 } from "@/shared/components/ui/select";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
-import { MoreHorizontal, UserPlus, KeyRound, Trash2, Edit } from "lucide-react";
+import { MoreHorizontal, UserPlus, KeyRound, Trash2, Edit, Users } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -381,13 +381,15 @@ export function UsersPage() {
 	return (
 		<>
 			<DomainPageLayout
-				title={isSelfEditingCashier ? "My Profile" : "User Management"}
-				description={
+				pageTitle={isSelfEditingCashier ? "My Profile" : "User Management"}
+				pageDescription={
 					isSelfEditingCashier
 						? "Manage your personal information and settings."
 						: "Manage users in your system."
 				}
-				headerActions={headerActions}
+				pageIcon={Users}
+				pageActions={headerActions}
+				title="Filters & Search"
 				searchPlaceholder="Search by name, username, email, or role..."
 				searchValue={filters.search}
 				onSearchChange={handleSearchChange}
