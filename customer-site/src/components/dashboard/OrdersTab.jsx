@@ -25,9 +25,19 @@ import {
 } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { PaginationControls } from "@/components/ui/PaginationControls"; // Import the new component
 
 const OrdersTab = () => {
-	const { orders, isLoadingOrders, error } = useDashboard();
+	const {
+		orders,
+		isLoadingOrders,
+		error,
+		nextUrl,
+		prevUrl,
+		count,
+		currentPage,
+		handleOrderNavigation,
+	} = useDashboard();
 	const { user } = useAuth();
 	const navigate = useNavigate();
 	const { resetCheckoutState } = useCart();
@@ -120,7 +130,8 @@ const OrdersTab = () => {
 		return `$${Number(amount).toFixed(2)}`;
 	};
 
-	if (isLoadingOrders) {
+	if (isLoadingOrders && orders.length === 0) {
+		// Show loader only on initial load
 		return (
 			<div className="flex items-center justify-center h-64">
 				<Loader2 className="h-8 w-8 animate-spin text-primary-green" />
@@ -137,7 +148,7 @@ const OrdersTab = () => {
 		);
 	}
 
-	if (!orders || orders.length === 0) {
+	if (!isLoadingOrders && (!orders || orders.length === 0)) {
 		return (
 			<div className="text-center py-16">
 				<ShoppingBag className="mx-auto h-12 w-12 text-gray-400" />
@@ -164,6 +175,11 @@ const OrdersTab = () => {
 			<h2 className="text-2xl font-semibold text-accent-dark-green">
 				Order History
 			</h2>
+			{isLoadingOrders && (
+				<div className="text-center p-4">
+					<Loader2 className="h-6 w-6 animate-spin text-primary-green mx-auto" />
+				</div>
+			)}
 			<Accordion
 				type="single"
 				collapsible
@@ -266,6 +282,14 @@ const OrdersTab = () => {
 					</AccordionItem>
 				))}
 			</Accordion>
+			<PaginationControls
+				prevUrl={prevUrl}
+				nextUrl={nextUrl}
+				onNavigate={handleOrderNavigation}
+				count={count}
+				currentPage={currentPage}
+				pageSize={25}
+			/>
 		</div>
 	);
 };

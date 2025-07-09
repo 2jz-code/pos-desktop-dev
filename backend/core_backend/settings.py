@@ -209,6 +209,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Removed global pagination - only applied to specific ViewSets
+
 }
 
 # Simple JWT settings (optional, provides sensible defaults)

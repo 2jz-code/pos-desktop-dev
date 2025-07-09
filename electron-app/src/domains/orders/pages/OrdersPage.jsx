@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	getAllOrders,
@@ -28,11 +28,16 @@ import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { format } from "date-fns";
+import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 
 export default function OrdersPage() {
 	const [orders, setOrders] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
+	const [nextUrl, setNextUrl] = useState(null);
+	const [prevUrl, setPrevUrl] = useState(null);
+	const [count, setCount] = useState(0);
+	const [currentPage, setCurrentPage] = useState(1);
 	const [filters, setFilters] = useState({
 		order_type: "",
 		status: "",
@@ -48,23 +53,43 @@ export default function OrdersPage() {
 		shallow
 	);
 
-	const fetchOrders = async () => {
-		try {
-			setLoading(true);
-			const response = await getAllOrders(filters);
-			setOrders(response || []);
-			setError(null);
-		} catch (err) {
-			setError("Failed to fetch orders.");
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
+	const fetchOrders = useCallback(
+		async (url = null) => {
+			try {
+				setLoading(true);
+				const response = await getAllOrders(filters, url);
+				setOrders(response.results || []);
+				setNextUrl(response.next);
+				setPrevUrl(response.previous);
+				setCount(response.count || 0);
+
+				// Extract current page from URL or use page 1 as default
+				if (url) {
+					const urlObj = new URL(url);
+					const page = parseInt(urlObj.searchParams.get("page") || "1");
+					setCurrentPage(page);
+				} else {
+					setCurrentPage(1);
+				}
+
+				setError(null);
+			} catch (err) {
+				setError("Failed to fetch orders.");
+				console.error("Order fetch error:", err);
+			} finally {
+				setLoading(false);
+			}
+		},
+		[filters]
+	);
 
 	useEffect(() => {
 		fetchOrders();
-	}, [filters]);
+	}, [fetchOrders]);
+
+	const handleNavigate = (url) => {
+		if (url) fetchOrders(url);
+	};
 
 	const handleFilterChange = (filterName, value) => {
 		const actualValue = value === "ALL" ? "" : value;
@@ -301,6 +326,14 @@ export default function OrdersPage() {
 				renderRow={renderOrderRow}
 				colSpan={isAuthenticated ? 8 : 7}
 				className="border-slate-200 dark:border-slate-700"
+			/>
+			<PaginationControls
+				prevUrl={prevUrl}
+				nextUrl={nextUrl}
+				onNavigate={handleNavigate}
+				count={count}
+				currentPage={currentPage}
+				pageSize={25}
 			/>
 		</DomainPageLayout>
 	);

@@ -18,6 +18,7 @@ from .factories import PaymentStrategyFactory
 from .services import PaymentService
 from django.conf import settings
 from django.http import HttpResponse
+from core_backend.pagination import StandardPagination
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -25,6 +26,7 @@ from .strategies import StripeTerminalStrategy
 import logging
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from users.authentication import CookieJWTAuthentication
 import json
 
 # Create your views here.
@@ -41,8 +43,26 @@ class PaymentViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = PaymentSerializer
-    queryset = Payment.objects.all().order_by("-created_at")
+    queryset = Payment.objects.all()
+    authentication_classes = [CookieJWTAuthentication]  # Add explicit authentication
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination  # Add pagination for payments
+    ordering = ['-created_at']  # Explicitly set ordering for pagination
+
+    def get_queryset(self):
+        """Filter payments based on user permissions."""
+        queryset = super().get_queryset()
+        
+        # If user is staff, return all payments
+        if self.request.user and self.request.user.is_staff:
+            return queryset
+        
+        # For regular users, return payments from their orders only
+        if self.request.user and self.request.user.is_authenticated:
+            return queryset.filter(order__customer=self.request.user)
+        
+        # Return empty queryset for unauthenticated users
+        return queryset.none()
 
     @action(detail=True, methods=["post"], url_path="create-terminal-intent")
     def create_terminal_intent(self, request, pk=None):

@@ -1,7 +1,13 @@
 import apiClient from "@/shared/lib/apiClient";
 
 // Renamed from getOrders to getAllOrders for clarity and updated to handle filters
-export const getAllOrders = async (filters = {}) => {
+export const getAllOrders = async (filters = {}, url = null) => {
+	if (url) {
+		// If a URL is provided (for pagination), use it directly.
+		const response = await apiClient.get(url);
+		return response.data;
+	}
+
 	// This removes any filter properties that are empty, so we don't send them to the backend
 	const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
 		if (value) {

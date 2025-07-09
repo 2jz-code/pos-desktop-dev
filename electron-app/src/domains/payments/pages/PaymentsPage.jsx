@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPayments } from "@/domains/payments/services/paymentService";
 import { Badge } from "@/shared/components/ui/badge";
@@ -14,77 +14,60 @@ import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { formatCurrency } from "@/shared/lib/utils";
 import { CreditCard } from "lucide-react";
 import { format } from "date-fns";
+import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 
 const PaymentsPage = () => {
 	const [payments, setPayments] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
+	const [nextUrl, setNextUrl] = useState(null);
+	const [prevUrl, setPrevUrl] = useState(null);
+	const [count, setCount] = useState(0);
+	const [currentPage, setCurrentPage] = useState(1);
 	const [filters, setFilters] = useState({
 		status: "",
 		method: "",
 		search: "",
 	});
-	const [allPayments, setAllPayments] = useState([]);
 	const navigate = useNavigate();
 
-	const fetchPayments = async () => {
-		try {
-			setLoading(true);
-			const data = await getPayments(); // fetch all; we'll filter client-side
-			setAllPayments(data || []);
-			setError(null);
-		} catch (err) {
-			setError("Failed to fetch payments.");
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
+	const fetchPayments = useCallback(
+		async (url = null) => {
+			try {
+				setLoading(true);
+				const data = await getPayments(filters, url);
+				setPayments(data.results || []);
+				setNextUrl(data.next);
+				setPrevUrl(data.previous);
+				setCount(data.count || 0);
 
-	const applyFilters = () => {
-		let filtered = [...allPayments];
+				// Extract current page from URL or use page 1 as default
+				if (url) {
+					const urlObj = new URL(url);
+					const page = parseInt(urlObj.searchParams.get("page") || "1");
+					setCurrentPage(page);
+				} else {
+					setCurrentPage(1);
+				}
 
-		// Status filter
-		if (filters.status) {
-			filtered = filtered.filter(
-				(p) => p.status?.toLowerCase() === filters.status.toLowerCase()
-			);
-		}
-
-		// Method filter (cash/card/gift_card/SPLIT)
-		if (filters.method) {
-			const target = filters.method.toLowerCase();
-			filtered = filtered.filter((p) => {
-				const method = getPaymentMethod(p.transactions)
-					.toLowerCase()
-					.replace(/\s+/g, "_"); // normalize spaces to underscore
-				return method === target;
-			});
-		}
-
-		// Search filter
-		if (filters.search) {
-			const q = filters.search.toLowerCase();
-			filtered = filtered.filter((p) => {
-				const paymentNo = p.payment_number?.toString().toLowerCase() || "";
-				const orderNo = p.order_number?.toString().toLowerCase() || "";
-				const amountStr = p.total_collected?.toString() || "";
-				return (
-					paymentNo.includes(q) || orderNo.includes(q) || amountStr.includes(q)
-				);
-			});
-		}
-
-		setPayments(filtered);
-	};
+				setError(null);
+			} catch (err) {
+				setError("Failed to fetch payments.");
+				console.error("Payment fetch error:", err);
+			} finally {
+				setLoading(false);
+			}
+		},
+		[filters]
+	);
 
 	useEffect(() => {
 		fetchPayments();
-	}, []);
+	}, [fetchPayments]);
 
-	useEffect(() => {
-		applyFilters();
-	}, [allPayments, filters]);
+	const handleNavigate = (url) => {
+		if (url) fetchPayments(url);
+	};
 
 	const handleFilterChange = (filterName, value) => {
 		const actualValue = value === "ALL" ? "" : value;
@@ -219,6 +202,14 @@ const PaymentsPage = () => {
 				onRowClick={(payment) => navigate(`/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
 				className="border-slate-200 dark:border-slate-700"
+			/>
+			<PaginationControls
+				prevUrl={prevUrl}
+				nextUrl={nextUrl}
+				onNavigate={handleNavigate}
+				count={count}
+				currentPage={currentPage}
+				pageSize={25}
 			/>
 		</DomainPageLayout>
 	);

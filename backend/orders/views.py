@@ -37,6 +37,9 @@ from payments.strategies import StripeTerminalStrategy
 # --- Import our new mixin ---
 from core_backend.mixins import OptimizedQuerysetMixin
 
+# --- Import pagination class ---
+from core_backend.pagination import StandardPagination
+
 # --- Import EmailService ---
 from notifications.services import EmailService
 
@@ -87,6 +90,8 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Order.objects.all()
     authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
     permission_classes = [IsAuthenticatedOrGuestOrder]
+    pagination_class = StandardPagination  # Add pagination for orders
+    ordering = ['-created_at']  # Explicitly set ordering for pagination
 
     # --- THE FIX: Add filter backends and define filterable/searchable fields ---
     filter_backends = [

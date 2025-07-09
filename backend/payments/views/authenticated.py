@@ -33,6 +33,7 @@ from ..services import PaymentService
 from orders.models import Order
 from users.authentication import CustomerCookieJWTAuthentication
 from core_backend.mixins import OptimizedQuerysetMixin
+from core_backend.pagination import StandardPagination
 from rest_framework.permissions import AllowAny
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class PaymentViewSet(
     serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
     queryset = Payment.objects.all()
+    pagination_class = StandardPagination  # Add pagination for payments
 
     def get_queryset(self):
         """Filter payments based on user permissions."""

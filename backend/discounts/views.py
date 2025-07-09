@@ -69,10 +69,11 @@ class DiscountViewSet(viewsets.ModelViewSet):
     Supports delta sync with modified_since parameter.
     """
 
-    queryset = Discount.objects.all().order_by("name")
+    queryset = Discount.objects.all()
     serializer_class = DiscountSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = DiscountFilter
+    ordering = ['-start_date']  # Explicitly set ordering for pagination
 
     def get_serializer_class(self):
         # Use sync serializer if sync=true parameter is present

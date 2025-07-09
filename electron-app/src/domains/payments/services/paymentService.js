@@ -5,8 +5,12 @@ import apiClient from "@/shared/lib/apiClient";
  * @param {Object} filters - Optional filter parameters (status, method, search)
  * @returns {Promise<Object>} The response data from the API.
  */
-export const getPayments = async (filters = {}) => {
+export const getPayments = async (filters = {}, url = null) => {
 	try {
+		if (url) {
+			const response = await apiClient.get(url);
+			return response.data;
+		}
 		// This removes any filter properties that are empty, so we don't send them to the backend
 		const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
 			if (value) {
