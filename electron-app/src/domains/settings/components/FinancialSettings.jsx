@@ -18,6 +18,7 @@ import {
 	FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
+import { Switch } from "@/shared/components/ui/switch";
 import { toast } from "sonner";
 
 const formSchema = z.object({
@@ -33,6 +34,7 @@ const formSchema = z.object({
 		.string()
 		.length(3, "Currency must be a 3-letter code (e.g., USD).")
 		.toUpperCase(),
+	allow_discount_stacking: z.boolean().optional(),
 });
 
 export function FinancialSettings() {
@@ -60,6 +62,7 @@ export function FinancialSettings() {
 			tax_rate: settings?.tax_rate || 0,
 			surcharge_percentage: settings?.surcharge_percentage || 0,
 			currency: settings?.currency || "USD",
+			allow_discount_stacking: settings?.allow_discount_stacking || false,
 		},
 		disabled: isLoading || mutation.isPending,
 	});
@@ -137,6 +140,29 @@ export function FinancialSettings() {
 								The 3-letter ISO 4217 currency code.
 							</FormDescription>
 							<FormMessage />
+						</FormItem>
+					)}
+				/>
+				<FormField
+					control={form.control}
+					name="allow_discount_stacking"
+					render={({ field }) => (
+						<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+							<div className="space-y-0.5">
+								<FormLabel className="text-base">
+									Allow Discount Stacking
+								</FormLabel>
+								<FormDescription>
+									If enabled, multiple discounts can be applied to a single
+									order. If disabled, only one discount is allowed at a time.
+								</FormDescription>
+							</div>
+							<FormControl>
+								<Switch
+									checked={field.value}
+									onCheckedChange={field.onChange}
+								/>
+							</FormControl>
 						</FormItem>
 					)}
 				/>

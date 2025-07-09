@@ -28,6 +28,18 @@ class DiscountService:
         and calculated amount. If the discount is valid and can be applied,
         it creates or updates the OrderDiscount link.
         """
+        # --- START: Discount Stacking Logic ---
+        # Fetch the setting directly from the database to ensure it's always fresh.
+        from settings.models import GlobalSettings
+        allow_stacking = GlobalSettings.objects.get(pk=1).allow_discount_stacking
+
+        # If stacking is disabled, remove all other discounts before applying a new one.
+        if not allow_stacking:
+            if order.applied_discounts.exists():
+                order.applied_discounts.all().delete()
+                print("Removed existing discounts as stacking is disabled.")
+        # --- END: Discount Stacking Logic ---
+
         # Get the appropriate calculation strategy for the given discount
         strategy = DiscountStrategyFactory.get_strategy(discount)
         if not strategy:

@@ -72,6 +72,7 @@ class AppSettings:
             self.tax_rate: Decimal = settings_obj.tax_rate
             self.surcharge_percentage: Decimal = settings_obj.surcharge_percentage
             self.currency: str = settings_obj.currency
+            self.allow_discount_stacking: bool = settings_obj.allow_discount_stacking
 
             # === STORE INFORMATION ===
             self.store_name: str = settings_obj.store_name

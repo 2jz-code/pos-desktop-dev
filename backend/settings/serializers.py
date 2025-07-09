@@ -23,6 +23,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "receipt_footer",
             "active_terminal_provider",
             "default_inventory_location",
+            "allow_discount_stacking",
         ]
 
 

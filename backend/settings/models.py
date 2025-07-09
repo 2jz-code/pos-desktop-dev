@@ -65,6 +65,10 @@ class GlobalSettings(models.Model):
     currency = models.CharField(
         max_length=3, default="USD", help_text="Three-letter currency code (ISO 4217)."
     )
+    allow_discount_stacking = models.BooleanField(
+        default=False,
+        help_text="If true, multiple discounts can be applied to a single order. If false, only one discount is allowed.",
+    )
 
     # === STORE INFORMATION ===
     store_name = models.CharField(max_length=100, default="Ajeen POS")
