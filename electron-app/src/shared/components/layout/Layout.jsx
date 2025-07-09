@@ -21,6 +21,7 @@ import {
 	Bell,
 	Wifi,
 	WifiOff,
+	Power,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -207,7 +208,7 @@ export function Layout({ children }) {
 					</div>
 
 					{/* Logout */}
-					<div className="border-t border-slate-200 dark:border-slate-700 p-3">
+					<div className="border-t border-slate-200 dark:border-slate-700 p-3 mt-auto">
 						<button
 							onClick={logout}
 							className={cn(
@@ -217,6 +218,16 @@ export function Layout({ children }) {
 						>
 							<LogOut className="h-4 w-4 flex-shrink-0" />
 							{!isCollapsed && <span className="truncate">Logout</span>}
+						</button>
+						<button
+							onClick={() => window.electronAPI.shutdown()}
+							className={cn(
+								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-red-500 dark:text-red-400 transition-all hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 mt-1",
+								isCollapsed && "justify-center px-2"
+							)}
+						>
+							<Power className="h-4 w-4 flex-shrink-0" />
+							{!isCollapsed && <span className="truncate">Shutdown</span>}
 						</button>
 					</div>
 				</div>
@@ -340,13 +351,20 @@ export function Layout({ children }) {
 									Settings
 								</NavLink>
 							</nav>
-							<div className="mt-auto">
+							<div className="mt-auto p-4">
 								<button
 									onClick={logout}
 									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
 								>
 									<LogOut className="h-4 w-4" />
 									<span className="truncate">Logout</span>
+								</button>
+								<button
+									onClick={() => window.electronAPI.shutdown()}
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-red-500 dark:text-red-400 transition-all hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 mt-1"
+								>
+									<Power className="h-4 w-4" />
+									<span className="truncate">Shutdown</span>
 								</button>
 							</div>
 						</SheetContent>
@@ -494,6 +512,7 @@ export function Layout({ children }) {
 		</div>
 	);
 }
+
 
 Layout.propTypes = {
 	children: PropTypes.node.isRequired,

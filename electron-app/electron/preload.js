@@ -24,6 +24,7 @@ const validInvokeChannels = [
 
 // --- Unchanged: Expose state management IPC ---
 contextBridge.exposeInMainWorld("electronAPI", {
+	shutdown: () => ipcRenderer.send("shutdown-app"),
 	// --- Main API Bridge ---
 
 	/**

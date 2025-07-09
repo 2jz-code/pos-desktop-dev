@@ -15,6 +15,7 @@ const validInvokeChannels = [
   "test-network-printer"
 ];
 contextBridge.exposeInMainWorld("electronAPI", {
+  shutdown: () => ipcRenderer.send("shutdown-app"),
   // --- Main API Bridge ---
   /**
    * Gets the unique machine ID from the main process.

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, ipcMain } from "electron";
+import { app, BrowserWindow, session, ipcMain, screen } from "electron";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -29,10 +29,14 @@ let lastKnownState = null;
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 function createMainWindow() {
+	const primaryDisplay = screen.getPrimaryDisplay();
 	const persistentSession = session.fromPartition("persist:electron-app");
 
 	mainWindow = new BrowserWindow({
 		icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
+		x: primaryDisplay.bounds.x,
+		y: primaryDisplay.bounds.y,
+		fullscreen: true,
 		webPreferences: {
 			session: persistentSession,
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
@@ -63,11 +67,20 @@ function createMainWindow() {
 }
 
 function createCustomerWindow() {
+	const displays = screen.getAllDisplays();
+	const secondaryDisplay = displays.find(
+		(display) => display.id !== screen.getPrimaryDisplay().id
+	);
+
+	if (!secondaryDisplay) {
+		console.log("No secondary display found, not creating customer window.");
+		return;
+	}
+
 	customerWindow = new BrowserWindow({
-		x: 100,
-		y: 100,
-		width: 800,
-		height: 600,
+		x: secondaryDisplay.bounds.x,
+		y: secondaryDisplay.bounds.y,
+		fullscreen: true,
 		webPreferences: {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
 		},
@@ -446,6 +459,10 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
 // IPC handler for getting the unique machine ID
 ipcMain.handle("get-machine-id", () => {
 	return machineIdSync({ original: true });
+});
+
+ipcMain.on("shutdown-app", () => {
+	app.quit();
 });
 
 app.whenReady().then(async () => {
