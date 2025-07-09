@@ -282,6 +282,18 @@ const PaymentDetailsPage = () => {
 									</div>
 								</CardHeader>
 								<CardContent>
+									{payment.transactions?.some(
+										(txn) =>
+											txn.status === "FAILED" || txn.status === "CANCELED"
+									) && (
+										<div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+											<p className="text-sm text-yellow-800 dark:text-yellow-200">
+												<strong>Note:</strong> Failed/canceled transactions are
+												shown with reduced opacity and marked as "Not Charged".
+												These do not contribute to the payment total.
+											</p>
+										</div>
+									)}
 									<div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
 										<Table>
 											<TableHeader>
@@ -308,100 +320,131 @@ const PaymentDetailsPage = () => {
 											</TableHeader>
 											<TableBody>
 												{payment.transactions?.length > 0 ? (
-													payment.transactions.map((txn) => {
-														const refundableAmount =
-															Number.parseFloat(txn.amount) -
-															Number.parseFloat(txn.refunded_amount || 0);
-														const isRefundable =
-															txn.status === "SUCCESSFUL" &&
-															refundableAmount > 0;
+													payment.transactions
+														.sort((a, b) => {
+															// Sort successful transactions first, then failed
+															if (
+																a.status === "SUCCESSFUL" &&
+																b.status !== "SUCCESSFUL"
+															)
+																return -1;
+															if (
+																a.status !== "SUCCESSFUL" &&
+																b.status === "SUCCESSFUL"
+															)
+																return 1;
+															return (
+																new Date(b.created_at) - new Date(a.created_at)
+															);
+														})
+														.map((txn) => {
+															const refundableAmount =
+																Number.parseFloat(txn.amount) -
+																Number.parseFloat(txn.refunded_amount || 0);
+															const isRefundable =
+																txn.status === "SUCCESSFUL" &&
+																refundableAmount > 0;
+															const isFailed =
+																txn.status === "FAILED" ||
+																txn.status === "CANCELED";
 
-														// Select the correct logo based on the brand string
-														const brandKey = txn.card_brand?.toLowerCase();
-														const logoSrc =
-															cardBrandLogos[brandKey] || DefaultCardLogo;
+															// Select the correct logo based on the brand string
+															const brandKey = txn.card_brand?.toLowerCase();
+															const logoSrc =
+																cardBrandLogos[brandKey] || DefaultCardLogo;
 
-														return (
-															<TableRow
-																key={txn.id}
-																className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-															>
-																<TableCell className="font-medium text-slate-900 dark:text-slate-100">
-																	<div className="space-y-1">
-																		<div>
-																			{formatCurrency(
-																				Number.parseFloat(txn.amount) +
-																					Number.parseFloat(txn.surcharge || 0)
+															return (
+																<TableRow
+																	key={txn.id}
+																	className={`border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+																		isFailed
+																			? "opacity-60 bg-red-50 dark:bg-red-900/20"
+																			: ""
+																	}`}
+																>
+																	<TableCell className="font-medium text-slate-900 dark:text-slate-100">
+																		<div className="space-y-1">
+																			<div>
+																				{formatCurrency(
+																					Number.parseFloat(txn.amount) +
+																						Number.parseFloat(
+																							txn.surcharge || 0
+																						)
+																				)}
+																			</div>
+																			{Number.parseFloat(txn.surcharge || 0) >
+																				0 && (
+																				<div className="text-xs text-slate-500 dark:text-slate-400">
+																					Base: {formatCurrency(txn.amount)} +
+																					Fee: {formatCurrency(txn.surcharge)}
+																				</div>
 																			)}
 																		</div>
-																		{Number.parseFloat(txn.surcharge || 0) >
-																			0 && (
-																			<div className="text-xs text-slate-500 dark:text-slate-400">
-																				Base: {formatCurrency(txn.amount)} +
-																				Fee: {formatCurrency(txn.surcharge)}
-																			</div>
-																		)}
-																	</div>
-																</TableCell>
-																<TableCell>
-																	<Badge
-																		variant={
-																			txn.status === "SUCCESSFUL"
-																				? "default"
-																				: "secondary"
-																		}
-																		className="font-medium"
-																	>
-																		{txn.status}
-																	</Badge>
-																</TableCell>
-																<TableCell>
-																	<Badge
-																		variant="outline"
-																		className="border-slate-200 dark:border-slate-700 capitalize"
-																	>
-																		{txn.method.replace("_", " ")}
-																	</Badge>
-																</TableCell>
-																<TableCell>
-																	{txn.card_brand && txn.card_last4 ? (
-																		<div className="flex items-center gap-2">
-																			<img
-																				src={logoSrc || "/placeholder.svg"}
-																				alt={txn.card_brand}
-																				className="h-5 w-8 object-contain"
-																			/>
-																			<span className="font-mono text-sm text-slate-900 dark:text-slate-100">
-																				****{txn.card_last4}
-																			</span>
-																		</div>
-																	) : (
-																		<span className="text-slate-500 dark:text-slate-400">
-																			—
-																		</span>
-																	)}
-																</TableCell>
-																<TableCell className="text-slate-900 dark:text-slate-100">
-																	{formatCurrency(txn.refunded_amount || 0)}
-																</TableCell>
-																<TableCell className="text-right">
-																	{isRefundable && (
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			onClick={() =>
-																				handleOpenRefundDialog(txn)
+																	</TableCell>
+																	<TableCell>
+																		<Badge
+																			variant={
+																				txn.status === "SUCCESSFUL"
+																					? "default"
+																					: isFailed
+																					? "destructive"
+																					: "secondary"
 																			}
-																			disabled={isRefunding}
-																			className="border-slate-200 dark:border-slate-700"
+																			className={`font-medium ${
+																				isFailed ? "opacity-90" : ""
+																			}`}
 																		>
-																			Refund
-																		</Button>
-																	)}
-																</TableCell>
-															</TableRow>
-														);
-													})
+																			{txn.status}
+																			{isFailed && " (Not Charged)"}
+																		</Badge>
+																	</TableCell>
+																	<TableCell>
+																		<Badge
+																			variant="outline"
+																			className="border-slate-200 dark:border-slate-700 capitalize"
+																		>
+																			{txn.method.replace("_", " ")}
+																		</Badge>
+																	</TableCell>
+																	<TableCell>
+																		{txn.card_brand && txn.card_last4 ? (
+																			<div className="flex items-center gap-2">
+																				<img
+																					src={logoSrc || "/placeholder.svg"}
+																					alt={txn.card_brand}
+																					className="h-5 w-8 object-contain"
+																				/>
+																				<span className="font-mono text-sm text-slate-900 dark:text-slate-100">
+																					****{txn.card_last4}
+																				</span>
+																			</div>
+																		) : (
+																			<span className="text-slate-500 dark:text-slate-400">
+																				—
+																			</span>
+																		)}
+																	</TableCell>
+																	<TableCell className="text-slate-900 dark:text-slate-100">
+																		{formatCurrency(txn.refunded_amount || 0)}
+																	</TableCell>
+																	<TableCell className="text-right">
+																		{isRefundable && (
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				onClick={() =>
+																					handleOpenRefundDialog(txn)
+																				}
+																				disabled={isRefunding}
+																				className="border-slate-200 dark:border-slate-700"
+																			>
+																				Refund
+																			</Button>
+																		)}
+																	</TableCell>
+																</TableRow>
+															);
+														})
 												) : (
 													<TableRow>
 														<TableCell

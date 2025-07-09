@@ -1,4 +1,4 @@
-import { motion } from "framer-motion"; // eslint-disable-line
+import { motion, AnimatePresence } from "framer-motion";
 import {
 	Card,
 	CardContent,
@@ -13,9 +13,6 @@ import {
 	Clock,
 	MapPin,
 	Phone,
-	Wifi,
-	CreditCard,
-	Smartphone,
 } from "lucide-react";
 
 const CustomerCartView = ({ cart, total }) => {
@@ -38,7 +35,12 @@ const CustomerCartView = ({ cart, total }) => {
 		visible: {
 			opacity: 1,
 			x: 0,
-			transition: { duration: 0.2 },
+			transition: { duration: 0.3, ease: "easeOut" },
+		},
+		exit: {
+			opacity: 0,
+			x: 20,
+			transition: { duration: 0.2, ease: "easeIn" },
 		},
 	};
 
@@ -93,43 +95,50 @@ const CustomerCartView = ({ cart, total }) => {
 							</motion.div>
 						</CardHeader>
 
-						<CardContent className="p-4 flex-1 flex flex-col">
+						<CardContent className="p-4 flex-1 flex flex-col min-h-0">
 							{/* Order Items */}
-							<motion.div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-2">
-								{cart.map((item) => (
-									<motion.div
-										key={item.id}
-										variants={itemVariants}
-										className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 hover:shadow-sm transition-shadow duration-200"
-									>
-										<div className="flex-1 min-w-0">
-											<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-												{item.product.name}
-											</h3>
-											<div className="flex items-center gap-2 mt-1">
-												<Badge
-													variant="secondary"
-													className="text-xs px-2 py-0"
-												>
-													Qty: {item.quantity}
-												</Badge>
-												<span className="text-xs text-slate-500 dark:text-slate-400">
-													${Number.parseFloat(item.price_at_sale).toFixed(2)}{" "}
-													each
-												</span>
+							<div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-2">
+								<AnimatePresence>
+									{cart.map((item) => (
+										<motion.div
+											key={item.id}
+											layout
+											variants={itemVariants}
+											initial="hidden"
+											animate="visible"
+											exit="exit"
+											className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 hover:shadow-sm transition-shadow duration-200"
+										>
+											<div className="flex-1 min-w-0">
+												<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+													{item.product.name}
+												</h3>
+												<div className="flex items-center gap-2 mt-1">
+													<Badge
+														variant="secondary"
+														className="text-xs px-2 py-0"
+													>
+														Qty: {item.quantity}
+													</Badge>
+													<span className="text-xs text-slate-500 dark:text-slate-400">
+														${Number.parseFloat(item.price_at_sale).toFixed(2)}{" "}
+														each
+													</span>
+												</div>
 											</div>
-										</div>
-										<div className="text-right flex-shrink-0">
-											<div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-												$
-												{(
-													item.quantity * Number.parseFloat(item.price_at_sale)
-												).toFixed(2)}
+											<div className="text-right flex-shrink-0">
+												<div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+													$
+													{(
+														item.quantity *
+														Number.parseFloat(item.price_at_sale)
+													).toFixed(2)}
+												</div>
 											</div>
-										</div>
-									</motion.div>
-								))}
-							</motion.div>
+										</motion.div>
+									))}
+								</AnimatePresence>
+							</div>
 
 							{/* Order Total */}
 							<motion.div
@@ -222,53 +231,6 @@ const CustomerCartView = ({ cart, total }) => {
 									<span className="text-sm">Open 7AM - 10PM</span>
 								</div>
 							</div>
-						</CardContent>
-					</Card>
-
-					{/* Payment Methods Card */}
-					<Card className="border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shadow-xl">
-						<CardContent className="p-6">
-							<h4 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 text-center">
-								We Accept
-							</h4>
-							<div className="grid grid-cols-2 gap-3">
-								<div className="flex items-center justify-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-									<CreditCard className="w-5 h-5 text-blue-500" />
-									<span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-										Cards
-									</span>
-								</div>
-								<div className="flex items-center justify-center gap-2 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-									<Smartphone className="w-5 h-5 text-emerald-500" />
-									<span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-										Mobile
-									</span>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					{/* Promotional Card */}
-					<Card className="border-slate-200 dark:border-slate-700 bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 shadow-xl">
-						<CardContent className="p-6 text-center">
-							<motion.div
-								animate={{
-									scale: [1, 1.05, 1],
-								}}
-								transition={{
-									duration: 3,
-									repeat: Number.POSITIVE_INFINITY,
-									ease: "easeInOut",
-								}}
-							>
-								<div className="text-2xl mb-2">🎉</div>
-								<h4 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-									Thank You!
-								</h4>
-								<p className="text-sm text-slate-600 dark:text-slate-400">
-									Your support means everything to our local business
-								</p>
-							</motion.div>
 						</CardContent>
 					</Card>
 				</motion.div>

@@ -20,6 +20,7 @@ export const createPaymentSlice = (set, get) => ({
 
 	// "STATE MACHINE" CONTEXT
 	tenderState: "idle",
+	paymentMethod: null, // ADDED
 	balanceDue: 0,
 	tipAmount: 0,
 	paymentHistory: [],
@@ -35,6 +36,7 @@ export const createPaymentSlice = (set, get) => ({
 			lastCompletedOrder: null,
 			isTenderDialogOpen: true,
 			tenderState: "awaitingPaymentMethod",
+			paymentMethod: null, // RESET
 			// --- FIX: Ensure grand_total from the API is parsed into a number ---
 			balanceDue: parseFloat(fullOrderObject.grand_total) || 0,
 			orderId: fullOrderObject.id,
@@ -56,6 +58,7 @@ export const createPaymentSlice = (set, get) => ({
 		set({
 			isTenderDialogOpen: false,
 			tenderState: "idle",
+			paymentMethod: null, // RESET
 			lastCompletedOrder: null,
 			currentPaymentIntentId: null,
 			partialAmount: 0,
@@ -75,6 +78,7 @@ export const createPaymentSlice = (set, get) => ({
 			// Then, reset the payment flow back to the beginning
 			set({
 				tenderState: "awaitingPaymentMethod",
+				paymentMethod: null, // RESET
 				error: null,
 				partialAmount: 0,
 			});
@@ -83,6 +87,8 @@ export const createPaymentSlice = (set, get) => ({
 
 	// STATE TRANSITION ACTIONS
 	selectPaymentMethod: async (method) => {
+		set({ paymentMethod: method }); // SET
+
 		if (method === "CASH") {
 			set({ tenderState: "awaitingCashAmount" });
 			return;
@@ -113,7 +119,7 @@ export const createPaymentSlice = (set, get) => ({
 	},
 
 	prepareToPaySplit: async (amount, method) => {
-		set({ partialAmount: amount });
+		set({ partialAmount: amount, paymentMethod: method });
 
 		if (method === "CASH") {
 			set({ tenderState: "awaitingCashAmount" });

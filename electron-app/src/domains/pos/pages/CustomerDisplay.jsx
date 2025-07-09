@@ -1,25 +1,52 @@
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
+import { motion, AnimatePresence } from "framer-motion";
 import WelcomeView from "../components/customerViews/WelcomeView";
 import CustomerCartView from "../components/customerViews/CustomerCartView";
 import PaymentProcessingView from "../components/customerViews/PaymentProcessingView";
 import PaymentSuccessView from "../components/customerViews/PaymentSuccessView";
 import TipSelectionView from "../components/customerViews/TipSelectionView";
 
+// This function determines which view should be active based on the state.
+// It's the "brain" of the customer display.
+const getActiveView = (state) => {
+	if (!state) {
+		return "welcome";
+	}
+
+	const isPaymentActive =
+		state.status === "in-progress" || state.status === "success";
+	const hasCartItems = state.cartItems?.length > 0;
+
+	if (isPaymentActive) {
+		// Show tip screen only for card payments that are awaiting a tip
+		if (state.activeView === "awaitingTip" && state.paymentMethod === "CREDIT") {
+			return "tip";
+		}
+		if (state.activeView === "processingPayment") {
+			return "processing";
+		}
+		if (state.activeView === "complete") {
+			return "success";
+		}
+	}
+
+	if (hasCartItems && state.pathname === "/pos") {
+		return "cart";
+	}
+
+	return "welcome";
+};
+
 const CustomerDisplay = () => {
 	const [state, setState] = useState(null);
-	const [isTransitioning, setIsTransitioning] = useState(false);
 
 	useEffect(() => {
 		if (window.electronAPI) {
 			const unsubscribe = window.electronAPI.onMessage(
 				"POS_TO_CUSTOMER_STATE",
 				(newState) => {
-					setIsTransitioning(true);
-					setTimeout(() => {
-						setState(newState);
-						setIsTransitioning(false);
-					}, 150); // Brief transition delay
+					// Directly set the new state. No more transition hacks.
+					setState(newState);
 				}
 			);
 
@@ -40,17 +67,10 @@ const CustomerDisplay = () => {
 	};
 
 	const renderContent = () => {
-		if (!state) {
-			return <WelcomeView key="welcome" />;
-		}
+		const currentView = getActiveView(state);
 
-		// This original logic correctly prioritizes payment views
-		const isPaymentActive =
-			state.status === "in-progress" || state.status === "success";
-		const hasCartItems = state.cartItems?.length > 0;
-
-		if (isPaymentActive) {
-			if (state.activeView === "awaitingTip") {
+		switch (currentView) {
+			case "tip":
 				return (
 					<TipSelectionView
 						key="tip-select"
@@ -58,31 +78,27 @@ const CustomerDisplay = () => {
 						onTipSelect={handleTipSelect}
 					/>
 				);
-			}
-			if (state.activeView === "processingPayment") {
+			case "processing":
 				return (
 					<PaymentProcessingView
 						key="processing"
 						status={state.paymentStatus}
 					/>
 				);
-			}
-			if (state.activeView === "complete") {
+			case "success":
 				return <PaymentSuccessView key="success" />;
-			}
+			case "cart":
+				return (
+					<CustomerCartView
+						key="cart"
+						cart={state.cartItems}
+						total={state.cartTotal}
+					/>
+				);
+			case "welcome":
+			default:
+				return <WelcomeView key="welcome" />;
 		}
-
-		if (hasCartItems) {
-			return (
-				<CustomerCartView
-					key="cart"
-					cart={state.cartItems}
-					total={state.cartTotal}
-				/>
-			);
-		}
-
-		return <WelcomeView key="welcome-default" />;
 	};
 
 	const pageTransition = {
@@ -92,46 +108,23 @@ const CustomerDisplay = () => {
 	};
 
 	return (
-		<div className="w-full h-screen overflow-hidden">
+		<div className="w-full h-screen overflow-hidden bg-white dark:bg-slate-900">
 			<AnimatePresence mode="wait">
-				{!isTransitioning && (
-					<motion.div
-						key={state ? `${state.status}-${state.activeView}` : "initial"}
-						initial="initial"
-						animate="animate"
-						exit="exit"
-						variants={pageTransition}
-						transition={{
-							duration: 0.4,
-							ease: [0.4, 0, 0.2, 1], // Custom easing for smooth transitions
-						}}
-						className="w-full h-full"
-					>
-						{renderContent()}
-					</motion.div>
-				)}
-			</AnimatePresence>
-
-			{/* Loading overlay during transitions */}
-			<AnimatePresence>
-				{isTransitioning && (
-					<motion.div
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						exit={{ opacity: 0 }}
-						className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50"
-					>
-						<motion.div
-							animate={{ rotate: 360 }}
-							transition={{
-								duration: 1,
-								repeat: Number.POSITIVE_INFINITY,
-								ease: "linear",
-							}}
-							className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full"
-						/>
-					</motion.div>
-				)}
+				<motion.div
+					// The key is now the stable view name from our "router" function
+					key={getActiveView(state)}
+					initial="initial"
+					animate="animate"
+					exit="exit"
+					variants={pageTransition}
+					transition={{
+						duration: 0.4,
+						ease: [0.4, 0, 0.2, 1],
+					}}
+					className="w-full h-full"
+				>
+					{renderContent()}
+				</motion.div>
 			</AnimatePresence>
 		</div>
 	);

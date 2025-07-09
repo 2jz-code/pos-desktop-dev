@@ -499,7 +499,9 @@ const OrderDetailsPage = () => {
 									</CardHeader>
 									<CardContent className="space-y-4">
 										{payment_details &&
-										payment_details.transactions?.length > 0 ? (
+										payment_details.transactions?.filter(
+											(txn) => txn.status === "SUCCESSFUL"
+										).length > 0 ? (
 											<>
 												{permissions.canAccessPayments() && (
 													<div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -512,12 +514,14 @@ const OrderDetailsPage = () => {
 													</div>
 												)}
 												<div className="space-y-3">
-													{payment_details.transactions.map((txn) => (
-														<TransactionDetail
-															key={txn.id}
-															transaction={txn}
-														/>
-													))}
+													{payment_details.transactions
+														.filter((txn) => txn.status === "SUCCESSFUL")
+														.map((txn) => (
+															<TransactionDetail
+																key={txn.id}
+																transaction={txn}
+															/>
+														))}
 												</div>
 											</>
 										) : (

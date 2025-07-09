@@ -32,11 +32,18 @@ def update_payment_totals(sender, instance, **kwargs):
     """
     Signal to update the parent Payment's totals whenever a
     PaymentTransaction is saved or deleted.
+    Only includes successful and refunded transactions in calculations.
     """
     payment = instance.payment
     
-    # Aggregate all relevant totals from the transactions
-    aggregates = payment.transactions.aggregate(
+    # Aggregate totals from only successful and refunded transactions
+    # This matches the logic in PaymentService._recalculate_payment_amounts()
+    aggregates = payment.transactions.filter(
+        status__in=[
+            PaymentTransaction.TransactionStatus.SUCCESSFUL,
+            PaymentTransaction.TransactionStatus.REFUNDED,
+        ]
+    ).aggregate(
         total_amount=Sum('amount'),
         total_tips=Sum('tip'),
         total_surcharges=Sum('surcharge')

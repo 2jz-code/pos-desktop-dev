@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 
 export const useSyncToCustomerDisplay = () => {
+	const location = useLocation();
 	const customerDisplayState = usePosStore((state) => {
 		const isPaymentActive =
 			state.tenderState &&
@@ -29,9 +31,12 @@ export const useSyncToCustomerDisplay = () => {
 			status: isPaymentActive ? "in-progress" : "active",
 			balanceDue: customerPaymentAmount, // Now shows correct amount including surcharge
 			orderForPayment: state.order,
+			paymentMethod: state.paymentMethod,
 
 			// This now directly controls which view the CustomerDisplay shows
 			activeView: state.tenderState,
+			// ADDED: The current path of the main window
+			pathname: location.pathname,
 		};
 	}, shallow);
 
