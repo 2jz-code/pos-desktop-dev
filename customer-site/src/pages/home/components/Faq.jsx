@@ -57,7 +57,7 @@ const Faq = () => {
 		{
 			question: "Do you deliver?",
 			answer:
-				"Good news! We'll be offering delivery via DoorDash and Uber Eats soon, and direct delivery within a 5-mile radius through our website will also be available. For now, you can still place orders directly through our website for pickup.",
+				"Yes, we offer delivery through DoorDash, Uber Eats, and we offer order pickup through our website.",
 		},
 		{
 			question: "How did you start?",

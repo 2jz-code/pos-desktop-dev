@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
 	FaFacebook,
 	FaInstagram,
@@ -15,6 +15,28 @@ import OptimizedImage from "@/components/OptimizedImage";
 const Footer = () => {
 	const currentYear = new Date().getFullYear();
 	const { data: storeInfo } = useStoreInfo();
+	const navigate = useNavigate();
+	const location = useLocation();
+
+	const handleNavClick = (path) => {
+		if (location.pathname === "/" && path.includes("/#")) {
+			const selector = path.split("#")[1];
+			const element = document.getElementById(selector);
+			if (element) {
+				element.scrollIntoView({ behavior: "smooth" });
+			}
+		} else {
+			navigate(path);
+		}
+	};
+
+	const quickLinks = [
+		{ name: "Home", path: "/" },
+		{ name: "Menu", path: "/menu" },
+		{ name: "About Us", path: "/#about" },
+		{ name: "Contact", path: "/#contact" },
+		{ name: "FAQ", path: "/#faq" },
+	];
 
 	return (
 		<footer className="bg-accent-dark-green text-primary-beige">
@@ -90,31 +112,15 @@ const Footer = () => {
 							Quick Links
 						</h3>
 						<ul className="space-y-2">
-							{[
-								{ name: "Home", path: "/", isLink: true },
-								{ name: "Menu", path: "/menu", isLink: true },
-								{ name: "About Us", path: "/#about", isLink: false },
-								{ name: "Contact", path: "/#contact", isLink: false },
-								{ name: "FAQ", path: "/#faq", isLink: false },
-							].map((item) => (
+							{quickLinks.map((item) => (
 								<li key={item.name}>
-									{item.isLink ? (
-										<Link
-											to={item.path}
-											className="text-primary-beige hover:text-accent-light-beige transition-colors duration-300 flex items-center group"
-										>
-											<span className="w-0 group-hover:w-2 h-1 bg-primary-green mr-0 group-hover:mr-2 transition-all duration-300"></span>
-											{item.name}
-										</Link>
-									) : (
-										<a
-											href={item.path}
-											className="text-primary-beige hover:text-accent-light-beige transition-colors duration-300 flex items-center group"
-										>
-											<span className="w-0 group-hover:w-2 h-1 bg-primary-green mr-0 group-hover:mr-2 transition-all duration-300"></span>
-											{item.name}
-										</a>
-									)}
+									<button
+										onClick={() => handleNavClick(item.path)}
+										className="text-primary-beige hover:text-accent-light-beige transition-colors duration-300 flex items-center group"
+									>
+										<span className="w-0 group-hover:w-2 h-1 bg-primary-green mr-0 group-hover:mr-2 transition-all duration-300"></span>
+										{item.name}
+									</button>
 								</li>
 							))}
 						</ul>

@@ -89,12 +89,9 @@ const PaymentForm = ({
 					<CreditCard className="mr-2 h-5 w-5" />
 					Payment Information
 				</CardTitle>
-				<p className="text-accent-dark-brown/70 text-sm">
-					Your payment information is secure and encrypted.
-				</p>
 			</CardHeader>
 
-			<CardContent className="px-0">
+			<CardContent className="px-0 pt-3">
 				<form
 					onSubmit={handleSubmit}
 					className="space-y-6"
@@ -202,11 +199,11 @@ const PaymentForm = ({
 								<Shield className="h-4 w-4 text-green-600 mt-0.5 mr-2 flex-shrink-0" />
 								<div className="text-sm">
 									<p className="text-green-800 font-medium">
-										Your payment is secure
+										Secure and Encrypted Payment
 									</p>
 									<p className="text-green-700 mt-1">
-										We use Stripe's secure payment processing. Your card details
-										are encrypted and never stored on our servers.
+										Your payment is processed securely. Your card details are
+										encrypted and never stored on our servers.
 									</p>
 								</div>
 							</div>
