@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Payment, PaymentTransaction
+from .models import Payment, PaymentTransaction, GiftCard
 
 
 class PaymentTransactionInline(admin.TabularInline):
@@ -81,3 +81,60 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
     list_filter = ("status", "method")
     search_fields = ("id", "payment__id", "transaction_id")
     readonly_fields = ("id", "created_at")
+
+
+@admin.register(GiftCard)
+class GiftCardAdmin(admin.ModelAdmin):
+    """
+    Admin view for the GiftCard model.
+    """
+
+    list_display = (
+        "code",
+        "current_balance",
+        "original_balance",
+        "status",
+        "issued_date",
+        "last_used_date",
+    )
+    list_filter = ("status", "issued_date")
+    search_fields = ("code", "notes")
+    readonly_fields = (
+        "id",
+        "issued_date",
+        "created_at",
+        "updated_at",
+        "last_used_date",
+    )
+    
+    fieldsets = (
+        (None, {"fields": ("code", "status")}),
+        (
+            "Balance Information",
+            {
+                "fields": (
+                    "original_balance",
+                    "current_balance",
+                )
+            },
+        ),
+        (
+            "Dates",
+            {
+                "fields": (
+                    "issued_date",
+                    "expiry_date",
+                    "last_used_date",
+                )
+            },
+        ),
+        ("Additional Info", {"fields": ("notes",)}),
+        ("System", {"fields": ("id", "created_at", "updated_at")}),
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make certain fields readonly after creation"""
+        readonly = self.readonly_fields
+        if obj:  # Editing existing object
+            readonly = readonly + ("original_balance",)  # Can't change original balance after creation
+        return readonly

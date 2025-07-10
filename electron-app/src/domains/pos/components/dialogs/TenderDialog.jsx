@@ -17,6 +17,7 @@ import AwaitTipView from "./paymentViews/AwaitTipView";
 import CashPaymentView from "./paymentViews/CashPaymentView";
 import CompletionView from "./paymentViews/CompletionView";
 import SplitPaymentView from "./paymentViews/SplitPaymentView";
+import GiftCardPaymentView from "./paymentViews/GiftCardPaymentView";
 
 const ProcessingView = ({ message = "Processing Payment..." }) => (
 	<div className="flex flex-col items-center justify-center p-8 space-y-4">
@@ -56,6 +57,7 @@ const TenderDialog = () => {
 		orderNumber,
 		selectPaymentMethod,
 		applyCashPayment,
+		applyGiftCardPayment,
 		closeTender,
 		goBack,
 		retryFailedPayment, // <-- Select the new action
@@ -72,6 +74,7 @@ const TenderDialog = () => {
 			orderNumber: state.orderNumber,
 			selectPaymentMethod: state.selectPaymentMethod,
 			applyCashPayment: state.applyCashPayment,
+			applyGiftCardPayment: state.applyGiftCardPayment,
 			closeTender: state.closeTender,
 			goBack: state.goBack,
 			retryFailedPayment: state.retryFailedPayment, // <-- Select the new action
@@ -89,6 +92,8 @@ const TenderDialog = () => {
 				return <InitialOptionsView onSelect={selectPaymentMethod} />;
 			case "awaitingCashAmount":
 				return <CashPaymentView onProcessPayment={applyCashPayment} />;
+			case "awaitingGiftCard":
+				return <GiftCardPaymentView onProcessPayment={applyGiftCardPayment} />;
 			case "splittingPayment":
 				return <SplitPaymentView />;
 			case "initializingTerminal":
@@ -121,6 +126,7 @@ const TenderDialog = () => {
 
 	const canGoBack =
 		tenderState === "awaitingCashAmount" ||
+		tenderState === "awaitingGiftCard" ||
 		tenderState === "awaitingTip" ||
 		tenderState === "paymentError" ||
 		tenderState === "splittingPayment";

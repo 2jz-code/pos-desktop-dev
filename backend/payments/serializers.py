@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Payment, PaymentTransaction, Order
+from .models import Payment, PaymentTransaction, Order, GiftCard
 from .services import PaymentService
 from django.shortcuts import get_object_or_404
 from orders.serializers import SimpleOrderSerializer
@@ -152,3 +152,132 @@ class SurchargeCalculationSerializer(serializers.Serializer):
         if 'amount' in data and 'amounts' in data:
             raise serializers.ValidationError("Provide either 'amount' or 'amounts', not both.")
         return data
+
+
+class GiftCardSerializer(serializers.ModelSerializer):
+    """
+    Serializer for GiftCard model - used for display purposes.
+    """
+    is_valid = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = GiftCard
+        fields = "__all__"
+        read_only_fields = [
+            "id",
+            "issued_date",
+            "last_used_date",
+            "created_at",
+            "updated_at",
+            "is_valid",
+        ]
+
+
+class GiftCardValidationSerializer(serializers.Serializer):
+    """
+    Serializer for validating a gift card code and returning balance information.
+    """
+    code = serializers.CharField(max_length=20)
+    
+    # Read-only fields for response
+    is_valid = serializers.BooleanField(read_only=True)
+    current_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    status = serializers.CharField(read_only=True)
+    error_message = serializers.CharField(read_only=True, required=False)
+
+    def validate_code(self, value):
+        """Validate that the gift card code exists"""
+        if not value.strip():
+            raise serializers.ValidationError("Gift card code cannot be empty.")
+        return value.strip().upper()
+
+    def validate(self, data):
+        """Check if the gift card exists and get its details"""
+        code = data['code']
+        
+        try:
+            gift_card = GiftCard.objects.get(code=code)
+            data['gift_card'] = gift_card
+            data['is_valid'] = gift_card.is_valid
+            data['current_balance'] = gift_card.current_balance
+            data['status'] = gift_card.status
+            
+            if not gift_card.is_valid:
+                if gift_card.status == GiftCard.GiftCardStatus.INACTIVE:
+                    data['error_message'] = "This gift card is inactive."
+                elif gift_card.status == GiftCard.GiftCardStatus.EXPIRED:
+                    data['error_message'] = "This gift card has expired."
+                elif gift_card.status == GiftCard.GiftCardStatus.REDEEMED:
+                    data['error_message'] = "This gift card has been fully redeemed."
+                elif gift_card.current_balance <= 0:
+                    data['error_message'] = "This gift card has no remaining balance."
+                else:
+                    data['error_message'] = "This gift card is not valid for use."
+            
+        except GiftCard.DoesNotExist:
+            data['is_valid'] = False
+            data['current_balance'] = Decimal("0.00")
+            data['status'] = "NOT_FOUND"
+            data['error_message'] = "Gift card not found."
+            
+        return data
+
+
+class GiftCardPaymentSerializer(serializers.Serializer):
+    """
+    Serializer for processing a gift card payment.
+    """
+    order_id = serializers.UUIDField()
+    gift_card_code = serializers.CharField(max_length=20)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    def validate_gift_card_code(self, value):
+        """Validate that the gift card code exists and is valid"""
+        if not value.strip():
+            raise serializers.ValidationError("Gift card code cannot be empty.")
+        
+        code = value.strip().upper()
+        try:
+            gift_card = GiftCard.objects.get(code=code)
+            if not gift_card.is_valid:
+                raise serializers.ValidationError("This gift card is not valid for use.")
+            return code
+        except GiftCard.DoesNotExist:
+            raise serializers.ValidationError("Gift card not found.")
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be a positive value.")
+        return value
+
+    def validate(self, data):
+        """Validate that the gift card can cover the requested amount"""
+        code = data['gift_card_code']
+        amount = data['amount']
+        
+        try:
+            gift_card = GiftCard.objects.get(code=code)
+            if gift_card.current_balance < amount:
+                raise serializers.ValidationError(
+                    f"Insufficient gift card balance. Available: ${gift_card.current_balance}, Requested: ${amount}"
+                )
+            data['gift_card'] = gift_card
+        except GiftCard.DoesNotExist:
+            raise serializers.ValidationError("Gift card not found.")
+            
+        return data
+
+    def create(self, validated_data):
+        """Process the gift card payment"""
+        order = get_object_or_404(Order, id=validated_data["order_id"])
+        gift_card = validated_data['gift_card']
+        amount = validated_data['amount']
+
+        # Use the existing payment service to process the transaction
+        return PaymentService.process_transaction(
+            order=order,
+            method="GIFT_CARD",
+            amount=amount,
+            tip=Decimal("0.00"),  # No tips on gift card payments
+            gift_card_code=gift_card.code,
+        )

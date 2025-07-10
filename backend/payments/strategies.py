@@ -6,7 +6,7 @@ import stripe
 from django.conf import settings
 from django.db import transaction
 
-from .models import Payment, PaymentTransaction
+from .models import Payment, PaymentTransaction, GiftCard
 from orders.models import Order
 from settings.models import TerminalLocation, StoreLocation
 import logging
@@ -507,4 +507,112 @@ class StripeOnlineStrategy(PaymentStrategy):
             raise e
 
 
-# We can add CardOnlineStrategy, GiftCardStrategy, etc., here later.
+class GiftCardPaymentStrategy(PaymentStrategy):
+    """
+    Strategy for processing payments using gift cards.
+    """
+
+    def process(self, transaction: PaymentTransaction, **kwargs):
+        """
+        Process a gift card payment by deducting the amount from the gift card balance.
+        """
+        from django.db import transaction as db_transaction
+        
+        gift_card_code = kwargs.get('gift_card_code')
+        if not gift_card_code:
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            raise ValueError("Gift card code is required for gift card payments")
+
+        try:
+            # Find the gift card
+            gift_card = GiftCard.objects.get(code=gift_card_code.upper())
+            
+            # Validate the gift card
+            if not gift_card.is_valid:
+                transaction.status = PaymentTransaction.TransactionStatus.FAILED
+                transaction.save()
+                raise ValueError(f"Gift card {gift_card_code} is not valid for use")
+            
+            # Check if gift card has sufficient balance
+            if gift_card.current_balance < transaction.amount:
+                transaction.status = PaymentTransaction.TransactionStatus.FAILED
+                transaction.save()
+                raise ValueError(f"Insufficient gift card balance. Available: ${gift_card.current_balance}, Requested: ${transaction.amount}")
+            
+            # Use atomic transaction to ensure consistency
+            with db_transaction.atomic():
+                # Deduct the amount from the gift card
+                amount_used = gift_card.use_amount(transaction.amount)
+                
+                # Update the payment transaction
+                transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+                transaction.transaction_id = f"GC-{gift_card.code}-{uuid.uuid4().hex[:8]}"
+                transaction.provider_response = {
+                    "gift_card_code": gift_card.code,
+                    "amount_used": str(amount_used),
+                    "remaining_balance": str(gift_card.current_balance),
+                    "transaction_type": "gift_card_payment"
+                }
+                transaction.save()
+                
+            return transaction
+            
+        except GiftCard.DoesNotExist:
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            raise ValueError(f"Gift card {gift_card_code} not found")
+            
+        except Exception as e:
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            logger.error(f"Gift card payment error: {e}")
+            raise e
+
+    def refund_transaction(
+        self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
+    ):
+        """
+        Refund a gift card payment by adding the amount back to the gift card balance.
+        """
+        from django.db import transaction as db_transaction
+        
+        try:
+            # Get the gift card code from the original transaction
+            provider_response = transaction.provider_response
+            if not provider_response or 'gift_card_code' not in provider_response:
+                raise ValueError("Cannot determine gift card for refund")
+            
+            gift_card_code = provider_response['gift_card_code']
+            gift_card = GiftCard.objects.get(code=gift_card_code)
+            
+            # Use atomic transaction to ensure consistency
+            with db_transaction.atomic():
+                # Add the refund amount back to the gift card
+                gift_card.current_balance += amount
+                
+                # If the gift card was fully redeemed but now has balance, reactivate it
+                if gift_card.status == GiftCard.GiftCardStatus.REDEEMED and gift_card.current_balance > 0:
+                    gift_card.status = GiftCard.GiftCardStatus.ACTIVE
+                
+                gift_card.save()
+                
+                # Update the transaction record
+                transaction.refunded_amount += amount
+                transaction.refund_reason = reason
+                
+                # If the refunded amount equals the original transaction amount, mark as fully refunded
+                if transaction.refunded_amount >= transaction.amount:
+                    transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+                
+                transaction.save()
+                
+            return transaction
+            
+        except GiftCard.DoesNotExist:
+            logger.error(f"Gift card not found for refund: {gift_card_code}")
+            raise ValueError(f"Gift card {gift_card_code} not found for refund")
+            
+        except Exception as e:
+            logger.error(f"Gift card refund error: {e}")
+            raise e

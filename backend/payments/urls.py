@@ -8,6 +8,9 @@ from .views.authenticated import (
     CreateUserPaymentIntentView,
     CompleteUserPaymentView,
     SurchargeCalculationView,
+    GiftCardValidationView,
+    GiftCardPaymentView,
+    GiftCardListView,
 )
 from .views.terminal import (
     CreateTerminalIntentView,
@@ -39,6 +42,22 @@ urlpatterns = [
         "guest/complete-payment/",
         CompleteGuestPaymentView.as_view(),
         name="guest-complete-payment",
+    ),
+    # Gift card endpoints
+    path(
+        "gift-cards/validate/",
+        GiftCardValidationView.as_view(),
+        name="gift-card-validate",
+    ),
+    path(
+        "gift-cards/payment/",
+        GiftCardPaymentView.as_view(),
+        name="gift-card-payment",
+    ),
+    path(
+        "gift-cards/",
+        GiftCardListView.as_view(),
+        name="gift-card-list",
     ),
     # Authenticated payment endpoints
     path("process/", PaymentProcessView.as_view(), name="payment-process"),

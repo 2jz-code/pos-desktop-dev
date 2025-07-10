@@ -93,6 +93,10 @@ export const createPaymentSlice = (set, get) => ({
 			set({ tenderState: "awaitingCashAmount" });
 			return;
 		}
+		if (method === "GIFT_CARD") {
+			set({ tenderState: "awaitingGiftCard" });
+			return;
+		}
 		if (method === "SPLIT") {
 			set({
 				tenderState: "splittingPayment",
@@ -123,6 +127,11 @@ export const createPaymentSlice = (set, get) => ({
 
 		if (method === "CASH") {
 			set({ tenderState: "awaitingCashAmount" });
+			return;
+		}
+
+		if (method === "GIFT_CARD") {
+			set({ tenderState: "awaitingGiftCard" });
 			return;
 		}
 
@@ -233,6 +242,47 @@ export const createPaymentSlice = (set, get) => ({
 				error: result.error,
 				currentPaymentIntentId:
 					result.paymentIntentId || get().currentPaymentIntentId,
+			});
+		}
+	},
+
+	applyGiftCardPayment: async (giftCardData) => {
+		set({ tenderState: "processingPayment" });
+		const state = get();
+
+		try {
+			// Use the gift card service which properly handles API base URL
+			const { giftCardService } = await import(
+				"../../payments/services/giftCardService"
+			);
+
+			const result = await giftCardService.processGiftCardPayment({
+				orderId: state.orderId,
+				gift_card_code: giftCardData.gift_card_code,
+				amount: giftCardData.amount,
+			});
+
+			if (!result.success) {
+				throw new Error(result.error || "Gift card payment failed");
+			}
+
+			const data = result.data;
+			const newBalance = parseFloat(data.balance_due || 0);
+			const isComplete = newBalance <= 0;
+
+			set({
+				lastCompletedOrder: isComplete ? state.order : null,
+				balanceDue: newBalance,
+				paymentHistory: data.transactions || [],
+				tenderState: isComplete ? "complete" : "splittingPayment",
+				partialAmount: 0,
+				surchargeAmount: 0, // Reset surcharge when returning to split payment
+			});
+		} catch (error) {
+			console.error("Gift card payment error:", error);
+			set({
+				tenderState: "paymentError",
+				error: error.message || "Gift card payment failed",
 			});
 		}
 	},

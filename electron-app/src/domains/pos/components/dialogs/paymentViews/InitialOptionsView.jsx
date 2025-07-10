@@ -1,5 +1,6 @@
 import { Button } from "@/shared/components/ui/button";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { CreditCard, DollarSign, Gift } from "lucide-react";
 
 /**
  * @description
@@ -28,17 +29,27 @@ const InitialOptionsView = ({ onSelect }) => {
 		<div className="flex flex-col space-y-4">
 			<Button
 				variant="outline"
-				className="w-full py-6 text-lg"
+				className="w-full py-6 text-lg flex items-center justify-center gap-3"
 				onClick={() => handleSelect("CASH")}
 			>
+				<DollarSign className="h-5 w-5" />
 				Cash
 			</Button>
 			<Button
 				variant="outline"
-				className="w-full py-6 text-lg"
+				className="w-full py-6 text-lg flex items-center justify-center gap-3"
 				onClick={() => handleSelect("CREDIT")}
 			>
+				<CreditCard className="h-5 w-5" />
 				Card / Terminal
+			</Button>
+			<Button
+				variant="outline"
+				className="w-full py-6 text-lg flex items-center justify-center gap-3"
+				onClick={() => handleSelect("GIFT_CARD")}
+			>
+				<Gift className="h-5 w-5" />
+				Gift Card
 			</Button>
 			<Button
 				variant="default"

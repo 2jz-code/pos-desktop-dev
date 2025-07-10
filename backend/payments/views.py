@@ -998,3 +998,28 @@ class CompleteGuestPaymentView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class SurchargeCalculationView(APIView):
+    """
+    Calculates surcharge for a given amount or amounts.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = SurchargeCalculationSerializer(data=request.data)
+        if serializer.is_valid():
+            # Use the service to calculate surcharges
+            if 'amount' in serializer.validated_data:
+                amount = serializer.validated_data['amount']
+                surcharge = PaymentService.calculate_surcharge(amount)
+                return Response({'surcharge': surcharge}, status=status.HTTP_200_OK)
+            else:
+                amounts = serializer.validated_data['amounts']
+                surcharges = [PaymentService.calculate_surcharge(amount) for amount in amounts]
+                return Response({'surcharges': surcharges}, status=status.HTTP_200_OK)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+

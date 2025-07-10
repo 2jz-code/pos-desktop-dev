@@ -26,6 +26,13 @@ __all__ = [
     "CreatePaymentView",
     "PaymentDetailView",
     "PaymentProcessView",
+    "CreateUserPaymentIntentView",
+    "CompleteUserPaymentView",
+    "SurchargeCalculationView",
+    # Gift card views (authenticated)
+    "GiftCardValidationView",
+    "GiftCardPaymentView",
+    "GiftCardListView",
     # Terminal views
     "CreateTerminalIntentView",
     "CaptureTerminalIntentView",

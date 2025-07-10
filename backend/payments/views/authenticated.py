@@ -28,6 +28,9 @@ from ..serializers import (
     ProcessPaymentSerializer,
     RefundTransactionSerializer,
     SurchargeCalculationSerializer,
+    GiftCardSerializer,
+    GiftCardValidationSerializer,
+    GiftCardPaymentSerializer,
 )
 from ..services import PaymentService
 from orders.models import Order
@@ -375,6 +378,91 @@ class PaymentDetailView(generics.RetrieveAPIView):
     lookup_field = "order__id"  # Look up payments by the order ID
 
 
+class GiftCardValidationView(APIView):
+    """
+    Validates a gift card code and returns balance information.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Validate a gift card code and return its status and balance.
+        """
+        serializer = GiftCardValidationSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            # The serializer already validated and populated the response data
+            response_data = {
+                'code': serializer.validated_data['code'],
+                'is_valid': serializer.validated_data['is_valid'],
+                'current_balance': serializer.validated_data['current_balance'],
+                'status': serializer.validated_data['status'],
+            }
+            
+            # Add error message if card is not valid
+            if 'error_message' in serializer.validated_data:
+                response_data['error_message'] = serializer.validated_data['error_message']
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GiftCardPaymentView(generics.GenericAPIView):
+    """
+    Processes a payment using a gift card.
+    """
+    serializer_class = GiftCardPaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        """
+        Process a gift card payment for an order.
+        """
+        serializer = self.get_serializer(data=request.data)
+        
+        if serializer.is_valid():
+            try:
+                # The serializer's create method handles the payment processing
+                # It returns a Payment object, not a PaymentTransaction
+                payment = serializer.save()
+                
+                # Return the payment details
+                payment_serializer = PaymentSerializer(payment)
+                return Response(payment_serializer.data, status=status.HTTP_201_CREATED)
+                
+            except ValueError as e:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Gift card payment error: {e}")
+                return Response(
+                    {"error": "An error occurred while processing the gift card payment"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GiftCardListView(generics.ListAPIView):
+    """
+    Lists all gift cards (admin only).
+    """
+    serializer_class = GiftCardSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
+
+    def get_queryset(self):
+        """Only allow staff to view gift cards."""
+        if self.request.user and self.request.user.is_staff:
+            from ..models import GiftCard
+            return GiftCard.objects.all().order_by('-created_at')
+        from ..models import GiftCard
+        return GiftCard.objects.none()
+
+
 # Export all authenticated views
 __all__ = [
     "PaymentViewSet",
@@ -383,5 +471,8 @@ __all__ = [
     "PaymentProcessView",
     "CreatePaymentView",
     "PaymentDetailView",
+    "GiftCardValidationView",
+    "GiftCardPaymentView", 
+    "GiftCardListView",
     "AuthenticatedOrderAccessMixin",
 ]
