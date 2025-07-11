@@ -128,7 +128,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ]  # Allow public access for customer website
 
     def get_queryset(self):
-        queryset = Category.objects.all().order_by('order', 'name')
+        queryset = Category.objects.all()
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")
