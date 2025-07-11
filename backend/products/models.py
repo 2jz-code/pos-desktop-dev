@@ -18,13 +18,18 @@ class Category(MPTTModel):
         related_name="children",
         help_text=_("Parent category for creating a hierarchy."),
     )
+    order = models.IntegerField(
+        default=0,
+        help_text=_("Display order for this category. Lower numbers appear first."),
+    )
 
     class MPTTMeta:
-        order_insertion_by = ["name"]
+        order_insertion_by = ["order", "name"]
 
     class Meta:
         verbose_name = _("Category")
         verbose_name_plural = _("Categories")
+        ordering = ["order", "name"]
 
     def __str__(self):
         return self.name

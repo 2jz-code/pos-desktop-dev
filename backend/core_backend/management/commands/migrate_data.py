@@ -9,6 +9,8 @@ from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.db.models.signals import post_save
+from django.core.files.base import ContentFile
+from urllib.parse import urljoin
 
 # --- Model Imports ---
 from products.models import Product, Category, ProductType, Tax
@@ -166,6 +168,30 @@ class Command(BaseCommand):
                     )
                     if created:
                         product.taxes.add(default_tax)
+
+                    # --- Image Migration Logic ---
+                    image_url = row.get("image")
+                    if image_url and not product.image:
+                        try:
+                            # Construct the full URL
+                            full_image_url = urljoin(self.old_backend_url, image_url)
+                            
+                            # Fetch the image
+                            response = requests.get(full_image_url, stream=True)
+                            response.raise_for_status()
+
+                            # Get the filename from the URL
+                            file_name = os.path.basename(image_url)
+                            
+                            # Save the image to the product's image field
+                            product.image.save(file_name, ContentFile(response.content), save=True)
+                            self.stdout.write(self.style.SUCCESS(f"  - Successfully migrated image for product: {product.name}"))
+
+                        except requests.exceptions.RequestException as e:
+                            self.stdout.write(self.style.ERROR(f"  - FAILED to download image for product {legacy_id} from {full_image_url}. Error: {e}"))
+                        except Exception as e:
+                            self.stdout.write(self.style.ERROR(f"  - FAILED to save image for product {legacy_id}. Error: {e}"))
+                    # --- End of Image Migration Logic ---
 
             except IntegrityError as e:
                 if 'UNIQUE constraint' in str(e) and 'barcode' in str(e):

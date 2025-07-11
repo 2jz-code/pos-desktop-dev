@@ -11,6 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from django.db import models
+from django.db.models import Q, Count
 from decimal import Decimal
 import logging
 import stripe
@@ -107,13 +109,60 @@ class PaymentViewSet(
     pagination_class = StandardPagination  # Add pagination for payments
 
     def get_queryset(self):
-        """Filter payments based on user permissions."""
+        """Filter payments based on user permissions and query parameters."""
         # The base queryset is now optimized by the mixin
         queryset = super().get_queryset()
         user = self.request.user
+        
+        # Apply user permission filtering
         if user.is_staff:
-            return queryset.order_by("-created_at")
-        return queryset.filter(order__customer=user).order_by("-created_at")
+            queryset = queryset.order_by("-created_at")
+        else:
+            queryset = queryset.filter(order__customer=user).order_by("-created_at")
+        
+        # Apply additional filters from query parameters
+        status_filter = self.request.query_params.get('status')
+        method_filter = self.request.query_params.get('method')
+        search_filter = self.request.query_params.get('search')
+        
+        # Filter by payment status
+        if status_filter:
+            queryset = queryset.filter(status__iexact=status_filter)
+        
+        # Filter by payment method (need to check transactions)
+        if method_filter:
+            if method_filter.upper() == 'SPLIT':
+                # Split payments have multiple transactions
+                queryset = queryset.annotate(
+                    transaction_count=Count('transactions')
+                ).filter(transaction_count__gt=1)
+            else:
+                # Single method payments
+                method_lookup = method_filter.upper()
+                # Map frontend values to model values
+                method_mapping = {
+                    'CASH': 'CASH',
+                    'CARD_TERMINAL': 'CARD_TERMINAL',
+                    'CARD': 'CARD_TERMINAL',  # Allow 'card' as alias
+                    'GIFT_CARD': 'GIFT_CARD',
+                }
+                actual_method = method_mapping.get(method_lookup, method_lookup)
+                queryset = queryset.filter(
+                    transactions__method=actual_method,
+                    transactions__status='SUCCESSFUL'
+                ).annotate(
+                    transaction_count=Count('transactions')
+                ).filter(transaction_count=1)
+        
+        # Filter by search term (payment number, order number, or amount)
+        if search_filter:
+            queryset = queryset.filter(
+                Q(payment_number__icontains=search_filter) |
+                Q(order__order_number__icontains=search_filter) |
+                Q(total_collected__icontains=search_filter)
+            )
+        
+        return queryset.distinct()
 
     @action(detail=False, methods=["post"], url_path="cancel-intent")
     def cancel_intent(self, request):

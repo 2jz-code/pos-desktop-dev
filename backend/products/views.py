@@ -21,8 +21,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = (
-        Product.objects.all()
-    )  # Include all products, filtering handled by filterset
+        Product.objects.select_related('category')
+        .order_by('category__order', 'category__name', 'name')
+    )  # Order by category order, then category name, then product name
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -33,12 +34,18 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        # Default to active products only if no is_active filter is specified
-        # This maintains backward compatibility for existing API consumers
-        is_active_param = self.request.query_params.get("is_active")
-        if is_active_param is None:
-            # Default behavior: only show active products
-            queryset = queryset.filter(is_active=True)
+        # For update operations (PATCH, PUT, DELETE), include all products
+        # This allows unarchiving archived products
+        if self.action in ['update', 'partial_update', 'destroy', 'retrieve']:
+            # Don't filter by is_active for individual product operations
+            pass
+        else:
+            # Default to active products only if no is_active filter is specified
+            # This maintains backward compatibility for existing API consumers
+            is_active_param = self.request.query_params.get("is_active")
+            if is_active_param is None:
+                # Default behavior: only show active products for list operations
+                queryset = queryset.filter(is_active=True)
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")
@@ -73,6 +80,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         try:
             # URL decode the name parameter
             from urllib.parse import unquote
+
+            if not name:
+                return Response(
+                    {"error": "Product name is required"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
             decoded_name = unquote(name)
 
@@ -116,7 +128,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ]  # Allow public access for customer website
 
     def get_queryset(self):
-        queryset = Category.objects.all()
+        queryset = Category.objects.all().order_by('order', 'name')
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")

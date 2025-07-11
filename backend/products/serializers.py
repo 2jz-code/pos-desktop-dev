@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Category, Tax, Product, ProductType
 from .services import ProductService
 from rest_framework.fields import ImageField
+from django.conf import settings
 
 
 # --- NEW: Basic serializers for nested data ---
@@ -27,16 +28,18 @@ class ProductTypeSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    parent = BasicCategorySerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(
         source="parent",
         queryset=Category.objects.all(),
         allow_null=True,
         required=False,
+        write_only=True,
     )
 
     class Meta:
         model = Category
-        fields = ["id", "name", "description", "parent_id"]
+        fields = ["id", "name", "description", "parent", "parent_id", "order"]
 
 
 class TaxSerializer(serializers.ModelSerializer):
@@ -85,7 +88,17 @@ class ProductSerializer(serializers.ModelSerializer):
             request = self.context.get("request")
             if request:
                 return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
+            else:
+                # For S3 URLs, obj.image.url is already absolute
+                # For local storage, we need to build absolute URL
+                image_url = obj.image.url
+                if image_url.startswith('http'):
+                    # Already absolute (S3)
+                    return image_url
+                else:
+                    # Local storage - build absolute URL
+                    base_url = getattr(settings, 'BASE_URL', 'http://127.0.0.1:8001')
+                    return f"{base_url}{image_url}"
         return None
 
 
