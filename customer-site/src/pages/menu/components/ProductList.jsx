@@ -1,20 +1,30 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaSearch, FaTimes } from "react-icons/fa";
+import { useQuery } from "@tanstack/react-query";
 import ProductCard from "./ProductCard";
 import { useFilteredProducts } from "../../../hooks/useProducts";
 import { useCart } from "@/hooks/useCart";
 import { useProductQuantities } from "../../../hooks/useProductQuantities";
 import { Skeleton } from "@/components/ui/skeleton";
+import { productsAPI } from "../../../api/products";
 
 const ProductList = ({
-	categories,
 	selectedCategory,
 	setSelectedCategory,
 	activeView = "grid",
 }) => {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [showQuickAdd, setShowQuickAdd] = useState({});
+
+	// Fetch all categories (including subcategories) for proper sorting
+	const { data: allCategories = [] } = useQuery({
+		queryKey: ["all-categories"],
+		queryFn: () => productsAPI.getCategories(),
+		staleTime: 5 * 60 * 1000, // 5 minutes
+		select: (data) =>
+			data?.filter((category) => category.name !== "grocery") || [],
+	});
 
 	// Use our new, simplified hook. It fetches data based on the selectedCategory.
 	const {
@@ -90,8 +100,11 @@ const ProductList = ({
 		</motion.div>
 	);
 
-	const renderGroupedProducts = () => {
-		const groupedByCategory = {};
+	const shouldGroupProducts = () => {
+		if (!selectedCategory) return true; // Always group for "All" view
+
+		// Check if we have multiple categories in the filtered products (subcategories)
+		const uniqueCategories = new Set();
 		searchFilteredProducts.forEach((product) => {
 			const productCategories = Array.isArray(product.category)
 				? product.category
@@ -99,29 +112,52 @@ const ProductList = ({
 				? [product.category]
 				: [];
 			productCategories.forEach((cat) => {
-				if (cat && cat.name) {
-					if (!groupedByCategory[cat.name]) {
-						groupedByCategory[cat.name] = [];
-					}
-					groupedByCategory[cat.name].push(product);
-				}
+				if (cat && cat.name) uniqueCategories.add(cat.name);
 			});
 		});
 
-		const manualCategoryOrder = [
-			"Mana'eesh",
-			"Signature",
-			"Soups",
-			"Desserts",
-			"Drinks",
-		];
-		const orderedCategories = manualCategoryOrder
-			.filter((catName) => groupedByCategory[catName])
-			.concat(
-				Object.keys(groupedByCategory)
-					.filter((catName) => !manualCategoryOrder.includes(catName))
-					.sort()
-			);
+		// Group if we have multiple categories (subcategories)
+		return uniqueCategories.size > 1;
+	};
+
+	const renderGroupedProducts = (forSelectedCategory = false) => {
+		const groupedByCategory = {};
+		searchFilteredProducts.forEach((product) => {
+			const productCategories = Array.isArray(product.category)
+				? product.category
+				: product.category
+				? [product.category]
+				: [];
+
+			// Use only the primary (first) category to avoid duplicates
+			// This matches POS behavior where products belong to one primary category
+			const primaryCategory = productCategories[0];
+			if (primaryCategory && primaryCategory.name) {
+				if (!groupedByCategory[primaryCategory.name]) {
+					groupedByCategory[primaryCategory.name] = [];
+				}
+				groupedByCategory[primaryCategory.name].push(product);
+			}
+		});
+
+		// Sort categories by their backend order field, then alphabetically
+		const orderedCategories = Object.keys(groupedByCategory).sort((a, b) => {
+			const categoryA = allCategories.find((cat) => cat.name === a);
+			const categoryB = allCategories.find((cat) => cat.name === b);
+
+			// If we can't find the category objects, fall back to alphabetical sorting
+			if (!categoryA || !categoryB) {
+				return a.localeCompare(b);
+			}
+
+			// First, sort by order field
+			if (categoryA.order !== categoryB.order) {
+				return categoryA.order - categoryB.order;
+			}
+
+			// If order is the same, sort alphabetically by name
+			return a.localeCompare(b);
+		});
 
 		return orderedCategories.map((categoryName) => (
 			<div
@@ -132,15 +168,24 @@ const ProductList = ({
 					<h2 className="text-2xl font-bold text-accent-dark-brown">
 						{categoryName}
 					</h2>
-					<button
-						onClick={() => {
-							const category = categories.find((c) => c.name === categoryName);
-							if (category) setSelectedCategory(category.id);
-						}}
-						className="text-primary-green hover:text-accent-dark-green font-medium text-sm"
-					>
-						View All →
-					</button>
+					{!forSelectedCategory && (
+						<button
+							onClick={() => {
+								// Find parent category for this subcategory
+								const category = allCategories.find(
+									(c) => c.name === categoryName
+								);
+								// If it's a subcategory, find its parent, otherwise use itself
+								const targetCategory = category?.parent
+									? allCategories.find((c) => c.id === category.parent.id)
+									: category;
+								if (targetCategory) setSelectedCategory(targetCategory.id);
+							}}
+							className="text-primary-green hover:text-accent-dark-green font-medium text-sm"
+						>
+							View All →
+						</button>
+					)}
 				</div>
 				{renderProductGrid(groupedByCategory[categoryName])}
 			</div>
@@ -194,8 +239,8 @@ const ProductList = ({
 				renderLoadingSkeletons()
 			) : (
 				<>
-					{!selectedCategory
-						? renderGroupedProducts()
+					{shouldGroupProducts()
+						? renderGroupedProducts(!selectedCategory ? false : true)
 						: renderProductGrid(searchFilteredProducts)}
 					{!isLoading && searchFilteredProducts.length === 0 && (
 						<div className="text-center py-10">

@@ -80,15 +80,17 @@ const PaymentsPage = () => {
 	};
 
 	const getStatusVariant = (status) => {
-		switch (status?.toLowerCase()) {
-			case "succeeded":
-			case "paid":
+		switch (status?.toUpperCase()) {
+			case "PAID":
+			case "PARTIALLY_PAID":
 				return "default";
-			case "refunded":
-			case "partially_refunded":
+			case "REFUNDED":
+			case "PARTIALLY_REFUNDED":
 				return "destructive";
-			case "pending":
+			case "PENDING":
 				return "secondary";
+			case "UNPAID":
+				return "outline";
 			default:
 				return "outline";
 		}
@@ -157,11 +159,12 @@ const PaymentsPage = () => {
 				</SelectTrigger>
 				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Statuses</SelectItem>
-					<SelectItem value="pending">Pending</SelectItem>
-					<SelectItem value="paid">Paid</SelectItem>
-					<SelectItem value="succeeded">Succeeded</SelectItem>
-					<SelectItem value="refunded">Refunded</SelectItem>
-					<SelectItem value="partially_refunded">Partially Refunded</SelectItem>
+					<SelectItem value="PENDING">Pending</SelectItem>
+					<SelectItem value="UNPAID">Unpaid</SelectItem>
+					<SelectItem value="PAID">Paid</SelectItem>
+					<SelectItem value="PARTIALLY_PAID">Partially Paid</SelectItem>
+					<SelectItem value="REFUNDED">Refunded</SelectItem>
+					<SelectItem value="PARTIALLY_REFUNDED">Partially Refunded</SelectItem>
 				</SelectContent>
 			</Select>
 			<Select
@@ -173,9 +176,9 @@ const PaymentsPage = () => {
 				</SelectTrigger>
 				<SelectContent className="border-slate-200 dark:border-slate-700">
 					<SelectItem value="ALL">All Methods</SelectItem>
-					<SelectItem value="cash">Cash</SelectItem>
-					<SelectItem value="card_terminal">Card</SelectItem>
-					<SelectItem value="gift_card">Gift Card</SelectItem>
+					<SelectItem value="CASH">Cash</SelectItem>
+					<SelectItem value="CARD_TERMINAL">Card</SelectItem>
+					<SelectItem value="GIFT_CARD">Gift Card</SelectItem>
 					<SelectItem value="SPLIT">Split Payment</SelectItem>
 				</SelectContent>
 			</Select>

@@ -21,6 +21,9 @@ const ProductGrid = () => {
 
 			if (!directCategory) continue;
 
+			const categoryOrder = directCategory.order || 0;
+			const parentOrder = directCategory.parent?.order || 0;
+
 			// Check if this is a parent category (no parent) or child category (has parent)
 			if (!directCategory.parent) {
 				// This is a parent category - product is directly under parent
@@ -29,6 +32,8 @@ const ProductGrid = () => {
 				if (!groups[parentName]) {
 					groups[parentName] = {
 						__direct_products__: [],
+						order: categoryOrder,
+						subcategories: {},
 					};
 				}
 
@@ -41,14 +46,19 @@ const ProductGrid = () => {
 				if (!groups[parentName]) {
 					groups[parentName] = {
 						__direct_products__: [],
+						order: parentOrder,
+						subcategories: {},
 					};
 				}
 
-				if (!groups[parentName][subcategoryName]) {
-					groups[parentName][subcategoryName] = [];
+				if (!groups[parentName].subcategories[subcategoryName]) {
+					groups[parentName].subcategories[subcategoryName] = {
+						products: [],
+						order: categoryOrder,
+					};
 				}
 
-				groups[parentName][subcategoryName].push(product);
+				groups[parentName].subcategories[subcategoryName].products.push(product);
 			}
 		}
 
@@ -97,7 +107,9 @@ const ProductGrid = () => {
 			</div>
 
 			<div className="flex-grow overflow-y-auto p-6">
-				{Object.entries(groupedProducts).map(([parentName, subcategories]) => (
+				{Object.entries(groupedProducts)
+				.sort(([, a], [, b]) => a.order - b.order)
+				.map(([parentName, parentGroup]) => (
 					<div
 						key={parentName}
 						className="mb-10 last:mb-0"
@@ -110,10 +122,10 @@ const ProductGrid = () => {
 						</div>
 
 						{/* Direct products under parent category */}
-						{subcategories["__direct_products__"] &&
-							subcategories["__direct_products__"].length > 0 && (
+						{parentGroup["__direct_products__"] &&
+							parentGroup["__direct_products__"].length > 0 && (
 								<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
-									{subcategories["__direct_products__"].map((product) => (
+									{parentGroup["__direct_products__"].map((product) => (
 										<ProductCard
 											key={product.id}
 											product={product}
@@ -123,35 +135,32 @@ const ProductGrid = () => {
 							)}
 
 						{/* Products under subcategories */}
-						{Object.entries(subcategories).map(
-							([subcategoryName, products]) => {
-								if (subcategoryName === "__direct_products__") return null;
-								return (
-									<div
-										key={subcategoryName}
-										className="mb-8"
-									>
-										<div className="flex items-center gap-3 mb-4">
-											<h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 capitalize">
+						{Object.entries(parentGroup.subcategories)
+							.sort(([, a], [, b]) => a.order - b.order)
+							.map(([subcategoryName, subcategoryGroup]) => (
+								<div
+									key={subcategoryName}
+									className="mb-8"
+								>
+									<div className="flex items-center gap-3 mb-4">
+										<h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 capitalize">
 												{subcategoryName}
-											</h3>
-											<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
-											<span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
-												{products.length} items
-											</span>
-										</div>
-										<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-											{products.map((product) => (
-												<ProductCard
-													key={product.id}
-													product={product}
-												/>
-											))}
-										</div>
+										</h3>
+										<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+										<span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+												{subcategoryGroup.products.length} items
+										</span>
 									</div>
-								);
-							}
-						)}
+									<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+										{subcategoryGroup.products.map((product) => (
+											<ProductCard
+												key={product.id}
+												product={product}
+											/>
+										))}
+									</div>
+								</div>
+							))}
 					</div>
 				))}
 

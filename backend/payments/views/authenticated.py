@@ -6,7 +6,7 @@ like saved payment methods, payment history, and user-specific settings.
 """
 
 from rest_framework.views import APIView
-from rest_framework import status, viewsets, generics
+from rest_framework import status, viewsets, generics, filters
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,6 +15,8 @@ from decimal import Decimal
 import logging
 import stripe
 from orders.serializers import OrderSerializer
+from django_filters.rest_framework import DjangoFilterBackend
+import django_filters
 from .base import (
     BasePaymentView,
     PaymentValidationMixin,
@@ -38,7 +40,38 @@ from users.authentication import CustomerCookieJWTAuthentication
 from core_backend.mixins import OptimizedQuerysetMixin
 from core_backend.pagination import StandardPagination
 from rest_framework.permissions import AllowAny
+from django.db import models
+
 logger = logging.getLogger(__name__)
+
+
+class PaymentFilter(django_filters.FilterSet):
+    """Custom filter for payments with support for filtering by payment method."""
+
+    method = django_filters.CharFilter(method="filter_by_method")
+
+    class Meta:
+        model = Payment
+        fields = ["status", "method"]
+
+    def filter_by_method(self, queryset, name, value):
+        """Filter payments by the method of their transactions."""
+        if not value:
+            return queryset
+
+        # Handle special case for split payments
+        if value.upper() == "SPLIT":
+            # Split payments have more than one transaction
+            return queryset.annotate(
+                transaction_count=models.Count("transactions")
+            ).filter(transaction_count__gt=1)
+        else:
+            # Single method payments
+            return (
+                queryset.filter(transactions__method=value.upper())
+                .annotate(transaction_count=models.Count("transactions"))
+                .filter(transaction_count=1)
+            )
 
 
 class SurchargeCalculationView(APIView):
@@ -55,7 +88,9 @@ class SurchargeCalculationView(APIView):
         amounts = serializer.validated_data.get("amounts")
 
         if amounts:
-            surcharges = [PaymentService.calculate_surcharge(amount) for amount in amounts]
+            surcharges = [
+                PaymentService.calculate_surcharge(amount) for amount in amounts
+            ]
             return Response({"surcharges": surcharges}, status=status.HTTP_200_OK)
         else:
             amount = serializer.validated_data["amount"]
@@ -105,6 +140,17 @@ class PaymentViewSet(
     permission_classes = [IsAuthenticated]
     queryset = Payment.objects.all()
     pagination_class = StandardPagination  # Add pagination for payments
+
+    # Add filter backends to enable sorting and filtering
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_class = PaymentFilter
+    search_fields = ["payment_number", "order__order_number"]
+    ordering_fields = ["created_at", "status", "total_collected"]
+    ordering = ["-created_at"]  # Default ordering
 
     def get_queryset(self):
         """Filter payments based on user permissions."""
@@ -382,6 +428,7 @@ class GiftCardValidationView(APIView):
     """
     Validates a gift card code and returns balance information.
     """
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -389,22 +436,24 @@ class GiftCardValidationView(APIView):
         Validate a gift card code and return its status and balance.
         """
         serializer = GiftCardValidationSerializer(data=request.data)
-        
+
         if serializer.is_valid():
             # The serializer already validated and populated the response data
             response_data = {
-                'code': serializer.validated_data['code'],
-                'is_valid': serializer.validated_data['is_valid'],
-                'current_balance': serializer.validated_data['current_balance'],
-                'status': serializer.validated_data['status'],
+                "code": serializer.validated_data["code"],
+                "is_valid": serializer.validated_data["is_valid"],
+                "current_balance": serializer.validated_data["current_balance"],
+                "status": serializer.validated_data["status"],
             }
-            
+
             # Add error message if card is not valid
-            if 'error_message' in serializer.validated_data:
-                response_data['error_message'] = serializer.validated_data['error_message']
-            
+            if "error_message" in serializer.validated_data:
+                response_data["error_message"] = serializer.validated_data[
+                    "error_message"
+                ]
+
             return Response(response_data, status=status.HTTP_200_OK)
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -412,6 +461,7 @@ class GiftCardPaymentView(generics.GenericAPIView):
     """
     Processes a payment using a gift card.
     """
+
     serializer_class = GiftCardPaymentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -420,29 +470,28 @@ class GiftCardPaymentView(generics.GenericAPIView):
         Process a gift card payment for an order.
         """
         serializer = self.get_serializer(data=request.data)
-        
+
         if serializer.is_valid():
             try:
                 # The serializer's create method handles the payment processing
                 # It returns a Payment object, not a PaymentTransaction
                 payment = serializer.save()
-                
+
                 # Return the payment details
                 payment_serializer = PaymentSerializer(payment)
                 return Response(payment_serializer.data, status=status.HTTP_201_CREATED)
-                
+
             except ValueError as e:
-                return Response(
-                    {"error": str(e)}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.error(f"Gift card payment error: {e}")
                 return Response(
-                    {"error": "An error occurred while processing the gift card payment"}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    {
+                        "error": "An error occurred while processing the gift card payment"
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -450,6 +499,7 @@ class GiftCardListView(generics.ListAPIView):
     """
     Lists all gift cards (admin only).
     """
+
     serializer_class = GiftCardSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = StandardPagination
@@ -458,8 +508,10 @@ class GiftCardListView(generics.ListAPIView):
         """Only allow staff to view gift cards."""
         if self.request.user and self.request.user.is_staff:
             from ..models import GiftCard
-            return GiftCard.objects.all().order_by('-created_at')
+
+            return GiftCard.objects.all().order_by("-created_at")
         from ..models import GiftCard
+
         return GiftCard.objects.none()
 
 
@@ -472,7 +524,7 @@ __all__ = [
     "CreatePaymentView",
     "PaymentDetailView",
     "GiftCardValidationView",
-    "GiftCardPaymentView", 
+    "GiftCardPaymentView",
     "GiftCardListView",
     "AuthenticatedOrderAccessMixin",
 ]

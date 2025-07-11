@@ -173,7 +173,6 @@ const MenuPage = () => {
 
 			{/* Product List */}
 			<ProductList
-				categories={categories}
 				selectedCategory={selectedCategory}
 				setSelectedCategory={setSelectedCategory}
 				activeView={activeView}

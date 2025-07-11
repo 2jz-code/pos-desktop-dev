@@ -5,42 +5,8 @@ const MenuNav = ({ categories, selectedCategory, setSelectedCategory }) => {
 	const [showScrollButtons, setShowScrollButtons] = useState(false);
 	const navRef = useRef(null);
 
-	// Define your desired manual order for category names
-	// Make sure these names exactly match the category names returned by your backend API
-	const manualCategoryOrder = [
-		"Mana'eesh",
-		"Signature",
-		"Soups",
-		"Desserts",
-		"Drinks",
-		// Add any other categories here if they exist and you want them in a specific spot.
-		// Categories not listed here will appear after the manually ordered ones,
-		// typically in the order they are returned by the API or sorted alphabetically.
-	];
-
-	// Create a sorted version of the categories prop
-	// This will re-sort whenever the `categories` prop changes
-	const sortedCategories = [...categories].sort((a, b) => {
-		const indexA = manualCategoryOrder.indexOf(a.name);
-		const indexB = manualCategoryOrder.indexOf(b.name);
-
-		// Handle categories not explicitly defined in manualCategoryOrder:
-		// If both are not in the manual order, sort them alphabetically by name.
-		if (indexA === -1 && indexB === -1) {
-			return a.name.localeCompare(b.name);
-		}
-		// If 'a' is not in the manual order, send it to the end.
-		if (indexA === -1) {
-			return 1;
-		}
-		// If 'b' is not in the manual order, send it to the end.
-		if (indexB === -1) {
-			return -1;
-		}
-
-		// Otherwise, sort by their index in the manualCategoryOrder array.
-		return indexA - indexB;
-	});
+	// Categories are now pre-sorted by the useCategories hook using backend order field
+	// No need for manual sorting here
 
 	useEffect(() => {
 		const checkScroll = () => {
@@ -108,8 +74,8 @@ const MenuNav = ({ categories, selectedCategory, setSelectedCategory }) => {
 							onClick={() => setSelectedCategory(null)}
 							name="All"
 						/>
-						{/* Use the sortedCategories array here */}
-						{sortedCategories.map((category) => (
+						{/* Categories are now pre-sorted by the hook */}
+						{categories.map((category) => (
 							<CategoryButton
 								key={category.id}
 								isSelected={selectedCategory === category.id}

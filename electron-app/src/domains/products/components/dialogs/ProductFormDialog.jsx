@@ -51,6 +51,7 @@ export function ProductFormDialog({
 		initial_quantity: "",
 		location_id: "",
 		barcode: "",
+		is_public: true,
 	});
 	const [errors, setErrors] = useState({});
 	const { toast } = useToast();
@@ -110,6 +111,7 @@ export function ProductFormDialog({
 					initial_quantity: "", // Not editable after creation
 					location_id: locationsData?.[0]?.id.toString() || "", // Default to first location
 					barcode: product.barcode || "",
+					is_public: product.is_public,
 				});
 			} else {
 				resetForm(locationsData);
@@ -219,6 +221,7 @@ export function ProductFormDialog({
 				product_type_id: formData.product_type_id
 					? parseInt(formData.product_type_id)
 					: null,
+				is_public: formData.is_public,
 			};
 
 			// If creating a product with inventory tracking, send initial stock directly
@@ -505,6 +508,27 @@ export function ProductFormDialog({
 									/>
 									<Label htmlFor="track_inventory">
 										Monitor stock levels for this product
+									</Label>
+								</div>
+							</div>
+							<div className="grid grid-cols-4 items-center gap-4">
+								<Label
+									htmlFor="is_public"
+									className="text-right"
+								>
+									Public
+								</Label>
+								<div className="col-span-3 flex items-center space-x-2">
+									<Switch
+										id="is_public"
+										name="is_public"
+										checked={formData.is_public}
+										onCheckedChange={(checked) =>
+											handleSwitchChange("is_public", checked)
+										}
+									/>
+									<Label htmlFor="is_public">
+										Make this product visible on the website
 									</Label>
 								</div>
 							</div>

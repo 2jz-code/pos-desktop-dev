@@ -20,9 +20,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = (
-        Product.objects.select_related('category')
-        .order_by('category__order', 'category__name', 'name')
+    queryset = Product.objects.select_related("category").order_by(
+        "category__order", "category__name", "name"
     )  # Order by category order, then category name, then product name
     permission_classes = [
         permissions.AllowAny
@@ -34,9 +33,12 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
+        # Check if the request is for the customer-facing website
+        is_for_website = self.request.query_params.get("for_website") == "true"
+
         # For update operations (PATCH, PUT, DELETE), include all products
         # This allows unarchiving archived products
-        if self.action in ['update', 'partial_update', 'destroy', 'retrieve']:
+        if self.action in ["update", "partial_update", "destroy", "retrieve"]:
             # Don't filter by is_active for individual product operations
             pass
         else:
@@ -46,6 +48,10 @@ class ProductViewSet(viewsets.ModelViewSet):
             if is_active_param is None:
                 # Default behavior: only show active products for list operations
                 queryset = queryset.filter(is_active=True)
+
+            # Filter for website visibility: both product and category must be public
+            if is_for_website:
+                queryset = queryset.filter(is_public=True, category__is_public=True)
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")
@@ -83,7 +89,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             if not name:
                 return Response(
-                    {"error": "Product name is required"}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Product name is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             decoded_name = unquote(name)
@@ -129,6 +136,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Category.objects.all()
+
+        # Check if the request is for the customer-facing website
+        is_for_website = self.request.query_params.get("for_website") == "true"
+
+        if is_for_website:
+            queryset = queryset.filter(is_public=True)
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")

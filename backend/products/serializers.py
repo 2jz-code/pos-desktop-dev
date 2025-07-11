@@ -9,7 +9,7 @@ from django.conf import settings
 class BasicCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name"]
+        fields = ["id", "name", "order"]
 
 
 class BasicProductSerializer(serializers.ModelSerializer):
@@ -39,7 +39,15 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "name", "description", "parent", "parent_id"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "parent",
+            "parent_id",
+            "order",
+            "is_public",
+        ]
 
 
 class TaxSerializer(serializers.ModelSerializer):
@@ -72,6 +80,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "subcategory",
             "taxes",
             "is_active",
+            "is_public",
             "track_inventory",
             "product_type",
             "barcode",
@@ -92,12 +101,12 @@ class ProductSerializer(serializers.ModelSerializer):
                 # For S3 URLs, obj.image.url is already absolute
                 # For local storage, we need to build absolute URL
                 image_url = obj.image.url
-                if image_url.startswith('http'):
+                if image_url.startswith("http"):
                     # Already absolute (S3)
                     return image_url
                 else:
                     # Local storage - build absolute URL
-                    base_url = getattr(settings, 'BASE_URL', 'http://127.0.0.1:8001')
+                    base_url = getattr(settings, "BASE_URL", "http://127.0.0.1:8001")
                     return f"{base_url}{image_url}"
         return None
 
@@ -119,6 +128,7 @@ class ProductSyncSerializer(serializers.ModelSerializer):
             "category_id",
             "product_type_id",
             "is_active",
+            "is_public",
             "track_inventory",
             "barcode",
             "created_at",
@@ -147,6 +157,7 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "description",
             "price",
             "is_active",
+            "is_public",
             "track_inventory",
             "product_type_id",
             "category_id",

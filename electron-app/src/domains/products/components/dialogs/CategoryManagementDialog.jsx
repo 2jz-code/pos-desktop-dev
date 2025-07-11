@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import {
 	getCategories,
@@ -19,7 +21,6 @@ import {
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
-	DialogTrigger,
 	DialogFooter,
 	DialogDescription,
 } from "@/shared/components/ui/dialog";
@@ -32,7 +33,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
+import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { Edit, Trash2 } from "lucide-react";
 
 export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [categories, setCategories] = useState([]);
@@ -44,6 +48,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		name: "",
 		description: "",
 		parent_id: null,
+		order: 0,
+		is_public: true,
 	});
 	const { toast } = useToast();
 
@@ -54,7 +60,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const fetchCategories = async () => {
 		try {
 			const response = await getCategories();
-			setCategories(response.data);
+			const sorted = [...response.data].sort((a, b) => a.order - b.order);
+			setCategories(sorted);
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
 			toast({
@@ -71,7 +78,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	};
 
 	const handleParentChange = (value) => {
-		const parentId = value === "null" ? null : parseInt(value, 10);
+		const parentId = value === "null" ? null : Number.parseInt(value, 10);
 		setFormData((prev) => ({ ...prev, parent_id: parentId }));
 	};
 
@@ -83,8 +90,16 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 						name: category.name,
 						description: category.description,
 						parent_id: category.parent?.id || null,
+						order: category.order || 0,
+						is_public: category.is_public,
 				  }
-				: { name: "", description: "", parent_id: null }
+				: {
+						name: "",
+						description: "",
+						parent_id: null,
+						order: 0,
+						is_public: true,
+				  }
 		);
 		setIsFormDialogOpen(true);
 	};
@@ -172,54 +187,101 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			open={open}
 			onOpenChange={onOpenChange}
 		>
-			<DialogContent className="max-w-3xl">
+			<DialogContent className="!max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
 				<DialogHeader>
 					<DialogTitle>Manage Categories</DialogTitle>
 				</DialogHeader>
-				<div className="py-4">
+				<div className="flex-1 overflow-hidden">
 					<div className="flex justify-end mb-4">
 						<Button onClick={() => openFormDialog()}>Add Category</Button>
 					</div>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Name</TableHead>
-								<TableHead>Description</TableHead>
-								<TableHead>Parent</TableHead>
-								<TableHead>Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{flattenedCategories().map((category) => (
-								<TableRow key={category.id}>
-									<TableCell
-										style={{ paddingLeft: `${category.level * 20}px` }}
-									>
-										{category.name}
-									</TableCell>
-									<TableCell>{category.description}</TableCell>
-									<TableCell>{category.parent?.name || "None"}</TableCell>
-									<TableCell>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => openFormDialog(category)}
-										>
-											Edit
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											className="text-red-500"
-											onClick={() => openDeleteDialog(category)}
-										>
-											Delete
-										</Button>
-									</TableCell>
+					<div className="border rounded-lg">
+						<Table>
+							<TableHeader className="sticky top-0 bg-background">
+								<TableRow>
+									<TableHead className="w-[200px]">Name</TableHead>
+									<TableHead className="w-[150px]">Description</TableHead>
+									<TableHead className="w-[100px]">Parent</TableHead>
+									<TableHead className="w-[80px] text-center">Order</TableHead>
+									<TableHead className="w-[80px] text-center">Public</TableHead>
+									<TableHead className="w-[100px] text-center">
+										Actions
+									</TableHead>
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+							</TableHeader>
+							<TableBody>
+								{flattenedCategories().map((category) => (
+									<TableRow key={category.id}>
+										<TableCell
+											className="font-medium"
+											style={{ paddingLeft: `${category.level * 20 + 12}px` }}
+										>
+											{category.name}
+										</TableCell>
+										<TableCell className="text-slate-600 dark:text-slate-400 truncate max-w-[150px]">
+											{category.description || "—"}
+										</TableCell>
+										<TableCell>
+											{category.parent?.name ? (
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
+													{category.parent.name}
+												</Badge>
+											) : (
+												<span className="text-slate-500 dark:text-slate-400 text-xs">
+													None
+												</span>
+											)}
+										</TableCell>
+										<TableCell className="text-center">
+											<Badge
+												variant="secondary"
+												className="text-xs"
+											>
+												{category.order}
+											</Badge>
+										</TableCell>
+										<TableCell className="text-center">
+											<Badge
+												variant={category.is_public ? "default" : "outline"}
+												className={`text-xs ${
+													category.is_public
+														? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+														: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+												}`}
+											>
+												{category.is_public ? "Public" : "Private"}
+											</Badge>
+										</TableCell>
+										<TableCell>
+											<div className="flex items-center justify-center gap-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => openFormDialog(category)}
+													className="h-8 w-8 p-0"
+												>
+													<Edit className="h-4 w-4" />
+													<span className="sr-only">Edit category</span>
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => openDeleteDialog(category)}
+													className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+												>
+													<Trash2 className="h-4 w-4" />
+													<span className="sr-only">Delete category</span>
+												</Button>
+											</div>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
 				</div>
 			</DialogContent>
 
@@ -235,52 +297,39 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 						</DialogTitle>
 					</DialogHeader>
 					<form onSubmit={handleFormSubmit}>
-						<div className="grid gap-4 py-4">
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="name"
-									className="text-right"
-								>
-									Name
-								</Label>
+						<div className="space-y-6 py-4">
+							<div className="space-y-2">
+								<Label htmlFor="name">Name</Label>
 								<Input
 									id="name"
 									name="name"
 									value={formData.name}
 									onChange={handleFormChange}
-									className="col-span-3"
+									placeholder="Enter category name"
 									required
 								/>
 							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="description"
-									className="text-right"
-								>
-									Description
-								</Label>
+
+							<div className="space-y-2">
+								<Label htmlFor="description">Description</Label>
 								<Input
 									id="description"
 									name="description"
 									value={formData.description}
 									onChange={handleFormChange}
-									className="col-span-3"
+									placeholder="Enter category description (optional)"
 								/>
 							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="parent"
-									className="text-right"
-								>
-									Parent Category
-								</Label>
+
+							<div className="space-y-2">
+								<Label htmlFor="parent">Parent Category</Label>
 								<Select
 									value={
 										formData.parent_id ? String(formData.parent_id) : "null"
 									}
 									onValueChange={handleParentChange}
 								>
-									<SelectTrigger className="col-span-3">
+									<SelectTrigger>
 										<SelectValue placeholder="Select a parent category" />
 									</SelectTrigger>
 									<SelectContent>
@@ -288,6 +337,41 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 										{renderCategoryOptions()}
 									</SelectContent>
 								</Select>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="order">Display Order</Label>
+								<Input
+									id="order"
+									name="order"
+									type="number"
+									value={formData.order}
+									onChange={handleFormChange}
+									placeholder="0"
+									min="0"
+								/>
+								<p className="text-sm text-slate-500 dark:text-slate-400">
+									Lower numbers appear first
+								</p>
+							</div>
+
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<Label htmlFor="is_public">Public Visibility</Label>
+									<p className="text-sm text-slate-500 dark:text-slate-400">
+										Show this category and its products on the website
+									</p>
+								</div>
+								<Switch
+									id="is_public"
+									checked={formData.is_public}
+									onCheckedChange={(checked) =>
+										setFormData((prev) => ({
+											...prev,
+											is_public: checked,
+										}))
+									}
+								/>
 							</div>
 						</div>
 						<DialogFooter>

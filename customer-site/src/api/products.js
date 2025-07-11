@@ -6,6 +6,9 @@ export const productsAPI = {
 	getProducts: async (filters = {}) => {
 		const params = new URLSearchParams();
 
+		// Add website filter to only show public products with public categories
+		params.append("for_website", "true");
+
 		// Add filters to params
 		if (filters.category) params.append("category", filters.category);
 		if (filters.search) params.append("search", filters.search);
@@ -18,14 +21,16 @@ export const productsAPI = {
 
 	// Get single product by ID
 	getProduct: async (productId) => {
-		const response = await apiClient.get(`/products/${productId}/`);
+		const response = await apiClient.get(
+			`/products/${productId}/?for_website=true`
+		);
 		return response.data;
 	},
 
 	// Get product by name (search for product with exact name match)
 	getByName: async (productName) => {
 		const response = await apiClient.get(
-			`/products/?search=${encodeURIComponent(productName)}`
+			`/products/?for_website=true&search=${encodeURIComponent(productName)}`
 		);
 		// Filter for exact name match since search might return partial matches
 		// Handle both paginated (results array) and non-paginated response formats
@@ -39,7 +44,7 @@ export const productsAPI = {
 
 	// Get all products (for filtering related products)
 	getAll: async () => {
-		const response = await apiClient.get("/products/");
+		const response = await apiClient.get("/products/?for_website=true");
 		// Handle both paginated (results array) and non-paginated response formats
 		return response.data.results || response.data;
 	},
@@ -52,7 +57,9 @@ export const productsAPI = {
 
 	// Get product categories
 	getCategories: async () => {
-		const response = await apiClient.get("/products/categories/");
+		const response = await apiClient.get(
+			"/products/categories/?for_website=true"
+		);
 		return response.data;
 	},
 

@@ -22,6 +22,10 @@ class Category(MPTTModel):
         default=0,
         help_text=_("Display order for this category. Lower numbers appear first."),
     )
+    is_public = models.BooleanField(
+        default=True,
+        help_text=_("Whether this category and its products are publicly visible on the website."),
+    )
 
     class MPTTMeta:
         order_insertion_by = ["order", "name"]
@@ -102,6 +106,10 @@ class Product(models.Model):
     )
     is_active = models.BooleanField(
         default=True, help_text=_("Is this product available for sale?")
+    )
+    is_public = models.BooleanField(
+        default=True,
+        help_text=_("Whether this product is publicly visible. Note: The parent category must also be public."),
     )
     image = models.ImageField(
         upload_to="products/",
