@@ -113,7 +113,7 @@ const ProductsPage = () => {
 
 	const fetchParentCategories = async () => {
 		try {
-			const response = await getCategories({ parent_only: true });
+			const response = await getCategories({ parent: "null" });
 			setParentCategories(response.data || []);
 		} catch (err) {
 			console.error("Failed to fetch parent categories:", err);
@@ -514,7 +514,9 @@ const ProductsPage = () => {
 	return (
 		<>
 			<DomainPageLayout
-				pageTitle={showArchivedProducts ? "Archived Products" : "Active Products"}
+				pageTitle={
+					showArchivedProducts ? "Archived Products" : "Active Products"
+				}
 				pageDescription="Manage your product catalog"
 				pageIcon={Tags}
 				pageActions={headerActions}

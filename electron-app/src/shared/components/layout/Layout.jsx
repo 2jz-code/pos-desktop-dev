@@ -52,6 +52,7 @@ import {
 } from "@/domains/pos";
 import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
 import WebOrderNotification from "@/shared/components/notifications/WebOrderNotification";
+import { NotificationRetryButton } from "@/components/NotificationRetryButton";
 
 //eslint-disable-next-line
 function NavLink({ to, icon: Icon, children, isCollapsed }) {
@@ -376,6 +377,9 @@ export function Layout({ children }) {
 
 					{/* Notification & Connection Status */}
 					<div className="flex items-center gap-2">
+						{/* Notification Retry Button */}
+						<NotificationRetryButton />
+
 						{/* Connection Status Indicator */}
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -512,7 +516,6 @@ export function Layout({ children }) {
 		</div>
 	);
 }
-
 
 Layout.propTypes = {
 	children: PropTypes.node.isRequired,

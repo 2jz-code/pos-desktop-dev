@@ -8,7 +8,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui/select";
-import { Filter } from "lucide-react";
+import { Button } from "@/shared/components/ui/button";
+import { Filter, X } from "lucide-react";
 import { shallow } from "zustand/shallow";
 
 const ProductFilter = () => {
@@ -19,6 +20,7 @@ const ProductFilter = () => {
 		selectedChildCategory,
 		setSelectedParentCategory,
 		setSelectedChildCategory,
+		resetFilters,
 	} = usePosStore(
 		(state) => ({
 			parentCategories: state.parentCategories,
@@ -27,9 +29,12 @@ const ProductFilter = () => {
 			selectedChildCategory: state.selectedChildCategory,
 			setSelectedParentCategory: state.setSelectedParentCategory,
 			setSelectedChildCategory: state.setSelectedChildCategory,
+			resetFilters: state.resetFilters,
 		}),
 		shallow
 	);
+
+	const hasActiveFilters = selectedParentCategory !== "all";
 
 	return (
 		<div className="flex items-center gap-4 mb-6">
@@ -90,6 +95,18 @@ const ProductFilter = () => {
 						))}
 					</SelectContent>
 				</Select>
+			)}
+
+			{hasActiveFilters && (
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={resetFilters}
+					className="border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+				>
+					<X className="h-4 w-4 mr-2" />
+					Clear Filters
+				</Button>
 			)}
 		</div>
 	);

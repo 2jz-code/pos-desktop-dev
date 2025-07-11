@@ -39,7 +39,11 @@ export const ProductCard = ({ product }) => {
 
 			<div className="w-20 h-20 mb-3 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
 				<img
-					src={product.image || `https://avatar.vercel.sh/${product.name}.png`}
+					src={
+						product.image_url ||
+						product.image ||
+						`https://avatar.vercel.sh/${product.name}.png`
+					}
 					alt={product.name}
 					className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
 				/>

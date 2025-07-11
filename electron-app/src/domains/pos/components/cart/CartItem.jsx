@@ -70,6 +70,7 @@ export default function CartItem({ item }) {
 				<div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
 					<img
 						src={
+							item.product.image_url ||
 							item.product.image ||
 							`https://avatar.vercel.sh/${item.product.name}.png`
 						}

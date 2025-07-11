@@ -26,6 +26,7 @@ const POS = () => {
 		loadCartFromOrderId,
 		orderId,
 		addItem,
+		resetFilters,
 		// Get the dialog status flags for conditional rendering
 		isTenderDialogOpen,
 		isDiscountDialogOpen,
@@ -50,6 +51,7 @@ const POS = () => {
 			loadCartFromOrderId: state.loadCartFromOrderId,
 			orderId: state.orderId,
 			addItem: state.addItem,
+			resetFilters: state.resetFilters,
 			// Add the dialog flags to the selector
 			isTenderDialogOpen: state.isTenderDialogOpen,
 			isDiscountDialogOpen: state.isDiscountDialogOpen,
@@ -71,6 +73,8 @@ const POS = () => {
 	const { scanBarcode, isScanning } = usePOSBarcode(addItem);
 
 	useEffect(() => {
+		// Reset filters when navigating to POS page
+		resetFilters?.();
 		fetchProducts?.();
 		fetchParentCategories?.();
 		if (!currentUser) {
@@ -80,6 +84,7 @@ const POS = () => {
 			loadCartFromOrderId?.(orderId);
 		}
 	}, [
+		resetFilters,
 		fetchProducts,
 		fetchParentCategories,
 		login,

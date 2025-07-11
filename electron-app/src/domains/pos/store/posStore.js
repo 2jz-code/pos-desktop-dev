@@ -24,7 +24,7 @@ export const usePosStore = createWithEqualityFn(
 		{
 			name: "pos-storage",
 			partialize: (state) => ({
-				// Persist all relevant cart state
+				// Persist all relevant cart state but NOT filter state
 				orderId: state.orderId,
 				orderStatus: state.orderStatus,
 				items: state.items,
@@ -36,6 +36,8 @@ export const usePosStore = createWithEqualityFn(
 				tip: state.tip,
 				appliedDiscounts: state.appliedDiscounts,
 				currentUser: state.currentUser,
+				// Explicitly exclude filter state so it resets on navigation:
+				// selectedParentCategory, selectedChildCategory, searchTerm, childCategories
 			}),
 			merge: (persistedState, currentState) => {
 				return { ...currentState, ...persistedState };

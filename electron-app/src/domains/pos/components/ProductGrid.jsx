@@ -21,7 +21,9 @@ const ProductGrid = () => {
 
 			if (!directCategory) continue;
 
-			if (directCategory.parent_id === null) {
+			// Check if this is a parent category (no parent) or child category (has parent)
+			if (!directCategory.parent) {
+				// This is a parent category - product is directly under parent
 				const parentName = directCategory.name;
 
 				if (!groups[parentName]) {
@@ -32,6 +34,7 @@ const ProductGrid = () => {
 
 				groups[parentName].__direct_products__.push(product);
 			} else {
+				// This is a child category - product is under a subcategory
 				const subcategoryName = directCategory.name;
 				const parentName = directCategory.parent?.name || "Other";
 
