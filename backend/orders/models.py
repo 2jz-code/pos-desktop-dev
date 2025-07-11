@@ -134,14 +134,16 @@ class Order(models.Model):
     tax_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
     # Email tracking
     confirmation_sent = models.BooleanField(
         default=False,
         help_text=_("Whether an order confirmation email has been sent for this order"),
     )
+
+    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order ID from the old system.")
 
     class Meta:
         # Consider ordering by `created_at` or `pk` for consistent numbering if `order_number` is null
@@ -369,6 +371,8 @@ class OrderItem(models.Model):
         decimal_places=2,
         help_text=_("Price of the product at the time of sale."),
     )
+
+    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order item ID from the old system.")
 
     class Meta:
         verbose_name = _("Order Item")

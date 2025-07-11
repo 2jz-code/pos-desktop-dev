@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import WelcomeView from "../components/customerViews/WelcomeView";
 import CustomerCartView from "../components/customerViews/CustomerCartView";
 import PaymentProcessingView from "../components/customerViews/PaymentProcessingView";
@@ -19,7 +19,10 @@ const getActiveView = (state) => {
 
 	if (isPaymentActive) {
 		// Show tip screen only for card payments that are awaiting a tip
-		if (state.activeView === "awaitingTip" && state.paymentMethod === "CREDIT") {
+		if (
+			state.activeView === "awaitingTip" &&
+			state.paymentMethod === "CREDIT"
+		) {
 			return "tip";
 		}
 		if (state.activeView === "processingPayment") {

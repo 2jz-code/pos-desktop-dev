@@ -77,8 +77,10 @@ class Payment(models.Model):
         help_text=_("Stripe Payment Intent ID for guest payments"),
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The payment ID from the old system.")
+
+    created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -230,7 +232,9 @@ class PaymentTransaction(models.Model):
         blank=True, null=True, help_text="Reason for the refund."
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The transaction ID from the old system.")
+
+    created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -296,8 +300,8 @@ class GiftCard(models.Model):
         help_text=_("Optional notes about the gift card"),
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]

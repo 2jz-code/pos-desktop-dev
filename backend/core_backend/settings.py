@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "settings",
     "integrations",
     "notifications",
+    "core_backend",
 ]
 
 MIDDLEWARE = [
@@ -103,6 +104,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "TIMEOUT": 20, # 20 seconds
     }
 }
 
@@ -210,7 +212,6 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     # Removed global pagination - only applied to specific ViewSets
-
 }
 
 # Simple JWT settings (optional, provides sensible defaults)

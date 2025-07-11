@@ -120,6 +120,8 @@ class Product(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The product ID from the old system.")
     # The ForeignKey to Recipe will be added later when we create the Inventory app.
 
     class Meta:
