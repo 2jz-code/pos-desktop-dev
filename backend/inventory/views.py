@@ -52,6 +52,17 @@ class InventoryStockListView(generics.ListAPIView):
     # Advanced filtering (e.g., by location or product) could be added here later.
 
 
+class ProductStockListView(generics.ListAPIView):
+    serializer_class = InventoryStockSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        product_id = self.kwargs.get("product_id")
+        return InventoryStock.objects.filter(product_id=product_id).select_related(
+            "product", "location"
+        )
+
+
 # --- Barcode-based Views ---
 
 

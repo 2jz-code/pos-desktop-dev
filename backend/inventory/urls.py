@@ -5,6 +5,7 @@ from .views import (
     RecipeListCreateView,
     RecipeDetailView,
     InventoryStockListView,
+    ProductStockListView,
     AdjustStockView,
     TransferStockView,
     ProductStockCheckView,
@@ -26,6 +27,11 @@ urlpatterns = [
     path("recipes/<int:pk>/", RecipeDetailView.as_view(), name="recipe-detail"),
     # Stock Levels (Read-only view)
     path("stock/", InventoryStockListView.as_view(), name="stock-list"),
+    path(
+        "stock/product/<int:product_id>/",
+        ProductStockListView.as_view(),
+        name="product-stock-list",
+    ),
     # Stock Management Actions
     path("stock/adjust/", AdjustStockView.as_view(), name="stock-adjust"),
     path("stock/transfer/", TransferStockView.as_view(), name="stock-transfer"),

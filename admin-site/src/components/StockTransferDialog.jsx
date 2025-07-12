@@ -23,6 +23,7 @@ import { ArrowRight, Package } from "lucide-react";
 import { toast } from "sonner";
 import inventoryService from "../services/api/inventoryService";
 import productService from "../services/api/productService";
+import SearchableSelect from "./shared/SearchableSelect";
 
 const StockTransferDialog = ({
 	isOpen,
@@ -42,6 +43,7 @@ const StockTransferDialog = ({
 	const [products, setProducts] = useState([]);
 	const [locations, setLocations] = useState([]);
 	const [loadingData, setLoadingData] = useState(false);
+	const [stockLevels, setStockLevels] = useState({});
 
 	useEffect(() => {
 		if (isOpen) {
@@ -51,25 +53,50 @@ const StockTransferDialog = ({
 					...prev,
 					product_id: product.id?.toString() || "",
 				}));
+				fetchStockLevels(product.id);
 			}
 		}
 	}, [isOpen, product]);
+
+	const fetchStockLevels = async (productId) => {
+		if (!productId) {
+			setStockLevels({});
+			return;
+		}
+		try {
+			const response = await inventoryService.getStockByProduct(productId);
+			const levels = (
+				response.data?.results ||
+				response.data ||
+				response.results ||
+				response
+			).reduce((acc, stock) => {
+				acc[stock.location.id] = stock.quantity;
+				return acc;
+			}, {});
+			setStockLevels(levels);
+		} catch (error) {
+			console.error("Failed to fetch stock levels:", error);
+			setStockLevels({});
+		}
+	};
 
 	const loadInitialData = async () => {
 		setLoadingData(true);
 		try {
 			const [productsResponse, locationsResponse] = await Promise.all([
-				productService.getProducts(),
+				productService.getProducts({ limit: 1000 }), // Fetch more products
 				inventoryService.getLocations(),
 			]);
 
-			// Ensure products is always an array
 			const productsData =
+				productsResponse?.data?.results ||
 				productsResponse?.data ||
 				productsResponse?.results ||
 				productsResponse ||
 				[];
 			const locationsData =
+				locationsResponse?.data?.results ||
 				locationsResponse?.data ||
 				locationsResponse?.results ||
 				locationsResponse ||
@@ -84,6 +111,39 @@ const StockTransferDialog = ({
 			setLocations([]);
 		} finally {
 			setLoadingData(false);
+		}
+	};
+
+	const handleProductChange = (productId) => {
+		setFormData({
+			...formData,
+			product_id: productId,
+			from_location_id: "",
+			to_location_id: "",
+		});
+		fetchStockLevels(productId);
+	};
+
+	const handleQuantityChange = (e) => {
+		const value = e.target.value;
+		const fromLocationStock = stockLevels[formData.from_location_id] || 0;
+
+		// Capping logic for decimal places
+		const decimalRegex = /^\d*(\.\d{0,2})?$/;
+		if (value !== "" && !decimalRegex.test(value)) {
+			// If the input doesn't match the pattern (e.g., has > 2 decimal places),
+			// we simply don't update the state, effectively ignoring the invalid character.
+			return;
+		}
+
+		const numericValue = Number.parseFloat(value);
+
+		// Cap the total value if it exceeds the maximum available stock
+		if (!isNaN(numericValue) && numericValue > fromLocationStock) {
+			setFormData({ ...formData, quantity: fromLocationStock.toString() });
+			toast.info("Quantity adjusted to maximum available stock.");
+		} else {
+			setFormData({ ...formData, quantity: value });
 		}
 	};
 
@@ -109,6 +169,14 @@ const StockTransferDialog = ({
 			return;
 		}
 
+		const fromLocationStock = stockLevels[formData.from_location_id] || 0;
+		if (parseFloat(formData.quantity) > fromLocationStock) {
+			setError(
+				"Transfer quantity cannot exceed available stock at the source location."
+			);
+			return;
+		}
+
 		setLoading(true);
 		setError("");
 
@@ -122,13 +190,13 @@ const StockTransferDialog = ({
 			);
 
 			const selectedProduct = Array.isArray(products)
-				? products.find((p) => p.id === parseInt(formData.product_id))
+				? products.find((p) => p.id.toString() === formData.product_id)
 				: null;
 			const selectedFromLocation = Array.isArray(locations)
-				? locations.find((l) => l.id === parseInt(formData.from_location_id))
+				? locations.find((l) => l.id.toString() === formData.from_location_id)
 				: null;
 			const selectedToLocation = Array.isArray(locations)
-				? locations.find((l) => l.id === parseInt(formData.to_location_id))
+				? locations.find((l) => l.id.toString() === formData.to_location_id)
 				: null;
 
 			toast.success("Stock Transferred", {
@@ -162,6 +230,7 @@ const StockTransferDialog = ({
 			reason: "",
 		});
 		setError("");
+		setStockLevels({});
 		onClose();
 	};
 
@@ -176,7 +245,12 @@ const StockTransferDialog = ({
 		  )
 		: null;
 
-	if (loadingData || !Array.isArray(products) || !Array.isArray(locations)) {
+	const productOptions = products.map((p) => ({
+		value: p.id.toString(),
+		label: `${p.name} - ${p.barcode || "N/A"}`,
+	}));
+
+	if (loadingData) {
 		return (
 			<Dialog
 				open={isOpen}
@@ -228,28 +302,13 @@ const StockTransferDialog = ({
 
 					<div className="space-y-2">
 						<Label htmlFor="product">Product *</Label>
-						<Select
+						<SearchableSelect
+							options={productOptions}
 							value={formData.product_id}
-							onValueChange={(value) =>
-								setFormData({ ...formData, product_id: value })
-							}
+							onChange={handleProductChange}
+							placeholder="Select a product"
 							disabled={!!product}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Select a product" />
-							</SelectTrigger>
-							<SelectContent>
-								{Array.isArray(products) &&
-									products.map((product) => (
-										<SelectItem
-											key={product.id}
-											value={product.id.toString()}
-										>
-											{product.name} - ${product.price}
-										</SelectItem>
-									))}
-							</SelectContent>
-						</Select>
+						/>
 					</div>
 
 					<div className="grid grid-cols-1 gap-4">
@@ -260,6 +319,7 @@ const StockTransferDialog = ({
 								onValueChange={(value) =>
 									setFormData({ ...formData, from_location_id: value })
 								}
+								disabled={!formData.product_id}
 							>
 								<SelectTrigger>
 									<SelectValue placeholder="Select source location" />
@@ -270,15 +330,23 @@ const StockTransferDialog = ({
 											<SelectItem
 												key={location.id}
 												value={location.id.toString()}
+												disabled={
+													!stockLevels[location.id] ||
+													stockLevels[location.id] <= 0
+												}
 											>
 												{location.name}
 											</SelectItem>
 										))}
 								</SelectContent>
 							</Select>
+							{formData.from_location_id && (
+								<p className="text-xs text-gray-500">
+									Available: {stockLevels[formData.from_location_id] || 0}
+								</p>
+							)}
 						</div>
 
-						{/* Transfer Direction Indicator */}
 						{selectedFromLocation && selectedToLocation && (
 							<div className="flex items-center justify-center py-2">
 								<div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -298,6 +366,7 @@ const StockTransferDialog = ({
 								onValueChange={(value) =>
 									setFormData({ ...formData, to_location_id: value })
 								}
+								disabled={!formData.product_id}
 							>
 								<SelectTrigger>
 									<SelectValue placeholder="Select destination location" />
@@ -319,6 +388,11 @@ const StockTransferDialog = ({
 											))}
 								</SelectContent>
 							</Select>
+							{formData.to_location_id && (
+								<p className="text-xs text-gray-500">
+									Current Stock: {stockLevels[formData.to_location_id] || 0}
+								</p>
+							)}
 						</div>
 					</div>
 
@@ -330,10 +404,9 @@ const StockTransferDialog = ({
 							min="0"
 							step="0.01"
 							value={formData.quantity}
-							onChange={(e) =>
-								setFormData({ ...formData, quantity: e.target.value })
-							}
+							onChange={handleQuantityChange}
 							placeholder="Enter quantity to transfer"
+							disabled={!formData.from_location_id}
 						/>
 					</div>
 
@@ -360,7 +433,11 @@ const StockTransferDialog = ({
 						</Button>
 						<Button
 							type="submit"
-							disabled={loading}
+							disabled={
+								loading ||
+								!formData.from_location_id ||
+								!formData.to_location_id
+							}
 						>
 							{loading ? "Transferring..." : "Transfer Stock"}
 						</Button>

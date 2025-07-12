@@ -23,6 +23,7 @@ import { Package, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
 import inventoryService from "../services/api/inventoryService";
 import productService from "../services/api/productService";
+import SearchableSelect from "./shared/SearchableSelect";
 
 const StockAdjustmentDialog = ({
 	isOpen,
@@ -42,6 +43,7 @@ const StockAdjustmentDialog = ({
 	const [products, setProducts] = useState([]);
 	const [locations, setLocations] = useState([]);
 	const [loadingData, setLoadingData] = useState(false);
+	const [stockLevels, setStockLevels] = useState({});
 
 	useEffect(() => {
 		if (isOpen) {
@@ -51,25 +53,50 @@ const StockAdjustmentDialog = ({
 					...prev,
 					product_id: product.id?.toString() || "",
 				}));
+				fetchStockLevels(product.id);
 			}
 		}
 	}, [isOpen, product]);
+
+	const fetchStockLevels = async (productId) => {
+		if (!productId) {
+			setStockLevels({});
+			return;
+		}
+		try {
+			const response = await inventoryService.getStockByProduct(productId);
+			const levels = (
+				response.data?.results ||
+				response.data ||
+				response.results ||
+				response
+			).reduce((acc, stock) => {
+				acc[stock.location.id] = stock.quantity;
+				return acc;
+			}, {});
+			setStockLevels(levels);
+		} catch (error) {
+			console.error("Failed to fetch stock levels:", error);
+			setStockLevels({});
+		}
+	};
 
 	const loadInitialData = async () => {
 		setLoadingData(true);
 		try {
 			const [productsResponse, locationsResponse] = await Promise.all([
-				productService.getProducts(),
+				productService.getProducts({ limit: 1000 }), // Fetch more products
 				inventoryService.getLocations(),
 			]);
 
-			// Ensure products is always an array
 			const productsData =
+				productsResponse?.data?.results ||
 				productsResponse?.data ||
 				productsResponse?.results ||
 				productsResponse ||
 				[];
 			const locationsData =
+				locationsResponse?.data?.results ||
 				locationsResponse?.data ||
 				locationsResponse?.results ||
 				locationsResponse ||
@@ -84,6 +111,42 @@ const StockAdjustmentDialog = ({
 			setLocations([]);
 		} finally {
 			setLoadingData(false);
+		}
+	};
+
+	const handleProductChange = (productId) => {
+		setFormData({
+			...formData,
+			product_id: productId,
+			location_id: "",
+		});
+		fetchStockLevels(productId);
+	};
+
+	const handleQuantityChange = (e) => {
+		const value = e.target.value;
+		const fromLocationStock = stockLevels[formData.location_id] || 0;
+
+		// Capping logic for decimal places
+		const decimalRegex = /^\d*(\.\d{0,2})?$/;
+		if (value !== "" && !decimalRegex.test(value)) {
+			// If the input doesn't match the pattern (e.g., has > 2 decimal places),
+			// we simply don't update the state, effectively ignoring the invalid character.
+			return;
+		}
+
+		const numericValue = Number.parseFloat(value);
+
+		// Cap the total value if it exceeds the maximum available stock
+		if (
+			formData.adjustment_type === "remove" &&
+			!isNaN(numericValue) &&
+			numericValue > fromLocationStock
+		) {
+			setFormData({ ...formData, quantity: fromLocationStock.toString() });
+			toast.info("Quantity adjusted to maximum available stock.");
+		} else {
+			setFormData({ ...formData, quantity: value });
 		}
 	};
 
@@ -116,10 +179,10 @@ const StockAdjustmentDialog = ({
 			);
 
 			const selectedProduct = Array.isArray(products)
-				? products.find((p) => p.id === parseInt(formData.product_id))
+				? products.find((p) => p.id.toString() === formData.product_id)
 				: null;
 			const selectedLocation = Array.isArray(locations)
-				? locations.find((l) => l.id === parseInt(formData.location_id))
+				? locations.find((l) => l.id.toString() === formData.location_id)
 				: null;
 
 			toast.success("Stock Adjusted", {
@@ -157,10 +220,16 @@ const StockAdjustmentDialog = ({
 			reason: "",
 		});
 		setError("");
+		setStockLevels({});
 		onClose();
 	};
 
-	if (loadingData || !Array.isArray(products) || !Array.isArray(locations)) {
+	const productOptions = products.map((p) => ({
+		value: p.id.toString(),
+		label: `${p.name} - ${p.barcode || "N/A"}`,
+	}));
+
+	if (loadingData) {
 		return (
 			<Dialog
 				open={isOpen}
@@ -212,28 +281,13 @@ const StockAdjustmentDialog = ({
 
 					<div className="space-y-2">
 						<Label htmlFor="product">Product *</Label>
-						<Select
+						<SearchableSelect
+							options={productOptions}
 							value={formData.product_id}
-							onValueChange={(value) =>
-								setFormData({ ...formData, product_id: value })
-							}
+							onChange={handleProductChange}
+							placeholder="Select a product"
 							disabled={!!product}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Select a product" />
-							</SelectTrigger>
-							<SelectContent>
-								{Array.isArray(products) &&
-									products.map((product) => (
-										<SelectItem
-											key={product.id}
-											value={product.id.toString()}
-										>
-											{product.name} - ${product.price}
-										</SelectItem>
-									))}
-							</SelectContent>
-						</Select>
+						/>
 					</div>
 
 					<div className="space-y-2">
@@ -243,6 +297,7 @@ const StockAdjustmentDialog = ({
 							onValueChange={(value) =>
 								setFormData({ ...formData, location_id: value })
 							}
+							disabled={!formData.product_id}
 						>
 							<SelectTrigger>
 								<SelectValue placeholder="Select a location" />
@@ -259,6 +314,11 @@ const StockAdjustmentDialog = ({
 									))}
 							</SelectContent>
 						</Select>
+						{formData.location_id && (
+							<p className="text-xs text-gray-500">
+								Available: {stockLevels[formData.location_id] || 0}
+							</p>
+						)}
 					</div>
 
 					<div className="grid grid-cols-2 gap-4">
@@ -298,10 +358,9 @@ const StockAdjustmentDialog = ({
 								min="0"
 								step="0.01"
 								value={formData.quantity}
-								onChange={(e) =>
-									setFormData({ ...formData, quantity: e.target.value })
-								}
+								onChange={handleQuantityChange}
 								placeholder="Enter quantity"
+								disabled={!formData.location_id}
 							/>
 						</div>
 					</div>

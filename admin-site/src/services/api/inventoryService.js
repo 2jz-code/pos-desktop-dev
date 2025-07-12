@@ -30,6 +30,23 @@ class InventoryService {
 	}
 
 	/**
+	 * Get stock levels for a specific product
+	 * @param {number} productId - Product ID
+	 * @returns {Promise} API response with stock records for the product
+	 */
+	async getStockByProduct(productId) {
+		try {
+			const response = await apiClient.get(
+				`/inventory/stock/product/${productId}/`
+			);
+			return response.data;
+		} catch (error) {
+			console.error(`Failed to get stock for product ${productId}:`, error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Get all locations
 	 * @returns {Promise} API response with locations
 	 */
