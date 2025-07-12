@@ -104,7 +104,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
-        "TIMEOUT": 20, # 20 seconds
+        "TIMEOUT": 20,  # 20 seconds
     }
 }
 
@@ -154,38 +154,38 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # AWS S3 Configuration
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
-AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
 # Use S3 for media files if AWS credentials are provided
 USE_S3 = bool(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME)
 
 if USE_S3:
     # S3 Media files configuration
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
-    
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+
     # S3 settings
     AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
+        "CacheControl": "max-age=86400",
     }
-    AWS_DEFAULT_ACL = 'public-read'
+    AWS_DEFAULT_ACL = "public-read"
     AWS_S3_FILE_OVERWRITE = False
-    AWS_MEDIA_LOCATION = 'media'
-    
+    AWS_MEDIA_LOCATION = "media"
+
     # Use a custom storage class for media files
     from storages.backends.s3boto3 import S3Boto3Storage
-    
+
     class MediaStorage(S3Boto3Storage):
         location = AWS_MEDIA_LOCATION
         default_acl = AWS_DEFAULT_ACL
         file_overwrite = AWS_S3_FILE_OVERWRITE
-    
-    DEFAULT_FILE_STORAGE = 'core_backend.settings.MediaStorage'
-    
+
+    DEFAULT_FILE_STORAGE = "core_backend.settings.MediaStorage"
+
     print(f"Using S3 for media files: {MEDIA_URL}")
 else:
     # Local storage fallback
@@ -194,7 +194,7 @@ else:
     print("Using local storage for media files")
 
 # Base URL for building absolute URLs when no request context is available
-BASE_URL = os.getenv('BASE_URL', 'http://127.0.0.1:8001')
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8001")
 
 # You might also want to add STATICFILES_DIRS if you have project-specific static files
 # not tied to a particular app, though it's not strictly necessary for Jazzmin to work
@@ -221,6 +221,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 
 # CSRF Trusted Origins
@@ -233,6 +235,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 
 # Session Configuration for Guest Users

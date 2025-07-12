@@ -38,14 +38,14 @@ export function LoginPage() {
 				<div className="text-center mb-6">
 					<PanelLeft className="mx-auto h-10 w-10 text-gray-700 dark:text-gray-300" />
 					<h1 className="text-3xl font-bold mt-2 text-gray-900 dark:text-gray-50">
-						Admin Panel
+						Ajeen POS
 					</h1>
 				</div>
 				<Card>
 					<CardHeader>
 						<CardTitle className="text-2xl">Login</CardTitle>
 						<CardDescription>
-							Enter your username and PIN to access the admin panel.
+							Enter your username and PIN to access the Ajeen POS.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
