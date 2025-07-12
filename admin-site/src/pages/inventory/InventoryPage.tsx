@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	Card,
@@ -9,6 +9,14 @@ import {
 } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "../../components/ui/select";
 import {
 	Tabs,
 	TabsContent,
@@ -35,17 +43,20 @@ import {
 	Trash2,
 	Building,
 	Warehouse,
+	Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import inventoryService from "../../services/api/inventoryService";
 import StockAdjustmentDialog from "../../components/StockAdjustmentDialog";
 import LocationManagementDialog from "../../components/LocationManagementDialog";
 import StockTransferDialog from "../../components/StockTransferDialog";
+import { useDebounce } from "../../hooks/useDebounce";
 
 interface Product {
 	id: number;
 	name: string;
 	sku?: string;
+	barcode?: string;
 	price: number;
 }
 
@@ -90,6 +101,7 @@ export const InventoryPage = () => {
 	const [currentLocationMode, setCurrentLocationMode] = useState<
 		"create" | "edit"
 	>("create");
+	const [activeTab, setActiveTab] = useState("overview");
 
 	// Dialog states
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] =
@@ -97,6 +109,11 @@ export const InventoryPage = () => {
 	const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
 	const [isStockTransferDialogOpen, setIsStockTransferDialogOpen] =
 		useState(false);
+
+	// Filtering and search states
+	const [searchQuery, setSearchQuery] = useState("");
+	const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
 	const queryClient = useQueryClient();
 
@@ -107,9 +124,17 @@ export const InventoryPage = () => {
 			queryFn: inventoryService.getDashboardData,
 		});
 
+	const stockQueryFilters = useMemo(
+		() => ({
+			location: selectedLocation,
+			search: debouncedSearchQuery,
+		}),
+		[selectedLocation, debouncedSearchQuery]
+	);
+
 	const { data: stockData, isLoading: stockLoading } = useQuery<StockItem[]>({
-		queryKey: ["inventory-stock"],
-		queryFn: inventoryService.getAllStock,
+		queryKey: ["inventory-stock", stockQueryFilters],
+		queryFn: () => inventoryService.getAllStock(stockQueryFilters),
 	});
 
 	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>(
@@ -192,9 +217,9 @@ export const InventoryPage = () => {
 		queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
 	};
 
-	const isLoading = dashboardLoading || stockLoading || locationsLoading;
+	const isInitialLoading = dashboardLoading || locationsLoading;
 
-	if (isLoading) {
+	if (isInitialLoading) {
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div className="flex items-center gap-2">
@@ -247,7 +272,8 @@ export const InventoryPage = () => {
 			{/* Content */}
 			<div className="flex-1 overflow-hidden">
 				<Tabs
-					defaultValue="overview"
+					value={activeTab}
+					onValueChange={setActiveTab}
 					className="h-full flex flex-col"
 				>
 					<div className="flex-shrink-0 px-6 pt-6">
@@ -397,10 +423,49 @@ export const InventoryPage = () => {
 									</CardDescription>
 								</CardHeader>
 								<CardContent>
+									{/* Filtering and Search UI */}
+									<div className="flex items-center gap-4 mb-6">
+										<div className="relative w-full max-w-sm">
+											<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+											<Input
+												placeholder="Search by product name or barcode..."
+												value={searchQuery}
+												onChange={(e) => setSearchQuery(e.target.value)}
+												className="pl-10"
+											/>
+										</div>
+										<Select
+											onValueChange={(value) =>
+												setSelectedLocation(value === "all" ? null : value)
+											}
+											defaultValue="all"
+										>
+											<SelectTrigger className="w-[180px]">
+												<SelectValue placeholder="Filter by location" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Locations</SelectItem>
+												{locations?.map((location) => (
+													<SelectItem
+														key={location.id}
+														value={String(location.id)}
+													>
+														{location.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+
 									<div className="space-y-4">
-										{!stockData || stockData.length === 0 ? (
+										{stockLoading ? (
 											<div className="text-center py-8 text-muted-foreground">
-												No stock data available
+												<RefreshCw className="h-4 w-4 animate-spin mx-auto mb-2" />
+												Loading stock...
+											</div>
+										) : !stockData || stockData.length === 0 ? (
+											<div className="text-center py-8 text-muted-foreground">
+												No stock data available for the selected filters.
 											</div>
 										) : (
 											<div className="rounded-md border">
@@ -440,7 +505,7 @@ export const InventoryPage = () => {
 																			{stock.product?.name}
 																		</div>
 																		<div className="text-sm text-muted-foreground">
-																			SKU: {stock.product?.sku || "N/A"}
+																			Barcode: {stock.product?.barcode || "N/A"}
 																		</div>
 																	</td>
 																	<td className="p-4">

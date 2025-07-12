@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
@@ -46,10 +47,25 @@ class RecipeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class InventoryStockListView(generics.ListAPIView):
-    queryset = InventoryStock.objects.select_related("product", "location").all()
     serializer_class = InventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
-    # Advanced filtering (e.g., by location or product) could be added here later.
+
+    def get_queryset(self):
+        queryset = InventoryStock.objects.select_related("product", "location").all()
+        
+        location_id = self.request.query_params.get('location', None)
+        search_query = self.request.query_params.get('search', None)
+        
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+            
+        if search_query:
+            queryset = queryset.filter(
+                Q(product__name__icontains=search_query) |
+                Q(product__barcode__icontains=search_query)
+            )
+            
+        return queryset
 
 
 class ProductStockListView(generics.ListAPIView):

@@ -19,9 +19,17 @@ class InventoryService {
 	 * Get all inventory stock levels
 	 * @returns {Promise} API response with all stock records
 	 */
-	async getAllStock() {
+	async getAllStock(filters = {}) {
 		try {
-			const response = await apiClient.get("/inventory/stock/");
+			const params = new URLSearchParams();
+			if (filters.location) {
+				params.append("location", filters.location);
+			}
+			if (filters.search) {
+				params.append("search", filters.search);
+			}
+
+			const response = await apiClient.get("/inventory/stock/", { params });
 			return response.data;
 		} catch (error) {
 			console.error("Failed to get all stock:", error);
