@@ -55,7 +55,11 @@ class POSLoginSerializer(serializers.Serializer):
 
 
 class WebLoginSerializer(TokenObtainPairSerializer):
-    pass
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # Add user data to the response
+        data["user"] = UserSerializer(self.user).data
+        return data
 
 
 class WebTokenRefreshSerializer(TokenRefreshSerializer):

@@ -16,6 +16,10 @@ export * from "./dropdown-menu";
 export * from "./sheet";
 export * from "./scroll-area";
 export * from "./dialog";
+export * from "./alert-dialog";
+export * from "./switch";
+export * from "./textarea";
+export * from "./tabs";
 export * from "./use-toast";
 
 // Re-export commonly used components for convenience
@@ -60,3 +64,4 @@ export {
 	DialogTitle,
 	DialogTrigger,
 } from "./dialog";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";

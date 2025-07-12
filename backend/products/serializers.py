@@ -91,6 +91,12 @@ class ProductSerializer(serializers.ModelSerializer):
             "original_filename",  # Add original_filename to fields
         ]
 
+    def validate_barcode(self, value):
+        """Convert empty string to None for barcode to handle unique constraint properly"""
+        if value == "" or value is None:
+            return None
+        return value
+
     def get_image_url(self, obj):
         """Return the full URL for the product image"""
         if obj.image:
@@ -167,6 +173,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "location_id",
             "image",  # Add image to fields
         ]
+
+    def validate_barcode(self, value):
+        """Convert empty string to None for barcode to handle unique constraint properly"""
+        if value == "" or value is None:
+            return None
+        return value
 
     def create(self, validated_data):
         return ProductService.create_product(**validated_data)
