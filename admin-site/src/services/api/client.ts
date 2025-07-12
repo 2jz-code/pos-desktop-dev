@@ -1,6 +1,6 @@
-import axios from "axios";
+import axios, { type AxiosInstance } from "axios";
 
-const apiClient = axios.create({
+const apiClient: AxiosInstance = axios.create({
 	baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
 	timeout: parseInt(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
 	withCredentials: true, // This is crucial for sending cookies
@@ -14,6 +14,7 @@ apiClient.interceptors.response.use(
 	},
 	async (error) => {
 		const originalRequest = error.config;
+		originalRequest._retry = originalRequest._retry || false;
 
 		// Check if the error is 401 Unauthorized and if we haven't already retried
 		if (error.response?.status === 401 && !originalRequest._retry) {

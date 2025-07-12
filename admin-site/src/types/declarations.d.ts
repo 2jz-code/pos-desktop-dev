@@ -1,1 +1,9 @@
 declare module "**/api/*.js";
+declare module "@/services/api/categoryService";
+declare module "@/services/api/settingsService";
+declare module "@/services/api/productService";
+declare module "@/services/api/orderService";
+declare module "@/services/api/paymentService";
+declare module "@/services/api/userService";
+declare module "@/services/api/authService";
+declare module "@/services/api/client";

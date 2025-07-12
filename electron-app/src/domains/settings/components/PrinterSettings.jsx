@@ -6,7 +6,7 @@ import {
 	getPrinterConfig,
 	updatePrinterConfig,
 } from "../services/settingsService";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { CategoryMultiSelect } from "./CategoryMultiSelect";
 
@@ -40,12 +40,13 @@ import {
 import { Separator } from "@/shared/components/ui/separator";
 
 const printerSchema = z.object({
+	id: z.number().or(z.string()),
 	name: z.string().min(1, "Name is required"),
 	ip_address: z.string().min(1, "IP Address is required"),
-	category_ids: z.array(z.number()).optional(),
 });
 
 const zoneSchema = z.object({
+	id: z.number().or(z.string()).optional(),
 	name: z.string().min(1, "Name is required"),
 	printer_name: z.string().min(1, "A printer must be selected"),
 	// Now using proper array of category IDs with CategoryMultiSelect component
@@ -142,17 +143,36 @@ export function PrinterSettings() {
 
 	const form = useForm({
 		resolver: zodResolver(formSchema),
-		values: {
-			receipt_printers: config?.receipt_printers || [],
-			kitchen_printers: config?.kitchen_printers || [],
-			kitchen_zones:
-				config?.kitchen_zones.map((z) => ({
-					...z,
-					category_ids: z.category_ids || [],
-				})) || [],
+		defaultValues: {
+			receipt_printers: [],
+			kitchen_printers: [],
+			kitchen_zones: [],
 		},
 		disabled: isLoading || mutation.isPending,
 	});
+
+	useEffect(() => {
+		if (config) {
+			const kitchenPrinters = config.kitchen_printers || [];
+			const printerNameById = kitchenPrinters.reduce((acc, p) => {
+				acc[p.id] = p.name;
+				return acc;
+			}, {});
+
+			const mappedZones = (config.kitchen_zones || []).map((z) => ({
+				id: z.id,
+				name: z.name,
+				printer_name: printerNameById[z.printerId] || "",
+				category_ids: z.categories || [],
+			}));
+
+			form.reset({
+				receipt_printers: config.receipt_printers || [],
+				kitchen_printers: kitchenPrinters,
+				kitchen_zones: mappedZones,
+			});
+		}
+	}, [config, form]);
 
 	const {
 		fields: kitchenFields,
@@ -175,19 +195,27 @@ export function PrinterSettings() {
 	const kitchenPrinters = form.watch("kitchen_printers");
 
 	const onSubmit = (values) => {
+		const printerIdByName = values.kitchen_printers.reduce((acc, p) => {
+			acc[p.name] = p.id;
+			return acc;
+		}, {});
+
 		const payload = {
 			receipt_printers: values.receipt_printers.map((p) => ({
+				id: p.id,
 				name: p.name.trim(),
 				ip_address: p.ip_address.trim(),
 			})),
 			kitchen_printers: values.kitchen_printers.map((p) => ({
+				id: p.id,
 				name: p.name.trim(),
 				ip_address: p.ip_address.trim(),
 			})),
 			kitchen_zones: values.kitchen_zones.map((z) => ({
+				id: z.id,
 				name: z.name.trim(),
-				printer_name: z.printer_name.trim(),
-				category_ids: z.category_ids || [],
+				printerId: printerIdByName[z.printer_name],
+				categories: z.category_ids || [],
 			})),
 		};
 
@@ -422,7 +450,7 @@ export function PrinterSettings() {
 														<FormLabel>Assigned Printer</FormLabel>
 														<Select
 															onValueChange={field.onChange}
-															defaultValue={field.value}
+															value={field.value}
 														>
 															<FormControl>
 																<SelectTrigger>
@@ -432,7 +460,7 @@ export function PrinterSettings() {
 															<SelectContent>
 																{kitchenPrinters.map((p) => (
 																	<SelectItem
-																		key={p.name}
+																		key={p.id}
 																		value={p.name}
 																	>
 																		{p.name}
@@ -480,6 +508,7 @@ export function PrinterSettings() {
 									variant="outline"
 									onClick={() =>
 										appendZone({
+											id: `new-${Date.now()}`,
 											name: "",
 											printer_name: "",
 											category_ids: [],
