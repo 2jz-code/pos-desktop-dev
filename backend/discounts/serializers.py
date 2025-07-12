@@ -25,12 +25,14 @@ class DiscountSerializer(serializers.ModelSerializer):
         many=True,
         write_only=True,
         source="applicable_products",
+        required=False,
     )
     write_applicable_categories = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(),
         many=True,
         write_only=True,
         source="applicable_categories",
+        required=False,
     )
 
     class Meta:
@@ -53,6 +55,26 @@ class DiscountSerializer(serializers.ModelSerializer):
             "buy_quantity",
             "get_quantity",
         ]
+
+    def validate(self, data):
+        scope = data.get("scope")
+        # When creating, the field might not be in `data` if not provided.
+        # `validated_data` from the serializer instance would contain it after initial processing.
+        # Here, we use `.get` which is safer. `applicable_products` is the `source`.
+        products = data.get("applicable_products")
+        categories = data.get("applicable_categories")
+
+        if scope == Discount.DiscountScope.PRODUCT and not products:
+            raise serializers.ValidationError(
+                {"write_applicable_products": "At least one product must be selected for a product-specific discount."}
+            )
+
+        if scope == Discount.DiscountScope.CATEGORY and not categories:
+            raise serializers.ValidationError(
+                {"write_applicable_categories": "At least one category must be selected for a category-specific discount."}
+            )
+        
+        return data
 
 
 # Sync-specific serializer that sends simple field values instead of nested objects

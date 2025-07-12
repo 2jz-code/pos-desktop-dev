@@ -27,7 +27,7 @@ import SearchableSelect from "./shared/SearchableSelect";
 
 const StockAdjustmentDialog = ({
 	isOpen,
-	onClose,
+	onOpenChange,
 	product = null,
 	onSuccess,
 }) => {
@@ -221,7 +221,7 @@ const StockAdjustmentDialog = ({
 		});
 		setError("");
 		setStockLevels({});
-		onClose();
+		onOpenChange(false);
 	};
 
 	const productOptions = products.map((p) => ({

@@ -27,7 +27,7 @@ import SearchableSelect from "./shared/SearchableSelect";
 
 const StockTransferDialog = ({
 	isOpen,
-	onClose,
+	onOpenChange,
 	product = null,
 	onSuccess,
 }) => {
@@ -231,7 +231,7 @@ const StockTransferDialog = ({
 		});
 		setError("");
 		setStockLevels({});
-		onClose();
+		onOpenChange(false);
 	};
 
 	const selectedFromLocation = Array.isArray(locations)

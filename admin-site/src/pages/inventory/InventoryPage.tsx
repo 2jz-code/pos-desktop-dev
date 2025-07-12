@@ -6,29 +6,24 @@ import {
 	CardDescription,
 	CardHeader,
 	CardTitle,
-} from "../../components/ui/card";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "../../components/ui/select";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "../../components/ui/tabs";
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import {
 	Package,
 	AlertTriangle,
@@ -46,11 +41,15 @@ import {
 	Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import inventoryService from "../../services/api/inventoryService";
-import StockAdjustmentDialog from "../../components/StockAdjustmentDialog";
-import LocationManagementDialog from "../../components/LocationManagementDialog";
-import StockTransferDialog from "../../components/StockTransferDialog";
-import { useDebounce } from "../../hooks/useDebounce";
+// @ts-expect-error - No types for JS file
+import inventoryService from "@/services/api/inventoryService";
+// @ts-expect-error - No types for JS file
+import StockAdjustmentDialog from "@/components/StockAdjustmentDialog";
+// @ts-expect-error - No types for JS file
+import LocationManagementDialog from "@/components/LocationManagementDialog";
+// @ts-expect-error - No types for JS file
+import StockTransferDialog from "@/components/StockTransferDialog";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface Product {
 	id: number;
@@ -101,7 +100,7 @@ export const InventoryPage = () => {
 	const [currentLocationMode, setCurrentLocationMode] = useState<
 		"create" | "edit"
 	>("create");
-	const [activeTab, setActiveTab] = useState("overview");
+	const [activeTab, setActiveTab] = useState("all-stock");
 
 	// Dialog states
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] =
@@ -229,479 +228,441 @@ export const InventoryPage = () => {
 			</div>
 		);
 	}
-
 	return (
-		<div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-			{/* Header */}
-			<div className="flex-shrink-0 bg-white dark:bg-gray-800 border-b">
-				<div className="p-6">
-					<div className="flex items-center justify-between">
-						<div>
-							<h1 className="text-3xl font-bold">Inventory Management</h1>
-							<p className="text-muted-foreground">
-								Location:{" "}
-								<span className="font-medium">
-									{dashboardData?.location || "Default"}
-								</span>
-							</p>
-						</div>
-						<div className="flex gap-2">
-							<Button
-								onClick={refreshData}
-								variant="outline"
-							>
-								<RefreshCw className="h-4 w-4 mr-2" />
-								Refresh
-							</Button>
-							<Button
-								onClick={() => handleStockTransferDialog(true)}
-								variant="outline"
-							>
-								<ArrowUpDown className="h-4 w-4 mr-2" />
-								Transfer Stock
-							</Button>
-							<Button onClick={() => handleStockAdjustmentDialog(true)}>
-								<Plus className="h-4 w-4 mr-2" />
-								Adjust Stock
-							</Button>
-						</div>
-					</div>
+		<div className="flex flex-col h-[calc(100vh-4rem)] bg-muted/40 p-4 gap-4">
+			<header className="flex items-center justify-between flex-shrink-0">
+				<div>
+					<h1 className="text-2xl font-semibold">Inventory Management</h1>
+					<p className="text-sm text-muted-foreground">
+						Track and manage your product stock across all locations.
+					</p>
 				</div>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={refreshData}
+					>
+						<RefreshCw className="h-4 w-4 mr-2" />
+						Refresh Data
+					</Button>
+
+					<Button
+						size="sm"
+						onClick={() => handleStockTransferDialog(true)}
+					>
+						<ArrowUpDown className="h-4 w-4 mr-2" />
+						Transfer Stock
+					</Button>
+					<Button
+						size="sm"
+						onClick={() => handleStockAdjustmentDialog(true)}
+					>
+						<Plus className="h-4 w-4 mr-2" />
+						New Adjustment
+					</Button>
+				</div>
+			</header>
+
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Total Products
+						</CardTitle>
+						<Package className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							{dashboardData?.summary?.total_products || 0}
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Low Stock Items
+						</CardTitle>
+						<AlertTriangle className="h-4 w-4 text-amber-500" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-amber-600">
+							{dashboardData?.summary?.low_stock_count || 0}
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
+						<TrendingDown className="h-4 w-4 text-destructive" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-destructive">
+							{dashboardData?.summary?.out_of_stock_count || 0}
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Total Inventory Value
+						</CardTitle>
+						<DollarSign className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							{formatCurrency(dashboardData?.summary?.total_value || 0)}
+						</div>
+					</CardContent>
+				</Card>
 			</div>
 
-			{/* Content */}
-			<div className="flex-1 overflow-hidden">
-				<Tabs
-					value={activeTab}
-					onValueChange={setActiveTab}
-					className="h-full flex flex-col"
+			<Tabs
+				value={activeTab}
+				onValueChange={setActiveTab}
+				className="flex-1 flex flex-col min-h-0"
+			>
+				<TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+					<TabsTrigger value="overview">Overview</TabsTrigger>
+					<TabsTrigger value="all-stock">All Stock</TabsTrigger>
+					<TabsTrigger value="locations">Locations</TabsTrigger>
+				</TabsList>
+
+				<TabsContent
+					value="overview"
+					className="flex-grow overflow-y-auto min-h-0"
 				>
-					<div className="flex-shrink-0 px-6 pt-6">
-						<TabsList className="grid w-full grid-cols-3">
-							<TabsTrigger value="overview">Overview</TabsTrigger>
-							<TabsTrigger value="stock">Stock Management</TabsTrigger>
-							<TabsTrigger value="locations">Locations</TabsTrigger>
-						</TabsList>
-					</div>
-
-					<div className="flex-1 overflow-auto px-6 pb-6">
-						{/* Overview Tab */}
-						<TabsContent
-							value="overview"
-							className="space-y-6 mt-6"
-						>
-							{/* Summary Cards */}
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-								<Card>
-									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">
-											Total Products
+					{/* Placeholder for overview content if needed */}
+					<div className="p-4">
+						<h2 className="text-lg font-semibold">Inventory Overview</h2>
+						<p className="text-muted-foreground">
+							This section provides an overview of your inventory status.
+						</p>
+						{dashboardData?.low_stock_items &&
+							dashboardData.low_stock_items.length > 0 && (
+								<Card className="mt-4 border-amber-200 bg-amber-50 dark:bg-amber-900/20">
+									<CardHeader>
+										<CardTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
+											<AlertTriangle className="h-5 w-5" />
+											Low Stock Alert
 										</CardTitle>
-										<Package className="h-4 w-4 text-muted-foreground" />
+										<CardDescription>
+											Items that need restocking soon
+										</CardDescription>
 									</CardHeader>
-									<CardContent>
-										<div className="text-2xl font-bold">
-											{dashboardData?.summary?.total_products || 0}
-										</div>
-									</CardContent>
-								</Card>
-
-								<Card>
-									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">
-											Low Stock Items
-										</CardTitle>
-										<AlertTriangle className="h-4 w-4 text-amber-500" />
-									</CardHeader>
-									<CardContent>
-										<div className="text-2xl font-bold text-amber-600">
-											{dashboardData?.summary?.low_stock_count || 0}
-										</div>
-									</CardContent>
-								</Card>
-
-								<Card>
-									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">
-											Out of Stock
-										</CardTitle>
-										<TrendingDown className="h-4 w-4 text-red-500" />
-									</CardHeader>
-									<CardContent>
-										<div className="text-2xl font-bold text-red-600">
-											{dashboardData?.summary?.out_of_stock_count || 0}
-										</div>
-									</CardContent>
-								</Card>
-
-								<Card>
-									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">
-											Total Value
-										</CardTitle>
-										<DollarSign className="h-4 w-4 text-green-500" />
-									</CardHeader>
-									<CardContent>
-										<div className="text-2xl font-bold text-green-600">
-											{formatCurrency(dashboardData?.summary?.total_value || 0)}
-										</div>
-									</CardContent>
-								</Card>
-							</div>
-
-							{/* Low Stock Items Alert */}
-							{dashboardData?.low_stock_items &&
-								dashboardData.low_stock_items.length > 0 && (
-									<Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/20">
-										<CardHeader>
-											<CardTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
-												<AlertTriangle className="h-5 w-5" />
-												Low Stock Alert
-											</CardTitle>
-											<CardDescription>
-												Items that need restocking soon
-											</CardDescription>
-										</CardHeader>
-										<CardContent className="space-y-3">
-											{dashboardData.low_stock_items
-												.slice(0, 5)
-												.map((item: any) => (
-													<div
-														key={item.product_id}
-														className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm"
-													>
-														<div className="flex items-center gap-3">
-															<div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-															<div>
-																<div className="font-medium text-gray-900 dark:text-gray-100">
-																	{item.product_name}
-																</div>
-																<div className="text-sm text-gray-500 dark:text-gray-400">
-																	{item.quantity} units remaining
-																</div>
+									<CardContent className="space-y-3">
+										{dashboardData.low_stock_items
+											.slice(0, 5)
+											.map((item: LowStockItem) => (
+												<div
+													key={item.product_id}
+													className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm"
+												>
+													<div className="flex items-center gap-3">
+														<div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+														<div>
+															<div className="font-medium text-gray-900 dark:text-gray-100">
+																{item.product_name}
 															</div>
-														</div>
-														<div className="flex items-center gap-2">
-															<Badge
-																variant="secondary"
-																className="bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
-															>
-																{item.quantity} left
-															</Badge>
-															<Button
-																size="sm"
-																variant="outline"
-																className="h-8 px-3 text-xs border-amber-200 hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/50"
-																onClick={() =>
-																	handleStockAdjustmentDialog(true, {
-																		id: item.product_id,
-																		name: item.product_name,
-																	})
-																}
-															>
-																<Plus className="h-3 w-3 mr-1" />
-																Restock
-															</Button>
+															<div className="text-sm text-gray-500 dark:text-gray-400">
+																{Number(item.quantity)} units remaining
+															</div>
 														</div>
 													</div>
-												))}
-										</CardContent>
-									</Card>
-								)}
-						</TabsContent>
-
-						{/* Stock Management Tab */}
-						<TabsContent
-							value="stock"
-							className="space-y-6 mt-6"
-						>
-							<Card>
-								<CardHeader>
-									<CardTitle>Stock Levels</CardTitle>
-									<CardDescription>
-										Current inventory levels across all locations
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									{/* Filtering and Search UI */}
-									<div className="flex items-center gap-4 mb-6">
-										<div className="relative w-full max-w-sm">
-											<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-											<Input
-												placeholder="Search by product name or barcode..."
-												value={searchQuery}
-												onChange={(e) => setSearchQuery(e.target.value)}
-												className="pl-10"
-											/>
-										</div>
-										<Select
-											onValueChange={(value) =>
-												setSelectedLocation(value === "all" ? null : value)
-											}
-											defaultValue="all"
-										>
-											<SelectTrigger className="w-[180px]">
-												<SelectValue placeholder="Filter by location" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="all">All Locations</SelectItem>
-												{locations?.map((location) => (
-													<SelectItem
-														key={location.id}
-														value={String(location.id)}
-													>
-														{location.name}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-									</div>
-
-									<div className="space-y-4">
-										{stockLoading ? (
-											<div className="text-center py-8 text-muted-foreground">
-												<RefreshCw className="h-4 w-4 animate-spin mx-auto mb-2" />
-												Loading stock...
-											</div>
-										) : !stockData || stockData.length === 0 ? (
-											<div className="text-center py-8 text-muted-foreground">
-												No stock data available for the selected filters.
-											</div>
-										) : (
-											<div className="rounded-md border">
-												<table className="w-full">
-													<thead>
-														<tr className="border-b bg-muted/50">
-															<th className="p-4 text-left font-medium">
-																Product
-															</th>
-															<th className="p-4 text-left font-medium">
-																Location
-															</th>
-															<th className="p-4 text-left font-medium">
-																Stock Level
-															</th>
-															<th className="p-4 text-left font-medium">
-																Status
-															</th>
-															<th className="p-4 text-left font-medium">
-																Actions
-															</th>
-														</tr>
-													</thead>
-													<tbody>
-														{stockData.map((stock: any) => {
-															const isHighlighted =
-																highlightedProductId === stock.product?.id;
-															return (
-																<tr
-																	key={stock.id}
-																	className={`border-b ${
-																		isHighlighted ? "bg-orange-100" : ""
-																	}`}
-																>
-																	<td className="p-4">
-																		<div className="font-medium">
-																			{stock.product?.name}
-																		</div>
-																		<div className="text-sm text-muted-foreground">
-																			Barcode: {stock.product?.barcode || "N/A"}
-																		</div>
-																	</td>
-																	<td className="p-4">
-																		<div className="flex items-center gap-2">
-																			<MapPin className="h-4 w-4 text-muted-foreground" />
-																			{stock.location?.name}
-																		</div>
-																	</td>
-																	<td className="p-4">
-																		<div className="font-medium">
-																			{stock.quantity}
-																		</div>
-																	</td>
-																	<td className="p-4">
-																		<Badge
-																			variant={
-																				stock.quantity === 0
-																					? "destructive"
-																					: stock.quantity <= 10
-																					? "secondary"
-																					: "default"
-																			}
-																		>
-																			{stock.quantity === 0
-																				? "Out of Stock"
-																				: stock.quantity <= 10
-																				? "Low Stock"
-																				: "In Stock"}
-																		</Badge>
-																	</td>
-																	<td className="p-4">
-																		<DropdownMenu>
-																			<DropdownMenuTrigger asChild>
-																				<Button
-																					variant="ghost"
-																					className="h-8 w-8 p-0"
-																				>
-																					<span className="sr-only">
-																						Open menu
-																					</span>
-																					<MoreVertical className="h-4 w-4" />
-																				</Button>
-																			</DropdownMenuTrigger>
-																			<DropdownMenuContent align="end">
-																				<DropdownMenuItem
-																					onClick={() =>
-																						handleStockAdjustmentDialog(
-																							true,
-																							stock.product
-																						)
-																					}
-																				>
-																					<Plus className="mr-2 h-4 w-4" />
-																					Adjust Stock
-																				</DropdownMenuItem>
-																				<DropdownMenuItem
-																					onClick={() =>
-																						handleStockTransferDialog(
-																							true,
-																							stock.product
-																						)
-																					}
-																				>
-																					<ArrowUpDown className="mr-2 h-4 w-4" />
-																					Transfer
-																				</DropdownMenuItem>
-																			</DropdownMenuContent>
-																		</DropdownMenu>
-																	</td>
-																</tr>
-															);
-														})}
-													</tbody>
-												</table>
-											</div>
-										)}
-									</div>
-								</CardContent>
-							</Card>
-						</TabsContent>
-
-						{/* Locations Tab */}
-						<TabsContent
-							value="locations"
-							className="space-y-6 mt-6"
-						>
-							<Card>
-								<CardHeader>
-									<div className="flex items-center justify-between">
-										<div>
-											<CardTitle>Storage Locations</CardTitle>
-											<CardDescription>
-												Manage inventory storage locations
-											</CardDescription>
-										</div>
-										<Button onClick={() => handleLocationDialog(true)}>
-											<Building className="h-4 w-4 mr-2" />
-											Add Location
-										</Button>
-									</div>
-								</CardHeader>
-								<CardContent>
-									<div className="space-y-4">
-										{!locations || locations.length === 0 ? (
-											<div className="text-center py-8 text-muted-foreground">
-												No locations found. Create your first storage location.
-											</div>
-										) : (
-											<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-												{locations.map((location: any) => (
-													<Card
-														key={location.id}
-														className="relative"
-													>
-														<CardHeader>
-															<div className="flex items-center justify-between">
-																<div className="flex items-center gap-2">
-																	<Warehouse className="h-5 w-5 text-muted-foreground" />
-																	<CardTitle className="text-lg">
-																		{location.name}
-																	</CardTitle>
-																</div>
-																<DropdownMenu>
-																	<DropdownMenuTrigger asChild>
-																		<Button
-																			variant="ghost"
-																			className="h-8 w-8 p-0"
-																		>
-																			<span className="sr-only">Open menu</span>
-																			<MoreVertical className="h-4 w-4" />
-																		</Button>
-																	</DropdownMenuTrigger>
-																	<DropdownMenuContent align="end">
-																		<DropdownMenuItem
-																			onClick={() =>
-																				handleLocationDialog(
-																					true,
-																					location,
-																					"edit"
-																				)
-																			}
-																		>
-																			<Edit className="mr-2 h-4 w-4" />
-																			Edit
-																		</DropdownMenuItem>
-																		<DropdownMenuItem
-																			onClick={() =>
-																				handleDeleteLocation(location.id)
-																			}
-																			className="text-red-600"
-																		>
-																			<Trash2 className="mr-2 h-4 w-4" />
-																			Delete
-																		</DropdownMenuItem>
-																	</DropdownMenuContent>
-																</DropdownMenu>
-															</div>
-														</CardHeader>
-														<CardContent>
-															<p className="text-sm text-muted-foreground">
-																{location.description ||
-																	"No description provided"}
-															</p>
-														</CardContent>
-													</Card>
-												))}
-											</div>
-										)}
-									</div>
-								</CardContent>
-							</Card>
-						</TabsContent>
+													<div className="flex items-center gap-2">
+														<Badge
+															variant="secondary"
+															className="bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
+														>
+															{Number(item.quantity)} left
+														</Badge>
+														<Button
+															size="sm"
+															variant="outline"
+															className="h-8 px-3 text-xs border-amber-200 hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/50"
+															onClick={() =>
+																handleStockAdjustmentDialog(true, {
+																	id: item.product_id,
+																	name: item.product_name,
+																	price: 0,
+																})
+															}
+														>
+															<Plus className="h-3 w-3 mr-1" />
+															Restock
+														</Button>
+													</div>
+												</div>
+											))}
+									</CardContent>
+								</Card>
+							)}
 					</div>
-				</Tabs>
-			</div>
+				</TabsContent>
+
+				<TabsContent
+					value="all-stock"
+					className="flex flex-col min-h-0 flex-grow"
+				>
+					<Card className="flex-grow flex flex-col min-h-0">
+						<CardHeader className="px-7 flex-shrink-0">
+							<div className="flex items-center justify-between">
+								<div>
+									<CardTitle>All Stock</CardTitle>
+									<CardDescription>
+										A complete list of all your inventory items.
+									</CardDescription>
+								</div>
+								<div className="flex items-center gap-2">
+									<div className="relative">
+										<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+										<Input
+											type="search"
+											placeholder="Search products..."
+											className="w-full appearance-none bg-background pl-8 shadow-none md:w-[250px] lg:w-[300px]"
+											value={searchQuery}
+											onChange={(e) => setSearchQuery(e.target.value)}
+										/>
+									</div>
+									<Select
+										value={selectedLocation || "all"}
+										onValueChange={(value) =>
+											setSelectedLocation(value === "all" ? null : value)
+										}
+									>
+										<SelectTrigger className="w-[180px]">
+											<SelectValue placeholder="All Locations" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Locations</SelectItem>
+											{locations?.map((loc) => (
+												<SelectItem
+													key={loc.id}
+													value={loc.id.toString()}
+												>
+													{loc.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+							</div>
+						</CardHeader>
+						<CardContent className="flex-grow overflow-hidden min-h-0">
+							<div className="h-full flex flex-col">
+								{/* Table Header */}
+								<div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-medium rounded-t-lg flex-shrink-0">
+									<div className="col-span-4">Product</div>
+									<div className="col-span-3">Location</div>
+									<div className="col-span-2 text-right">Quantity</div>
+									<div className="col-span-2 text-center">Status</div>
+									<div className="col-span-1 text-right">Actions</div>
+								</div>
+
+								{/* Table Body */}
+								<div className="overflow-y-auto flex-grow min-h-0">
+									{stockLoading ? (
+										<div className="flex justify-center items-center h-full">
+											<RefreshCw className="h-6 w-6 animate-spin" />
+										</div>
+									) : stockData && stockData.length > 0 ? (
+										stockData.map((item) => (
+											<div
+												key={item.id}
+												className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
+													highlightedProductId === item.product.id
+														? "bg-blue-50 dark:bg-blue-900/50"
+														: ""
+												}`}
+											>
+												<div className="col-span-4 font-medium">
+													{item.product.name}
+												</div>
+												<div className="col-span-3 text-muted-foreground flex items-center">
+													<MapPin className="h-4 w-4 mr-2" />
+													{item.location.name}
+												</div>
+												<div className="col-span-2 text-right">
+													{Number(item.quantity).toFixed(2)}
+												</div>
+												<div className="col-span-2 text-center">
+													<Badge
+														variant={
+															Number(item.quantity) <= 0
+																? "destructive"
+																: Number(item.quantity) <= 10
+																? "secondary"
+																: "default"
+														}
+													>
+														{Number(item.quantity) <= 0
+															? "Out of Stock"
+															: Number(item.quantity) <= 10
+															? "Low Stock"
+															: "In Stock"}
+													</Badge>
+												</div>
+												<div className="col-span-1 flex justify-end">
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<Button
+																variant="ghost"
+																size="icon"
+															>
+																<MoreVertical className="h-4 w-4" />
+															</Button>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end">
+															<DropdownMenuItem
+																onClick={() =>
+																	handleStockAdjustmentDialog(
+																		true,
+																		item.product
+																	)
+																}
+															>
+																<Edit className="mr-2 h-4 w-4" />
+																Adjust Stock
+															</DropdownMenuItem>
+															<DropdownMenuItem
+																onClick={() =>
+																	handleStockTransferDialog(true, item.product)
+																}
+															>
+																<ArrowUpDown className="mr-2 h-4 w-4" />
+																Transfer
+															</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
+												</div>
+											</div>
+										))
+									) : (
+										<div className="flex flex-col items-center justify-center h-full text-center py-10">
+											<Package className="h-12 w-12 text-muted-foreground" />
+											<h3 className="mt-4 text-lg font-semibold">
+												No stock found
+											</h3>
+											<p className="mt-2 text-sm text-muted-foreground">
+												Try adjusting your filters or adding new stock.
+											</p>
+										</div>
+									)}
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				</TabsContent>
+				<TabsContent
+					value="locations"
+					className="flex flex-col min-h-0 flex-grow"
+				>
+					<Card className="flex-grow flex flex-col min-h-0">
+						<CardHeader className="flex-shrink-0">
+							<div className="flex items-center justify-between">
+								<div>
+									<CardTitle>Locations</CardTitle>
+									<CardDescription>
+										Manage your stock rooms, warehouses, and other locations.
+									</CardDescription>
+								</div>
+								<Button
+									onClick={() =>
+										handleLocationDialog(true, undefined, "create")
+									}
+								>
+									<Plus className="mr-2 h-4 w-4" /> Add Location
+								</Button>
+							</div>
+						</CardHeader>
+						<CardContent className="flex-grow overflow-y-auto min-h-0">
+							<div className="grid gap-4">
+								{locationsLoading ? (
+									<p>Loading locations...</p>
+								) : (
+									locations?.map((loc) => (
+										<div
+											key={loc.id}
+											className="flex items-center justify-between p-4 border rounded-lg"
+										>
+											<div className="flex items-center gap-4">
+												<div className="p-2 bg-muted rounded-md">
+													{loc.name.toLowerCase().includes("store") ? (
+														<Building className="h-5 w-5" />
+													) : (
+														<Warehouse className="h-5 w-5" />
+													)}
+												</div>
+												<div>
+													<p className="font-semibold">{loc.name}</p>
+													<p className="text-sm text-muted-foreground">
+														{loc.description || "No description"}
+													</p>
+												</div>
+											</div>
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<Button
+														variant="ghost"
+														size="icon"
+													>
+														<MoreVertical className="h-4 w-4" />
+													</Button>
+												</DropdownMenuTrigger>
+												<DropdownMenuContent align="end">
+													<DropdownMenuItem
+														onClick={() =>
+															handleLocationDialog(true, loc, "edit")
+														}
+													>
+														<Edit className="mr-2 h-4 w-4" />
+														Edit
+													</DropdownMenuItem>
+													<DropdownMenuItem
+														onClick={() => handleDeleteLocation(loc.id)}
+														className="text-red-600"
+														disabled={deleteLocationMutation.isPending}
+													>
+														<Trash2 className="mr-2 h-4 w-4" />
+														Delete
+													</DropdownMenuItem>
+												</DropdownMenuContent>
+											</DropdownMenu>
+										</div>
+									))
+								)}
+							</div>
+						</CardContent>
+					</Card>
+				</TabsContent>
+			</Tabs>
 
 			{/* Dialogs */}
-			<StockAdjustmentDialog
-				isOpen={isStockAdjustmentDialogOpen}
-				onClose={() => handleStockAdjustmentDialog(false)}
-				product={currentEditingProduct}
-				onSuccess={handleDialogSuccess}
-			/>
-			<LocationManagementDialog
-				isOpen={isLocationDialogOpen}
-				onClose={() => handleLocationDialog(false)}
-				location={currentEditingLocation}
-				mode={currentLocationMode}
-				onSuccess={handleDialogSuccess}
-			/>
-			<StockTransferDialog
-				isOpen={isStockTransferDialogOpen}
-				onClose={() => handleStockTransferDialog(false)}
-				product={currentEditingProduct}
-				onSuccess={handleDialogSuccess}
-			/>
+			{isStockAdjustmentDialogOpen && (
+				<StockAdjustmentDialog
+					isOpen={isStockAdjustmentDialogOpen}
+					onOpenChange={setIsStockAdjustmentDialogOpen}
+					product={currentEditingProduct}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
+			{isLocationDialogOpen && (
+				<LocationManagementDialog
+					isOpen={isLocationDialogOpen}
+					onOpenChange={setIsLocationDialogOpen}
+					location={currentEditingLocation}
+					mode={currentLocationMode}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
+			{isStockTransferDialogOpen && (
+				<StockTransferDialog
+					isOpen={isStockTransferDialogOpen}
+					onOpenChange={setIsStockTransferDialogOpen}
+					product={currentEditingProduct}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
 		</div>
 	);
 };

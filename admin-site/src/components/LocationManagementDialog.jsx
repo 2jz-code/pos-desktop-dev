@@ -18,7 +18,7 @@ import inventoryService from "../services/api/inventoryService";
 
 const LocationManagementDialog = ({
 	isOpen,
-	onClose,
+	onOpenChange,
 	location = null,
 	mode = "create",
 	onSuccess,
@@ -114,7 +114,7 @@ const LocationManagementDialog = ({
 			description: "",
 		});
 		setError("");
-		onClose();
+		onOpenChange(false);
 	};
 
 	const isEditing = mode === "edit";
