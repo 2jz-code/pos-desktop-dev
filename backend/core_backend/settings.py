@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "settings",
     "integrations",
     "notifications",
+    "reports",
     "core_backend",
 ]
 
@@ -450,3 +451,70 @@ EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL")
 BUSINESS_CONTACT_EMAIL = os.environ.get("DJANGO_BUSINESS_CONTACT_EMAIL")
+
+# ==============================================================================
+# CELERY SETTINGS
+# ==============================================================================
+# Celery Configuration Options
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379")
+CELERY_RESULT_BACKEND = os.environ.get(
+    "CELERY_RESULT_BACKEND", "redis://localhost:6379"
+)
+
+# Task serialization
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+
+# Timezone configuration
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+# Result settings
+CELERY_RESULT_EXPIRES = 3600  # 1 hour
+
+# Task routing (optional - for organizing tasks)
+CELERY_TASK_ROUTES = {
+    "reports.tasks.generate_report_async": {"queue": "reports"},
+    "reports.tasks.export_report_async": {"queue": "exports"},
+    "reports.tasks.generate_scheduled_reports": {"queue": "scheduled"},
+    "reports.tasks.cleanup_old_reports": {"queue": "maintenance"},
+    "reports.tasks.warm_report_caches": {"queue": "maintenance"},
+    # Phase 3 - Advanced Export Tasks
+    "reports.tasks.process_bulk_export_async": {"queue": "bulk_exports"},
+    "reports.tasks.create_bulk_export_async": {"queue": "exports"},
+    "reports.tasks.process_export_queue": {"queue": "exports"},
+    "reports.tasks.cleanup_export_files": {"queue": "maintenance"},
+}
+
+# Beat schedule for periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-old-reports": {
+        "task": "reports.tasks.cleanup_old_reports",
+        "schedule": 86400.0,  # Every 24 hours
+    },
+    "generate-scheduled-reports": {
+        "task": "reports.tasks.generate_scheduled_reports",
+        "schedule": 3600.0,  # Every hour
+    },
+    "warm-report-caches": {
+        "task": "reports.tasks.warm_report_caches",
+        "schedule": 10800.0,  # Every 3 hours
+    },
+    # Phase 3 - Advanced Export Tasks
+    "cleanup-export-files": {
+        "task": "reports.tasks.cleanup_export_files",
+        "schedule": 86400.0,  # Every 24 hours
+    },
+    "process-export-queue": {
+        "task": "reports.tasks.process_export_queue",
+        "schedule": 300.0,  # Every 5 minutes
+    },
+}
