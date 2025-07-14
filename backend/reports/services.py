@@ -616,11 +616,35 @@ class ReportService:
                 total_amount=Sum(F("amount") + F("tip") + F("surcharge")),
                 transaction_count=Count("id"),
                 avg_amount=Avg(F("amount") + F("tip") + F("surcharge")),
+                processing_fees=Sum(F("surcharge")),  # Surcharge represents processing fees
             )
             .order_by("-total_amount")
         )
 
         total_amount = sum(float(pm["total_amount"] or 0) for pm in payment_methods)
+
+        # Calculate trends by comparing with previous period
+        previous_period_days = (end_date - start_date).days
+        previous_start = start_date - timedelta(days=previous_period_days)
+        previous_end = start_date
+
+        previous_payment_methods = (
+            PaymentTransaction.objects.filter(
+                payment__order__status=Order.OrderStatus.COMPLETED,
+                payment__order__created_at__range=(previous_start, previous_end),
+                status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
+            )
+            .values("method")
+            .annotate(
+                total_amount=Sum(F("amount") + F("tip") + F("surcharge")),
+            )
+        )
+
+        # Create lookup dict for previous period data
+        previous_amounts = {
+            item["method"]: float(item["total_amount"] or 0)
+            for item in previous_payment_methods
+        }
 
         payments_data = {
             "payment_methods": [
@@ -629,11 +653,24 @@ class ReportService:
                     "amount": float(item["total_amount"] or 0),
                     "count": item["transaction_count"],
                     "avg_amount": float(item["avg_amount"] or 0),
+                    "processing_fees": float(item["processing_fees"] or 0),
                     "percentage": (
                         round(
                             (float(item["total_amount"] or 0) / total_amount * 100), 2
                         )
                         if total_amount > 0
+                        else 0
+                    ),
+                    "trend": (
+                        round(
+                            (
+                                (float(item["total_amount"] or 0) - previous_amounts.get(item["method"], 0))
+                                / previous_amounts.get(item["method"], 1)
+                            )
+                            * 100,
+                            2,
+                        )
+                        if previous_amounts.get(item["method"], 0) > 0
                         else 0
                     ),
                 }
@@ -974,6 +1011,86 @@ class ReportService:
             "expired_entries": expired_entries,
             "valid_entries": total_entries - expired_entries,
             "cache_by_type": list(cache_by_type),
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def get_quick_metrics() -> Dict[str, Any]:
+        """Get today/MTD/YTD metrics for dashboard"""
+        
+        # Get local timezone for date calculations
+        local_tz = ReportService.get_local_timezone()
+        now = timezone.now().astimezone(local_tz)
+        
+        # Calculate date ranges
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = now
+        
+        # Month to date
+        mtd_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        mtd_end = now
+        
+        # Year to date  
+        ytd_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        ytd_end = now
+        
+        # Base queryset for completed orders
+        def get_metrics_for_period(start_time, end_time):
+            # Get order-level metrics WITHOUT JOINs to avoid duplication
+            orders = Order.objects.filter(
+                status=Order.OrderStatus.COMPLETED,
+                created_at__range=(start_time, end_time)
+            ).aggregate(
+                total_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
+                total_orders=Count("id")
+            )
+            
+            # Calculate total items separately to avoid JOIN duplication
+            total_items = OrderItem.objects.filter(
+                order__status=Order.OrderStatus.COMPLETED,
+                order__created_at__range=(start_time, end_time)
+            ).aggregate(
+                total_items=Coalesce(Sum("quantity"), Value(0))
+            )["total_items"]
+            
+            return {
+                "sales": float(orders["total_sales"] or 0),
+                "orders": orders["total_orders"] or 0,
+                "items": total_items or 0,
+                "avg_order_value": (
+                    float(orders["total_sales"] or 0) / (orders["total_orders"] or 1)
+                    if orders["total_orders"] > 0 else 0
+                )
+            }
+        
+        # Get metrics for each period
+        today_metrics = get_metrics_for_period(today_start, today_end)
+        mtd_metrics = get_metrics_for_period(mtd_start, mtd_end)
+        ytd_metrics = get_metrics_for_period(ytd_start, ytd_end)
+        
+        return {
+            "today": {
+                **today_metrics,
+                "date_range": {
+                    "start": today_start.isoformat(),
+                    "end": today_end.isoformat()
+                }
+            },
+            "month_to_date": {
+                **mtd_metrics,
+                "date_range": {
+                    "start": mtd_start.isoformat(),
+                    "end": mtd_end.isoformat()
+                }
+            },
+            "year_to_date": {
+                **ytd_metrics,
+                "date_range": {
+                    "start": ytd_start.isoformat(),
+                    "end": ytd_end.isoformat()
+                }
+            },
+            "generated_at": timezone.now().isoformat()
         }
 
     # Export functionality methods

@@ -14,7 +14,6 @@ import {
 	Settings,
 	DollarSign,
 	Activity,
-	ArrowRight,
 	FileText,
 	Shield,
 } from "lucide-react";
@@ -50,7 +49,6 @@ const ProfessionalDashboardCard: React.FC<DashboardCardProps> = ({
 	title,
 	description,
 	icon: IconComponent,
-	roleRequired = false,
 }) => (
 	<Link
 		to={to}
@@ -68,17 +66,6 @@ const ProfessionalDashboardCard: React.FC<DashboardCardProps> = ({
 								{title}
 							</CardTitle>
 						</div>
-					</div>
-					<div className="flex items-center gap-2">
-						{roleRequired && (
-							<Badge
-								variant="secondary"
-								className="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
-							>
-								Manager+
-							</Badge>
-						)}
-						<ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
 					</div>
 				</div>
 			</CardHeader>

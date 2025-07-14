@@ -4,7 +4,7 @@ from . import views
 
 # Create a router and register viewsets
 router = DefaultRouter()
-router.register(r"reports", views.ReportViewSet, basename="reports")
+router.register(r"", views.ReportViewSet, basename="reports")
 router.register(r"saved-reports", views.SavedReportViewSet, basename="saved-reports")
 router.register(r"templates", views.ReportTemplateViewSet, basename="report-templates")
 router.register(r"cache", views.ReportCacheViewSet, basename="report-cache")

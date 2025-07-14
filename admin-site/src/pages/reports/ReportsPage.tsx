@@ -1,24 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import {
-	CalendarDays,
-	BarChart3,
-	TrendingUp,
-	CreditCard,
-	Package,
-	Users,
-	BookmarkCheck,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
+import { DualDatePicker } from "@/components/ui/dual-date-picker";
+import {
+	BarChart3,
+	DollarSign,
+	Package,
+	CreditCard,
+	Settings,
+	BookOpen,
+} from "lucide-react";
+import { addDays } from "date-fns";
 
 import { SummaryTab } from "./components/SummaryTab";
 import { SalesTab } from "./components/SalesTab";
@@ -26,218 +19,122 @@ import { PaymentsTab } from "./components/PaymentsTab";
 import { ProductsTab } from "./components/ProductsTab";
 import { OperationsTab } from "./components/OperationsTab";
 import { SavedReportsTab } from "./components/SavedReportsTab";
-import reportsService from "@/services/api/reportsService";
 
 export default function ReportsPage() {
-	// Default to last 7 days
-	const today = new Date();
-	const sevenDaysAgo = new Date();
-	sevenDaysAgo.setDate(today.getDate() - 7);
+	const [activeTab, setActiveTab] = useState("dashboard");
+	const [startDate, setStartDate] = useState<Date | undefined>(addDays(new Date(), -30));
+	const [endDate, setEndDate] = useState<Date | undefined>(new Date());
 
-	const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-		from: sevenDaysAgo,
-		to: today,
-	});
-
-	// Format dates for API
-	const formatDateForApi = (date: Date) => {
-		return reportsService.formatDateForApi(date);
-	};
-
-	const formatEndDateForApi = (date: Date) => {
-		return reportsService.formatEndDateForApi(date);
-	};
-
-	// Export all reports
-	const handleExportAll = async () => {
-		try {
-			const startDate = formatDateForApi(dateRange.from);
-			const endDate = formatEndDateForApi(dateRange.to);
-
-			if (!startDate || !endDate) {
-				console.error("Invalid date range");
-				return;
-			}
-
-			const reportTypes = [
-				"summary",
-				"sales",
-				"products",
-				"payments",
-				"operations",
-			];
-
-			const exportConfig = {
-				report_configs: reportTypes.map((type) => ({
-					report_type: type,
-					start_date: startDate,
-					end_date: endDate,
-					filters: {},
-				})),
-				export_format: "xlsx",
-				compress: true,
-				priority: 2, // Normal priority
-			};
-
-			const result = await reportsService.createBulkExport(exportConfig);
-			console.log("Bulk export created:", result);
-			// You could show a notification here
-		} catch (error) {
-			console.error("Error creating bulk export:", error);
-			// Show error notification
-		}
-	};
+	// Create a DateRange object for compatibility with existing tab components
+	const dateRange = startDate && endDate ? { from: startDate, to: endDate } : undefined;
 
 	return (
-		<div className="h-full flex flex-col overflow-hidden">
-			<div className="flex-1 overflow-y-auto">
-				<div className="container mx-auto p-6">
-					<div className="flex items-center justify-between mb-6">
-						<div>
-							<h1 className="text-3xl font-bold">Reports Dashboard</h1>
-							<p className="text-muted-foreground">
-								Comprehensive analytics for your POS system
-							</p>
-						</div>
-						<div className="flex items-center gap-4">
-							<div className="flex items-center gap-2">
-								<span className="text-sm font-medium">From:</span>
-								<Popover>
-									<PopoverTrigger asChild>
-										<Button
-											variant="outline"
-											className="w-[140px] justify-start text-left font-normal"
-										>
-											<CalendarDays className="mr-2 h-4 w-4" />
-											{format(dateRange.from, "MMM dd, y")}
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent className="w-auto p-0" align="start">
-										<Calendar
-											mode="single"
-											selected={dateRange.from}
-											onSelect={(date) =>
-												date &&
-												setDateRange({
-													...dateRange,
-													from: date,
-												})
-											}
-											initialFocus
-										/>
-									</PopoverContent>
-								</Popover>
-								
-								<span className="text-sm font-medium">To:</span>
-								<Popover>
-									<PopoverTrigger asChild>
-										<Button
-											variant="outline"
-											className="w-[140px] justify-start text-left font-normal"
-										>
-											<CalendarDays className="mr-2 h-4 w-4" />
-											{format(dateRange.to, "MMM dd, y")}
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent className="w-auto p-0" align="start">
-										<Calendar
-											mode="single"
-											selected={dateRange.to}
-											onSelect={(date) =>
-												date &&
-												setDateRange({
-													...dateRange,
-													to: date,
-												})
-											}
-											initialFocus
-										/>
-									</PopoverContent>
-								</Popover>
-							</div>
-							<Button
-								onClick={handleExportAll}
-								className="bg-primary text-primary-foreground hover:bg-primary/90"
-							>
-								Export All
-							</Button>
-						</div>
-					</div>
-
-					<Tabs
-						defaultValue="summary"
-						className="space-y-6"
-					>
-						<TabsList className="grid w-full grid-cols-6">
-							<TabsTrigger
-								value="summary"
-								className="flex items-center gap-2"
-							>
-								<BarChart3 className="h-4 w-4" />
-								Summary
-							</TabsTrigger>
-							<TabsTrigger
-								value="sales"
-								className="flex items-center gap-2"
-							>
-								<TrendingUp className="h-4 w-4" />
-								Sales
-							</TabsTrigger>
-							<TabsTrigger
-								value="payments"
-								className="flex items-center gap-2"
-							>
-								<CreditCard className="h-4 w-4" />
-								Payments
-							</TabsTrigger>
-							<TabsTrigger
-								value="products"
-								className="flex items-center gap-2"
-							>
-								<Package className="h-4 w-4" />
-								Products
-							</TabsTrigger>
-							<TabsTrigger
-								value="operations"
-								className="flex items-center gap-2"
-							>
-								<Users className="h-4 w-4" />
-								Operations
-							</TabsTrigger>
-							<TabsTrigger
-								value="saved"
-								className="flex items-center gap-2"
-							>
-								<BookmarkCheck className="h-4 w-4" />
-								Saved Reports
-							</TabsTrigger>
-						</TabsList>
-
-						<TabsContent value="summary">
-							<SummaryTab dateRange={dateRange} />
-						</TabsContent>
-
-						<TabsContent value="sales">
-							<SalesTab dateRange={dateRange} />
-						</TabsContent>
-
-						<TabsContent value="payments">
-							<PaymentsTab dateRange={dateRange} />
-						</TabsContent>
-
-						<TabsContent value="products">
-							<ProductsTab dateRange={dateRange} />
-						</TabsContent>
-
-						<TabsContent value="operations">
-							<OperationsTab dateRange={dateRange} />
-						</TabsContent>
-
-						<TabsContent value="saved">
-							<SavedReportsTab />
-						</TabsContent>
-					</Tabs>
+		<div className="flex-1 flex flex-col h-full overflow-hidden">
+			<div className="flex-shrink-0 p-4 md:p-8 pt-6 pb-4">
+				<div className="flex items-center justify-between space-y-2">
+					<h2 className="text-3xl font-bold tracking-tight">Reports Dashboard</h2>
+					<DualDatePicker
+						startDate={startDate}
+						endDate={endDate}
+						onStartDateChange={setStartDate}
+						onEndDateChange={setEndDate}
+					/>
 				</div>
+			</div>
+
+			<div className="flex-1 overflow-hidden px-4 md:px-8">
+				<Tabs
+					value={activeTab}
+					onValueChange={setActiveTab}
+					className="h-full flex flex-col"
+				>
+					<TabsList className="grid w-full grid-cols-6 flex-shrink-0">
+						<TabsTrigger
+							value="dashboard"
+							className="flex items-center gap-2"
+						>
+							<BarChart3 className="h-4 w-4" />
+							<span className="hidden sm:inline">Dashboard</span>
+						</TabsTrigger>
+						<TabsTrigger
+							value="sales"
+							className="flex items-center gap-2"
+						>
+							<DollarSign className="h-4 w-4" />
+							<span className="hidden sm:inline">Sales</span>
+						</TabsTrigger>
+						<TabsTrigger
+							value="payments"
+							className="flex items-center gap-2"
+						>
+							<CreditCard className="h-4 w-4" />
+							<span className="hidden sm:inline">Payments</span>
+						</TabsTrigger>
+						<TabsTrigger
+							value="products"
+							className="flex items-center gap-2"
+						>
+							<Package className="h-4 w-4" />
+							<span className="hidden sm:inline">Products</span>
+						</TabsTrigger>
+						<TabsTrigger
+							value="operations"
+							className="flex items-center gap-2"
+						>
+							<Settings className="h-4 w-4" />
+							<span className="hidden sm:inline">Operations</span>
+						</TabsTrigger>
+						<TabsTrigger
+							value="saved"
+							className="flex items-center gap-2"
+						>
+							<BookOpen className="h-4 w-4" />
+							<span className="hidden sm:inline">Saved</span>
+						</TabsTrigger>
+					</TabsList>
+
+					<TabsContent
+						value="dashboard"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<SummaryTab dateRange={dateRange} />
+					</TabsContent>
+
+					<TabsContent
+						value="sales"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<SalesTab dateRange={dateRange} />
+					</TabsContent>
+
+					<TabsContent
+						value="payments"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<PaymentsTab dateRange={dateRange} />
+					</TabsContent>
+
+					<TabsContent
+						value="products"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<ProductsTab dateRange={dateRange} />
+					</TabsContent>
+
+					<TabsContent
+						value="operations"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<OperationsTab dateRange={dateRange} />
+					</TabsContent>
+
+					<TabsContent
+						value="saved"
+						className="flex-1 overflow-y-auto mt-4"
+					>
+						<SavedReportsTab />
+					</TabsContent>
+				</Tabs>
 			</div>
 		</div>
 	);

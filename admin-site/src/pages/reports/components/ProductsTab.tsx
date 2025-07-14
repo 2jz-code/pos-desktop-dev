@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import {
 	Card,
@@ -6,21 +8,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import reportsService from "@/services/api/reportsService";
-
-interface DateRange {
-	from: Date;
-	to: Date;
-}
-
-interface ProductsTabProps {
-	dateRange: DateRange;
-}
-import {
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -29,169 +16,147 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
 	BarChart,
 	Bar,
-	LineChart,
-	Line,
-	ResponsiveContainer,
 	XAxis,
 	YAxis,
 	CartesianGrid,
-	RadarChart,
-	PolarGrid,
-	PolarAngleAxis,
-	PolarRadiusAxis,
-	Radar,
-	ScatterChart,
-	Scatter,
+	Tooltip,
+	ResponsiveContainer,
+	LineChart,
+	Line,
+	PieChart,
+	Pie,
+	Cell,
 } from "recharts";
+import {
+	Package,
+	DollarSign,
+	TrendingUp,
+	Star,
+	Download,
+	RefreshCw,
+} from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import reportsService from "@/services/api/reportsService";
+import { ExportDialog } from "@/components/reports/ExportDialog";
 
-const productData = [
-	{
-		name: "Espresso",
-		sold: 234,
-		revenue: 1170,
-		margin: 68,
-		cost: 374.4,
-		rating: 4.8,
-	},
-	{
-		name: "Cappuccino",
-		sold: 189,
-		revenue: 1323,
-		margin: 72,
-		cost: 370.44,
-		rating: 4.7,
-	},
-	{
-		name: "Latte",
-		sold: 156,
-		revenue: 1248,
-		margin: 70,
-		cost: 374.4,
-		rating: 4.6,
-	},
-	{
-		name: "Americano",
-		sold: 145,
-		revenue: 870,
-		margin: 65,
-		cost: 304.5,
-		rating: 4.5,
-	},
-	{
-		name: "Mocha",
-		sold: 98,
-		revenue: 882,
-		margin: 75,
-		cost: 220.5,
-		rating: 4.9,
-	},
-];
+interface ProductsData {
+	top_products: Array<{
+		name: string;
+		id: number;
+		revenue: number;
+		sold: number;
+		avg_price: number;
+	}>;
+	best_sellers: Array<{
+		name: string;
+		id: number;
+		sold: number;
+		revenue: number;
+	}>;
+	category_performance: Array<{
+		category: string;
+		revenue: number;
+		units_sold: number;
+		unique_products: number;
+	}>;
+	product_trends: {
+		[productName: string]: Array<{
+			date: string;
+			sold: number;
+		}>;
+	};
+	summary: {
+		total_products: number;
+		total_revenue: number;
+		total_units_sold: number;
+	};
+}
 
-const categoryPerformance = [
-	{ category: "Hot Beverages", revenue: 4200, units: 567, margin: 68 },
-	{ category: "Cold Beverages", revenue: 2800, units: 234, margin: 72 },
-	{ category: "Pastries", revenue: 1500, units: 189, margin: 65 },
-	{ category: "Sandwiches", revenue: 2200, units: 145, margin: 58 },
-];
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
 
-const weeklyProductTrends = [
-	{
-		week: "Week 1",
-		espresso: 45,
-		cappuccino: 38,
-		latte: 32,
-		americano: 28,
-		mocha: 18,
-	},
-	{
-		week: "Week 2",
-		espresso: 52,
-		cappuccino: 41,
-		latte: 35,
-		americano: 31,
-		mocha: 22,
-	},
-	{
-		week: "Week 3",
-		espresso: 48,
-		cappuccino: 44,
-		latte: 38,
-		americano: 29,
-		mocha: 25,
-	},
-	{
-		week: "Week 4",
-		espresso: 58,
-		cappuccino: 47,
-		latte: 41,
-		americano: 35,
-		mocha: 28,
-	},
-];
-
-const productPerformanceRadar = [
-	{ product: "Espresso", sales: 95, margin: 68, rating: 96, frequency: 88 },
-	{ product: "Cappuccino", sales: 81, margin: 72, rating: 94, frequency: 75 },
-	{ product: "Latte", sales: 67, margin: 70, rating: 92, frequency: 62 },
-	{ product: "Americano", sales: 62, margin: 65, rating: 90, frequency: 58 },
-	{ product: "Mocha", sales: 42, margin: 75, rating: 98, frequency: 39 },
-];
+interface ProductsTabProps {
+	dateRange: DateRange | undefined;
+}
 
 export function ProductsTab({ dateRange }: ProductsTabProps) {
-	const [data, setData] = useState<unknown>(null);
-	const [loading, setLoading] = useState(true);
+	const [data, setData] = useState<ProductsData | null>(null);
+	const [loading, setLoading] = useState(false);
+	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [categoryFilter, setCategoryFilter] = useState<string>("all");
+	const [limit, setLimit] = useState<number>(10);
+	const [sortBy, setSortBy] = useState<"revenue" | "quantity" | "margin">(
+		"revenue"
+	);
+
+	const fetchProductsData = async () => {
+		if (!dateRange?.from || !dateRange?.to) return;
+
+		setLoading(true);
+		setError(null);
+
+		try {
+			const startDate = reportsService.formatDateForApi(dateRange.from);
+			const endDate = reportsService.formatEndDateForApi(dateRange.to);
+
+			if (!startDate || !endDate) {
+				setError("Invalid date range");
+				return;
+			}
+
+			const filters = {
+				limit: limit,
+				...(categoryFilter !== "all" && { category_id: categoryFilter }),
+			};
+
+			const productsData = await reportsService.generateProductsReport(
+				startDate,
+				endDate,
+				filters
+			);
+			setData(productsData as ProductsData);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "An error occurred");
+		} finally {
+			setLoading(false);
+		}
+	};
 
 	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				setLoading(true);
-				setError(null);
-
-				const startDate = reportsService.formatDateForApi(dateRange.from);
-				const endDate = reportsService.formatDateForApi(dateRange.to);
-
-				if (!startDate || !endDate) {
-					setError("Invalid date range");
-					return;
-				}
-
-				const reportData = await reportsService.generateProductsReport(
-					startDate,
-					endDate
-				);
-
-				setData(reportData);
-			} catch (err) {
-				setError("Failed to load products data");
-				console.error("Error fetching products data:", err);
-			} finally {
-				setLoading(false);
-			}
-		};
-
-		fetchData();
-	}, [dateRange]);
+		fetchProductsData();
+	}, [dateRange, categoryFilter, limit, sortBy]);
 
 	if (loading) {
 		return (
-			<div className="space-y-6">
-				<div className="animate-pulse space-y-4">
-					<div className="h-8 bg-gray-200 rounded w-1/4" />
-					<div className="h-64 bg-gray-200 rounded" />
+			<div className="space-y-4">
+				<div className="flex items-center justify-between">
+					<div className="space-y-1">
+						<h3 className="text-2xl font-semibold tracking-tight">
+							Product Reports
+						</h3>
+						<p className="text-sm text-muted-foreground">
+							Product performance and inventory insights
+						</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					{[...Array(4)].map((_, i) => (
+						<Card key={i}>
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<div className="h-4 w-20 bg-muted animate-pulse rounded" />
+								<div className="h-4 w-4 bg-muted animate-pulse rounded" />
+							</CardHeader>
+							<CardContent>
+								<div className="h-8 w-24 bg-muted animate-pulse rounded mb-2" />
+								<div className="h-3 w-16 bg-muted animate-pulse rounded" />
+							</CardContent>
+						</Card>
+					))}
 				</div>
 			</div>
 		);
@@ -199,376 +164,406 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 
 	if (error) {
 		return (
-			<div className="space-y-6">
+			<div className="space-y-4">
 				<Card>
-					<CardHeader>
-						<CardTitle>Error</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<p className="text-red-600">{error}</p>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-sm text-muted-foreground mb-4">
+								Error loading products data: {error}
+							</p>
+							<Button
+								onClick={fetchProductsData}
+								variant="outline"
+							>
+								<RefreshCw className="mr-2 h-4 w-4" />
+								Retry
+							</Button>
+						</div>
 					</CardContent>
 				</Card>
 			</div>
 		);
 	}
+
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<h2 className="text-2xl font-bold">Product Reports</h2>
-				<div className="flex items-center gap-4">
-					<Select defaultValue="all">
-						<SelectTrigger className="w-[180px]">
-							<SelectValue placeholder="Select category" />
+				<div className="space-y-1">
+					<h3 className="text-2xl font-semibold tracking-tight">
+						Product Reports
+					</h3>
+					<p className="text-sm text-muted-foreground">
+						Product performance and inventory insights
+					</p>
+				</div>
+				<div className="flex items-center space-x-2">
+					<Select
+						value={sortBy}
+						onValueChange={(value: "revenue" | "quantity" | "margin") =>
+							setSortBy(value)
+						}
+					>
+						<SelectTrigger className="w-32">
+							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							<SelectItem value="all">All Categories</SelectItem>
-							<SelectItem value="beverages">Beverages</SelectItem>
-							<SelectItem value="food">Food</SelectItem>
-							<SelectItem value="retail">Retail</SelectItem>
+							<SelectItem value="revenue">Revenue</SelectItem>
+							<SelectItem value="quantity">Quantity</SelectItem>
+							<SelectItem value="margin">Margin</SelectItem>
 						</SelectContent>
 					</Select>
-					<Button>Export Product Data</Button>
+					<Select
+						value={limit.toString()}
+						onValueChange={(value) => setLimit(Number.parseInt(value))}
+					>
+						<SelectTrigger className="w-20">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="10">10</SelectItem>
+							<SelectItem value="25">25</SelectItem>
+							<SelectItem value="50">50</SelectItem>
+							<SelectItem value="100">100</SelectItem>
+						</SelectContent>
+					</Select>
+					<Button
+						onClick={() => setExportDialogOpen(true)}
+						variant="outline"
+						size="sm"
+					>
+						<Download className="mr-2 h-4 w-4" />
+						Export
+					</Button>
 				</div>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-3">
+			{/* Key Metrics */}
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				<Card>
-					<CardHeader>
-						<CardTitle>Top Seller</CardTitle>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Total Products
+						</CardTitle>
+						<Package className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">Espresso</div>
-						<p className="text-sm text-muted-foreground mt-2">234 units sold</p>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle>Highest Revenue</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">Cappuccino</div>
-						<p className="text-sm text-muted-foreground mt-2">
-							$1,323 total revenue
+						<div className="text-2xl font-bold">
+							{data?.summary?.total_products?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Unique products sold
 						</p>
 					</CardContent>
 				</Card>
+
 				<Card>
-					<CardHeader>
-						<CardTitle>Best Margin</CardTitle>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+						<DollarSign className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">Mocha</div>
-						<p className="text-sm text-muted-foreground mt-2">
-							75% profit margin
-						</p>
+						<div className="text-2xl font-bold">
+							${data?.summary?.total_revenue?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">From product sales</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Units Sold</CardTitle>
+						<TrendingUp className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							{data?.summary?.total_units_sold?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Total quantity</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Avg Revenue/Product
+						</CardTitle>
+						<Star className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							$
+							{(
+								(data?.summary?.total_revenue || 0) /
+								(data?.summary?.total_products || 1)
+							).toFixed(2)}
+						</div>
+						<p className="text-xs text-muted-foreground">Per product</p>
 					</CardContent>
 				</Card>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-2">
+			{/* Top Products Tables */}
+			<div className="grid gap-4 md:grid-cols-2">
 				<Card>
 					<CardHeader>
-						<CardTitle>Product Revenue vs Units Sold</CardTitle>
+						<CardTitle>Top Products by Revenue</CardTitle>
 						<CardDescription>
-							Performance comparison across products
+							Highest earning products in the selected period
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<ChartContainer
-							config={{
-								revenue: {
-									label: "Revenue ($)",
-									color: "hsl(var(--chart-1))",
-								},
-								sold: {
-									label: "Units Sold",
-									color: "hsl(var(--chart-2))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<ScatterChart data={productData}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis
-										dataKey="sold"
-										name="Units Sold"
-									/>
-									<YAxis
-										dataKey="revenue"
-										name="Revenue"
-									/>
-									<ChartTooltip
-										content={<ChartTooltipContent />}
-										cursor={{ strokeDasharray: "3 3" }}
-									/>
-									<Scatter
-										dataKey="revenue"
-										fill="var(--color-revenue)"
-									/>
-								</ScatterChart>
-							</ResponsiveContainer>
-						</ChartContainer>
+						<div className="space-y-4">
+							{data?.top_products?.map((product, index) => (
+								<div
+									key={product.id}
+									className="flex items-center justify-between"
+								>
+									<div className="flex items-center space-x-4">
+										<Badge variant="secondary">{index + 1}</Badge>
+										<div>
+											<p className="font-medium">{product.name}</p>
+											<p className="text-sm text-muted-foreground">
+												{product.sold} units • Avg: $
+												{product.avg_price.toFixed(2)}
+											</p>
+										</div>
+									</div>
+									<div className="text-right">
+										<p className="font-medium">
+											${product.revenue.toLocaleString()}
+										</p>
+									</div>
+								</div>
+							))}
+						</div>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Weekly Product Trends</CardTitle>
-						<CardDescription>
-							Sales trends for top products over time
-						</CardDescription>
+						<CardTitle>Best Sellers by Quantity</CardTitle>
+						<CardDescription>Most frequently sold products</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<ChartContainer
-							config={{
-								espresso: {
-									label: "Espresso",
-									color: "hsl(var(--chart-1))",
-								},
-								cappuccino: {
-									label: "Cappuccino",
-									color: "hsl(var(--chart-2))",
-								},
-								latte: {
-									label: "Latte",
-									color: "hsl(var(--chart-3))",
-								},
-								americano: {
-									label: "Americano",
-									color: "hsl(var(--chart-4))",
-								},
-								mocha: {
-									label: "Mocha",
-									color: "hsl(var(--chart-5))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<LineChart data={weeklyProductTrends}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="week" />
-									<YAxis />
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Line
-										type="monotone"
-										dataKey="espresso"
-										stroke="var(--color-espresso)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="cappuccino"
-										stroke="var(--color-cappuccino)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="latte"
-										stroke="var(--color-latte)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="americano"
-										stroke="var(--color-americano)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="mocha"
-										stroke="var(--color-mocha)"
-										strokeWidth={2}
-									/>
-								</LineChart>
-							</ResponsiveContainer>
-						</ChartContainer>
+						<div className="space-y-4">
+							{data?.best_sellers?.map((product, index) => (
+								<div
+									key={product.id}
+									className="flex items-center justify-between"
+								>
+									<div className="flex items-center space-x-4">
+										<Badge variant="secondary">{index + 1}</Badge>
+										<div>
+											<p className="font-medium">{product.name}</p>
+											<p className="text-sm text-muted-foreground">
+												${product.revenue.toLocaleString()} revenue
+											</p>
+										</div>
+									</div>
+									<div className="text-right">
+										<p className="font-medium">{product.sold} units</p>
+									</div>
+								</div>
+							))}
+						</div>
 					</CardContent>
 				</Card>
 			</div>
 
+			{/* Category Performance */}
 			<Card>
 				<CardHeader>
 					<CardTitle>Category Performance</CardTitle>
 					<CardDescription>
-						Revenue and margin analysis by product category
+						Revenue breakdown by product category
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<ChartContainer
-						config={{
-							revenue: {
-								label: "Revenue",
-								color: "hsl(var(--chart-1))",
-							},
-							margin: {
-								label: "Margin %",
-								color: "hsl(var(--chart-2))",
-							},
-						}}
-						className="h-[300px]"
+					<ResponsiveContainer
+						width="100%"
+						height={300}
 					>
-						<ResponsiveContainer
-							width="100%"
-							height="100%"
-						>
-							<BarChart data={categoryPerformance}>
-								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis dataKey="category" />
-								<YAxis yAxisId="left" />
-								<YAxis
-									yAxisId="right"
-									orientation="right"
-								/>
-								<ChartTooltip content={<ChartTooltipContent />} />
-								<Bar
-									yAxisId="left"
-									dataKey="revenue"
-									fill="var(--color-revenue)"
-								/>
-								<Line
-									yAxisId="right"
-									dataKey="margin"
-									stroke="var(--color-margin)"
-									strokeWidth={3}
-								/>
-							</BarChart>
-						</ResponsiveContainer>
-					</ChartContainer>
+						<BarChart data={data?.category_performance || []}>
+							<CartesianGrid strokeDasharray="3 3" />
+							<XAxis
+								dataKey="category"
+								angle={-45}
+								textAnchor="end"
+								height={80}
+							/>
+							<YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+							<Tooltip
+								formatter={(value: number) => `$${value.toLocaleString()}`}
+							/>
+							<Bar
+								dataKey="revenue"
+								fill="#8884d8"
+							/>
+						</BarChart>
+					</ResponsiveContainer>
 				</CardContent>
 			</Card>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Product Performance Radar</CardTitle>
-					<CardDescription>
-						Multi-dimensional analysis of top products
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<ChartContainer
-						config={{
-							espresso: {
-								label: "Espresso",
-								color: "hsl(var(--chart-1))",
-							},
-						}}
-						className="h-[400px]"
-					>
-						<ResponsiveContainer
-							width="100%"
-							height="100%"
-						>
-							<RadarChart
-								data={
-									productPerformanceRadar[0] ? [productPerformanceRadar[0]] : []
-								}
-							>
-								<PolarGrid />
-								<PolarAngleAxis dataKey="product" />
-								<PolarRadiusAxis
-									angle={90}
-									domain={[0, 100]}
-								/>
-								<Radar
-									name="Performance"
-									dataKey="sales"
-									stroke="var(--color-espresso)"
-									fill="var(--color-espresso)"
-									fillOpacity={0.3}
-								/>
-								<ChartTooltip content={<ChartTooltipContent />} />
-							</RadarChart>
-						</ResponsiveContainer>
-					</ChartContainer>
-				</CardContent>
-			</Card>
+			{/* Product Trends */}
+			{data?.product_trends &&
+				Object.keys(data.product_trends).length > 0 &&
+				(() => {
+					// Create a unified dataset with all dates and product data
+					const allDates = new Set<string>();
+					const productNames = Object.keys(data.product_trends);
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Product Performance Details</CardTitle>
-					<CardDescription>
-						Comprehensive breakdown of product metrics
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Product</TableHead>
-								<TableHead>Units Sold</TableHead>
-								<TableHead>Revenue</TableHead>
-								<TableHead>Avg. Price</TableHead>
-								<TableHead>Profit Margin</TableHead>
-								<TableHead>Rating</TableHead>
-								<TableHead>Performance</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{productData.map((product, index) => (
-								<TableRow key={index}>
-									<TableCell className="font-medium">{product.name}</TableCell>
-									<TableCell>{product.sold}</TableCell>
-									<TableCell>${product.revenue.toLocaleString()}</TableCell>
-									<TableCell>
-										${(product.revenue / product.sold).toFixed(2)}
-									</TableCell>
-									<TableCell>{product.margin}%</TableCell>
-									<TableCell>
-										<div className="flex items-center gap-2">
-											<span>{product.rating}</span>
-											<div className="flex">
-												{[...Array(5)].map((_, i) => (
-													<span
-														key={i}
-														className={
-															i < Math.floor(product.rating)
-																? "text-yellow-400"
-																: "text-gray-300"
-														}
-													>
-														★
-													</span>
-												))}
-											</div>
-										</div>
-									</TableCell>
-									<TableCell>
-										<div className="flex items-center gap-2">
-											<Progress
-												value={(product.sold / 250) * 100}
-												className="w-16 h-2"
+					// Collect all unique dates
+					productNames.forEach((productName) => {
+						data.product_trends[productName].forEach((trend) => {
+							allDates.add(trend.date);
+						});
+					});
+
+					// Sort dates
+					const sortedDates = Array.from(allDates).sort();
+
+					// Create unified data structure
+					const unifiedData = sortedDates.map((date) => {
+						const dataPoint: any = { date };
+						productNames.forEach((productName) => {
+							const trend = data.product_trends[productName].find(
+								(t) => t.date === date
+							);
+							dataPoint[productName] = trend ? trend.sold : 0;
+						});
+						return dataPoint;
+					});
+
+					return (
+						<Card>
+							<CardHeader>
+								<CardTitle>Product Trends</CardTitle>
+								<CardDescription>
+									Sales trends for top products over time
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<ResponsiveContainer
+									width="100%"
+									height={400}
+								>
+									<LineChart data={unifiedData}>
+										<CartesianGrid strokeDasharray="3 3" />
+										<XAxis
+											dataKey="date"
+											tickFormatter={(value) =>
+												format(reportsService.parseLocalDate(value), "MMM dd")
+											}
+										/>
+										<YAxis />
+										<Tooltip
+											labelFormatter={(value) =>
+												format(
+													reportsService.parseLocalDate(value),
+													"MMM dd, yyyy"
+												)
+											}
+										/>
+										{productNames.map((productName, index) => (
+											<Line
+												key={productName}
+												type="monotone"
+												dataKey={productName}
+												stroke={COLORS[index % COLORS.length]}
+												strokeWidth={2}
+												name={productName}
+												connectNulls={false}
 											/>
-											<Badge
-												variant={
-													product.sold > 200
-														? "default"
-														: product.sold > 150
-														? "secondary"
-														: "outline"
-												}
-											>
-												{product.sold > 200
-													? "High"
-													: product.sold > 150
-													? "Medium"
-													: "Low"}
-											</Badge>
+										))}
+									</LineChart>
+								</ResponsiveContainer>
+							</CardContent>
+						</Card>
+					);
+				})()}
+
+			{/* Category Distribution */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Category Distribution</CardTitle>
+					<CardDescription>Revenue share by category</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="grid gap-4 md:grid-cols-2">
+						<ResponsiveContainer
+							width="100%"
+							height={300}
+						>
+							<PieChart>
+								<Pie
+									data={data?.category_performance || []}
+									cx="50%"
+									cy="50%"
+									labelLine={false}
+									label={({ category, revenue }) =>
+										`${category}: $${revenue.toLocaleString()}`
+									}
+									outerRadius={80}
+									fill="#8884d8"
+									dataKey="revenue"
+								>
+									{data?.category_performance?.map((entry, index) => (
+										<Cell
+											key={`cell-${index}`}
+											fill={COLORS[index % COLORS.length]}
+										/>
+									))}
+								</Pie>
+								<Tooltip
+									formatter={(value: number) => `$${value.toLocaleString()}`}
+								/>
+							</PieChart>
+						</ResponsiveContainer>
+						<div className="space-y-4">
+							{data?.category_performance?.map((category, index) => (
+								<div
+									key={category.category}
+									className="flex items-center justify-between p-3 border rounded-lg"
+								>
+									<div className="flex items-center space-x-3">
+										<div
+											className="w-4 h-4 rounded-full"
+											style={{ backgroundColor: COLORS[index % COLORS.length] }}
+										/>
+										<div>
+											<p className="font-medium">{category.category}</p>
+											<p className="text-sm text-muted-foreground">
+												{category.unique_products} products
+											</p>
 										</div>
-									</TableCell>
-								</TableRow>
+									</div>
+									<div className="text-right">
+										<p className="font-medium">
+											${category.revenue.toLocaleString()}
+										</p>
+										<p className="text-sm text-muted-foreground">
+											{category.units_sold} units
+										</p>
+									</div>
+								</div>
 							))}
-						</TableBody>
-					</Table>
+						</div>
+					</div>
 				</CardContent>
 			</Card>
+
+			{/* Export Dialog */}
+			<ExportDialog
+				open={exportDialogOpen}
+				onOpenChange={setExportDialogOpen}
+				reportType="products"
+				defaultStartDate={dateRange?.from}
+				defaultEndDate={dateRange?.to}
+				defaultFilters={{
+					category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+					limit: limit,
+				}}
+			/>
 		</div>
 	);
 }

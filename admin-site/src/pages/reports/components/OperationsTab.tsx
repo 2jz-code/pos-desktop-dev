@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import {
 	Card,
@@ -6,164 +8,136 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import reportsService from "@/services/api/reportsService";
-
-interface DateRange {
-	from: Date;
-	to: Date;
-}
-
-interface OperationsTabProps {
-	dateRange: DateRange;
-}
-import {
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Users, Target, TrendingUp } from "lucide-react";
 import {
-	BarChart,
-	Bar,
-	LineChart,
-	Line,
-	ResponsiveContainer,
 	XAxis,
 	YAxis,
 	CartesianGrid,
+	Tooltip,
+	ResponsiveContainer,
+	LineChart,
+	Line,
 	AreaChart,
 	Area,
 } from "recharts";
+import {
+	Users,
+	TrendingUp,
+	Activity,
+	Calendar,
+	Download,
+	RefreshCw,
+} from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import reportsService from "@/services/api/reportsService";
+import { ExportDialog } from "@/components/reports/ExportDialog";
 
-const peakHoursData = [
-	{ hour: "6AM", orders: 12, avgWait: 1.2, efficiency: 85 },
-	{ hour: "7AM", orders: 24, avgWait: 1.8, efficiency: 88 },
-	{ hour: "8AM", orders: 45, avgWait: 2.1, efficiency: 92 },
-	{ hour: "9AM", orders: 38, avgWait: 1.9, efficiency: 90 },
-	{ hour: "10AM", orders: 32, avgWait: 1.5, efficiency: 87 },
-	{ hour: "11AM", orders: 42, avgWait: 1.7, efficiency: 89 },
-	{ hour: "12PM", orders: 67, avgWait: 2.8, efficiency: 85 },
-	{ hour: "1PM", orders: 52, avgWait: 2.3, efficiency: 88 },
-	{ hour: "2PM", orders: 38, avgWait: 1.6, efficiency: 91 },
-	{ hour: "3PM", orders: 28, avgWait: 1.3, efficiency: 93 },
-	{ hour: "4PM", orders: 35, avgWait: 1.4, efficiency: 92 },
-	{ hour: "5PM", orders: 48, avgWait: 2.0, efficiency: 89 },
-];
+interface OperationsData {
+	hourly_patterns: Array<{
+		hour: string;
+		orders: number;
+		revenue: number;
+		avg_order_value: number;
+	}>;
+	peak_hours: Array<{
+		hour: string;
+		orders: number;
+		revenue: number;
+	}>;
+	daily_volume: Array<{
+		date: string;
+		orders: number;
+		revenue: number;
+	}>;
+	staff_performance: Array<{
+		cashier: string;
+		orders_processed: number;
+		revenue: number;
+		avg_order_value: number;
+	}>;
+	summary: {
+		total_orders: number;
+		avg_orders_per_day: number;
+		peak_day: {
+			date: string;
+			orders: number;
+		} | null;
+		slowest_day: {
+			date: string;
+			orders: number;
+		} | null;
+	};
+}
 
-const staffPerformanceData = [
-	{
-		name: "Alice Johnson",
-		sales: 8500,
-		orders: 234,
-		efficiency: 95,
-		rating: 4.8,
-		hours: 40,
-	},
-	{
-		name: "Bob Smith",
-		sales: 7200,
-		orders: 198,
-		efficiency: 88,
-		rating: 4.6,
-		hours: 38,
-	},
-	{
-		name: "Carol Davis",
-		sales: 6800,
-		orders: 187,
-		efficiency: 92,
-		rating: 4.7,
-		hours: 35,
-	},
-	{
-		name: "David Wilson",
-		sales: 5900,
-		orders: 156,
-		efficiency: 85,
-		rating: 4.5,
-		hours: 32,
-	},
-];
-
-const weeklyOperationsData = [
-	{
-		week: "Week 1",
-		avgOrderTime: 3.5,
-		customerSatisfaction: 4.2,
-		efficiency: 85,
-	},
-	{
-		week: "Week 2",
-		avgOrderTime: 3.2,
-		customerSatisfaction: 4.4,
-		efficiency: 88,
-	},
-	{
-		week: "Week 3",
-		avgOrderTime: 3.0,
-		customerSatisfaction: 4.6,
-		efficiency: 92,
-	},
-	{
-		week: "Week 4",
-		avgOrderTime: 2.8,
-		customerSatisfaction: 4.7,
-		efficiency: 94,
-	},
-];
-
-const equipmentUtilization = [
-	{ equipment: "Espresso Machine 1", utilization: 85, status: "Optimal" },
-	{ equipment: "Espresso Machine 2", utilization: 78, status: "Good" },
-	{ equipment: "Grinder 1", utilization: 92, status: "High" },
-	{ equipment: "Grinder 2", utilization: 67, status: "Low" },
-];
+interface OperationsTabProps {
+	dateRange: DateRange | undefined;
+}
 
 export function OperationsTab({ dateRange }: OperationsTabProps) {
-	const [data, setData] = useState<unknown>(null);
-	const [loading, setLoading] = useState(true);
+	const [data, setData] = useState<OperationsData | null>(null);
+	const [loading, setLoading] = useState(false);
+	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				setLoading(true);
-				setError(null);
+	const fetchOperationsData = async () => {
+		if (!dateRange?.from || !dateRange?.to) return;
 
-				const startDate = reportsService.formatDateForApi(dateRange.from);
-				const endDate = reportsService.formatDateForApi(dateRange.to);
+		setLoading(true);
+		setError(null);
 
-				if (!startDate || !endDate) {
-					setError("Invalid date range");
-					return;
-				}
+		try {
+			const startDate = reportsService.formatDateForApi(dateRange.from);
+			const endDate = reportsService.formatEndDateForApi(dateRange.to);
 
-				const reportData = await reportsService.generateOperationsReport(
-					startDate,
-					endDate
-				);
-
-				setData(reportData);
-			} catch (err) {
-				setError("Failed to load operations data");
-				console.error("Error fetching operations data:", err);
-			} finally {
-				setLoading(false);
+			if (!startDate || !endDate) {
+				setError("Invalid date range");
+				return;
 			}
-		};
 
-		fetchData();
+			const operationsData = await reportsService.generateOperationsReport(
+				startDate,
+				endDate
+			);
+			setData(operationsData as OperationsData);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "An error occurred");
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		fetchOperationsData();
 	}, [dateRange]);
 
 	if (loading) {
 		return (
-			<div className="space-y-6">
-				<div className="animate-pulse space-y-4">
-					<div className="h-8 bg-gray-200 rounded w-1/4" />
-					<div className="h-64 bg-gray-200 rounded" />
+			<div className="space-y-4">
+				<div className="flex items-center justify-between">
+					<div className="space-y-1">
+						<h3 className="text-2xl font-semibold tracking-tight">
+							Operations Reports
+						</h3>
+						<p className="text-sm text-muted-foreground">
+							Operational insights and staff performance
+						</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					{[...Array(4)].map((_, i) => (
+						<Card key={i}>
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<div className="h-4 w-20 bg-muted animate-pulse rounded" />
+								<div className="h-4 w-4 bg-muted animate-pulse rounded" />
+							</CardHeader>
+							<CardContent>
+								<div className="h-8 w-24 bg-muted animate-pulse rounded mb-2" />
+								<div className="h-3 w-16 bg-muted animate-pulse rounded" />
+							</CardContent>
+						</Card>
+					))}
 				</div>
 			</div>
 		);
@@ -171,317 +145,339 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 
 	if (error) {
 		return (
-			<div className="space-y-6">
+			<div className="space-y-4">
 				<Card>
-					<CardHeader>
-						<CardTitle>Error</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<p className="text-red-600">{error}</p>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-sm text-muted-foreground mb-4">
+								Error loading operations data: {error}
+							</p>
+							<Button
+								onClick={fetchOperationsData}
+								variant="outline"
+							>
+								<RefreshCw className="mr-2 h-4 w-4" />
+								Retry
+							</Button>
+						</div>
 					</CardContent>
 				</Card>
 			</div>
 		);
 	}
+
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<h2 className="text-2xl font-bold">Operations Insights</h2>
-				<Button>Export Operations Data</Button>
+				<div className="space-y-1">
+					<h3 className="text-2xl font-semibold tracking-tight">
+						Operations Reports
+					</h3>
+					<p className="text-sm text-muted-foreground">
+						Operational insights and staff performance
+					</p>
+				</div>
+				<div className="flex items-center space-x-2">
+					<Button
+						onClick={() => setExportDialogOpen(true)}
+						variant="outline"
+						size="sm"
+					>
+						<Download className="mr-2 h-4 w-4" />
+						Export
+					</Button>
+				</div>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-4">
+			{/* Key Metrics */}
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Avg Order Time
-						</CardTitle>
-						<Clock className="h-4 w-4 text-muted-foreground" />
+						<CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+						<Activity className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">3.2 min</div>
-						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">-0.3 min</span> from last week
-						</p>
+						<div className="text-2xl font-bold">
+							{data?.summary?.total_orders?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Processed orders</p>
 					</CardContent>
 				</Card>
+
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Customer Wait</CardTitle>
-						<Users className="h-4 w-4 text-muted-foreground" />
+						<CardTitle className="text-sm font-medium">Daily Average</CardTitle>
+						<Calendar className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">1.8 min</div>
-						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">-0.2 min</span> from last week
-						</p>
+						<div className="text-2xl font-bold">
+							{data?.summary?.avg_orders_per_day?.toFixed(1) || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Orders per day</p>
 					</CardContent>
 				</Card>
+
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Order Accuracy
-						</CardTitle>
-						<Target className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">98.5%</div>
-						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">+1.2%</span> from last week
-						</p>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Efficiency</CardTitle>
+						<CardTitle className="text-sm font-medium">Peak Day</CardTitle>
 						<TrendingUp className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">89.2%</div>
+						<div className="text-2xl font-bold">
+							{data?.summary?.peak_day?.orders || "0"}
+						</div>
 						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">+3.1%</span> from last week
+							{data?.summary?.peak_day?.date
+								? format(new Date(data.summary.peak_day.date), "MMM dd")
+								: "N/A"}
 						</p>
 					</CardContent>
 				</Card>
-			</div>
-
-			<div className="grid gap-6 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle>Peak Hours Analysis</CardTitle>
-						<CardDescription>
-							Order volume and wait times throughout the day
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{
-								orders: {
-									label: "Orders",
-									color: "hsl(var(--chart-1))",
-								},
-								avgWait: {
-									label: "Avg Wait (min)",
-									color: "hsl(var(--chart-2))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<BarChart data={peakHoursData}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="hour" />
-									<YAxis yAxisId="left" />
-									<YAxis
-										yAxisId="right"
-										orientation="right"
-									/>
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Bar
-										yAxisId="left"
-										dataKey="orders"
-										fill="var(--color-orders)"
-									/>
-									<Line
-										yAxisId="right"
-										dataKey="avgWait"
-										stroke="var(--color-avgWait)"
-										strokeWidth={3}
-									/>
-								</BarChart>
-							</ResponsiveContainer>
-						</ChartContainer>
-					</CardContent>
-				</Card>
 
 				<Card>
-					<CardHeader>
-						<CardTitle>Weekly Operations Trend</CardTitle>
-						<CardDescription>Key operational metrics over time</CardDescription>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Staff Members</CardTitle>
+						<Users className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<ChartContainer
-							config={{
-								avgOrderTime: {
-									label: "Avg Order Time",
-									color: "hsl(var(--chart-1))",
-								},
-								customerSatisfaction: {
-									label: "Customer Satisfaction",
-									color: "hsl(var(--chart-2))",
-								},
-								efficiency: {
-									label: "Efficiency %",
-									color: "hsl(var(--chart-3))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<LineChart data={weeklyOperationsData}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="week" />
-									<YAxis />
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Line
-										type="monotone"
-										dataKey="avgOrderTime"
-										stroke="var(--color-avgOrderTime)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="customerSatisfaction"
-										stroke="var(--color-customerSatisfaction)"
-										strokeWidth={2}
-									/>
-									<Line
-										type="monotone"
-										dataKey="efficiency"
-										stroke="var(--color-efficiency)"
-										strokeWidth={2}
-									/>
-								</LineChart>
-							</ResponsiveContainer>
-						</ChartContainer>
+						<div className="text-2xl font-bold">
+							{data?.staff_performance?.length || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Active cashiers</p>
 					</CardContent>
 				</Card>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle>Staff Performance</CardTitle>
-						<CardDescription>
-							Individual team member productivity metrics
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{
-								sales: {
-									label: "Sales ($)",
-									color: "hsl(var(--chart-1))",
-								},
-								efficiency: {
-									label: "Efficiency %",
-									color: "hsl(var(--chart-2))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<BarChart
-									data={staffPerformanceData}
-									layout="horizontal"
-								>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis type="number" />
-									<YAxis
-										dataKey="name"
-										type="category"
-										width={100}
-									/>
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Bar
-										dataKey="sales"
-										fill="var(--color-sales)"
-									/>
-								</BarChart>
-							</ResponsiveContainer>
-						</ChartContainer>
-					</CardContent>
-				</Card>
+			{/* Hourly Patterns */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Hourly Order Patterns</CardTitle>
+					<CardDescription>
+						Order volume and revenue by hour of day
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<ResponsiveContainer
+						width="100%"
+						height={400}
+					>
+						<AreaChart data={data?.hourly_patterns || []}>
+							<CartesianGrid strokeDasharray="3 3" />
+							<XAxis dataKey="hour" />
+							<YAxis
+								yAxisId="orders"
+								orientation="left"
+							/>
+							<YAxis
+								yAxisId="revenue"
+								orientation="right"
+								tickFormatter={(value) => `$${value.toLocaleString()}`}
+							/>
+							<Tooltip
+								formatter={(value: number, name: string) => [
+									name === "revenue"
+										? `$${value.toLocaleString()}`
+										: value.toString(),
+									name === "revenue" ? "Revenue" : "Orders",
+								]}
+							/>
+							<Area
+								yAxisId="orders"
+								type="monotone"
+								dataKey="orders"
+								stackId="1"
+								stroke="#8884d8"
+								fill="#8884d8"
+								fillOpacity={0.6}
+							/>
+							<Line
+								yAxisId="revenue"
+								type="monotone"
+								dataKey="revenue"
+								stroke="#82ca9d"
+								strokeWidth={2}
+								dot={{ fill: "#82ca9d" }}
+							/>
+						</AreaChart>
+					</ResponsiveContainer>
+				</CardContent>
+			</Card>
 
+			{/* Peak Hours and Daily Volume */}
+			<div className="grid gap-4 md:grid-cols-2">
 				<Card>
 					<CardHeader>
-						<CardTitle>Equipment Utilization</CardTitle>
-						<CardDescription>Usage efficiency of key equipment</CardDescription>
+						<CardTitle>Peak Hours</CardTitle>
+						<CardDescription>
+							Top 5 busiest hours by order volume
+						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-4">
-							{equipmentUtilization.map((equipment, index) => (
+							{data?.peak_hours?.map((hour, index) => (
 								<div
-									key={index}
-									className="space-y-2"
+									key={hour.hour}
+									className="flex items-center justify-between"
 								>
-									<div className="flex items-center justify-between">
-										<span className="font-medium">{equipment.equipment}</span>
-										<div className="flex items-center gap-2">
-											<span className="text-sm">{equipment.utilization}%</span>
-											<Badge
-												variant={
-													equipment.status === "Optimal"
-														? "default"
-														: equipment.status === "Good"
-														? "secondary"
-														: equipment.status === "High"
-														? "destructive"
-														: "outline"
-												}
-											>
-												{equipment.status}
-											</Badge>
+									<div className="flex items-center space-x-4">
+										<Badge variant="secondary">{index + 1}</Badge>
+										<div>
+											<p className="font-medium">{hour.hour}</p>
+											<p className="text-sm text-muted-foreground">
+												${hour.revenue.toLocaleString()} revenue
+											</p>
 										</div>
 									</div>
-									<Progress
-										value={equipment.utilization}
-										className="h-2"
-									/>
+									<div className="text-right">
+										<p className="font-medium">{hour.orders} orders</p>
+									</div>
 								</div>
 							))}
 						</div>
 					</CardContent>
 				</Card>
-			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Efficiency Heatmap</CardTitle>
-					<CardDescription>
-						Operational efficiency throughout the day
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<ChartContainer
-						config={{
-							efficiency: {
-								label: "Efficiency %",
-								color: "hsl(var(--chart-1))",
-							},
-						}}
-						className="h-[200px]"
-					>
+				<Card>
+					<CardHeader>
+						<CardTitle>Daily Volume Trend</CardTitle>
+						<CardDescription>Order volume over time</CardDescription>
+					</CardHeader>
+					<CardContent>
 						<ResponsiveContainer
 							width="100%"
-							height="100%"
+							height={300}
 						>
-							<AreaChart data={peakHoursData}>
+							<LineChart data={data?.daily_volume || []}>
 								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis dataKey="hour" />
-								<YAxis domain={[80, 95]} />
-								<ChartTooltip content={<ChartTooltipContent />} />
-								<Area
-									type="monotone"
-									dataKey="efficiency"
-									stroke="var(--color-efficiency)"
-									fill="var(--color-efficiency)"
-									fillOpacity={0.6}
+								<XAxis
+									dataKey="date"
+									tickFormatter={(value) =>
+										format(reportsService.parseLocalDate(value), "MMM dd")
+									}
 								/>
-							</AreaChart>
+								<YAxis />
+								<Tooltip
+									labelFormatter={(value) =>
+										format(reportsService.parseLocalDate(value), "MMM dd, yyyy")
+									}
+									formatter={(value: number) => [value.toString(), "Orders"]}
+								/>
+								<Line
+									type="monotone"
+									dataKey="orders"
+									stroke="#8884d8"
+									strokeWidth={2}
+									dot={{ fill: "#8884d8" }}
+								/>
+							</LineChart>
 						</ResponsiveContainer>
-					</ChartContainer>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Staff Performance */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Staff Performance</CardTitle>
+					<CardDescription>Cashier performance metrics</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="space-y-4">
+						{data?.staff_performance?.map((staff, index) => (
+							<div
+								key={staff.cashier}
+								className="flex items-center justify-between p-4 border rounded-lg"
+							>
+								<div className="flex items-center space-x-4">
+									<Badge variant="outline">{index + 1}</Badge>
+									<div>
+										<p className="font-medium">{staff.cashier}</p>
+										<p className="text-sm text-muted-foreground">
+											Avg Order: ${staff.avg_order_value.toFixed(2)}
+										</p>
+									</div>
+								</div>
+								<div className="text-right space-y-1">
+									<p className="font-medium">{staff.orders_processed} orders</p>
+									<p className="text-sm text-muted-foreground">
+										${staff.revenue.toLocaleString()} revenue
+									</p>
+								</div>
+							</div>
+						))}
+					</div>
 				</CardContent>
 			</Card>
+
+			{/* Performance Summary */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Performance Summary</CardTitle>
+					<CardDescription>Key operational metrics</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="grid gap-4 md:grid-cols-2">
+						<div className="space-y-4">
+							<div>
+								<p className="text-sm font-medium mb-2">Busiest Day</p>
+								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+									<span>
+										{data?.summary?.peak_day?.date
+											? format(
+													new Date(data.summary.peak_day.date),
+													"EEEE, MMM dd"
+											  )
+											: "N/A"}
+									</span>
+									<Badge>{data?.summary?.peak_day?.orders || 0} orders</Badge>
+								</div>
+							</div>
+							<div>
+								<p className="text-sm font-medium mb-2">Slowest Day</p>
+								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+									<span>
+										{data?.summary?.slowest_day?.date
+											? format(
+													new Date(data.summary.slowest_day.date),
+													"EEEE, MMM dd"
+											  )
+											: "N/A"}
+									</span>
+									<Badge variant="secondary">
+										{data?.summary?.slowest_day?.orders || 0} orders
+									</Badge>
+								</div>
+							</div>
+						</div>
+						<div className="space-y-4">
+							<div>
+								<p className="text-sm font-medium mb-2">Peak Hour</p>
+								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+									<span>{data?.peak_hours?.[0]?.hour || "N/A"}</span>
+									<Badge>{data?.peak_hours?.[0]?.orders || 0} orders</Badge>
+								</div>
+							</div>
+							<div>
+								<p className="text-sm font-medium mb-2">Top Performer</p>
+								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+									<span>{data?.staff_performance?.[0]?.cashier || "N/A"}</span>
+									<Badge>
+										{data?.staff_performance?.[0]?.orders_processed || 0} orders
+									</Badge>
+								</div>
+							</div>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+			{/* Export Dialog */}
+			<ExportDialog
+				open={exportDialogOpen}
+				onOpenChange={setExportDialogOpen}
+				reportType="operations"
+				defaultStartDate={dateRange?.from}
+				defaultEndDate={dateRange?.to}
+			/>
 		</div>
 	);
 }

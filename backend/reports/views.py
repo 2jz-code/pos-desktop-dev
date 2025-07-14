@@ -174,25 +174,101 @@ class ReportViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @action(detail=False, methods=["get"], url_path="quick-metrics")
+    def quick_metrics(self, request):
+        """Get today/MTD/YTD quick metrics for dashboard"""
+        try:
+            metrics_data = ReportService.get_quick_metrics()
+            return Response(metrics_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Quick metrics generation failed: {e}", exc_info=True)
+            return Response(
+                {"error": "Failed to generate quick metrics", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=False, methods=["post"], url_path="export")
     def export(self, request):
-        """Export report to file (placeholder for background task implementation)"""
+        """Export report to file"""
         serializer = ReportExportRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # This will be implemented in Phase 3 with Celery tasks
-            # For now, return a placeholder response
-            return Response(
-                {
-                    "message": "Export functionality will be implemented in Phase 3",
-                    "report_type": serializer.validated_data["report_type"],
-                    "format": serializer.validated_data["format"],
-                    "status": "pending",
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
+            report_type = serializer.validated_data["report_type"]
+            parameters = serializer.validated_data["parameters"]
+            format_type = serializer.validated_data["format"]
+            
+            # Extract date parameters
+            start_date = parameters.get("start_date")
+            end_date = parameters.get("end_date")
+            
+            if not start_date or not end_date:
+                return Response(
+                    {"error": "start_date and end_date are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Convert date strings to datetime objects
+            try:
+                start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            except ValueError:
+                return Response(
+                    {"error": "Invalid date format. Use ISO 8601 format."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Generate the report data first
+            if report_type == "summary":
+                report_data = ReportService.generate_summary_report(start_date, end_date)
+            elif report_type == "sales":
+                report_data = ReportService.generate_sales_report(start_date, end_date)
+            elif report_type == "products":
+                category_id = parameters.get("category_id")
+                limit = parameters.get("limit", 10)
+                report_data = ReportService.generate_products_report(
+                    start_date, end_date, category_id, limit
+                )
+            elif report_type == "payments":
+                report_data = ReportService.generate_payments_report(start_date, end_date)
+            elif report_type == "operations":
+                report_data = ReportService.generate_operations_report(start_date, end_date)
+            else:
+                return Response(
+                    {"error": f"Unknown report type: {report_type}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Export to the requested format
+            format_type = format_type.lower()
+            if format_type == "csv":
+                file_data = ReportService.export_to_csv(report_data, report_type)
+                content_type = "text/csv"
+                file_extension = "csv"
+            elif format_type == "xlsx" or format_type == "excel":
+                file_data = ReportService.export_to_xlsx(report_data, report_type)
+                content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                file_extension = "xlsx"
+            elif format_type == "pdf":
+                file_data = ReportService.export_to_pdf(report_data, report_type)
+                content_type = "application/pdf"
+                file_extension = "pdf"
+            else:
+                return Response(
+                    {"error": f"Unknown format: {format_type}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Create filename
+            filename = f"{report_type}-report-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.{file_extension}"
+            
+            # Return file response
+            from django.http import HttpResponse
+            response = HttpResponse(file_data, content_type=content_type)
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
 
         except Exception as e:
             logger.error(f"Report export failed: {e}", exc_info=True)

@@ -1,22 +1,53 @@
+"use client";
+
 import { useState, useEffect } from "react";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
+	BarChart,
+	Bar,
+	XAxis,
+	YAxis,
+	CartesianGrid,
+	Tooltip,
+	ResponsiveContainer,
+	Line,
+	AreaChart,
+	Area,
+} from "recharts";
+import {
+	DollarSign,
+	ShoppingCart,
+	TrendingUp,
+	Package,
+	Download,
+	RefreshCw,
+} from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
+import { ExportDialog } from "@/components/reports/ExportDialog";
 
-interface DateRange {
-	from: Date;
-	to: Date;
-}
-
-interface SalesTabProps {
-	dateRange: DateRange;
-}
-
-interface SalesApiData {
+interface SalesData {
 	total_revenue: number;
 	total_orders: number;
-	total_items: number;
 	avg_order_value: number;
 	total_tax: number;
 	total_discounts: number;
+	total_items: number;
 	sales_by_period: Array<{
 		date: string;
 		revenue: number;
@@ -34,158 +65,77 @@ interface SalesApiData {
 		orders: number;
 	}>;
 }
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import {
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@/components/ui/chart";
-import { Button } from "@/components/ui/button";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import {
-	Line,
-	Bar,
-	BarChart,
-	Area,
-	ResponsiveContainer,
-	XAxis,
-	YAxis,
-	CartesianGrid,
-	ComposedChart,
-} from "recharts";
-import { format } from "date-fns";
 
-const salesData = [
-	{
-		date: "2024-01-01",
-		sales: 2450,
-		transactions: 67,
-		avgTicket: 36.57,
-		growth: 0,
-	},
-	{
-		date: "2024-01-02",
-		sales: 3200,
-		transactions: 89,
-		avgTicket: 35.96,
-		growth: 30.6,
-	},
-	{
-		date: "2024-01-03",
-		sales: 2800,
-		transactions: 76,
-		avgTicket: 36.84,
-		growth: -12.5,
-	},
-	{
-		date: "2024-01-04",
-		sales: 3600,
-		transactions: 95,
-		avgTicket: 37.89,
-		growth: 28.6,
-	},
-	{
-		date: "2024-01-05",
-		sales: 4100,
-		transactions: 112,
-		avgTicket: 36.61,
-		growth: 13.9,
-	},
-	{
-		date: "2024-01-06",
-		sales: 3800,
-		transactions: 98,
-		avgTicket: 38.78,
-		growth: -7.3,
-	},
-	{
-		date: "2024-01-07",
-		sales: 4500,
-		transactions: 125,
-		avgTicket: 36.0,
-		growth: 18.4,
-	},
-];
-
-const monthlySalesData = [
-	{ month: "Jul", sales: 85000, target: 80000, growth: 12.5 },
-	{ month: "Aug", sales: 92000, target: 85000, growth: 8.2 },
-	{ month: "Sep", sales: 78000, target: 90000, growth: -15.2 },
-	{ month: "Oct", sales: 105000, target: 95000, growth: 34.6 },
-	{ month: "Nov", sales: 118000, target: 100000, growth: 12.4 },
-	{ month: "Dec", sales: 135000, target: 110000, growth: 14.4 },
-];
-
-const categoryData = [
-	{ category: "Beverages", sales: 28500, percentage: 63, growth: 15.2 },
-	{ category: "Food", sales: 12800, percentage: 28, growth: 8.7 },
-	{ category: "Retail", sales: 4100, percentage: 9, growth: -2.1 },
-];
+interface SalesTabProps {
+	dateRange: DateRange | undefined;
+}
 
 export function SalesTab({ dateRange }: SalesTabProps) {
-	const [data, setData] = useState<SalesApiData | null>(null);
-	const [loading, setLoading] = useState(true);
+	const [data, setData] = useState<SalesData | null>(null);
+	const [loading, setLoading] = useState(false);
+	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [selectedPeriod, setSelectedPeriod] = useState("daily");
+	const [groupBy, setGroupBy] = useState<"day" | "week" | "month">("day");
+
+	const fetchSalesData = async () => {
+		if (!dateRange?.from || !dateRange?.to) return;
+
+		setLoading(true);
+		setError(null);
+
+		try {
+			const startDate = reportsService.formatDateForApi(dateRange.from);
+			const endDate = reportsService.formatEndDateForApi(dateRange.to);
+
+			if (!startDate || !endDate) {
+				setError("Invalid date range");
+				return;
+			}
+
+			const salesData = await reportsService.generateSalesReport(
+				startDate,
+				endDate
+			);
+			setData(salesData as SalesData);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "An error occurred");
+		} finally {
+			setLoading(false);
+		}
+	};
 
 	useEffect(() => {
-		const fetchData = async () => {
-			try {
-				setLoading(true);
-				setError(null);
-
-				const startDate = reportsService.formatDateForApi(dateRange.from);
-				const endDate = reportsService.formatEndDateForApi(dateRange.to);
-
-				if (!startDate || !endDate) {
-					setError("Invalid date range");
-					return;
-				}
-
-				const reportData = await reportsService.generateSalesReport(
-					startDate,
-					endDate
-				);
-
-				setData(reportData as SalesApiData);
-			} catch (err) {
-				setError("Failed to load sales data");
-				console.error("Error fetching sales data:", err);
-			} finally {
-				setLoading(false);
-			}
-		};
-
-		fetchData();
+		fetchSalesData();
 	}, [dateRange]);
+
+	
 
 	if (loading) {
 		return (
-			<div className="space-y-6">
-				<div className="animate-pulse space-y-4">
-					<div className="h-8 bg-gray-200 rounded w-1/4" />
-					<div className="h-64 bg-gray-200 rounded" />
+			<div className="space-y-4">
+				<div className="flex items-center justify-between">
+					<div className="space-y-1">
+						<h3 className="text-2xl font-semibold tracking-tight">
+							Sales Reports
+						</h3>
+						<p className="text-sm text-muted-foreground">
+							Detailed sales analysis and trends
+						</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					{[...Array(4)].map((_, i) => (
+						<Card key={i}>
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<div className="h-4 w-20 bg-muted animate-pulse rounded" />
+								<div className="h-4 w-4 bg-muted animate-pulse rounded" />
+							</CardHeader>
+							<CardContent>
+								<div className="h-8 w-24 bg-muted animate-pulse rounded mb-2" />
+								<div className="h-3 w-16 bg-muted animate-pulse rounded" />
+							</CardContent>
+						</Card>
+					))}
 				</div>
 			</div>
 		);
@@ -193,361 +143,291 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 	if (error) {
 		return (
-			<div className="space-y-6">
+			<div className="space-y-4">
 				<Card>
-					<CardHeader>
-						<CardTitle>Error</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<p className="text-red-600">{error}</p>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-sm text-muted-foreground mb-4">
+								Error loading sales data: {error}
+							</p>
+							<Button
+								onClick={fetchSalesData}
+								variant="outline"
+							>
+								<RefreshCw className="mr-2 h-4 w-4" />
+								Retry
+							</Button>
+						</div>
 					</CardContent>
 				</Card>
 			</div>
 		);
 	}
 
-	// Helper functions to get API data with fallback to mock data
-	const getApiValue = <T,>(apiValue: T | undefined, fallback: T): T => {
-		return data !== null && apiValue !== undefined ? apiValue : fallback;
-	};
-
-	// Transform sales by period data for the charts
-	const getSalesByPeriodData = () => {
-		if (data?.sales_by_period) {
-			return data.sales_by_period.map((item, index) => ({
-				date: item.date,
-				sales: item.revenue,
-				transactions: item.orders,
-				avgTicket: item.orders > 0 ? item.revenue / item.orders : 0,
-				growth:
-					index > 0 && data.sales_by_period[index - 1]
-						? ((item.revenue - data.sales_by_period[index - 1].revenue) /
-								data.sales_by_period[index - 1].revenue) *
-						  100
-						: 0,
-			}));
-		}
-		return salesData;
-	};
-
-	// Transform sales by category data
-	const getSalesByCategoryData = () => {
-		if (data?.sales_by_category) {
-			return data.sales_by_category.map((item) => ({
-				category: item.category,
-				sales: Number(item.revenue) || 0,
-				quantity: Number(item.quantity) || 0,
-				percentage: 0, // Calculate if needed
-				growth: 0, // Would need historical data
-			}));
-		}
-		return categoryData;
-	};
-
-	// Get best day from sales data
-	const getBestDay = () => {
-		const salesByPeriod = getSalesByPeriodData();
-		if (salesByPeriod.length > 0) {
-			const bestDay = salesByPeriod.reduce((max, current) =>
-				current.sales > max.sales ? current : max
-			);
-			return {
-				date: format(new Date(bestDay.date), "MMM dd"),
-				sales: bestDay.sales,
-			};
-		}
-		return { date: "Jan 7", sales: 4500 };
-	};
-
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<h2 className="text-2xl font-bold">Sales Reports</h2>
-				<div className="flex items-center gap-4">
+				<div className="space-y-1">
+					<h3 className="text-2xl font-semibold tracking-tight">
+						Sales Reports
+					</h3>
+					<p className="text-sm text-muted-foreground">
+						Detailed sales analysis and trends
+					</p>
+				</div>
+				<div className="flex items-center space-x-2">
 					<Select
-						value={selectedPeriod}
-						onValueChange={setSelectedPeriod}
+						value={groupBy}
+						onValueChange={(value: "day" | "week" | "month") =>
+							setGroupBy(value)
+						}
 					>
-						<SelectTrigger className="w-[180px]">
-							<SelectValue placeholder="Select period" />
+						<SelectTrigger className="w-32">
+							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							<SelectItem value="daily">Daily</SelectItem>
-							<SelectItem value="weekly">Weekly</SelectItem>
-							<SelectItem value="monthly">Monthly</SelectItem>
+							<SelectItem value="day">Daily</SelectItem>
+							<SelectItem value="week">Weekly</SelectItem>
+							<SelectItem value="month">Monthly</SelectItem>
 						</SelectContent>
 					</Select>
-					<Button>Generate Report</Button>
+					<Button
+						onClick={() => setExportDialogOpen(true)}
+						variant="outline"
+						size="sm"
+					>
+						<Download className="mr-2 h-4 w-4" />
+						Export
+					</Button>
 				</div>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-3">
+			{/* Key Metrics */}
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				<Card>
-					<CardHeader>
-						<CardTitle>Total Revenue</CardTitle>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+						<DollarSign className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold">
-							${getApiValue(data?.total_revenue, 45280).toLocaleString()}
+						<div className="text-2xl font-bold">
+							${data?.total_revenue?.toLocaleString() || "0"}
 						</div>
-						<p className="text-sm text-muted-foreground mt-2">
-							Across {getApiValue(data?.total_orders, 1247).toLocaleString()}{" "}
-							transactions
-						</p>
+						<p className="text-xs text-muted-foreground">Gross sales revenue</p>
 					</CardContent>
 				</Card>
+
 				<Card>
-					<CardHeader>
-						<CardTitle>Best Day</CardTitle>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+						<ShoppingCart className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold">{getBestDay().date}</div>
-						<p className="text-sm text-muted-foreground mt-2">
-							${getBestDay().sales.toLocaleString()} in sales
-						</p>
+						<div className="text-2xl font-bold">
+							{data?.total_orders?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Completed orders</p>
 					</CardContent>
 				</Card>
+
 				<Card>
-					<CardHeader>
-						<CardTitle>Avg. Order Value</CardTitle>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Avg Order Value
+						</CardTitle>
+						<TrendingUp className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold">
-							${getApiValue(data?.avg_order_value, 36.32).toFixed(2)}
+						<div className="text-2xl font-bold">
+							${data?.avg_order_value?.toFixed(2) || "0.00"}
 						</div>
-						<p className="text-sm text-muted-foreground mt-2">
-							Per transaction
-						</p>
+						<p className="text-xs text-muted-foreground">Per order</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Items Sold</CardTitle>
+						<Package className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							{data?.total_items?.toLocaleString() || "0"}
+						</div>
+						<p className="text-xs text-muted-foreground">Total units</p>
 					</CardContent>
 				</Card>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle>Sales vs Transactions</CardTitle>
-						<CardDescription>
-							Daily performance with dual metrics
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{
-								sales: {
-									label: "Sales ($)",
-									color: "hsl(var(--chart-1))",
-								},
-								transactions: {
-									label: "Transactions",
-									color: "hsl(var(--chart-2))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<ComposedChart data={getSalesByPeriodData()}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis
-										dataKey="date"
-										tickFormatter={(value) => {
-											// Ensure date parsing handles timezone correctly
-											const date = new Date(value + "T00:00:00");
-											return format(date, "MMM dd");
-										}}
-									/>
-									<YAxis yAxisId="left" />
-									<YAxis
-										yAxisId="right"
-										orientation="right"
-									/>
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Area
-										yAxisId="left"
-										type="monotone"
-										dataKey="sales"
-										fill="var(--color-sales)"
-										fillOpacity={0.3}
-										stroke="var(--color-sales)"
-									/>
-									<Line
-										yAxisId="right"
-										type="monotone"
-										dataKey="transactions"
-										stroke="var(--color-transactions)"
-										strokeWidth={3}
-									/>
-								</ComposedChart>
-							</ResponsiveContainer>
-						</ChartContainer>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Monthly Performance vs Target</CardTitle>
-						<CardDescription>
-							Sales performance against monthly targets
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ChartContainer
-							config={{
-								sales: {
-									label: "Actual Sales",
-									color: "hsl(var(--chart-1))",
-								},
-								target: {
-									label: "Target",
-									color: "hsl(var(--chart-3))",
-								},
-							}}
-							className="h-[300px]"
-						>
-							<ResponsiveContainer
-								width="100%"
-								height="100%"
-							>
-								<BarChart data={monthlySalesData}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="month" />
-									<YAxis />
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Bar
-										dataKey="target"
-										fill="var(--color-target)"
-										opacity={0.5}
-									/>
-									<Bar
-										dataKey="sales"
-										fill="var(--color-sales)"
-									/>
-								</BarChart>
-							</ResponsiveContainer>
-						</ChartContainer>
-					</CardContent>
-				</Card>
-			</div>
-
+			{/* Sales Trend Chart */}
 			<Card>
-				<CardHeader className="pb-2">
-					<CardTitle>Sales by Category</CardTitle>
-					<CardDescription>
-						Revenue breakdown by product category
-					</CardDescription>
+				<CardHeader>
+					<CardTitle>Sales Trend</CardTitle>
+					<CardDescription>Revenue and order trends over time</CardDescription>
 				</CardHeader>
-				<CardContent className="pt-2">
-					<ChartContainer
-						config={{
-							sales: {
-								label: "Sales ($)",
-								color: "#0088FE",
-							},
-						}}
-						className="h-[350px]"
+				<CardContent>
+					<ResponsiveContainer
+						width="100%"
+						height={400}
 					>
+						<AreaChart data={data?.sales_by_period || []}>
+							<CartesianGrid strokeDasharray="3 3" />
+							<XAxis
+								dataKey="date"
+								tickFormatter={(value) => format(reportsService.parseLocalDate(value), "MMM dd")}
+							/>
+							<YAxis
+								yAxisId="revenue"
+								orientation="left"
+								tickFormatter={(value) => `$${value.toLocaleString()}`}
+							/>
+							<YAxis
+								yAxisId="orders"
+								orientation="right"
+								tickFormatter={(value) => value.toString()}
+							/>
+							<Tooltip
+								labelFormatter={(value) =>
+									format(reportsService.parseLocalDate(value), "MMM dd, yyyy")
+								}
+								formatter={(value: number, name: string) => [
+									name === "revenue"
+										? `$${value.toLocaleString()}`
+										: value.toString(),
+									name === "revenue" ? "Revenue" : "Orders",
+								]}
+							/>
+							<Area
+								yAxisId="revenue"
+								type="monotone"
+								dataKey="revenue"
+								stackId="1"
+								stroke="#8884d8"
+								fill="#8884d8"
+								fillOpacity={0.6}
+							/>
+							<Line
+								yAxisId="orders"
+								type="monotone"
+								dataKey="orders"
+								stroke="#82ca9d"
+								strokeWidth={2}
+								dot={{ fill: "#82ca9d" }}
+							/>
+						</AreaChart>
+					</ResponsiveContainer>
+				</CardContent>
+			</Card>
+
+			{/* Category Performance and Peak Hours */}
+			<div className="grid gap-4 md:grid-cols-2">
+				<Card>
+					<CardHeader>
+						<CardTitle>Sales by Category</CardTitle>
+						<CardDescription>
+							Revenue breakdown by product category
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
 						<ResponsiveContainer
 							width="100%"
-							height="100%"
+							height={300}
 						>
-							<BarChart
-								data={getSalesByCategoryData()}
-								margin={{
-									top: 20,
-									right: 20,
-									left: 20,
-									bottom: 60,
-								}}
-							>
+							<BarChart data={data?.sales_by_category || []}>
 								<CartesianGrid strokeDasharray="3 3" />
 								<XAxis
 									dataKey="category"
-									tick={{ fontSize: 11, angle: -45, textAnchor: "end" }}
-									height={60}
+									angle={-45}
+									textAnchor="end"
+									height={80}
 								/>
 								<YAxis
-									tickFormatter={(value) => `$${value}`}
-									tick={{ fontSize: 11 }}
+									tickFormatter={(value) => `$${value.toLocaleString()}`}
 								/>
-								<ChartTooltip
-									content={({ active, payload, label }) => {
-										if (active && payload && payload.length) {
-											const data = payload[0].payload;
-											return (
-												<div className="bg-white p-3 border rounded shadow-lg">
-													<p className="font-semibold">{label}</p>
-													<p className="text-blue-600">
-														Revenue: ${data.sales.toFixed(2)}
-													</p>
-													<p className="text-gray-600">
-														Items Sold: {data.quantity}
-													</p>
-												</div>
-											);
-										}
-										return null;
-									}}
+								<Tooltip
+									formatter={(value: number) => `$${value.toLocaleString()}`}
 								/>
 								<Bar
-									dataKey="sales"
-									fill="#0088FE"
-									radius={[4, 4, 0, 0]}
+									dataKey="revenue"
+									fill="#8884d8"
 								/>
 							</BarChart>
 						</ResponsiveContainer>
-					</ChartContainer>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Peak Hours</CardTitle>
+						<CardDescription>Top performing hours by revenue</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<ResponsiveContainer
+							width="100%"
+							height={300}
+						>
+							<BarChart data={data?.top_hours || []}>
+								<CartesianGrid strokeDasharray="3 3" />
+								<XAxis dataKey="hour" />
+								<YAxis
+									tickFormatter={(value) => `$${value.toLocaleString()}`}
+								/>
+								<Tooltip
+									formatter={(value: number) => `$${value.toLocaleString()}`}
+								/>
+								<Bar
+									dataKey="revenue"
+									fill="#82ca9d"
+								/>
+							</BarChart>
+						</ResponsiveContainer>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Summary Stats */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Sales Summary</CardTitle>
+					<CardDescription>Additional sales metrics</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="grid gap-4 md:grid-cols-3">
+						<div className="space-y-2">
+							<p className="text-sm font-medium">Tax Collected</p>
+							<p className="text-2xl font-bold">
+								${data?.total_tax?.toLocaleString() || "0"}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium">Discounts Applied</p>
+							<p className="text-2xl font-bold">
+								${data?.total_discounts?.toLocaleString() || "0"}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium">Net Revenue</p>
+							<p className="text-2xl font-bold">
+								$
+								{(
+									(data?.total_revenue || 0) -
+									(data?.total_tax || 0) -
+									(data?.total_discounts || 0)
+								).toLocaleString()}
+							</p>
+						</div>
+					</div>
 				</CardContent>
 			</Card>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Daily Sales Breakdown</CardTitle>
-					<CardDescription>Detailed view of sales by day</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Date</TableHead>
-								<TableHead>Sales</TableHead>
-								<TableHead>Transactions</TableHead>
-								<TableHead>Avg. Ticket</TableHead>
-								<TableHead>Growth</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{getSalesByPeriodData().map((day, index) => (
-								<TableRow key={index}>
-									<TableCell>
-										{format(new Date(day.date + "T00:00:00"), "MMM dd, yyyy")}
-									</TableCell>
-									<TableCell className="font-medium">
-										${day.sales.toLocaleString()}
-									</TableCell>
-									<TableCell>{day.transactions}</TableCell>
-									<TableCell>${day.avgTicket.toFixed(2)}</TableCell>
-									<TableCell>
-										<Badge
-											variant={
-												day.growth > 0
-													? "default"
-													: day.growth < 0
-													? "destructive"
-													: "secondary"
-											}
-										>
-											{day.growth > 0 ? "+" : ""}
-											{day.growth.toFixed(1)}%
-										</Badge>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
+			{/* Export Dialog */}
+			<ExportDialog
+				open={exportDialogOpen}
+				onOpenChange={setExportDialogOpen}
+				reportType="sales"
+				defaultStartDate={dateRange?.from}
+				defaultEndDate={dateRange?.to}
+			/>
 		</div>
 	);
 }

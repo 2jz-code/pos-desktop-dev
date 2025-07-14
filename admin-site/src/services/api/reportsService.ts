@@ -26,7 +26,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/reports/summary/", {
+			const response = await apiClient.get("/reports/summary/", {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -46,7 +46,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/reports/sales/", {
+			const response = await apiClient.get("/reports/sales/", {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -66,7 +66,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/reports/products/", {
+			const response = await apiClient.get("/reports/products/", {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -86,7 +86,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/reports/payments/", {
+			const response = await apiClient.get("/reports/payments/", {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -106,7 +106,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/reports/operations/", {
+			const response = await apiClient.get("/reports/operations/", {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -120,6 +120,16 @@ const reportsService = {
 		}
 	},
 
+	getQuickMetrics: async (): Promise<unknown> => {
+		try {
+			const response = await apiClient.get("/reports/quick-metrics/");
+			return response.data;
+		} catch (error) {
+			console.error("Error getting quick metrics:", error);
+			throw error;
+		}
+	},
+
 	// Generic report generation
 	generateReport: async (
 		reportType: string,
@@ -128,7 +138,7 @@ const reportsService = {
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
-			const response = await apiClient.get(`/reports/reports/${reportType}/`, {
+			const response = await apiClient.get(`/reports/${reportType}/`, {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
@@ -415,8 +425,8 @@ const reportsService = {
 		if (!date) return null;
 		// Format as local date + T00:00:00 (start of day)
 		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, '0');
-		const day = String(date.getDate()).padStart(2, '0');
+		const month = String(date.getMonth() + 1).padStart(2, "0");
+		const day = String(date.getDate()).padStart(2, "0");
 		return `${year}-${month}-${day}T00:00:00`;
 	},
 
@@ -427,9 +437,16 @@ const reportsService = {
 		nextDay.setDate(date.getDate() + 1);
 		// Format as local date + T00:00:00 (start of next day)
 		const year = nextDay.getFullYear();
-		const month = String(nextDay.getMonth() + 1).padStart(2, '0');
-		const day = String(nextDay.getDate()).padStart(2, '0');
+		const month = String(nextDay.getMonth() + 1).padStart(2, "0");
+		const day = String(nextDay.getDate()).padStart(2, "0");
 		return `${year}-${month}-${day}T00:00:00`;
+	},
+
+	// Parse date string as local date (avoid UTC timezone issues)
+	parseLocalDate: (dateString: string): Date => {
+		// Parse YYYY-MM-DD format as local date instead of UTC
+		const [year, month, day] = dateString.split("-").map(Number);
+		return new Date(year, month - 1, day); // month is 0-indexed
 	},
 
 	// Download file helper
@@ -459,18 +476,36 @@ const reportsService = {
 		reportType: string,
 		startDate: string,
 		endDate: string,
-		format: string = "xlsx",
+		format: string = "Excel",
 		filters: Filters = {}
 	): Promise<void> => {
 		try {
+			// Convert lowercase format to backend format
+			const formatMap: { [key: string]: string } = {
+				csv: "CSV",
+				xlsx: "Excel",
+				pdf: "PDF",
+				// Also handle direct backend formats
+				CSV: "CSV",
+				Excel: "Excel",
+				PDF: "PDF",
+			};
+
+			const backendFormat = formatMap[format] || "Excel";
+
+			// Build parameters object as expected by backend
+			const parameters = {
+				start_date: startDate,
+				end_date: endDate,
+				...filters,
+			};
+
 			const response = await apiClient.post(
-				"/reports/reports/export/",
+				"/reports/export/",
 				{
 					report_type: reportType,
-					start_date: startDate,
-					end_date: endDate,
-					format,
-					filters,
+					parameters: parameters,
+					format: backendFormat,
 				},
 				{
 					responseType: "blob",
@@ -481,7 +516,18 @@ const reportsService = {
 			const downloadUrl = window.URL.createObjectURL(blob);
 			const link = document.createElement("a");
 			link.href = downloadUrl;
-			link.download = `${reportType}-report-${startDate}-${endDate}.${format}`;
+
+			// Use proper file extension
+			const extensionMap: { [key: string]: string } = {
+				CSV: "csv",
+				Excel: "xlsx",
+				PDF: "pdf",
+			};
+			const fileExtension = extensionMap[backendFormat] || "xlsx";
+
+			link.download = `${reportType}-report-${startDate.split("T")[0]}-${
+				endDate.split("T")[0]
+			}.${fileExtension}`;
 			document.body.appendChild(link);
 			link.click();
 			link.remove();
