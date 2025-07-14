@@ -23,6 +23,8 @@ from django.db.models import (
 )
 from django.db.models.functions import TruncDate, TruncHour, Extract, Coalesce
 from django.utils import timezone
+from django.conf import settings
+import pytz
 from django.core.cache import cache
 
 # Export functionality imports
@@ -58,6 +60,24 @@ class ReportService:
     }
 
     @staticmethod
+    def get_local_timezone():
+        """Get the configured local timezone"""
+        return pytz.timezone(settings.TIME_ZONE)
+
+    @staticmethod
+    def trunc_date_local(field_name):
+        """Truncate date field to local timezone instead of UTC"""
+        from django.db.models import DateTimeField
+        from django.db.models.functions import Cast
+        
+        # Convert to local timezone, then truncate to date
+        local_tz = ReportService.get_local_timezone()
+        return TruncDate(
+            Cast(field_name, DateTimeField()),
+            tzinfo=local_tz
+        )
+
+    @staticmethod
     @transaction.atomic
     def generate_summary_report(
         start_date: datetime, end_date: datetime, use_cache: bool = True
@@ -89,7 +109,7 @@ class ReportService:
             .prefetch_related("items__product")
         )
 
-        # Core metrics aggregation
+        # Core metrics aggregation (WITHOUT items to avoid JOIN duplication)
         summary_data = orders_queryset.aggregate(
             total_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             total_transactions=Count("id"),
@@ -97,7 +117,6 @@ class ReportService:
             total_discounts=Coalesce(
                 Sum("total_discounts_amount"), Value(Decimal("0.00"))
             ),
-            total_items=Coalesce(Sum("items__quantity"), Value(0)),
         )
 
         # Convert Decimal to float for JSON serialization
@@ -105,6 +124,11 @@ class ReportService:
             k: float(v) if isinstance(v, Decimal) else v
             for k, v in summary_data.items()
         }
+
+        # Calculate total_items separately to avoid ORDER duplication from JOINs
+        summary_data["total_items"] = orders_queryset.aggregate(
+            total_items=Coalesce(Sum("items__quantity"), Value(0))
+        )["total_items"]
 
         # Calculate average ticket
         summary_data["average_ticket"] = (
@@ -154,7 +178,7 @@ class ReportService:
         else:
             summary_data["transaction_growth"] = 0
 
-        # Top product calculation
+        # Top product calculation (single product by quantity)
         top_product = (
             OrderItem.objects.filter(order__in=orders_queryset)
             .values("product__name")
@@ -167,9 +191,29 @@ class ReportService:
             top_product["product__name"] if top_product else "N/A"
         )
 
+        # Top products by revenue (for charts)
+        top_products_by_revenue = (
+            OrderItem.objects.filter(order__in=orders_queryset)
+            .values("product__name", "product__id")
+            .annotate(
+                revenue=Sum(F("quantity") * F("price_at_sale")),
+                quantity_sold=Sum("quantity")
+            )
+            .order_by("-revenue")[:5]
+        )
+
+        summary_data["top_products_by_revenue"] = [
+            {
+                "name": item["product__name"],
+                "revenue": float(item["revenue"] or 0),
+                "quantity": item["quantity_sold"] or 0,
+            }
+            for item in top_products_by_revenue
+        ]
+
         # Sales trend data (daily breakdown)
         daily_sales = (
-            orders_queryset.annotate(date=TruncDate("created_at"))
+            orders_queryset.annotate(date=ReportService.trunc_date_local("created_at"))
             .values("date")
             .annotate(sales=Sum("grand_total"), transactions=Count("id"))
             .order_by("date")
@@ -184,14 +228,14 @@ class ReportService:
             for item in daily_sales
         ]
 
-        # Payment method distribution
+        # Payment method distribution (include tips and surcharges for consistency)
         payment_methods = (
             PaymentTransaction.objects.filter(
                 payment__order__in=orders_queryset,
                 status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
             )
             .values("method")
-            .annotate(amount=Sum("amount"), count=Count("id"))
+            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
             .order_by("-amount")
         )
 
@@ -263,16 +307,20 @@ class ReportService:
         logger.info(f"Generating sales report for {start_date} to {end_date}")
         start_time = time.time()
 
-        # Base queryset
-        orders_queryset = Order.objects.filter(
-            status=Order.OrderStatus.COMPLETED, created_at__range=(start_date, end_date)
-        ).select_related("cashier", "customer")
+        # Base queryset with optimization
+        orders_queryset = (
+            Order.objects.filter(
+                status=Order.OrderStatus.COMPLETED,
+                created_at__range=(start_date, end_date),
+            )
+            .select_related("cashier", "customer")
+            .prefetch_related("items__product")
+        )
 
-        # Core sales metrics
+        # Core sales metrics (WITHOUT items to avoid JOIN duplication)
         sales_data = orders_queryset.aggregate(
             total_revenue=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             total_orders=Count("id"),
-            total_items=Coalesce(Sum("items__quantity"), Value(0)),
             avg_order_value=Coalesce(Avg("grand_total"), Value(Decimal("0.00"))),
             total_tax=Coalesce(Sum("tax_total"), Value(Decimal("0.00"))),
             total_discounts=Coalesce(
@@ -285,15 +333,16 @@ class ReportService:
             k: float(v) if isinstance(v, Decimal) else v for k, v in sales_data.items()
         }
 
-        # Sales by period (daily)
+        # Calculate total_items separately to avoid ORDER duplication from JOINs
+        sales_data["total_items"] = orders_queryset.aggregate(
+            total_items=Coalesce(Sum("items__quantity"), Value(0))
+        )["total_items"]
+
+        # Sales by period (daily breakdown) - match summary report pattern exactly
         daily_sales = (
-            orders_queryset.annotate(date=TruncDate("created_at"))
+            orders_queryset.annotate(date=ReportService.trunc_date_local("created_at"))
             .values("date")
-            .annotate(
-                revenue=Sum("grand_total"),
-                orders=Count("id"),
-                items=Sum("items__quantity"),
-            )
+            .annotate(revenue=Sum("grand_total"), orders=Count("id"))
             .order_by("date")
         )
 
@@ -302,7 +351,7 @@ class ReportService:
                 "date": item["date"].strftime("%Y-%m-%d"),
                 "revenue": float(item["revenue"] or 0),
                 "orders": item["orders"],
-                "items": item["items"] or 0,
+                "items": 0,  # Remove items calculation to avoid JOIN issues
             }
             for item in daily_sales
         ]
@@ -473,7 +522,7 @@ class ReportService:
                 order_items.filter(
                     product__in=[p["product__id"] for p in top_products[:5]]
                 )
-                .annotate(week=TruncDate("order__created_at"))
+                .annotate(week=ReportService.trunc_date_local("order__created_at"))
                 .values("product__name", "week")
                 .annotate(sold=Sum("quantity"))
                 .order_by("week")
@@ -484,7 +533,7 @@ class ReportService:
                 order_items.filter(
                     product__in=[p["product__id"] for p in top_products[:5]]
                 )
-                .annotate(date=TruncDate("order__created_at"))
+                .annotate(date=ReportService.trunc_date_local("order__created_at"))
                 .values("product__name", "date")
                 .annotate(sold=Sum("quantity"))
                 .order_by("date")
@@ -560,13 +609,13 @@ class ReportService:
             status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
         ).select_related("payment", "payment__order")
 
-        # Payment method breakdown
+        # Payment method breakdown (include tips and surcharges for accurate totals)
         payment_methods = (
             transactions.values("method")
             .annotate(
-                total_amount=Sum("amount"),
+                total_amount=Sum(F("amount") + F("tip") + F("surcharge")),
                 transaction_count=Count("id"),
-                avg_amount=Avg("amount"),
+                avg_amount=Avg(F("amount") + F("tip") + F("surcharge")),
             )
             .order_by("-total_amount")
         )
@@ -592,11 +641,11 @@ class ReportService:
             ]
         }
 
-        # Transaction volume by day
+        # Transaction volume by day (include tips and surcharges)
         daily_transactions = (
-            transactions.annotate(date=TruncDate("created_at"))
+            transactions.annotate(date=ReportService.trunc_date_local("created_at"))
             .values("date")
-            .annotate(amount=Sum("amount"), count=Count("id"))
+            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
             .order_by("date")
         )
 
@@ -608,6 +657,46 @@ class ReportService:
             }
             for item in daily_transactions
         ]
+
+        # Daily breakdown by payment method (include tips and surcharges)
+        daily_by_method = (
+            transactions.annotate(date=ReportService.trunc_date_local("created_at"))
+            .values("date", "method")
+            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
+            .order_by("date", "method")
+        )
+
+        # Group by date for easier frontend consumption
+        daily_breakdown = {}
+        for item in daily_by_method:
+            date_str = item["date"].strftime("%Y-%m-%d")
+            if date_str not in daily_breakdown:
+                daily_breakdown[date_str] = {
+                    "date": date_str,
+                    "total": 0,
+                }
+            
+            method_key = item["method"].lower().replace("_", "")
+            daily_breakdown[date_str][method_key] = float(item["amount"] or 0)
+            daily_breakdown[date_str]["total"] += float(item["amount"] or 0)
+
+        payments_data["daily_breakdown"] = list(daily_breakdown.values())
+
+        # Add total from order grand_totals for comparison with summary report
+        completed_orders = Order.objects.filter(
+            status=Order.OrderStatus.COMPLETED,
+            created_at__range=(start_date, end_date),
+        ).aggregate(
+            order_total=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
+            order_count=Count("id"),
+        )
+
+        payments_data["order_totals_comparison"] = {
+            "order_grand_total": float(completed_orders["order_total"] or 0),
+            "order_count": completed_orders["order_count"],
+            "payment_transaction_total": total_amount,
+            "difference": float(completed_orders["order_total"] or 0) - total_amount,
+        }
 
         # Processing statistics
         all_transactions = PaymentTransaction.objects.filter(
@@ -718,7 +807,7 @@ class ReportService:
 
         # Daily order volume
         daily_volume = (
-            orders.annotate(date=TruncDate("created_at"))
+            orders.annotate(date=ReportService.trunc_date_local("created_at"))
             .values("date")
             .annotate(orders=Count("id"), revenue=Sum("grand_total"))
             .order_by("date")

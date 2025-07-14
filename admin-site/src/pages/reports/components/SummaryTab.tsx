@@ -46,6 +46,7 @@ interface SummaryApiData {
 	sales_trend: Array<{ date: string; sales: number }>;
 	payment_distribution: Array<{ name: string; value: number }>;
 	hourly_performance: Array<{ hour: string; transactions: number }>;
+	top_products_by_revenue: Array<{ name: string; revenue: number; quantity: number }>;
 }
 
 const summaryData = {
@@ -86,6 +87,14 @@ const hourlyPerformanceData = [
 	{ hour: "5PM", transactions: 15, sales: 520 },
 ];
 
+const topProductsData = [
+	{ name: "Espresso", revenue: 2450, quantity: 145 },
+	{ name: "Cappuccino", revenue: 1890, quantity: 98 },
+	{ name: "Latte", revenue: 1650, quantity: 87 },
+	{ name: "Americano", revenue: 1200, quantity: 120 },
+	{ name: "Mocha", revenue: 980, quantity: 45 },
+];
+
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 
 export function SummaryTab({ dateRange }: SummaryTabProps) {
@@ -100,7 +109,7 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 				setError(null);
 
 				const startDate = reportsService.formatDateForApi(dateRange.from);
-				const endDate = reportsService.formatDateForApi(dateRange.to);
+				const endDate = reportsService.formatEndDateForApi(dateRange.to);
 
 				if (!startDate || !endDate) {
 					setError("Invalid date range");
@@ -163,6 +172,43 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 	// Helper function to get API data with fallback to mock data
 	const getApiValue = <T,>(apiValue: T | undefined, fallback: T): T => {
 		return data !== null && apiValue !== undefined ? apiValue : fallback;
+	};
+
+	// Transform payment distribution data for pie chart
+	const getPaymentDistributionData = () => {
+		if (data?.payment_distribution) {
+			return data.payment_distribution.map((item: any) => ({
+				name: item.method,
+				value: item.percentage,
+				color: paymentDistributionData.find(p => p.name.toLowerCase() === item.method.toLowerCase())?.color || "#8884d8"
+			}));
+		}
+		return paymentDistributionData;
+	};
+
+	// Transform hourly performance data for bar chart
+	const getHourlyPerformanceData = () => {
+		if (data?.hourly_performance) {
+			return data.hourly_performance.map((item: any) => ({
+				hour: item.hour,
+				transactions: item.orders,
+				sales: item.sales
+			}));
+		}
+		return hourlyPerformanceData;
+	};
+
+	// Get top products by revenue data
+	const getTopProductsData = () => {
+		if (data?.top_products_by_revenue && data.top_products_by_revenue.length > 0) {
+			// Ensure the data has the correct structure and format
+			return data.top_products_by_revenue.map((item: any) => ({
+				name: item.name || 'Unknown Product',
+				revenue: Number(item.revenue) || 0,
+				quantity: Number(item.quantity) || 0
+			}));
+		}
+		return topProductsData;
 	};
 
 	return (
@@ -290,6 +336,112 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 				</Card>
 
 				<Card>
+					<CardHeader className="pb-2">
+						<CardTitle>Top Products by Revenue</CardTitle>
+						<CardDescription>Best performing products</CardDescription>
+					</CardHeader>
+					<CardContent className="pt-2">
+						<ChartContainer
+							config={{
+								revenue: {
+									label: "Revenue ($)",
+									color: "#0088FE",
+								},
+							}}
+							className="h-[350px]"
+						>
+							<ResponsiveContainer
+								width="100%"
+								height="100%"
+							>
+								<BarChart
+									data={getTopProductsData()}
+									margin={{
+										top: 20,
+										right: 20,
+										left: 20,
+										bottom: 60,
+									}}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis 
+										dataKey="name"
+										tick={{ fontSize: 11, angle: -45, textAnchor: 'end' }}
+										height={60}
+									/>
+									<YAxis
+										tickFormatter={(value) => `$${value}`}
+										tick={{ fontSize: 11 }}
+									/>
+									<ChartTooltip 
+										content={({ active, payload, label }) => {
+											if (active && payload && payload.length) {
+												const data = payload[0].payload;
+												return (
+													<div className="bg-white p-3 border rounded shadow-lg">
+														<p className="font-semibold">{label}</p>
+														<p className="text-blue-600">
+															Revenue: ${data.revenue.toFixed(2)}
+														</p>
+														<p className="text-gray-600">
+															Quantity Sold: {data.quantity}
+														</p>
+													</div>
+												);
+											}
+											return null;
+										}}
+									/>
+									<Bar
+										dataKey="revenue"
+										fill="#0088FE"
+										radius={[4, 4, 0, 0]}
+									/>
+								</BarChart>
+							</ResponsiveContainer>
+						</ChartContainer>
+					</CardContent>
+				</Card>
+			</div>
+
+			<div className="grid gap-4 md:grid-cols-2">
+				<Card>
+					<CardHeader>
+						<CardTitle>Hourly Performance</CardTitle>
+						<CardDescription>Sales by hour of day</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<ChartContainer
+							config={{
+								transactions: {
+									label: "Transactions",
+									color: "hsl(var(--chart-1))",
+								},
+							}}
+							className="h-[300px]"
+						>
+							<ResponsiveContainer
+								width="100%"
+								height="100%"
+							>
+								<BarChart
+									data={getHourlyPerformanceData()}
+								>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="hour" />
+									<YAxis />
+									<ChartTooltip content={<ChartTooltipContent />} />
+									<Bar
+										dataKey="transactions"
+										fill="var(--color-transactions)"
+									/>
+								</BarChart>
+							</ResponsiveContainer>
+						</ChartContainer>
+					</CardContent>
+				</Card>
+
+				<Card>
 					<CardHeader>
 						<CardTitle>Payment Distribution</CardTitle>
 						<CardDescription>Payment method breakdown</CardDescription>
@@ -318,10 +470,7 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 							>
 								<PieChart>
 									<Pie
-										data={getApiValue(
-											data?.payment_distribution,
-											paymentDistributionData
-										)}
+										data={getPaymentDistributionData()}
 										cx="50%"
 										cy="50%"
 										labelLine={false}
@@ -332,13 +481,10 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 										fill="#8884d8"
 										dataKey="value"
 									>
-										{getApiValue(
-											data?.payment_distribution,
-											paymentDistributionData
-										).map((entry, index) => (
+										{getPaymentDistributionData().map((entry, index) => (
 											<Cell
 												key={`cell-${index}`}
-												fill={COLORS[index % COLORS.length]}
+												fill={entry.color || COLORS[index % COLORS.length]}
 											/>
 										))}
 									</Pie>
@@ -349,45 +495,6 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 					</CardContent>
 				</Card>
 			</div>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Hourly Performance</CardTitle>
-					<CardDescription>Sales by hour of day</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<ChartContainer
-						config={{
-							transactions: {
-								label: "Transactions",
-								color: "hsl(var(--chart-1))",
-							},
-						}}
-						className="h-[300px]"
-					>
-						<ResponsiveContainer
-							width="100%"
-							height="100%"
-						>
-							<BarChart
-								data={getApiValue(
-									data?.hourly_performance,
-									hourlyPerformanceData
-								)}
-							>
-								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis dataKey="hour" />
-								<YAxis />
-								<ChartTooltip content={<ChartTooltipContent />} />
-								<Bar
-									dataKey="transactions"
-									fill="var(--color-transactions)"
-								/>
-							</BarChart>
-						</ResponsiveContainer>
-					</ChartContainer>
-				</CardContent>
-			</Card>
 		</div>
 	);
 }

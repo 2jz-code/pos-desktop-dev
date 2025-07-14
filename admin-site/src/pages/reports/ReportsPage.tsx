@@ -44,11 +44,15 @@ export default function ReportsPage() {
 		return reportsService.formatDateForApi(date);
 	};
 
+	const formatEndDateForApi = (date: Date) => {
+		return reportsService.formatEndDateForApi(date);
+	};
+
 	// Export all reports
 	const handleExportAll = async () => {
 		try {
 			const startDate = formatDateForApi(dateRange.from);
-			const endDate = formatDateForApi(dateRange.to);
+			const endDate = formatEndDateForApi(dateRange.to);
 
 			if (!startDate || !endDate) {
 				console.error("Invalid date range");
@@ -96,47 +100,61 @@ export default function ReportsPage() {
 							</p>
 						</div>
 						<div className="flex items-center gap-4">
-							<Popover>
-								<PopoverTrigger asChild>
-									<Button
-										variant="outline"
-										className="w-[280px] justify-start text-left font-normal bg-transparent"
-									>
-										<CalendarDays className="mr-2 h-4 w-4" />
-										{dateRange?.from ? (
-											dateRange.to ? (
-												<>
-													{format(dateRange.from, "LLL dd, y")} -{" "}
-													{format(dateRange.to, "LLL dd, y")}
-												</>
-											) : (
-												format(dateRange.from, "LLL dd, y")
-											)
-										) : (
-											<span>Pick a date range</span>
-										)}
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent
-									className="w-auto p-0"
-									align="start"
-								>
-									<Calendar
-										initialFocus
-										mode="range"
-										defaultMonth={dateRange?.from}
-										selected={dateRange}
-										onSelect={(range) =>
-											range &&
-											setDateRange({
-												from: range.from ?? new Date(),
-												to: range.to ?? new Date(),
-											})
-										}
-										numberOfMonths={2}
-									/>
-								</PopoverContent>
-							</Popover>
+							<div className="flex items-center gap-2">
+								<span className="text-sm font-medium">From:</span>
+								<Popover>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											className="w-[140px] justify-start text-left font-normal"
+										>
+											<CalendarDays className="mr-2 h-4 w-4" />
+											{format(dateRange.from, "MMM dd, y")}
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent className="w-auto p-0" align="start">
+										<Calendar
+											mode="single"
+											selected={dateRange.from}
+											onSelect={(date) =>
+												date &&
+												setDateRange({
+													...dateRange,
+													from: date,
+												})
+											}
+											initialFocus
+										/>
+									</PopoverContent>
+								</Popover>
+								
+								<span className="text-sm font-medium">To:</span>
+								<Popover>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											className="w-[140px] justify-start text-left font-normal"
+										>
+											<CalendarDays className="mr-2 h-4 w-4" />
+											{format(dateRange.to, "MMM dd, y")}
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent className="w-auto p-0" align="start">
+										<Calendar
+											mode="single"
+											selected={dateRange.to}
+											onSelect={(date) =>
+												date &&
+												setDateRange({
+													...dateRange,
+													to: date,
+												})
+											}
+											initialFocus
+										/>
+									</PopoverContent>
+								</Popover>
+							</div>
 							<Button
 								onClick={handleExportAll}
 								className="bg-primary text-primary-foreground hover:bg-primary/90"

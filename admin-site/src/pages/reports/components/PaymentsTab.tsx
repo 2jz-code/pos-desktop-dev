@@ -16,6 +16,41 @@ interface DateRange {
 interface PaymentsTabProps {
 	dateRange: DateRange;
 }
+
+interface PaymentsApiData {
+	payment_methods: Array<{
+		method: string;
+		amount: number;
+		count: number;
+		avg_amount: number;
+		percentage: number;
+	}>;
+	daily_volume: Array<{
+		date: string;
+		amount: number;
+		count: number;
+	}>;
+	daily_breakdown: Array<{
+		date: string;
+		total: number;
+		cardterminal?: number;
+		cash?: number;
+		cardonline?: number;
+	}>;
+	processing_stats: {
+		total_attempts: number;
+		successful: number;
+		failed: number;
+		refunded: number;
+		success_rate: number;
+	};
+	order_totals_comparison?: {
+		order_grand_total: number;
+		order_count: number;
+		payment_transaction_total: number;
+		difference: number;
+	};
+}
 import {
 	ChartContainer,
 	ChartTooltip,
@@ -105,7 +140,7 @@ const paymentMethodColors = {
 };
 
 export function PaymentsTab({ dateRange }: PaymentsTabProps) {
-	const [data, setData] = useState<unknown>(null);
+	const [data, setData] = useState<PaymentsApiData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -116,7 +151,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				setError(null);
 
 				const startDate = reportsService.formatDateForApi(dateRange.from);
-				const endDate = reportsService.formatDateForApi(dateRange.to);
+				const endDate = reportsService.formatEndDateForApi(dateRange.to);
 
 				if (!startDate || !endDate) {
 					setError("Invalid date range");
@@ -128,7 +163,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 					endDate
 				);
 
-				setData(reportData);
+				setData(reportData as PaymentsApiData);
 			} catch (err) {
 				setError("Failed to load payments data");
 				console.error("Error fetching payments data:", err);
@@ -165,6 +200,85 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			</div>
 		);
 	}
+
+	// Helper function to get API data with fallback to mock data
+	const getApiValue = <T,>(apiValue: T | undefined, fallback: T): T => {
+		return data !== null && apiValue !== undefined ? apiValue : fallback;
+	};
+
+	// Transform payment methods data for charts
+	const getPaymentMethodsData = () => {
+		if (data?.payment_methods) {
+			return data.payment_methods.map(method => ({
+				method: method.method,
+				amount: method.amount,
+				percentage: method.percentage,
+				transactions: method.count,
+				fees: 0, // Backend doesn't provide fees data
+				trend: 0, // Would need historical data for trend
+			}));
+		}
+		return paymentData;
+	};
+
+	// Transform daily volume data for charts
+	const getDailyVolumeData = () => {
+		if (data?.daily_volume) {
+			return data.daily_volume.map(day => ({
+				date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				amount: day.amount,
+				count: day.count,
+			}));
+		}
+		return dailyPaymentTrends;
+	};
+
+	// Transform daily breakdown data for stacked chart
+	const getDailyBreakdownData = () => {
+		if (data?.daily_breakdown) {
+			return data.daily_breakdown.map(day => ({
+				date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				cash: day.cash || 0,
+				cardTerminal: day.cardterminal || 0,
+				cardOnline: day.cardonline || 0,
+				total: day.total
+			}));
+		}
+		return dailyPaymentTrends;
+	};
+
+	// Get individual payment method totals
+	const getPaymentMethodTotal = (methodName: string) => {
+		if (data?.payment_methods) {
+			const method = data.payment_methods.find(m => 
+				m.method.toLowerCase().includes(methodName.toLowerCase())
+			);
+			return method ? method.amount : 0;
+		}
+		// Return mock data values
+		const mockMethod = paymentData.find(p => 
+			p.method.toLowerCase().includes(methodName.toLowerCase())
+		);
+		return mockMethod ? mockMethod.amount : 0;
+	};
+
+	// Get combined card payments (terminal + online)
+	const getCombinedCardTotal = () => {
+		if (data?.payment_methods) {
+			const cardTerminal = data.payment_methods.find(m => 
+				m.method.toLowerCase().includes('card_terminal')
+			)?.amount || 0;
+			const cardOnline = data.payment_methods.find(m => 
+				m.method.toLowerCase().includes('card_online')
+			)?.amount || 0;
+			return cardTerminal + cardOnline;
+		}
+		// Return mock data values
+		return paymentData.find(p => 
+			p.method.toLowerCase().includes('credit')
+		)?.amount || 0;
+	};
+
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center justify-between">
@@ -172,40 +286,60 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				<Button>Export Payment Data</Button>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-3">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Credit Card</CardTitle>
-						<CreditCard className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">$18,500</div>
-						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">+5%</span> from last period
-						</p>
-					</CardContent>
-				</Card>
+			<div className="grid gap-6 md:grid-cols-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Cash</CardTitle>
 						<Banknote className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">$7,200</div>
+						<div className="text-2xl font-bold">
+							${getPaymentMethodTotal('cash').toLocaleString()}
+						</div>
 						<p className="text-xs text-muted-foreground">
-							<span className="text-red-600">-3%</span> from last period
+							Cash payments
 						</p>
 					</CardContent>
 				</Card>
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Mobile Pay</CardTitle>
+						<CardTitle className="text-sm font-medium">Credit Card</CardTitle>
+						<CreditCard className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							${getCombinedCardTotal().toLocaleString()}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Terminal + online card payments
+						</p>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+						<TrendingUp className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold">
+							{getApiValue(data?.processing_stats.success_rate, 95.2)}%
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Transaction success rate
+						</p>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">Total Transactions</CardTitle>
 						<Smartphone className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">$2,880</div>
+						<div className="text-2xl font-bold">
+							{getApiValue(data?.processing_stats.successful, 1247).toLocaleString()}
+						</div>
 						<p className="text-xs text-muted-foreground">
-							<span className="text-green-600">+8%</span> from last period
+							Successful payments
 						</p>
 					</CardContent>
 				</Card>
@@ -241,7 +375,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							>
 								<PieChart>
 									<Pie
-										data={paymentData}
+										data={getPaymentMethodsData()}
 										cx="50%"
 										cy="50%"
 										outerRadius={80}
@@ -251,14 +385,35 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 											`${method}: ${percentage}%`
 										}
 									>
-										{paymentData.map((entry, index) => (
+										{getPaymentMethodsData().map((entry, index) => (
 											<Cell
 												key={`cell-${index}`}
 												fill={Object.values(paymentMethodColors)[index]}
 											/>
 										))}
 									</Pie>
-									<ChartTooltip content={<ChartTooltipContent />} />
+									<ChartTooltip 
+										content={({ active, payload }) => {
+											if (active && payload && payload.length) {
+												const data = payload[0].payload;
+												return (
+													<div className="bg-white p-3 border rounded shadow-lg">
+														<p className="font-semibold">{data.method}</p>
+														<p className="text-blue-600">
+															Amount: ${data.amount.toFixed(2)}
+														</p>
+														<p className="text-gray-600">
+															Transactions: {data.transactions}
+														</p>
+														<p className="text-gray-600">
+															{data.percentage}% of total
+														</p>
+													</div>
+												);
+											}
+											return null;
+										}}
+									/>
 								</PieChart>
 							</ResponsiveContainer>
 						</ChartContainer>
@@ -267,23 +422,23 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Daily Payment Trends</CardTitle>
+						<CardTitle>Daily Payment Method Breakdown</CardTitle>
 						<CardDescription>Payment method usage over time</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<ChartContainer
 							config={{
-								creditCard: {
-									label: "Credit Card",
-									color: paymentMethodColors.creditCard,
-								},
 								cash: {
 									label: "Cash",
-									color: paymentMethodColors.cash,
+									color: "#0088FE",
 								},
-								mobilePay: {
-									label: "Mobile Pay",
-									color: paymentMethodColors.mobilePay,
+								cardTerminal: {
+									label: "Card Terminal",
+									color: "#00C49F",
+								},
+								cardOnline: {
+									label: "Card Online",
+									color: "#FFBB28",
 								},
 							}}
 							className="h-[300px]"
@@ -292,31 +447,50 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 								width="100%"
 								height="100%"
 							>
-								<AreaChart data={dailyPaymentTrends}>
+								<AreaChart data={getDailyBreakdownData()}>
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" />
 									<YAxis />
-									<ChartTooltip content={<ChartTooltipContent />} />
-									<Area
-										type="monotone"
-										dataKey="creditCard"
-										stackId="1"
-										stroke="var(--color-creditCard)"
-										fill="var(--color-creditCard)"
+									<ChartTooltip 
+										content={({ active, payload, label }) => {
+											if (active && payload && payload.length) {
+												return (
+													<div className="bg-white p-3 border rounded shadow-lg">
+														<p className="font-semibold">{label}</p>
+														{payload.map((entry, index) => (
+															<p key={index} style={{ color: entry.color }}>
+																{entry.name}: ${entry.value?.toFixed(2)}
+															</p>
+														))}
+														<p className="font-semibold border-t pt-1">
+															Total: ${payload.reduce((sum, p) => sum + (p.value || 0), 0).toFixed(2)}
+														</p>
+													</div>
+												);
+											}
+											return null;
+										}}
 									/>
 									<Area
 										type="monotone"
 										dataKey="cash"
 										stackId="1"
-										stroke="var(--color-cash)"
-										fill="var(--color-cash)"
+										stroke="#0088FE"
+										fill="#0088FE"
 									/>
 									<Area
 										type="monotone"
-										dataKey="mobilePay"
+										dataKey="cardTerminal"
 										stackId="1"
-										stroke="var(--color-mobilePay)"
-										fill="var(--color-mobilePay)"
+										stroke="#00C49F"
+										fill="#00C49F"
+									/>
+									<Area
+										type="monotone"
+										dataKey="cardOnline"
+										stackId="1"
+										stroke="#FFBB28"
+										fill="#FFBB28"
 									/>
 								</AreaChart>
 							</ResponsiveContainer>
@@ -325,60 +499,6 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				</Card>
 			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Hourly Payment Patterns</CardTitle>
-					<CardDescription>
-						Payment method preferences throughout the day
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<ChartContainer
-						config={{
-							creditCard: {
-								label: "Credit Card",
-								color: paymentMethodColors.creditCard,
-							},
-							cash: {
-								label: "Cash",
-								color: paymentMethodColors.cash,
-							},
-							mobilePay: {
-								label: "Mobile Pay",
-								color: paymentMethodColors.mobilePay,
-							},
-						}}
-						className="h-[300px]"
-					>
-						<ResponsiveContainer
-							width="100%"
-							height="100%"
-						>
-							<BarChart data={hourlyPaymentData}>
-								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis dataKey="hour" />
-								<YAxis />
-								<ChartTooltip content={<ChartTooltipContent />} />
-								<Bar
-									dataKey="creditCard"
-									stackId="a"
-									fill="var(--color-creditCard)"
-								/>
-								<Bar
-									dataKey="cash"
-									stackId="a"
-									fill="var(--color-cash)"
-								/>
-								<Bar
-									dataKey="mobilePay"
-									stackId="a"
-									fill="var(--color-mobilePay)"
-								/>
-							</BarChart>
-						</ResponsiveContainer>
-					</ChartContainer>
-				</CardContent>
-			</Card>
 
 			<Card>
 				<CardHeader>
@@ -400,7 +520,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{paymentData.map((payment, index) => (
+							{getPaymentMethodsData().map((payment, index) => (
 								<TableRow key={index}>
 									<TableCell className="font-medium">
 										{payment.method}
@@ -410,19 +530,21 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 									<TableCell>
 										${(payment.amount / payment.transactions).toFixed(2)}
 									</TableCell>
-									<TableCell>${payment.fees.toFixed(2)}</TableCell>
+									<TableCell>
+										{payment.fees > 0 ? `$${payment.fees.toFixed(2)}` : 'N/A'}
+									</TableCell>
 									<TableCell>
 										<div className="flex items-center gap-2">
 											{payment.trend > 0 ? (
 												<TrendingUp className="h-4 w-4 text-green-600" />
-											) : (
+											) : payment.trend < 0 ? (
 												<TrendingDown className="h-4 w-4 text-red-600" />
-											)}
+											) : null}
 											<Badge
-												variant={payment.trend > 0 ? "default" : "destructive"}
+												variant={payment.trend > 0 ? "default" : payment.trend < 0 ? "destructive" : "secondary"}
 											>
 												{payment.trend > 0 ? "+" : ""}
-												{payment.trend}%
+												{payment.trend === 0 ? 'N/A' : `${payment.trend}%`}
 											</Badge>
 										</div>
 									</TableCell>
@@ -430,6 +552,102 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							))}
 						</TableBody>
 					</Table>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Transaction Success Rate</CardTitle>
+					<CardDescription>
+						Payment processing success over time
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="grid grid-cols-2 gap-6">
+						{/* Left side - Chart */}
+						<div className="flex items-center justify-center pl-4">
+							<ChartContainer
+								config={{
+									successful: {
+										label: "Successful",
+										color: "#22c55e",
+									},
+									failed: {
+										label: "Failed", 
+										color: "#ef4444",
+									},
+								}}
+								className="h-[250px] w-full"
+							>
+								<ResponsiveContainer width="100%" height="100%">
+									<PieChart>
+										<Pie
+											data={[
+												{
+													name: "Successful",
+													value: getApiValue(data?.processing_stats.successful, 60),
+													fill: "#22c55e"
+												},
+												{
+													name: "Failed",
+													value: getApiValue(data?.processing_stats.failed, 3),
+													fill: "#ef4444"
+												}
+											]}
+											cx="45%"
+											cy="50%"
+											outerRadius={70}
+											dataKey="value"
+											label={({ name, value, percent }) => 
+												value > 0 ? `${name}: ${value}` : null
+											}
+										>
+										</Pie>
+										<ChartTooltip 
+											content={({ active, payload }) => {
+												if (active && payload && payload.length) {
+													const data = payload[0].payload;
+													return (
+														<div className="bg-white p-3 border rounded shadow-lg">
+															<p className="font-semibold">{data.name} Transactions</p>
+															<p className="text-gray-600">
+																Count: {data.value}
+															</p>
+														</div>
+													);
+												}
+												return null;
+											}}
+										/>
+									</PieChart>
+								</ResponsiveContainer>
+							</ChartContainer>
+						</div>
+						
+						{/* Right side - Text information */}
+						<div className="space-y-6">
+							<div className="space-y-2">
+								<p className="text-sm font-medium text-muted-foreground">Overall Success Rate</p>
+								<p className="text-4xl font-bold text-green-600">
+									{getApiValue(data?.processing_stats.success_rate, 95.2)}%
+								</p>
+								<p className="text-sm text-muted-foreground">
+									{getApiValue(data?.processing_stats.successful, 60)} successful of{' '}
+									{getApiValue(data?.processing_stats.total_attempts, 63)} total attempts
+								</p>
+							</div>
+							
+							<div className="space-y-2">
+								<p className="text-sm font-medium text-muted-foreground">Failed Transactions</p>
+								<p className="text-2xl font-bold text-red-600">
+									{getApiValue(data?.processing_stats.failed, 3)}
+								</p>
+								<p className="text-sm text-muted-foreground">
+									{getApiValue(data?.processing_stats.refunded, 0)} refunded transactions
+								</p>
+							</div>
+						</div>
+					</div>
 				</CardContent>
 			</Card>
 		</div>

@@ -45,9 +45,7 @@ class Command(BaseCommand):
         finally:
             post_save.connect(handle_order_status_completion, sender=Order)
             self.stdout.write(
-                self.style.SUCCESS(
-                    "Reconnected order completion email signal."
-                )
+                self.style.SUCCESS("Reconnected order completion email signal.")
             )
 
     def _execute_migration(self):
@@ -65,16 +63,21 @@ class Command(BaseCommand):
         if not self.access_token:
             return
 
-        self.stdout.write(self.style.HTTP_INFO("\n--- Stage 0: Creating Prerequisites ---"))
+        self.stdout.write(
+            self.style.HTTP_INFO("\n--- Stage 0: Creating Prerequisites ---")
+        )
         self._create_prerequisites()
 
         # --- Stage 1: Migrating Users ---
         self.stdout.write(self.style.HTTP_INFO("\n--- Stage 1: Migrating Users ---"))
-        users_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/auth/users/")
-        if users_data is None: return
+        users_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/auth/users/"
+        )
+        if users_data is None:
+            return
 
         for user_data in users_data:
-            legacy_id = user_data.get('id')
+            legacy_id = user_data.get("id")
             if not legacy_id:
                 continue
 
@@ -92,11 +95,19 @@ class Command(BaseCommand):
             if existing_user:
                 # User already exists. Only update the legacy_id if it's not already set.
                 if not existing_user.legacy_id:
-                    self.stdout.write(self.style.WARNING(f"  - Found existing user '{existing_user.username}'. Assigning legacy_id {legacy_id} to it."))
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  - Found existing user '{existing_user.username}'. Assigning legacy_id {legacy_id} to it."
+                        )
+                    )
                     existing_user.legacy_id = legacy_id
-                    existing_user.save(update_fields=['legacy_id'])
+                    existing_user.save(update_fields=["legacy_id"])
                 else:
-                    self.stdout.write(self.style.SUCCESS(f"  - Skipping existing user '{existing_user.username}' which already has a legacy_id."))
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"  - Skipping existing user '{existing_user.username}' which already has a legacy_id."
+                        )
+                    )
                 continue
 
             # --- If no existing user, create a new one ---
@@ -115,22 +126,30 @@ class Command(BaseCommand):
             try:
                 # Use update_or_create with legacy_id to be idempotent,
                 # but it should mostly be creating new users here.
-                User.objects.update_or_create(
-                    legacy_id=legacy_id,
-                    defaults=defaults
-                )
+                User.objects.update_or_create(legacy_id=legacy_id, defaults=defaults)
             except IntegrityError as e:
-                self.stdout.write(self.style.ERROR(f"  - FAILED to create user with legacy_id {legacy_id}. Error: {e}"))
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"  - FAILED to create user with legacy_id {legacy_id}. Error: {e}"
+                    )
+                )
 
         self.stdout.write(self.style.SUCCESS(f"  Processed {len(users_data)} users."))
 
         # --- Stage 2: Migrating Products ---
         self.stdout.write(self.style.HTTP_INFO("\n--- Stage 2: Migrating Products ---"))
-        product_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/products/")
-        if product_data is None: return
+        product_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/products/"
+        )
+        if product_data is None:
+            return
 
         # Pre-create categories
-        category_names = {prod.get("category_name") for prod in product_data if prod.get("category_name")}
+        category_names = {
+            prod.get("category_name")
+            for prod in product_data
+            if prod.get("category_name")
+        }
         for name in category_names:
             Category.objects.get_or_create(name=name)
 
@@ -139,8 +158,9 @@ class Command(BaseCommand):
         default_location = Location.objects.get(name="Main Stockroom")
 
         for row in product_data:
-            legacy_id = row.get('id')
-            if not legacy_id: continue
+            legacy_id = row.get("id")
+            if not legacy_id:
+                continue
 
             barcode = row.get("barcode")
             if barcode and barcode.strip() == "":
@@ -163,8 +183,7 @@ class Command(BaseCommand):
             try:
                 with transaction.atomic():
                     product, created = Product.objects.update_or_create(
-                        legacy_id=legacy_id,
-                        defaults=defaults
+                        legacy_id=legacy_id, defaults=defaults
                     )
                     if created:
                         product.taxes.add(default_tax)
@@ -175,32 +194,52 @@ class Command(BaseCommand):
                         try:
                             # Construct the full URL
                             full_image_url = urljoin(self.old_backend_url, image_url)
-                            
+
                             # Fetch the image
                             response = requests.get(full_image_url, stream=True)
                             response.raise_for_status()
 
                             # Get the filename from the URL
                             file_name = os.path.basename(image_url)
-                            
+
                             # Save the image to the product's image field
-                            product.image.save(file_name, ContentFile(response.content), save=True)
-                            self.stdout.write(self.style.SUCCESS(f"  - Successfully migrated image for product: {product.name}"))
+                            product.image.save(
+                                file_name, ContentFile(response.content), save=True
+                            )
+                            self.stdout.write(
+                                self.style.SUCCESS(
+                                    f"  - Successfully migrated image for product: {product.name}"
+                                )
+                            )
 
                         except requests.exceptions.RequestException as e:
-                            self.stdout.write(self.style.ERROR(f"  - FAILED to download image for product {legacy_id} from {full_image_url}. Error: {e}"))
+                            self.stdout.write(
+                                self.style.ERROR(
+                                    f"  - FAILED to download image for product {legacy_id} from {full_image_url}. Error: {e}"
+                                )
+                            )
                         except Exception as e:
-                            self.stdout.write(self.style.ERROR(f"  - FAILED to save image for product {legacy_id}. Error: {e}"))
+                            self.stdout.write(
+                                self.style.ERROR(
+                                    f"  - FAILED to save image for product {legacy_id}. Error: {e}"
+                                )
+                            )
                     # --- End of Image Migration Logic ---
 
             except IntegrityError as e:
-                if 'UNIQUE constraint' in str(e) and 'barcode' in str(e):
+                if "UNIQUE constraint" in str(e) and "barcode" in str(e):
                     try:
                         with transaction.atomic():
                             # The barcode is the thing that's conflicting. Find the existing product.
-                            conflicting_product = Product.objects.filter(barcode=barcode).first()
+                            conflicting_product = Product.objects.filter(
+                                barcode=barcode
+                            ).first()
                             if conflicting_product:
-                                self.stdout.write(self.style.WARNING(f"  - Found existing product with barcode '{barcode}'. Merging with legacy product ID {legacy_id}."))
+                                self.stdout.write(
+                                    self.style.WARNING(
+                                        f"  - Found existing product with barcode '{barcode}'. Merging with legacy product ID {legacy_id}."
+                                    )
+                                )
                                 # Update the existing product with the legacy ID and other info
                                 for key, value in defaults.items():
                                     setattr(conflicting_product, key, value)
@@ -208,12 +247,24 @@ class Command(BaseCommand):
                                 conflicting_product.save()
                                 conflicting_product.taxes.add(default_tax)
                             else:
-                                self.stdout.write(self.style.ERROR(f"  - FAILED to process product with legacy_id {legacy_id} due to an unhandled barcode IntegrityError."))
+                                self.stdout.write(
+                                    self.style.ERROR(
+                                        f"  - FAILED to process product with legacy_id {legacy_id} due to an unhandled barcode IntegrityError."
+                                    )
+                                )
                     except Exception as merge_e:
-                        self.stdout.write(self.style.ERROR(f"  - FAILED to merge product with legacy_id {legacy_id}. Error: {merge_e}"))
+                        self.stdout.write(
+                            self.style.ERROR(
+                                f"  - FAILED to merge product with legacy_id {legacy_id}. Error: {merge_e}"
+                            )
+                        )
                 else:
                     # Some other integrity error occurred
-                    self.stdout.write(self.style.ERROR(f"  - FAILED to process product with legacy_id {legacy_id}. Error: {e}"))
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"  - FAILED to process product with legacy_id {legacy_id}. Error: {e}"
+                        )
+                    )
                 continue
 
             if product.track_inventory:
@@ -221,12 +272,16 @@ class Command(BaseCommand):
                 InventoryStock.objects.update_or_create(
                     product=product,
                     location=default_location,
-                    defaults={"quantity": quantity}
+                    defaults={"quantity": quantity},
                 )
-        self.stdout.write(self.style.SUCCESS(f"  Processed {len(product_data)} products."))
+        self.stdout.write(
+            self.style.SUCCESS(f"  Processed {len(product_data)} products.")
+        )
 
         # --- Stage 3: Migrating Orders & Payments ---
-        self.stdout.write(self.style.HTTP_INFO("\n--- Stage 3: Migrating Orders & Payments ---"))
+        self.stdout.write(
+            self.style.HTTP_INFO("\n--- Stage 3: Migrating Orders & Payments ---")
+        )
         ORDER_STATUS_MAP = {
             "completed": Order.OrderStatus.COMPLETED,
             "voided": Order.OrderStatus.VOID,
@@ -248,66 +303,113 @@ class Command(BaseCommand):
             "credit": PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             "card": PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             "clover_terminal": PaymentTransaction.PaymentMethod.CARD_TERMINAL,
-            "split": PaymentTransaction.PaymentMethod.CASH, # Default for split
+            "split": PaymentTransaction.PaymentMethod.CASH,  # Default for split
         }
-        orders_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/orders/")
-        if orders_data is None: return
+        orders_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/orders/"
+        )
+        if orders_data is None:
+            return
 
-        self.stdout.write(self.style.HTTP_INFO("  -> Reversing fetched orders to process oldest first."))
+        self.stdout.write(
+            self.style.HTTP_INFO(
+                "  -> Reversing fetched orders to process oldest first."
+            )
+        )
         orders_data.reverse()
 
-        payments_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/payments/")
-        if payments_data is None: return
-        payments_by_order_legacy_id = {p['order']: p for p in payments_data}
+        payments_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/payments/"
+        )
+        if payments_data is None:
+            return
+        payments_by_order_legacy_id = {p["order"]: p for p in payments_data}
 
         for order_summary_data in orders_data:
-            legacy_order_id = order_summary_data.get('id')
-            if not legacy_order_id: continue
+            legacy_order_id = order_summary_data.get("id")
+            if not legacy_order_id:
+                continue
 
             try:
-                detail_response = requests.get(f"{self.old_backend_url}/api/orders/{legacy_order_id}/", cookies={"pos_access_token": self.access_token})
+                detail_response = requests.get(
+                    f"{self.old_backend_url}/api/orders/{legacy_order_id}/",
+                    cookies={"pos_access_token": self.access_token},
+                )
                 detail_response.raise_for_status()
                 old_order_data = detail_response.json()
             except requests.exceptions.RequestException as e:
-                self.stdout.write(self.style.ERROR(f"    - FAILED to fetch details for order {legacy_order_id}: {e}"))
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"    - FAILED to fetch details for order {legacy_order_id}: {e}"
+                    )
+                )
                 continue
 
             # --- Get Financial Data Directly from API Response ---
-            recalculated_subtotal = sum(Decimal(item.get('quantity','0')) * Decimal(item.get('unit_price','0.00')) for item in old_order_data.get('items', []))
-            grand_total = Decimal(old_order_data.get('total_price') or '0.00')
-            discount_amount = Decimal(old_order_data.get('discount_amount') or '0.00')
-            tax_total = Decimal(old_order_data.get('tax_amount_from_frontend') or '0.00')
-            surcharge_total = Decimal(old_order_data.get('surcharge_amount') or '0.00')
-            tip_total = Decimal(old_order_data.get('tip_amount') or '0.00')
+            recalculated_subtotal = sum(
+                Decimal(item.get("quantity", "0"))
+                * Decimal(item.get("unit_price", "0.00"))
+                for item in old_order_data.get("items", [])
+            )
+            grand_total = Decimal(old_order_data.get("total_price") or "0.00")
+            discount_amount = Decimal(old_order_data.get("discount_amount") or "0.00")
+            tax_total = Decimal(
+                old_order_data.get("tax_amount_from_frontend") or "0.00"
+            )
+            surcharge_total = Decimal(old_order_data.get("surcharge_amount") or "0.00")
+            tip_total = Decimal(old_order_data.get("tip_amount") or "0.00")
 
             cashier = User.objects.filter(legacy_id=old_order_data.get("user")).first()
-            customer = User.objects.filter(legacy_id=old_order_data.get("rewards_profile_id")).first()
+            customer = User.objects.filter(
+                legacy_id=old_order_data.get("rewards_profile_id")
+            ).first()
 
             new_order, _ = Order.objects.update_or_create(
                 legacy_id=legacy_order_id,
                 defaults={
-                    "status": ORDER_STATUS_MAP.get(old_order_data.get("status", "pending"), Order.OrderStatus.PENDING),
-                    "order_type": Order.OrderType.POS if old_order_data.get("source") == "pos" else Order.OrderType.WEB,
-                    "payment_status": PAYMENT_STATUS_MAP.get(old_order_data.get("payment_status"), Order.PaymentStatus.UNPAID),
+                    "status": ORDER_STATUS_MAP.get(
+                        old_order_data.get("status", "pending"),
+                        Order.OrderStatus.PENDING,
+                    ),
+                    "order_type": (
+                        Order.OrderType.POS
+                        if old_order_data.get("source") == "pos"
+                        else Order.OrderType.WEB
+                    ),
+                    "payment_status": PAYMENT_STATUS_MAP.get(
+                        old_order_data.get("payment_status"), Order.PaymentStatus.UNPAID
+                    ),
                     "cashier": cashier,
                     "customer": customer,
                     "subtotal": recalculated_subtotal,
                     "total_discounts_amount": discount_amount,
                     "tax_total": tax_total,
                     "grand_total": grand_total,
-                    "created_at": parse_datetime(old_order_data["created_at"]) if old_order_data.get("created_at") else timezone.now(),
-                    "updated_at": parse_datetime(old_order_data["updated_at"]) if old_order_data.get("updated_at") else timezone.now(),
-                }
+                    "created_at": (
+                        parse_datetime(old_order_data["created_at"])
+                        if old_order_data.get("created_at")
+                        else timezone.now()
+                    ),
+                    "updated_at": (
+                        parse_datetime(old_order_data["updated_at"])
+                        if old_order_data.get("updated_at")
+                        else timezone.now()
+                    ),
+                },
             )
 
-            for item_data in old_order_data.get('items', []):
-                legacy_item_id = item_data.get('id')
-                if not legacy_item_id: continue
+            for item_data in old_order_data.get("items", []):
+                legacy_item_id = item_data.get("id")
+                if not legacy_item_id:
+                    continue
                 product_data = item_data.get("product")
                 if not product_data:
                     continue
-                product = Product.objects.filter(legacy_id=product_data.get("id")).first()
-                if not product: continue
+                product = Product.objects.filter(
+                    legacy_id=product_data.get("id")
+                ).first()
+                if not product:
+                    continue
 
                 OrderItem.objects.update_or_create(
                     legacy_id=legacy_item_id,
@@ -316,64 +418,90 @@ class Command(BaseCommand):
                         "product": product,
                         "quantity": item_data["quantity"],
                         "price_at_sale": item_data.get("unit_price") or product.price,
-                    }
+                    },
                 )
 
             old_payment_data = payments_by_order_legacy_id.get(legacy_order_id)
             if old_payment_data:
-                legacy_payment_id = old_payment_data.get('id')
-                if not legacy_payment_id: continue
+                legacy_payment_id = old_payment_data.get("id")
+                if not legacy_payment_id:
+                    continue
 
                 # --- Final, More Accurate Financial Logic for Split Payments ---
                 payment, _ = Payment.objects.update_or_create(
                     legacy_id=legacy_payment_id,
                     defaults={
                         "order": new_order,
-                        "status": PAYMENT_STATUS_MAP.get(old_payment_data.get("status"), Payment.PaymentStatus.UNPAID),
+                        "status": PAYMENT_STATUS_MAP.get(
+                            old_payment_data.get("status"), Payment.PaymentStatus.UNPAID
+                        ),
                         "total_amount_due": new_order.subtotal + new_order.tax_total,
                         # These will be calculated from the transactions below
-                        "amount_paid": Decimal('0.00'),
-                        "total_surcharges": Decimal('0.00'),
-                        "total_tips": Decimal('0.00'),
-                        "total_collected": Decimal('0.00'),
-                        "created_at": parse_datetime(old_payment_data["created_at"]) if old_payment_data.get("created_at") else new_order.created_at,
-                        "updated_at": parse_datetime(old_payment_data["updated_at"]) if old_payment_data.get("updated_at") else new_order.created_at,
-                    }
+                        "amount_paid": Decimal("0.00"),
+                        "total_surcharges": Decimal("0.00"),
+                        "total_tips": Decimal("0.00"),
+                        "total_collected": Decimal("0.00"),
+                        "created_at": (
+                            parse_datetime(old_payment_data["created_at"])
+                            if old_payment_data.get("created_at")
+                            else new_order.created_at
+                        ),
+                        "updated_at": (
+                            parse_datetime(old_payment_data["updated_at"])
+                            if old_payment_data.get("updated_at")
+                            else new_order.created_at
+                        ),
+                    },
                 )
 
                 transactions = old_payment_data.get("transactions", [])
                 is_split_payment = old_payment_data.get("is_split_payment", False)
-                order_tip = Decimal(old_order_data.get('tip_amount') or '0.00')
-                order_surcharge = Decimal(old_order_data.get('surcharge_amount') or '0.00')
+                order_tip = Decimal(old_order_data.get("tip_amount") or "0.00")
+                order_surcharge = Decimal(
+                    old_order_data.get("surcharge_amount") or "0.00"
+                )
 
-                aggregated_amount_paid = Decimal('0.00')
-                aggregated_tips = Decimal('0.00')
-                aggregated_surcharges = Decimal('0.00')
+                aggregated_amount_paid = Decimal("0.00")
+                aggregated_tips = Decimal("0.00")
+                aggregated_surcharges = Decimal("0.00")
 
                 for i, txn_data in enumerate(transactions):
-                    legacy_txn_id = txn_data.get('id')
-                    if not legacy_txn_id: continue
+                    legacy_txn_id = txn_data.get("id")
+                    if not legacy_txn_id:
+                        continue
 
-                    tip_for_this_txn = Decimal('0.00')
-                    surcharge_for_this_txn = Decimal('0.00')
+                    tip_for_this_txn = Decimal("0.00")
+                    surcharge_for_this_txn = Decimal("0.00")
 
                     if is_split_payment:
                         if i == 0:
                             # Assign the full tip and surcharge to the first transaction in a split payment
                             tip_for_this_txn = order_tip
                             surcharge_for_this_txn = order_surcharge
-                            self.stdout.write(self.style.WARNING(f"  - WARNING: Split payment for order {legacy_order_id}. Assigning full tip and surcharge to the first transaction."))
+                            self.stdout.write(
+                                self.style.WARNING(
+                                    f"  - WARNING: Split payment for order {legacy_order_id}. Assigning full tip and surcharge to the first transaction."
+                                )
+                            )
                     else:
                         # For single payments, assign the full tip and surcharge
                         tip_for_this_txn = order_tip
                         surcharge_for_this_txn = order_surcharge
-                    
-                    original_txn_amount = Decimal(txn_data.get("amount") or '0.00')
-                    # Deconstruct the amount from the old system
-                    base_amount = original_txn_amount - tip_for_this_txn - surcharge_for_this_txn
 
-                    method = PAYMENT_METHOD_MAP.get(txn_data.get("payment_method"), PaymentTransaction.PaymentMethod.CASH)
-                    if new_order.order_type == Order.OrderType.WEB and txn_data.get("payment_method") == "credit":
+                    original_txn_amount = Decimal(txn_data.get("amount") or "0.00")
+                    # Deconstruct the amount from the old system
+                    base_amount = (
+                        original_txn_amount - tip_for_this_txn - surcharge_for_this_txn
+                    )
+
+                    method = PAYMENT_METHOD_MAP.get(
+                        txn_data.get("payment_method"),
+                        PaymentTransaction.PaymentMethod.CASH,
+                    )
+                    if (
+                        new_order.order_type == Order.OrderType.WEB
+                        and txn_data.get("payment_method") == "credit"
+                    ):
                         method = PaymentTransaction.PaymentMethod.CARD_ONLINE
 
                     PaymentTransaction.objects.update_or_create(
@@ -383,11 +511,19 @@ class Command(BaseCommand):
                             "transaction_id": txn_data.get("transaction_id"),
                             "amount": base_amount,
                             "method": method,
-                            "status": PaymentTransaction.TransactionStatus.SUCCESSFUL if txn_data.get("status") in ["completed", "paid"] else PaymentTransaction.TransactionStatus.FAILED,
+                            "status": (
+                                PaymentTransaction.TransactionStatus.SUCCESSFUL
+                                if txn_data.get("status") in ["completed", "paid"]
+                                else PaymentTransaction.TransactionStatus.FAILED
+                            ),
                             "tip": tip_for_this_txn,
                             "surcharge": surcharge_for_this_txn,
-                            "created_at": parse_datetime(txn_data["timestamp"]) if txn_data.get("timestamp") else new_order.created_at,
-                        }
+                            "created_at": (
+                                parse_datetime(txn_data["timestamp"])
+                                if txn_data.get("timestamp")
+                                else new_order.created_at
+                            ),
+                        },
                     )
                     aggregated_amount_paid += base_amount
                     aggregated_tips += tip_for_this_txn
@@ -397,13 +533,19 @@ class Command(BaseCommand):
                 payment.amount_paid = aggregated_amount_paid
                 payment.total_tips = aggregated_tips
                 payment.total_surcharges = aggregated_surcharges
-                payment.total_collected = aggregated_amount_paid + aggregated_tips + aggregated_surcharges
+                payment.total_collected = (
+                    aggregated_amount_paid + aggregated_tips + aggregated_surcharges
+                )
                 payment.save()
 
                 # Finally, update the order's grand_total to match the payment's total_collected
                 new_order.grand_total = payment.total_collected
                 new_order.save()
-        self.stdout.write(self.style.SUCCESS(f"  Processed {len(orders_data)} orders and their associated payments."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  Processed {len(orders_data)} orders and their associated payments."
+            )
+        )
 
     def _get_access_token(self):
         # ... (unchanged) ...
@@ -550,38 +692,50 @@ class Command(BaseCommand):
             if isinstance(data, list):
                 all_data.extend(data)
                 break
-            elif isinstance(data, dict) and 'results' in data:
-                all_data.extend(data['results'])
-                next_url = data.get('next')
+            elif isinstance(data, dict) and "results" in data:
+                all_data.extend(data["results"])
+                next_url = data.get("next")
                 if next_url:
                     self.stdout.write(f"    - Following pagination to next page...")
             else:
-                self.stdout.write(self.style.ERROR(f"  - ERROR: Unexpected API response format from {next_url}."))
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"  - ERROR: Unexpected API response format from {next_url}."
+                    )
+                )
                 self.stdout.write(self.style.ERROR(f"     Response: {data}"))
-                return None # Indicate failure
-        
+                return None  # Indicate failure
+
         self.stdout.write(f"  - Successfully fetched {len(all_data)} total items.")
         return all_data
 
     def _migrate_orders_and_payments(self):
         self.stdout.write("  - Fetching orders and payments from JSON endpoints...")
-        
+
         # Fetch all orders using the paginated helper
-        orders_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/orders/")
+        orders_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/orders/"
+        )
         if orders_data is None:
-            self.stdout.write(self.style.ERROR("Halting migration due to error fetching orders."))
-            return
-        
-        # Fetch all payments using the paginated helper
-        payments_data = self._fetch_all_paginated_data(f"{self.old_backend_url}/api/payments/")
-        if payments_data is None:
-            self.stdout.write(self.style.ERROR("Halting migration due to error fetching payments."))
+            self.stdout.write(
+                self.style.ERROR("Halting migration due to error fetching orders.")
+            )
             return
 
-        payments_by_order_id = {p['order']: p for p in payments_data}
+        # Fetch all payments using the paginated helper
+        payments_data = self._fetch_all_paginated_data(
+            f"{self.old_backend_url}/api/payments/"
+        )
+        if payments_data is None:
+            self.stdout.write(
+                self.style.ERROR("Halting migration due to error fetching payments.")
+            )
+            return
+
+        payments_by_order_id = {p["order"]: p for p in payments_data}
 
         for order_summary_data in orders_data:
-            order_id = order_summary_data['id']
+            order_id = order_summary_data["id"]
             self.stdout.write(f"  - Processing order ID: {order_id}")
 
             # Fetch the full order details to get the items list
@@ -593,8 +747,12 @@ class Command(BaseCommand):
                 detail_response.raise_for_status()
                 old_order_data = detail_response.json()
             except requests.exceptions.RequestException as e:
-                self.stdout.write(self.style.ERROR(f"    - FAILED to fetch details for order {order_id}: {e}"))
-                continue # Skip to the next order
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"    - FAILED to fetch details for order {order_id}: {e}"
+                    )
+                )
+                continue  # Skip to the next order
 
             cashier = User.objects.filter(id=old_order_data.get("user")).first()
             customer = User.objects.filter(
@@ -602,26 +760,35 @@ class Command(BaseCommand):
             ).first()
 
             # --- Recalculate Financials from Line Items for Accuracy ---
-            recalculated_subtotal = Decimal('0.00')
-            for item_data in old_order_data.get('items', []):
+            recalculated_subtotal = Decimal("0.00")
+            for item_data in old_order_data.get("items", []):
                 try:
-                    quantity = Decimal(item_data.get('quantity', '0'))
-                    price = Decimal(item_data.get('unit_price', '0.00'))
+                    quantity = Decimal(item_data.get("quantity", "0"))
+                    price = Decimal(item_data.get("unit_price", "0.00"))
                     recalculated_subtotal += quantity * price
                 except (InvalidOperation, TypeError):
-                    self.stdout.write(self.style.WARNING(f"    - WARNING: Invalid numeric data for item in order {order_id}. Skipping item in subtotal calculation."))
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"    - WARNING: Invalid numeric data for item in order {order_id}. Skipping item in subtotal calculation."
+                        )
+                    )
                     continue
 
-            grand_total = Decimal(old_order_data.get('total_price', '0.00'))
-            discount_amount = Decimal(old_order_data.get('discount_amount', '0.00'))
+            grand_total = Decimal(old_order_data.get("total_price", "0.00"))
+            discount_amount = Decimal(old_order_data.get("discount_amount", "0.00"))
 
             # tax_total = grand_total - subtotal + discount
-            recalculated_tax_total = grand_total - recalculated_subtotal + discount_amount
+            recalculated_tax_total = (
+                grand_total - recalculated_subtotal + discount_amount
+            )
 
             if recalculated_tax_total < 0:
-                self.stdout.write(self.style.WARNING(f"    - WARNING: Calculated negative tax for order {order_id}. Setting tax to 0. Check data consistency."))
-                recalculated_tax_total = Decimal('0.00')
-
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    - WARNING: Calculated negative tax for order {order_id}. Setting tax to 0. Check data consistency."
+                    )
+                )
+                recalculated_tax_total = Decimal("0.00")
 
             new_order, created = Order.objects.update_or_create(
                 id=old_order_data["id"],
@@ -690,9 +857,7 @@ class Command(BaseCommand):
                         "total_amount_due": new_order.grand_total,
                         "amount_paid": old_payment_data.get("amount", 0),
                         "total_tips": old_order_data.get("tip_amount", 0),
-                        "total_surcharges": old_order_data.get(
-                            "surcharge_amount", 0
-                        ),
+                        "total_surcharges": old_order_data.get("surcharge_amount", 0),
                         "total_collected": (
                             Decimal(old_payment_data.get("amount", 0))
                             + Decimal(old_order_data.get("tip_amount", 0))
@@ -716,18 +881,22 @@ class Command(BaseCommand):
                         id=txn_data["id"],
                         payment=payment,
                         defaults={
-                            "transaction_id": txn_data.get("transaction_id") or f"old-txn-{txn_data['id']}",
+                            "transaction_id": txn_data.get("transaction_id")
+                            or f"old-txn-{txn_data['id']}",
                             "amount": txn_data.get("amount", 0),
-                            "tip": old_order_data.get("tip_amount", 0), # Tip is on the order, not transaction
-                            "surcharge": old_order_data.get("surcharge_amount", 0), # Surcharge is on the order
+                            "tip": old_order_data.get(
+                                "tip_amount", 0
+                            ),  # Tip is on the order, not transaction
+                            "surcharge": old_order_data.get(
+                                "surcharge_amount", 0
+                            ),  # Surcharge is on the order
                             "method": PAYMENT_METHOD_MAP.get(
                                 txn_data.get("payment_method"),
                                 PaymentTransaction.PaymentMethod.CASH,
                             ),
                             "status": (
                                 PaymentTransaction.TransactionStatus.SUCCESSFUL
-                                if txn_data.get("status")
-                                in ["completed", "paid"]
+                                if txn_data.get("status") in ["completed", "paid"]
                                 else PaymentTransaction.TransactionStatus.FAILED
                             ),
                             "created_at": (

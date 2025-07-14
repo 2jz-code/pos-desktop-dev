@@ -410,10 +410,26 @@ const reportsService = {
 		}
 	},
 
-	// Utility functions
+	// Utility functions - Send datetime strings that Django can parse correctly
 	formatDateForApi: (date: Date | null): string | null => {
 		if (!date) return null;
-		return date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+		// Format as local date + T00:00:00 (start of day)
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}T00:00:00`;
+	},
+
+	// Format end date to be inclusive (adds one day)
+	formatEndDateForApi: (date: Date | null): string | null => {
+		if (!date) return null;
+		const nextDay = new Date(date);
+		nextDay.setDate(date.getDate() + 1);
+		// Format as local date + T00:00:00 (start of next day)
+		const year = nextDay.getFullYear();
+		const month = String(nextDay.getMonth() + 1).padStart(2, '0');
+		const day = String(nextDay.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}T00:00:00`;
 	},
 
 	// Download file helper
