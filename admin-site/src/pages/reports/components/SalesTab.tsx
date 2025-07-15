@@ -40,14 +40,25 @@ import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 
 interface SalesData {
 	total_revenue: number;
+	total_subtotal: number;
 	total_orders: number;
 	avg_order_value: number;
 	total_tax: number;
 	total_discounts: number;
 	total_items: number;
+	total_surcharges: number;
+	total_tips: number;
 	sales_by_period: Array<{
 		date: string;
 		revenue: number;
@@ -94,7 +105,8 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 			const salesData = await reportsService.generateSalesReport(
 				startDate,
-				endDate
+				endDate,
+				groupBy
 			);
 			setData(salesData as SalesData);
 		} catch (err) {
@@ -106,9 +118,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 	useEffect(() => {
 		fetchSalesData();
-	}, [dateRange]);
-
-	
+	}, [dateRange, groupBy]);
 
 	if (loading) {
 		return (
@@ -274,7 +284,9 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							<CartesianGrid strokeDasharray="3 3" />
 							<XAxis
 								dataKey="date"
-								tickFormatter={(value) => format(reportsService.parseLocalDate(value), "MMM dd")}
+								tickFormatter={(value) =>
+									format(reportsService.parseLocalDate(value), "MMM dd")
+								}
 							/>
 							<YAxis
 								yAxisId="revenue"
@@ -392,7 +404,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 					<CardDescription>Additional sales metrics</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="grid gap-4 md:grid-cols-3">
+					<div className="grid gap-4 md:grid-cols-5">
 						<div className="space-y-2">
 							<p className="text-sm font-medium">Tax Collected</p>
 							<p className="text-2xl font-bold">
@@ -406,20 +418,61 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							</p>
 						</div>
 						<div className="space-y-2">
+							<p className="text-sm font-medium">Surcharges Collected</p>
+							<p className="text-2xl font-bold">
+								${data?.total_surcharges?.toLocaleString() || "0"}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium">Tips Collected</p>
+							<p className="text-2xl font-bold">
+								${data?.total_tips?.toLocaleString() || "0"}
+							</p>
+						</div>
+						<div className="space-y-2">
 							<p className="text-sm font-medium">Net Revenue</p>
 							<p className="text-2xl font-bold">
 								$
 								{(
-									(data?.total_revenue || 0) -
-									(data?.total_tax || 0) -
-									(data?.total_discounts || 0)
+									(data?.total_subtotal || 0) +
+									(data?.total_tips || 0)
 								).toLocaleString()}
 							</p>
 						</div>
 					</div>
 				</CardContent>
 			</Card>
-
+			{/* Sales Breakdown by Period */}
+			<Card>
+				<CardHeader>
+					<CardTitle>Sales by {groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}</CardTitle>
+					<CardDescription>
+						Detailed sales breakdown by {groupBy}
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>{groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}</TableHead>
+								<TableHead>Revenue</TableHead>
+								<TableHead>Orders</TableHead>
+								<TableHead>Items Sold</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{data?.sales_by_period?.map((period) => (
+								<TableRow key={period.date}>
+									<TableCell>{format(reportsService.parseLocalDate(period.date), "MMM dd, yyyy")}</TableCell>
+									<TableCell>${period.revenue.toLocaleString()}</TableCell>
+									<TableCell>{period.orders.toLocaleString()}</TableCell>
+									<TableCell>{period.items.toLocaleString()}</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</CardContent>
+			</Card>
 			{/* Export Dialog */}
 			<ExportDialog
 				open={exportDialogOpen}

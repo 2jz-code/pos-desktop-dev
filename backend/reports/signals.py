@@ -27,13 +27,13 @@ class ReportCacheInvalidator:
         try:
             # Get all cache keys that match the pattern
             cache_entries = ReportCache.objects.filter(
-                cache_key__icontains=pattern, expires_at__gt=timezone.now()
+                parameters_hash__icontains=pattern, expires_at__gt=timezone.now()
             )
 
             for entry in cache_entries:
-                cache.delete(entry.cache_key)
+                cache.delete(entry.parameters_hash)
                 entry.delete()
-                logger.info(f"Invalidated cache key: {entry.cache_key}")
+                logger.info(f"Invalidated cache key: {entry.parameters_hash}")
 
         except Exception as e:
             logger.error(f"Error invalidating cache pattern {pattern}: {e}")
@@ -50,13 +50,13 @@ class ReportCacheInvalidator:
 
             # Find and invalidate affected cache entries
             cache_entries = ReportCache.objects.filter(
-                created_at__date__range=[start_date, end_date]
+                generated_at__date__range=[start_date, end_date]
             )
 
             for entry in cache_entries:
-                cache.delete(entry.cache_key)
+                cache.delete(entry.parameters_hash)
                 entry.delete()
-                logger.info(f"Invalidated date-range cache: {entry.cache_key}")
+                logger.info(f"Invalidated date-range cache: {entry.parameters_hash}")
 
         except Exception as e:
             logger.error(f"Error invalidating date range caches: {e}")

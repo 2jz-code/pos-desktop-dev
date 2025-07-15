@@ -21,7 +21,7 @@ from django.db.models import (
     DecimalField,
     Value,
 )
-from django.db.models.functions import TruncDate, TruncHour, Extract, Coalesce
+from django.db.models.functions import TruncDate, TruncHour, TruncWeek, TruncMonth, Extract, Coalesce
 from django.utils import timezone
 from django.conf import settings
 import pytz
@@ -291,12 +291,12 @@ class ReportService:
     @staticmethod
     @transaction.atomic
     def generate_sales_report(
-        start_date: datetime, end_date: datetime, use_cache: bool = True
+        start_date: datetime, end_date: datetime, group_by: str = "day", use_cache: bool = True
     ) -> Dict[str, Any]:
         """Generate detailed sales report"""
 
         cache_key = ReportService._generate_cache_key(
-            "sales", {"start_date": start_date, "end_date": end_date}
+            "sales", {"start_date": start_date, "end_date": end_date, "group_by": group_by}
         )
 
         if use_cache:
@@ -313,13 +313,24 @@ class ReportService:
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_date, end_date),
             )
-            .select_related("cashier", "customer")
+            .select_related("cashier", "customer", "payment_details")
             .prefetch_related("items__product")
+        )
+
+        # Calculate total refunds separately
+        total_refunds = (
+            PaymentTransaction.objects.filter(
+                payment__order__in=orders_queryset,
+                status=PaymentTransaction.TransactionStatus.REFUNDED,
+            ).aggregate(total_refunds=Coalesce(Sum("refunded_amount"), Value(Decimal("0.00"))))[
+                "total_refunds"
+            ]
         )
 
         # Core sales metrics (WITHOUT items to avoid JOIN duplication)
         sales_data = orders_queryset.aggregate(
             total_revenue=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
+            total_subtotal=Coalesce(Sum("subtotal"), Value(Decimal("0.00"))),
             total_orders=Count("id"),
             avg_order_value=Coalesce(Avg("grand_total"), Value(Decimal("0.00"))),
             total_tax=Coalesce(Sum("tax_total"), Value(Decimal("0.00"))),
@@ -327,33 +338,72 @@ class ReportService:
                 Sum("total_discounts_amount"), Value(Decimal("0.00"))
             ),
         )
+        
+        # Calculate payment totals separately to avoid JOIN duplication
+        from payments.models import Payment
+        payment_totals = Payment.objects.filter(
+            order__in=orders_queryset
+        ).aggregate(
+            total_surcharges=Coalesce(Sum("total_surcharges"), Value(Decimal("0.00"))),
+            total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
+        )
+        
+        # Add payment totals to sales_data
+        sales_data.update(payment_totals)
 
         # Convert Decimal to float
         sales_data = {
             k: float(v) if isinstance(v, Decimal) else v for k, v in sales_data.items()
         }
 
+        # Add refunds to the sales data
+        sales_data["total_refunds"] = float(total_refunds)
+        sales_data["net_revenue"] = sales_data["total_revenue"] - sales_data["total_refunds"]
+
         # Calculate total_items separately to avoid ORDER duplication from JOINs
         sales_data["total_items"] = orders_queryset.aggregate(
             total_items=Coalesce(Sum("items__quantity"), Value(0))
         )["total_items"]
 
-        # Sales by period (daily breakdown) - match summary report pattern exactly
-        daily_sales = (
-            orders_queryset.annotate(date=ReportService.trunc_date_local("created_at"))
-            .values("date")
-            .annotate(revenue=Sum("grand_total"), orders=Count("id"))
-            .order_by("date")
+        # Sales by period (daily, weekly, or monthly breakdown)
+        if group_by == 'week':
+            trunc_period = TruncWeek('created_at')
+        elif group_by == 'month':
+            trunc_period = TruncMonth('created_at')
+        else:
+            trunc_period = TruncDate('created_at')
+
+        # Step 1: Aggregate revenue and orders. This is correct as it doesn't involve joins that cause duplication.
+        sales_agg = (
+            orders_queryset.annotate(period=trunc_period)
+            .values("period")
+            .annotate(
+                revenue=Sum("grand_total"),
+                orders=Count("id"),
+            )
+            .order_by("period")
         )
+
+        # Step 2: Aggregate item quantities separately to avoid inflating the sales/order counts.
+        # This query introduces a JOIN on OrderItem, so it's done independently.
+        items_agg = (
+            orders_queryset.annotate(period=trunc_period)
+            .values("period")
+            .annotate(items=Sum("items__quantity"))
+            .order_by("period")
+        )
+
+        # Step 3: Merge the two aggregations in memory for the final result.
+        items_dict = {item['period']: item['items'] for item in items_agg}
 
         sales_data["sales_by_period"] = [
             {
-                "date": item["date"].strftime("%Y-%m-%d"),
+                "date": item["period"].strftime("%Y-%m-%d"),
                 "revenue": float(item["revenue"] or 0),
                 "orders": item["orders"],
-                "items": 0,  # Remove items calculation to avoid JOIN issues
+                "items": items_dict.get(item["period"], 0) or 0,
             }
-            for item in daily_sales
+            for item in sales_agg
         ]
 
         # Sales by category

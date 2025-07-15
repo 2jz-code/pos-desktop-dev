@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from products.models import Product
 from users.models import User
 from discounts.models import Discount
@@ -134,8 +135,8 @@ class Order(models.Model):
     tax_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
-    updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(default=timezone.now, editable=False)
 
     # Email tracking
     confirmation_sent = models.BooleanField(
@@ -309,6 +310,8 @@ class Order(models.Model):
                     "Failed to generate a unique order number after multiple retries."
                 )
         else:
+            if not self._state.adding:
+                self.updated_at = timezone.now()
             super().save(*args, **kwargs)
 
     def _generate_sequential_order_number(self):

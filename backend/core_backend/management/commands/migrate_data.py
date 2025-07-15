@@ -1,9 +1,11 @@
 import os
 import requests
+import time
 from decimal import Decimal, InvalidOperation
 
 from django.core.management.base import BaseCommand
 from django.db import transaction, IntegrityError
+from django.db.utils import OperationalError
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
@@ -31,6 +33,24 @@ load_dotenv()
 
 class Command(BaseCommand):
     help = "Final Corrected: Migrates all data, fetching related payment records separately."
+
+    def retry_on_db_lock(self, func, max_retries=5, delay=0.5):
+        """Retry function on database lock with exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                return func()
+            except OperationalError as e:
+                if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                    wait_time = delay * (2 ** attempt)  # Exponential backoff
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Database locked, retrying in {wait_time:.1f}s... (attempt {attempt + 1}/{max_retries})"
+                        )
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise
 
     def handle(self, *args, **options):
         self.stdout.write(
@@ -345,202 +365,23 @@ class Command(BaseCommand):
                 )
                 continue
 
-            # --- Get Financial Data Directly from API Response ---
-            recalculated_subtotal = sum(
-                Decimal(item.get("quantity", "0"))
-                * Decimal(item.get("unit_price", "0.00"))
-                for item in old_order_data.get("items", [])
-            )
-            grand_total = Decimal(old_order_data.get("total_price") or "0.00")
-            discount_amount = Decimal(old_order_data.get("discount_amount") or "0.00")
-            tax_total = Decimal(
-                old_order_data.get("tax_amount_from_frontend") or "0.00"
-            )
-            surcharge_total = Decimal(old_order_data.get("surcharge_amount") or "0.00")
-            tip_total = Decimal(old_order_data.get("tip_amount") or "0.00")
-
-            cashier = User.objects.filter(legacy_id=old_order_data.get("user")).first()
-            customer = User.objects.filter(
-                legacy_id=old_order_data.get("rewards_profile_id")
-            ).first()
-
-            new_order, _ = Order.objects.update_or_create(
-                legacy_id=legacy_order_id,
-                defaults={
-                    "status": ORDER_STATUS_MAP.get(
-                        old_order_data.get("status", "pending"),
-                        Order.OrderStatus.PENDING,
-                    ),
-                    "order_type": (
-                        Order.OrderType.POS
-                        if old_order_data.get("source") == "pos"
-                        else Order.OrderType.WEB
-                    ),
-                    "payment_status": PAYMENT_STATUS_MAP.get(
-                        old_order_data.get("payment_status"), Order.PaymentStatus.UNPAID
-                    ),
-                    "cashier": cashier,
-                    "customer": customer,
-                    "subtotal": recalculated_subtotal,
-                    "total_discounts_amount": discount_amount,
-                    "tax_total": tax_total,
-                    "grand_total": grand_total,
-                    "created_at": (
-                        parse_datetime(old_order_data["created_at"])
-                        if old_order_data.get("created_at")
-                        else timezone.now()
-                    ),
-                    "updated_at": (
-                        parse_datetime(old_order_data["updated_at"])
-                        if old_order_data.get("updated_at")
-                        else timezone.now()
-                    ),
-                },
-            )
-
-            for item_data in old_order_data.get("items", []):
-                legacy_item_id = item_data.get("id")
-                if not legacy_item_id:
-                    continue
-                product_data = item_data.get("product")
-                if not product_data:
-                    continue
-                product = Product.objects.filter(
-                    legacy_id=product_data.get("id")
-                ).first()
-                if not product:
-                    continue
-
-                OrderItem.objects.update_or_create(
-                    legacy_id=legacy_item_id,
-                    defaults={
-                        "order": new_order,
-                        "product": product,
-                        "quantity": item_data["quantity"],
-                        "price_at_sale": item_data.get("unit_price") or product.price,
-                    },
+            # Use retry logic for the entire order+payment creation process
+            def create_order_and_payment():
+                return self._create_single_order_with_payment(
+                    legacy_order_id, old_order_data, payments_by_order_legacy_id,
+                    ORDER_STATUS_MAP, PAYMENT_STATUS_MAP, PAYMENT_METHOD_MAP
                 )
-
-            old_payment_data = payments_by_order_legacy_id.get(legacy_order_id)
-            if old_payment_data:
-                legacy_payment_id = old_payment_data.get("id")
-                if not legacy_payment_id:
-                    continue
-
-                # --- Final, More Accurate Financial Logic for Split Payments ---
-                payment, _ = Payment.objects.update_or_create(
-                    legacy_id=legacy_payment_id,
-                    defaults={
-                        "order": new_order,
-                        "status": PAYMENT_STATUS_MAP.get(
-                            old_payment_data.get("status"), Payment.PaymentStatus.UNPAID
-                        ),
-                        "total_amount_due": new_order.subtotal + new_order.tax_total,
-                        # These will be calculated from the transactions below
-                        "amount_paid": Decimal("0.00"),
-                        "total_surcharges": Decimal("0.00"),
-                        "total_tips": Decimal("0.00"),
-                        "total_collected": Decimal("0.00"),
-                        "created_at": (
-                            parse_datetime(old_payment_data["created_at"])
-                            if old_payment_data.get("created_at")
-                            else new_order.created_at
-                        ),
-                        "updated_at": (
-                            parse_datetime(old_payment_data["updated_at"])
-                            if old_payment_data.get("updated_at")
-                            else new_order.created_at
-                        ),
-                    },
-                )
-
-                transactions = old_payment_data.get("transactions", [])
-                is_split_payment = old_payment_data.get("is_split_payment", False)
-                order_tip = Decimal(old_order_data.get("tip_amount") or "0.00")
-                order_surcharge = Decimal(
-                    old_order_data.get("surcharge_amount") or "0.00"
-                )
-
-                aggregated_amount_paid = Decimal("0.00")
-                aggregated_tips = Decimal("0.00")
-                aggregated_surcharges = Decimal("0.00")
-
-                for i, txn_data in enumerate(transactions):
-                    legacy_txn_id = txn_data.get("id")
-                    if not legacy_txn_id:
-                        continue
-
-                    tip_for_this_txn = Decimal("0.00")
-                    surcharge_for_this_txn = Decimal("0.00")
-
-                    if is_split_payment:
-                        if i == 0:
-                            # Assign the full tip and surcharge to the first transaction in a split payment
-                            tip_for_this_txn = order_tip
-                            surcharge_for_this_txn = order_surcharge
-                            self.stdout.write(
-                                self.style.WARNING(
-                                    f"  - WARNING: Split payment for order {legacy_order_id}. Assigning full tip and surcharge to the first transaction."
-                                )
-                            )
-                    else:
-                        # For single payments, assign the full tip and surcharge
-                        tip_for_this_txn = order_tip
-                        surcharge_for_this_txn = order_surcharge
-
-                    original_txn_amount = Decimal(txn_data.get("amount") or "0.00")
-                    # Deconstruct the amount from the old system
-                    base_amount = (
-                        original_txn_amount - tip_for_this_txn - surcharge_for_this_txn
+            
+            try:
+                self.retry_on_db_lock(create_order_and_payment)
+            except Exception as e:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"    - FAILED to create order {legacy_order_id} after retries: {e}"
                     )
-
-                    method = PAYMENT_METHOD_MAP.get(
-                        txn_data.get("payment_method"),
-                        PaymentTransaction.PaymentMethod.CASH,
-                    )
-                    if (
-                        new_order.order_type == Order.OrderType.WEB
-                        and txn_data.get("payment_method") == "credit"
-                    ):
-                        method = PaymentTransaction.PaymentMethod.CARD_ONLINE
-
-                    PaymentTransaction.objects.update_or_create(
-                        legacy_id=legacy_txn_id,
-                        defaults={
-                            "payment": payment,
-                            "transaction_id": txn_data.get("transaction_id"),
-                            "amount": base_amount,
-                            "method": method,
-                            "status": (
-                                PaymentTransaction.TransactionStatus.SUCCESSFUL
-                                if txn_data.get("status") in ["completed", "paid"]
-                                else PaymentTransaction.TransactionStatus.FAILED
-                            ),
-                            "tip": tip_for_this_txn,
-                            "surcharge": surcharge_for_this_txn,
-                            "created_at": (
-                                parse_datetime(txn_data["timestamp"])
-                                if txn_data.get("timestamp")
-                                else new_order.created_at
-                            ),
-                        },
-                    )
-                    aggregated_amount_paid += base_amount
-                    aggregated_tips += tip_for_this_txn
-                    aggregated_surcharges += surcharge_for_this_txn
-
-                # Now, update the parent payment with the aggregated totals
-                payment.amount_paid = aggregated_amount_paid
-                payment.total_tips = aggregated_tips
-                payment.total_surcharges = aggregated_surcharges
-                payment.total_collected = (
-                    aggregated_amount_paid + aggregated_tips + aggregated_surcharges
                 )
-                payment.save()
+                continue
 
-                # Finally, update the order's grand_total to match the payment's total_collected
-                new_order.grand_total = payment.total_collected
-                new_order.save()
         self.stdout.write(
             self.style.SUCCESS(
                 f"  Processed {len(orders_data)} orders and their associated payments."
@@ -708,6 +549,165 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  - Successfully fetched {len(all_data)} total items.")
         return all_data
+
+    @transaction.atomic
+    def _create_single_order_with_payment(self, legacy_order_id, old_order_data, payments_by_order_legacy_id, ORDER_STATUS_MAP, PAYMENT_STATUS_MAP, PAYMENT_METHOD_MAP):
+        """Create a single order with its payment and transactions atomically"""
+        
+        # --- Get Financial Data Directly from API Response ---
+        recalculated_subtotal = sum(
+            Decimal(item.get("quantity", "0"))
+            * Decimal(item.get("unit_price", "0.00"))
+            for item in old_order_data.get("items", [])
+        )
+        grand_total = Decimal(old_order_data.get("total_price") or "0.00")
+        discount_amount = Decimal(old_order_data.get("discount_amount") or "0.00")
+        tax_total = Decimal(
+            old_order_data.get("tax_amount_from_frontend") or "0.00"
+        )
+
+        cashier = User.objects.filter(legacy_id=old_order_data.get("user")).first()
+        customer = User.objects.filter(
+            legacy_id=old_order_data.get("rewards_profile_id")
+        ).first()
+
+        new_order, _ = Order.objects.update_or_create(
+            legacy_id=legacy_order_id,
+            defaults={
+                "status": ORDER_STATUS_MAP.get(
+                    old_order_data.get("status", "pending"),
+                    Order.OrderStatus.PENDING,
+                ),
+                "order_type": (
+                    Order.OrderType.POS
+                    if old_order_data.get("source") == "pos"
+                    else Order.OrderType.WEB
+                ),
+                "payment_status": PAYMENT_STATUS_MAP.get(
+                    old_order_data.get("payment_status"), Order.PaymentStatus.UNPAID
+                ),
+                "cashier": cashier,
+                "customer": customer,
+                "subtotal": recalculated_subtotal,
+                "total_discounts_amount": discount_amount,
+                "tax_total": tax_total,
+                "grand_total": grand_total,
+                "created_at": (
+                    parse_datetime(old_order_data["created_at"])
+                    if old_order_data.get("created_at")
+                    else timezone.now()
+                ),
+                "updated_at": (
+                    parse_datetime(old_order_data["updated_at"])
+                    if old_order_data.get("updated_at")
+                    else timezone.now()
+                ),
+            },
+        )
+
+        # Create order items
+        for item_data in old_order_data.get("items", []):
+            legacy_item_id = item_data.get("id")
+            if not legacy_item_id:
+                continue
+            product_data = item_data.get("product")
+            if not product_data:
+                continue
+            product = Product.objects.filter(
+                legacy_id=product_data.get("id")
+            ).first()
+            if not product:
+                continue
+
+            OrderItem.objects.update_or_create(
+                legacy_id=legacy_item_id,
+                defaults={
+                    "order": new_order,
+                    "product": product,
+                    "quantity": item_data["quantity"],
+                    "price_at_sale": item_data.get("unit_price") or product.price,
+                },
+            )
+
+        # Create payment and transactions
+        old_payment_data = payments_by_order_legacy_id.get(legacy_order_id)
+        if old_payment_data:
+            legacy_payment_id = old_payment_data.get("id")
+            if legacy_payment_id:
+                # --- CORRECTED: Use Old System Values Directly ---
+                order_tip = Decimal(old_order_data.get("tip_amount") or "0.00")
+                order_surcharge = Decimal(old_order_data.get("surcharge_amount") or "0.00")
+                
+                # Calculate base order amount (what customer owed for items/tax, excluding tips/surcharges)
+                base_order_amount = new_order.subtotal + new_order.tax_total - new_order.total_discounts_amount
+
+                payment, _ = Payment.objects.update_or_create(
+                    legacy_id=legacy_payment_id,
+                    defaults={
+                        "order": new_order,
+                        "status": PAYMENT_STATUS_MAP.get(
+                            old_payment_data.get("status"), Payment.PaymentStatus.UNPAID
+                        ),
+                        "total_amount_due": base_order_amount,
+                        "amount_paid": base_order_amount,
+                        "total_tips": order_tip,
+                        "total_surcharges": order_surcharge,
+                        "total_collected": new_order.grand_total,
+                        "created_at": (
+                            parse_datetime(old_payment_data["created_at"])
+                            if old_payment_data.get("created_at")
+                            else new_order.created_at
+                        ),
+                        "updated_at": (
+                            parse_datetime(old_payment_data["updated_at"])
+                            if old_payment_data.get("updated_at")
+                            else new_order.created_at
+                        ),
+                    },
+                )
+
+                # Create transactions
+                transactions = old_payment_data.get("transactions", [])
+                for txn_data in transactions:
+                    legacy_txn_id = txn_data.get("id")
+                    if not legacy_txn_id:
+                        continue
+
+                    transaction_amount = Decimal(txn_data.get("amount") or "0.00")
+
+                    method = PAYMENT_METHOD_MAP.get(
+                        txn_data.get("payment_method"),
+                        PaymentTransaction.PaymentMethod.CASH,
+                    )
+                    if (
+                        new_order.order_type == Order.OrderType.WEB
+                        and txn_data.get("payment_method") == "credit"
+                    ):
+                        method = PaymentTransaction.PaymentMethod.CARD_ONLINE
+
+                    PaymentTransaction.objects.update_or_create(
+                        legacy_id=legacy_txn_id,
+                        defaults={
+                            "payment": payment,
+                            "transaction_id": txn_data.get("transaction_id"),
+                            "amount": transaction_amount,
+                            "method": method,
+                            "status": (
+                                PaymentTransaction.TransactionStatus.SUCCESSFUL
+                                if txn_data.get("status") in ["completed", "paid"]
+                                else PaymentTransaction.TransactionStatus.FAILED
+                            ),
+                            "tip": Decimal("0.00"),
+                            "surcharge": Decimal("0.00"),
+                            "created_at": (
+                                parse_datetime(txn_data["timestamp"])
+                                if txn_data.get("timestamp")
+                                else new_order.created_at
+                            ),
+                        },
+                    )
+
+        return new_order
 
     def _migrate_orders_and_payments(self):
         self.stdout.write("  - Fetching orders and payments from JSON endpoints...")

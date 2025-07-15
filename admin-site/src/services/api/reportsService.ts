@@ -43,6 +43,7 @@ const reportsService = {
 	generateSalesReport: async (
 		startDate: string,
 		endDate: string,
+		groupBy: string = "day",
 		filters: Filters = {}
 	): Promise<unknown> => {
 		try {
@@ -50,6 +51,7 @@ const reportsService = {
 				params: {
 					start_date: startDate,
 					end_date: endDate,
+					group_by: groupBy,
 					...filters,
 				},
 			});

@@ -78,10 +78,11 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            group_by = request.query_params.get("group_by", "day")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = ReportService.generate_sales_report(
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                start_date=start_date, end_date=end_date, group_by=group_by, use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
