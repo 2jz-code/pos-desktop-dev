@@ -12,3 +12,6 @@ combined/
 .env.development
 .env.test
 .env.production
+old-docker-setup/
+legacy_schema.sql
+production_dump.dump

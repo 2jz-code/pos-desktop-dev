@@ -27,12 +27,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-n8qdo8-8=_mal=&ae=+_2ei2st2e)nuzf)plw)#laj_+c7v#m&"
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-n8qdo8-8=_mal=&ae=+_2ei2st2e)nuzf)plw)#laj_+c7v#m&")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
 
 
 # Application definition
@@ -101,12 +101,15 @@ WSGI_APPLICATION = "core_backend.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+# Database configuration
+import dj_database_url
+
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-        "TIMEOUT": 20,  # 20 seconds
-    }
+    "default": dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
 }
 
 
@@ -312,7 +315,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": [os.getenv("REDIS_URL", "redis://127.0.0.1:6379")],
         },
     },
 }
@@ -456,10 +459,8 @@ BUSINESS_CONTACT_EMAIL = os.environ.get("DJANGO_BUSINESS_CONTACT_EMAIL")
 # CELERY SETTINGS
 # ==============================================================================
 # Celery Configuration Options
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379")
-CELERY_RESULT_BACKEND = os.environ.get(
-    "CELERY_RESULT_BACKEND", "redis://localhost:6379"
-)
+CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379")
+CELERY_RESULT_BACKEND = os.getenv("REDIS_URL", "redis://127.0.0.1:6379")
 
 # Task serialization
 CELERY_TASK_SERIALIZER = "json"

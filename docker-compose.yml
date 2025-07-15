@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pos_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=${DB_USER:-pos_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-pos_password}
+      - POSTGRES_DB=${DB_NAME:-pos_db}
+    ports:
+      - "${DB_PORT_ON_HOST:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-pos_user} -d ${DB_NAME:-pos_db}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pos_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pos_backend
+    volumes:
+      - ./backend/media:/app/media
+      - ./backend/staticfiles:/app/staticfiles
+    ports:
+      - "${BACKEND_PORT:-8000}:80"
+    env_file:
+      - .env
+    environment:
+      - SKIP_MIGRATIONS=false
+      - DATABASE_URL=postgresql://${DB_USER:-pos_user}:${DB_PASSWORD:-pos_password}@db:5432/${DB_NAME:-pos_db}
+      - REDIS_URL=redis://127.0.0.1:6379/0
+      - DJANGO_SETTINGS_MODULE=core_backend.settings
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-3}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/admin/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  pos_network:
+    driver: bridge

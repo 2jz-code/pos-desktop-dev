@@ -91,7 +91,8 @@ const connect = (orderId) => {
 	clearReconnectTimeout(); // Clear any pending reconnects
 	_retryCount = 0; // Reset retry count for a new explicit connection attempt
 
-	const url = `ws://127.0.0.1:8002/ws/cart/${orderId}/`; // Use 127.0.0.1 as per previous troubleshooting
+	const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8001/";
+	const url = `${wsBaseUrl}ws/cart/${orderId}/`;
 
 	// Return a promise that resolves on connection or rejects on error
 	return new Promise((resolve, reject) => {

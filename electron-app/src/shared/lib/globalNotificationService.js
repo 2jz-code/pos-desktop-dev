@@ -46,7 +46,8 @@ class GlobalNotificationService extends EventEmitter {
 			return;
 		}
 
-		const wsUrl = `ws://127.0.0.1:8002/ws/notifications/?device_id=${this.deviceId}`;
+		const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8001/";
+		const wsUrl = `${wsBaseUrl}ws/notifications/?device_id=${this.deviceId}`;
 		console.log(`GlobalNotificationService: Connecting to ${wsUrl}`);
 		this.setStatus("connecting");
 
