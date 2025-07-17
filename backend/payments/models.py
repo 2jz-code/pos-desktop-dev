@@ -97,6 +97,14 @@ class Payment(models.Model):
 
     # --- ADD THIS SAVE METHOD AND HELPER FUNCTION ---
     def save(self, *args, **kwargs):
+        from django.utils import timezone
+        
+        # Auto-set created_at and updated_at if not provided
+        if not self.created_at:
+            self.created_at = timezone.now()
+        if not self.updated_at:
+            self.updated_at = timezone.now()
+        
         if not self.payment_number:
             max_retries = 5
             for _ in range(max_retries):
@@ -241,6 +249,13 @@ class PaymentTransaction(models.Model):
         verbose_name = _("Payment Transaction")
         verbose_name_plural = _("Payment Transactions")
 
+    def save(self, *args, **kwargs):
+        # Auto-set created_at if not provided (like auto_now_add but allows override)
+        if not self.created_at:
+            from django.utils import timezone
+            self.created_at = timezone.now()
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return (
             f"Transaction {self.id} ({self.method}) for {self.amount} - {self.status}"

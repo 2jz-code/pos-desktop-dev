@@ -22,6 +22,7 @@ from products.models import Product, Category, ProductType
 from orders.models import Order, OrderItem, OrderDiscount
 from payments.models import Payment, PaymentTransaction
 from discounts.models import Discount
+from inventory.models import Location, InventoryStock
 
 
 class Command(BaseCommand):
@@ -146,7 +147,6 @@ class Command(BaseCommand):
         WHERE id NOT IN (
             SELECT legacy_id FROM users_user WHERE legacy_id IS NOT NULL
         )
-        AND email IS NOT NULL AND email != ''
         """
         
         legacy_users = self.get_legacy_data(query)
@@ -160,19 +160,20 @@ class Command(BaseCommand):
         empty_email_count = self.get_legacy_data(empty_email_query)[0]['count']
         if empty_email_count > 0:
             self.stdout.write(
-                self.style.WARNING(f'Skipping {empty_email_count} users with empty emails')
+                self.style.WARNING(f'Creating temporary emails for {empty_email_count} users with empty emails')
             )
 
         with transaction.atomic():
             users_to_create = []
             
             for user_data in legacy_users:
-                # Double-check email is not empty
-                if not user_data['email'] or user_data['email'].strip() == '':
+                # Handle users with empty emails by creating temporary ones
+                email = user_data['email']
+                if not email or email.strip() == '':
+                    email = f"temp_user_{user_data['id']}@ajeen.temp"
                     self.stdout.write(
-                        self.style.WARNING(f"Skipping user ID {user_data['id']} with empty email")
+                        self.style.WARNING(f"Creating temporary email for user ID {user_data['id']}: {email}")
                     )
-                    continue
                 # Map legacy role to new role enum
                 role_mapping = {
                     'owner': User.Role.OWNER,
@@ -185,7 +186,7 @@ class Command(BaseCommand):
                 role = role_mapping.get(user_data['role'], User.Role.CUSTOMER)
                 
                 user = User(
-                    email=user_data['email'],
+                    email=email,
                     username=user_data['username'],
                     first_name=user_data['first_name'] or '',
                     last_name=user_data['last_name'] or '',
@@ -250,6 +251,12 @@ class Command(BaseCommand):
             defaults={'description': 'Default product type from migration'}
         )
         
+        # Ensure we have a default location for inventory
+        main_location, _ = Location.objects.get_or_create(
+            name='Main Store',
+            defaults={'description': 'Main store location from migration'}
+        )
+        
         legacy_count = self.count_legacy_records('products_product')
         current_count = Product.objects.filter(legacy_id__isnull=False).count()
         
@@ -274,6 +281,7 @@ class Command(BaseCommand):
         
         with transaction.atomic():
             products_to_create = []
+            inventory_stocks_to_create = []
             
             for prod_data in legacy_products:
                 # Find matching category by name
@@ -304,8 +312,32 @@ class Command(BaseCommand):
                 )
                 products_to_create.append(product)
             
+            # Create products first
             Product.objects.bulk_create(products_to_create, batch_size=self.batch_size)
             self.stdout.write(f'Migrated {len(products_to_create)} products')
+            
+            # Now create inventory stock records for all migrated products
+            created_products = Product.objects.filter(legacy_id__isnull=False)
+            for product in created_products:
+                # Find the corresponding legacy data to get inventory quantity
+                legacy_product = next(
+                    (p for p in legacy_products if p['id'] == product.legacy_id), 
+                    None
+                )
+                inventory_quantity = legacy_product['inventory_quantity'] if legacy_product else 0
+                
+                # Create inventory stock record (set negative quantities to 0)
+                final_quantity = max(0, inventory_quantity or 0)
+                inventory_stock = InventoryStock(
+                    product=product,
+                    location=main_location,
+                    quantity=final_quantity
+                )
+                inventory_stocks_to_create.append(inventory_stock)
+            
+            # Bulk create inventory stock records
+            InventoryStock.objects.bulk_create(inventory_stocks_to_create, batch_size=self.batch_size)
+            self.stdout.write(f'Created {len(inventory_stocks_to_create)} inventory stock records')
 
     def migrate_orders(self):
         """Migrate orders from legacy.orders_order and legacy.orders_orderitem"""
@@ -318,7 +350,7 @@ class Command(BaseCommand):
         if self.dry_run:
             return
 
-        # First migrate orders
+        # First migrate orders (excluding in progress and pending orders)
         order_query = """
         SELECT id, created_at, updated_at, status, payment_status, total_price,
                user_id, guest_email, guest_first_name, guest_id, guest_last_name,
@@ -328,6 +360,8 @@ class Command(BaseCommand):
         WHERE id NOT IN (
             SELECT legacy_id FROM orders_order WHERE legacy_id IS NOT NULL
         )
+        AND status NOT IN ('in_progress', 'pending')
+        AND payment_status <> 'pending'
         ORDER BY created_at ASC
         """
         
@@ -354,22 +388,43 @@ class Command(BaseCommand):
                 
                 # Map legacy source to order type
                 order_type_mapping = {
-                    'web': Order.OrderType.WEB,
+                    'website': Order.OrderType.WEB,
                     'pos': Order.OrderType.POS,
                     'app': Order.OrderType.APP,
                 }
                 
-                # Get customer if exists
+                # Get customer and cashier if exists - logic depends on order source
                 customer = None
+                cashier = None
+                order_source = order_data.get('source', 'pos')
+                
                 if order_data['user_id']:
                     try:
-                        customer = User.objects.get(legacy_id=order_data['user_id'])
+                        user = User.objects.get(legacy_id=order_data['user_id'])
+                        # For website orders, user_id is typically the customer
+                        # For POS orders, user_id could be the cashier
+                        if order_source == 'website':
+                            customer = user
+                        else:
+                            # For POS orders, determine based on role
+                            if user.role in [User.Role.CUSTOMER]:
+                                customer = user
+                            else:
+                                cashier = user
                     except User.DoesNotExist:
                         self.stdout.write(
                             self.style.WARNING(
                                 f"User with legacy_id {order_data['user_id']} not found"
                             )
                         )
+                
+                # For website orders without user_id, ensure guest information is preserved
+                if order_source == 'website' and not customer and not order_data.get('guest_email'):
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Website order {order_data['id']} has no customer or guest info"
+                        )
+                    )
                 
                 order = Order(
                     id=uuid.uuid4(),
@@ -380,6 +435,7 @@ class Command(BaseCommand):
                         Order.PaymentStatus.UNPAID
                     ),
                     customer=customer,
+                    cashier=cashier,
                     guest_id=order_data['guest_id'],
                     guest_first_name=order_data['guest_first_name'],
                     guest_last_name=order_data['guest_last_name'],
@@ -413,6 +469,9 @@ class Command(BaseCommand):
             
             # Now migrate order items
             self.migrate_order_items()
+            
+            # Create inventory stock records for any products that don't have them
+            self.create_missing_inventory_stocks()
 
     def migrate_order_items(self):
         """Migrate order items from legacy.orders_orderitem"""
@@ -480,7 +539,7 @@ class Command(BaseCommand):
         if self.dry_run:
             return
 
-        # Enhanced payment query to get order financial data
+        # Enhanced payment query to get order financial data (excluding payments for in progress/pending orders)
         payment_query = """
         SELECT p.id, p.amount, p.status, p.created_at, p.updated_at, p.order_id,
                p.payment_method, p.is_split_payment,
@@ -490,6 +549,8 @@ class Command(BaseCommand):
         WHERE p.id NOT IN (
             SELECT legacy_id FROM payments_payment WHERE legacy_id IS NOT NULL
         )
+        AND o.status NOT IN ('in_progress', 'pending')
+        AND o.payment_status != 'pending'
         """
         
         legacy_payments = self.get_legacy_data(payment_query)
@@ -514,6 +575,7 @@ class Command(BaseCommand):
                     'completed': Payment.PaymentStatus.PAID,
                     'pending': Payment.PaymentStatus.PENDING,
                     'failed': Payment.PaymentStatus.UNPAID,
+                    'refunded': Payment.PaymentStatus.REFUNDED,
                 }
                 
                 # Fixed financial mapping: Payment stores full financial picture
@@ -554,7 +616,7 @@ class Command(BaseCommand):
 
     def migrate_payment_transactions(self):
         """Migrate payment transactions from legacy.payments_paymenttransaction"""
-        # Enhanced transaction query to get payment method and timestamps
+        # Enhanced transaction query to get payment method and timestamps (excluding transactions for in progress/pending orders)
         transaction_query = """
         SELECT pt.id, pt.amount, pt.parent_payment_id as payment_id, 
                pt.payment_method, pt.status, pt.timestamp as created_at,
@@ -565,6 +627,8 @@ class Command(BaseCommand):
         WHERE pt.id NOT IN (
             SELECT legacy_id FROM payments_paymenttransaction WHERE legacy_id IS NOT NULL
         )
+        AND o.status NOT IN ('in_progress', 'pending')
+        AND o.payment_status != 'pending'
         """
         
         legacy_transactions = self.get_legacy_data(transaction_query)
@@ -641,7 +705,7 @@ class Command(BaseCommand):
                     trans_data.get('status', '').lower(),
                     PaymentTransaction.TransactionStatus.SUCCESSFUL
                 ),
-                created_at=trans_data.get('created_at') or timezone.now(),
+                created_at=trans_data.get('created_at') or payment.created_at or timezone.now(),
                 legacy_id=trans_data['id']
             )
             transactions_to_create.append(transaction)
@@ -704,3 +768,31 @@ class Command(BaseCommand):
             self.stdout.write(f'✓ Updated totals for {orders_updated} orders')
         
         self.stdout.write('✓ Post-migration cleanup completed')
+    
+    def create_missing_inventory_stocks(self):
+        """Create inventory stock records for products that don't have them"""
+        # Get or create main location
+        main_location, _ = Location.objects.get_or_create(
+            name='Main Store',
+            defaults={'description': 'Main store location'}
+        )
+        
+        # Find products without inventory stock records
+        products_without_stock = Product.objects.filter(
+            legacy_id__isnull=False
+        ).exclude(
+            stock_levels__location=main_location
+        )
+        
+        inventory_stocks_to_create = []
+        for product in products_without_stock:
+            inventory_stock = InventoryStock(
+                product=product,
+                location=main_location,
+                quantity=0  # Default to 0 if not specified
+            )
+            inventory_stocks_to_create.append(inventory_stock)
+        
+        if inventory_stocks_to_create:
+            InventoryStock.objects.bulk_create(inventory_stocks_to_create, batch_size=self.batch_size)
+            self.stdout.write(f'✓ Created {len(inventory_stocks_to_create)} missing inventory stock records')
