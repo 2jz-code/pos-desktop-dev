@@ -328,6 +328,7 @@ class Command(BaseCommand):
         WHERE id NOT IN (
             SELECT legacy_id FROM orders_order WHERE legacy_id IS NOT NULL
         )
+        ORDER BY created_at ASC
         """
         
         legacy_orders = self.get_legacy_data(order_query)
@@ -385,7 +386,7 @@ class Command(BaseCommand):
                     guest_email=order_data['guest_email'],
                     guest_phone=order_data['guest_phone'],
                     # Fixed financial mapping: Order only stores base transaction amounts
-                    subtotal=Decimal(str(order_data['subtotal_from_frontend'] or 0)) if order_data['subtotal_from_frontend'] else (
+                    subtotal=Decimal(str(order_data['subtotal_from_frontend'] or 0)) if order_data['subtotal_from_frontend'] is not None else (
                         Decimal(str(order_data['total_price'] or 0)) - 
                         Decimal(str(order_data['tax_amount_from_frontend'] or 0)) - 
                         Decimal(str(order_data['tip_amount'] or 0)) - 
@@ -593,6 +594,7 @@ class Command(BaseCommand):
                 'mastercard': PaymentTransaction.PaymentMethod.CARD_TERMINAL,
                 'amex': PaymentTransaction.PaymentMethod.CARD_TERMINAL,
                 'discover': PaymentTransaction.PaymentMethod.CARD_TERMINAL,
+                'clover_terminal': PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             }
             
             # Map legacy status
@@ -605,7 +607,7 @@ class Command(BaseCommand):
             }
             
             payment_method = method_mapping.get(
-                trans_data.get('payment_method', '').lower(),
+                trans_data.get('payment_method', '').strip().lower(),
                 PaymentTransaction.PaymentMethod.CASH
             )
             

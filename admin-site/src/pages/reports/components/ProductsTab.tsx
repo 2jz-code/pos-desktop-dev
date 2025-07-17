@@ -75,6 +75,12 @@ interface ProductsData {
 		total_revenue: number;
 		total_units_sold: number;
 	};
+	filters?: {
+		category_id?: number;
+		limit: number;
+		trend_period: string;
+		actual_period: string;
+	};
 }
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
@@ -93,6 +99,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 	const [sortBy, setSortBy] = useState<"revenue" | "quantity" | "margin">(
 		"revenue"
 	);
+	const [trendPeriod, setTrendPeriod] = useState<"auto" | "daily" | "weekly" | "monthly">("auto");
 
 	const fetchProductsData = async () => {
 		if (!dateRange?.from || !dateRange?.to) return;
@@ -111,6 +118,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 
 			const filters = {
 				limit: limit,
+				trend_period: trendPeriod,
 				...(categoryFilter !== "all" && { category_id: categoryFilter }),
 			};
 
@@ -129,7 +137,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 
 	useEffect(() => {
 		fetchProductsData();
-	}, [dateRange, categoryFilter, limit, sortBy]);
+	}, [dateRange, categoryFilter, limit, sortBy, trendPeriod]);
 
 	if (loading) {
 		return (
@@ -210,6 +218,22 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 							<SelectItem value="revenue">Revenue</SelectItem>
 							<SelectItem value="quantity">Quantity</SelectItem>
 							<SelectItem value="margin">Margin</SelectItem>
+						</SelectContent>
+					</Select>
+					<Select
+						value={trendPeriod}
+						onValueChange={(value: "auto" | "daily" | "weekly" | "monthly") =>
+							setTrendPeriod(value)
+						}
+					>
+						<SelectTrigger className="w-28">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="auto">Auto</SelectItem>
+							<SelectItem value="daily">Daily</SelectItem>
+							<SelectItem value="weekly">Weekly</SelectItem>
+							<SelectItem value="monthly">Monthly</SelectItem>
 						</SelectContent>
 					</Select>
 					<Select
@@ -434,12 +458,41 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 						return dataPoint;
 					});
 
+					// Determine date format based on current trend period state
+					const actualPeriod = data?.filters?.actual_period || (trendPeriod === "auto" ? "daily" : trendPeriod);
+					const getDateFormat = (period: string) => {
+						switch (period) {
+							case "weekly":
+								return "MMM dd"; // Week starting date
+							case "monthly":
+								return "MMM yyyy"; // Month and year
+							case "daily":
+							default:
+								return "MMM dd"; // Month and day
+						}
+					};
+
+					const getTooltipFormat = (period: string) => {
+						switch (period) {
+							case "weekly":
+								return "MMM dd, yyyy"; // Full date for week start
+							case "monthly":
+								return "MMMM yyyy"; // Full month name and year
+							case "daily":
+							default:
+								return "MMM dd, yyyy"; // Full date
+						}
+					};
+
+					const dateFormat = getDateFormat(actualPeriod);
+					const tooltipFormat = getTooltipFormat(actualPeriod);
+
 					return (
 						<Card>
 							<CardHeader>
 								<CardTitle>Product Trends</CardTitle>
 								<CardDescription>
-									Sales trends for top products over time
+									Sales trends for top products over time ({actualPeriod})
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -447,12 +500,12 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 									width="100%"
 									height={400}
 								>
-									<LineChart data={unifiedData}>
+									<LineChart key={actualPeriod} data={unifiedData}>
 										<CartesianGrid strokeDasharray="3 3" />
 										<XAxis
 											dataKey="date"
 											tickFormatter={(value) =>
-												format(reportsService.parseLocalDate(value), "MMM dd")
+												format(reportsService.parseLocalDate(value), dateFormat)
 											}
 										/>
 										<YAxis />
@@ -460,7 +513,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 											labelFormatter={(value) =>
 												format(
 													reportsService.parseLocalDate(value),
-													"MMM dd, yyyy"
+													tooltipFormat
 												)
 											}
 										/>

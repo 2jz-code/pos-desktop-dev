@@ -47,6 +47,10 @@ interface PaymentsData {
 		processing_fees: number;
 		percentage: number;
 		trend: number;
+		refunded_amount: number;
+		refunded_count: number;
+		total_processed: number;
+		net_amount: number;
 	}>;
 	daily_volume: Array<{
 		date: string;
@@ -70,6 +74,15 @@ interface PaymentsData {
 		order_count: number;
 		payment_transaction_total: number;
 		difference: number;
+	};
+	summary: {
+		total_processed: number;
+		total_transactions: number;
+		total_refunds: number;
+		total_refunded_transactions: number;
+		net_revenue: number;
+		total_all_processed: number;
+		refund_rate: number;
 	};
 }
 
@@ -169,11 +182,11 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			</div>
 		);
 	}
-
-	const totalAmount =
-		data?.payment_methods?.reduce((sum, method) => sum + method.amount, 0) || 0;
-	const totalTransactions =
-		data?.payment_methods?.reduce((sum, method) => sum + method.count, 0) || 0;
+	const totalRefunds = Number(data?.summary?.total_refunds || 0);
+	const netRevenue = Number(data?.summary?.net_revenue || 0);
+	const totalAllProcessed = Number(data?.summary?.total_all_processed || 0);
+	const refundRate = Number(data?.summary?.refund_rate || 0);
+	const totalTransactions = Number(data?.summary?.total_transactions || 0);
 
 	return (
 		<div className="space-y-4">
@@ -199,19 +212,51 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			</div>
 
 			{/* Key Metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							Total Processed
+							💰 Total Processed
 						</CardTitle>
 						<DollarSign className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">
-							${totalAmount.toLocaleString()}
+						<div className="text-2xl font-bold text-green-600">
+							${totalAllProcessed.toLocaleString()}
 						</div>
-						<p className="text-xs text-muted-foreground">All payment methods</p>
+						<p className="text-xs text-muted-foreground">Including refunds</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							↩️ Total Refunded
+						</CardTitle>
+						<AlertCircle className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-red-600">
+							-${totalRefunds.toLocaleString()}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{refundRate.toFixed(1)}% refund rate
+						</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							💵 Net Revenue
+						</CardTitle>
+						<CheckCircle className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-blue-600">
+							${netRevenue.toLocaleString()}
+						</div>
+						<p className="text-xs text-muted-foreground">After refunds</p>
 					</CardContent>
 				</Card>
 
@@ -224,7 +269,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 						<div className="text-2xl font-bold">
 							{totalTransactions.toLocaleString()}
 						</div>
-						<p className="text-xs text-muted-foreground">Total transactions</p>
+						<p className="text-xs text-muted-foreground">Successful only</p>
 					</CardContent>
 				</Card>
 
@@ -238,24 +283,6 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							{data?.processing_stats?.success_rate?.toFixed(1) || "0"}%
 						</div>
 						<p className="text-xs text-muted-foreground">Transaction success</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Processing Fees
-						</CardTitle>
-						<AlertCircle className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							$
-							{data?.payment_methods
-								?.reduce((sum, method) => sum + method.processing_fees, 0)
-								.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Total fees paid</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -286,22 +313,33 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 										</p>
 										<p className="text-sm text-muted-foreground">
 											{method.count} transactions • Avg: $
-											{method.avg_amount.toFixed(2)}
+											{Number(method.avg_amount || 0).toFixed(2)}
 										</p>
+										{Number(method.refunded_count || 0) > 0 && (
+											<p className="text-xs text-red-500">
+												{method.refunded_count} refunds (-$
+												{Number(method.refunded_amount || 0).toFixed(2)})
+											</p>
+										)}
 									</div>
 								</div>
 								<div className="text-right space-y-1">
 									<div className="flex items-center space-x-2">
-										<span className="font-medium">
-											${method.amount.toLocaleString()}
-										</span>
+										<div className="text-right">
+											<div className="font-medium">
+												${Number(method.total_processed || 0).toLocaleString()}
+											</div>
+											<div className="text-sm text-muted-foreground">
+												Net: ${Number(method.net_amount || 0).toLocaleString()}
+											</div>
+										</div>
 										<Badge variant={method.trend > 0 ? "default" : "secondary"}>
 											{method.trend > 0 ? (
 												<TrendingUp className="mr-1 h-3 w-3" />
 											) : (
 												<TrendingDown className="mr-1 h-3 w-3" />
 											)}
-											{Math.abs(method.trend).toFixed(1)}%
+											{Math.abs(Number(method.trend || 0)).toFixed(1)}%
 										</Badge>
 									</div>
 									<div className="flex items-center space-x-2">
@@ -310,7 +348,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 											className="w-20"
 										/>
 										<span className="text-sm text-muted-foreground">
-											{method.percentage.toFixed(1)}%
+											{Number(method.percentage || 0).toFixed(1)}%
 										</span>
 									</div>
 								</div>

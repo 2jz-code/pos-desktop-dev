@@ -21,7 +21,14 @@ from django.db.models import (
     DecimalField,
     Value,
 )
-from django.db.models.functions import TruncDate, TruncHour, TruncWeek, TruncMonth, Extract, Coalesce
+from django.db.models.functions import (
+    TruncDate,
+    TruncHour,
+    TruncWeek,
+    TruncMonth,
+    Extract,
+    Coalesce,
+)
 from django.utils import timezone
 from django.conf import settings
 import pytz
@@ -69,13 +76,10 @@ class ReportService:
         """Truncate date field to local timezone instead of UTC"""
         from django.db.models import DateTimeField
         from django.db.models.functions import Cast
-        
+
         # Convert to local timezone, then truncate to date
         local_tz = ReportService.get_local_timezone()
-        return TruncDate(
-            Cast(field_name, DateTimeField()),
-            tzinfo=local_tz
-        )
+        return TruncDate(Cast(field_name, DateTimeField()), tzinfo=local_tz)
 
     @staticmethod
     @transaction.atomic
@@ -104,6 +108,7 @@ class ReportService:
             Order.objects.filter(
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_date, end_date),
+                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
             )
             .select_related("cashier", "customer")
             .prefetch_related("items__product")
@@ -145,6 +150,7 @@ class ReportService:
         previous_data = Order.objects.filter(
             status=Order.OrderStatus.COMPLETED,
             created_at__range=(previous_start, previous_end),
+            subtotal__gt=0,  # Exclude orders with $0.00 subtotals
         ).aggregate(
             prev_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             prev_transactions=Count("id"),
@@ -197,7 +203,7 @@ class ReportService:
             .values("product__name", "product__id")
             .annotate(
                 revenue=Sum(F("quantity") * F("price_at_sale")),
-                quantity_sold=Sum("quantity")
+                quantity_sold=Sum("quantity"),
             )
             .order_by("-revenue")[:5]
         )
@@ -228,14 +234,15 @@ class ReportService:
             for item in daily_sales
         ]
 
-        # Payment method distribution (include tips and surcharges for consistency)
+        # Payment method distribution (match legacy system behavior - amount only)
         payment_methods = (
             PaymentTransaction.objects.filter(
                 payment__order__in=orders_queryset,
-                status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
             )
             .values("method")
-            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
+            .annotate(
+                amount=Sum("amount"), count=Count("id")  # Use amount only to match legacy
+            )
             .order_by("-amount")
         )
 
@@ -291,12 +298,16 @@ class ReportService:
     @staticmethod
     @transaction.atomic
     def generate_sales_report(
-        start_date: datetime, end_date: datetime, group_by: str = "day", use_cache: bool = True
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "day",
+        use_cache: bool = True,
     ) -> Dict[str, Any]:
         """Generate detailed sales report"""
 
         cache_key = ReportService._generate_cache_key(
-            "sales", {"start_date": start_date, "end_date": end_date, "group_by": group_by}
+            "sales",
+            {"start_date": start_date, "end_date": end_date, "group_by": group_by},
         )
 
         if use_cache:
@@ -312,20 +323,21 @@ class ReportService:
             Order.objects.filter(
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_date, end_date),
+                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
             )
             .select_related("cashier", "customer", "payment_details")
             .prefetch_related("items__product")
         )
 
         # Calculate total refunds separately
-        total_refunds = (
-            PaymentTransaction.objects.filter(
-                payment__order__in=orders_queryset,
-                status=PaymentTransaction.TransactionStatus.REFUNDED,
-            ).aggregate(total_refunds=Coalesce(Sum("refunded_amount"), Value(Decimal("0.00"))))[
-                "total_refunds"
-            ]
-        )
+        total_refunds = PaymentTransaction.objects.filter(
+            payment__order__in=orders_queryset,
+            status=PaymentTransaction.TransactionStatus.REFUNDED,
+        ).aggregate(
+            total_refunds=Coalesce(Sum("refunded_amount"), Value(Decimal("0.00")))
+        )[
+            "total_refunds"
+        ]
 
         # Core sales metrics (WITHOUT items to avoid JOIN duplication)
         sales_data = orders_queryset.aggregate(
@@ -338,16 +350,15 @@ class ReportService:
                 Sum("total_discounts_amount"), Value(Decimal("0.00"))
             ),
         )
-        
+
         # Calculate payment totals separately to avoid JOIN duplication
         from payments.models import Payment
-        payment_totals = Payment.objects.filter(
-            order__in=orders_queryset
-        ).aggregate(
+
+        payment_totals = Payment.objects.filter(order__in=orders_queryset).aggregate(
             total_surcharges=Coalesce(Sum("total_surcharges"), Value(Decimal("0.00"))),
             total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
         )
-        
+
         # Add payment totals to sales_data
         sales_data.update(payment_totals)
 
@@ -358,7 +369,9 @@ class ReportService:
 
         # Add refunds to the sales data
         sales_data["total_refunds"] = float(total_refunds)
-        sales_data["net_revenue"] = sales_data["total_revenue"] - sales_data["total_refunds"]
+        sales_data["net_revenue"] = (
+            sales_data["total_revenue"] - sales_data["total_refunds"]
+        )
 
         # Calculate total_items separately to avoid ORDER duplication from JOINs
         sales_data["total_items"] = orders_queryset.aggregate(
@@ -366,12 +379,12 @@ class ReportService:
         )["total_items"]
 
         # Sales by period (daily, weekly, or monthly breakdown)
-        if group_by == 'week':
-            trunc_period = TruncWeek('created_at')
-        elif group_by == 'month':
-            trunc_period = TruncMonth('created_at')
+        if group_by == "week":
+            trunc_period = TruncWeek("created_at")
+        elif group_by == "month":
+            trunc_period = TruncMonth("created_at")
         else:
-            trunc_period = TruncDate('created_at')
+            trunc_period = TruncDate("created_at")
 
         # Step 1: Aggregate revenue and orders. This is correct as it doesn't involve joins that cause duplication.
         sales_agg = (
@@ -394,7 +407,7 @@ class ReportService:
         )
 
         # Step 3: Merge the two aggregations in memory for the final result.
-        items_dict = {item['period']: item['items'] for item in items_agg}
+        items_dict = {item["period"]: item["items"] for item in items_agg}
 
         sales_data["sales_by_period"] = [
             {
@@ -466,6 +479,7 @@ class ReportService:
         end_date: datetime,
         category_id: Optional[int] = None,
         limit: int = 10,
+        trend_period: str = "auto",  # "daily", "weekly", "monthly", "auto"
         use_cache: bool = True,
     ) -> Dict[str, Any]:
         """Generate product performance report"""
@@ -477,6 +491,7 @@ class ReportService:
                 "end_date": end_date,
                 "category_id": category_id,
                 "limit": limit,
+                "trend_period": trend_period,
             },
         )
 
@@ -492,6 +507,7 @@ class ReportService:
         order_items = OrderItem.objects.filter(
             order__status=Order.OrderStatus.COMPLETED,
             order__created_at__range=(start_date, end_date),
+            order__subtotal__gt=0,  # Exclude orders with $0.00 subtotals
         ).select_related("product", "product__category")
 
         # Filter by category if specified
@@ -564,29 +580,52 @@ class ReportService:
             for item in category_performance
         ]
 
-        # Product trends (weekly if date range > 7 days, otherwise daily)
+        # Product trends with proper period handling
         date_diff = (end_date - start_date).days
-        if date_diff > 7:
-            # Weekly trends for longer periods
-            product_trends = (
-                order_items.filter(
-                    product__in=[p["product__id"] for p in top_products[:5]]
-                )
-                .annotate(week=ReportService.trunc_date_local("order__created_at"))
-                .values("product__name", "week")
-                .annotate(sold=Sum("quantity"))
-                .order_by("week")
-            )
+        
+        # Determine trend period
+        if trend_period == "auto":
+            if date_diff <= 7:
+                actual_period = "daily"
+            elif date_diff <= 60:
+                actual_period = "weekly"
+            else:
+                actual_period = "monthly"
         else:
-            # Daily trends for shorter periods
+            actual_period = trend_period
+        
+        # Apply correct grouping based on period
+        if actual_period == "weekly":
+            from django.db.models.functions import TruncWeek
             product_trends = (
                 order_items.filter(
                     product__in=[p["product__id"] for p in top_products[:5]]
                 )
-                .annotate(date=ReportService.trunc_date_local("order__created_at"))
-                .values("product__name", "date")
+                .annotate(period=TruncWeek("order__created_at"))
+                .values("product__name", "period")
                 .annotate(sold=Sum("quantity"))
-                .order_by("date")
+                .order_by("period")
+            )
+        elif actual_period == "monthly":
+            from django.db.models.functions import TruncMonth
+            product_trends = (
+                order_items.filter(
+                    product__in=[p["product__id"] for p in top_products[:5]]
+                )
+                .annotate(period=TruncMonth("order__created_at"))
+                .values("product__name", "period")
+                .annotate(sold=Sum("quantity"))
+                .order_by("period")
+            )
+        else:  # daily
+            product_trends = (
+                order_items.filter(
+                    product__in=[p["product__id"] for p in top_products[:5]]
+                )
+                .annotate(period=ReportService.trunc_date_local("order__created_at"))
+                .values("product__name", "period")
+                .annotate(sold=Sum("quantity"))
+                .order_by("period")
             )
 
         # Group trends by product
@@ -596,9 +635,8 @@ class ReportService:
             if product_name not in trends_by_product:
                 trends_by_product[product_name] = []
 
-            date_key = "week" if date_diff > 7 else "date"
             trends_by_product[product_name].append(
-                {"date": trend[date_key].strftime("%Y-%m-%d"), "sold": trend["sold"]}
+                {"date": trend["period"].strftime("%Y-%m-%d"), "sold": trend["sold"]}
             )
 
         products_data["product_trends"] = trends_by_product
@@ -622,7 +660,12 @@ class ReportService:
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
         }
-        products_data["filters"] = {"category_id": category_id, "limit": limit}
+        products_data["filters"] = {
+            "category_id": category_id, 
+            "limit": limit,
+            "trend_period": trend_period,
+            "actual_period": actual_period
+        }
 
         # Cache the result
         generation_time = time.time() - start_time
@@ -652,87 +695,159 @@ class ReportService:
         logger.info(f"Generating payments report for {start_date} to {end_date}")
         start_time = time.time()
 
-        # Base queryset for successful transactions
-        transactions = PaymentTransaction.objects.filter(
+        # Base queryset for successful transactions only
+        successful_transactions = PaymentTransaction.objects.filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
+            payment__order__subtotal__gt=0,
             status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
         ).select_related("payment", "payment__order")
 
-        # Payment method breakdown (include tips and surcharges for accurate totals)
-        payment_methods = (
-            transactions.values("method")
-            .annotate(
-                total_amount=Sum(F("amount") + F("tip") + F("surcharge")),
-                transaction_count=Count("id"),
-                avg_amount=Avg(F("amount") + F("tip") + F("surcharge")),
-                processing_fees=Sum(F("surcharge")),  # Surcharge represents processing fees
-            )
-            .order_by("-total_amount")
+        # Base queryset for refunded transactions (tracked separately)
+        refunded_transactions = PaymentTransaction.objects.filter(
+            payment__order__status=Order.OrderStatus.COMPLETED,
+            payment__order__created_at__range=(start_date, end_date),
+            payment__order__subtotal__gt=0,
+            status=PaymentTransaction.TransactionStatus.REFUNDED,
+        ).select_related("payment", "payment__order")
+
+        # Get payments for the filtered orders
+        payments = Payment.objects.filter(
+            order__status=Order.OrderStatus.COMPLETED,
+            order__created_at__range=(start_date, end_date),
+            order__subtotal__gt=0,
         )
 
-        total_amount = sum(float(pm["total_amount"] or 0) for pm in payment_methods)
+        # Get payment method breakdown from SUCCESSFUL transactions only
+        payment_methods_agg = (
+            successful_transactions.values("method")
+            .annotate(
+                amount=Sum("amount"),
+                count=Count("id"),
+                processing_fees=Sum("surcharge"),
+            )
+            .order_by("-amount")
+        )
 
-        # Calculate trends by comparing with previous period
+        # Get refunded amounts by payment method for display
+        refunded_methods_agg = (
+            refunded_transactions.values("method")
+            .annotate(
+                refunded_amount=Sum("amount"),
+                refunded_count=Count("id"),
+            )
+        )
+        
+        # Create a lookup dict for refunded amounts
+        refunded_by_method = {
+            item["method"]: {
+                "amount": float(item["refunded_amount"] or 0),
+                "count": item["refunded_count"]
+            }
+            for item in refunded_methods_agg
+        }
+
+        # Calculate totals from successful transactions
+        total_processed_from_transactions = sum(
+            float(item["amount"] or 0) for item in payment_methods_agg
+        )
+        total_fees_from_transactions = sum(
+            float(item["processing_fees"] or 0) for item in payment_methods_agg
+        )
+
+        # Get authoritative totals from the Payment model for validation
+        payment_totals = payments.aggregate(
+            total_collected=Coalesce(Sum("total_collected"), Value(Decimal("0.00"))),
+            total_surcharges=Coalesce(Sum("total_surcharges"), Value(Decimal("0.00"))),
+        )
+        payment_total_collected = float(payment_totals["total_collected"])
+        payment_total_fees = float(payment_totals["total_surcharges"])
+
+        # Calculate trends by comparing with the previous period's transaction data
         previous_period_days = (end_date - start_date).days
         previous_start = start_date - timedelta(days=previous_period_days)
         previous_end = start_date
 
-        previous_payment_methods = (
-            PaymentTransaction.objects.filter(
-                payment__order__status=Order.OrderStatus.COMPLETED,
-                payment__order__created_at__range=(previous_start, previous_end),
-                status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
-            )
-            .values("method")
-            .annotate(
-                total_amount=Sum(F("amount") + F("tip") + F("surcharge")),
-            )
+        previous_successful_transactions = PaymentTransaction.objects.filter(
+            payment__order__status=Order.OrderStatus.COMPLETED,
+            payment__order__created_at__range=(previous_start, previous_end),
+            payment__order__subtotal__gt=0,
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
         )
 
-        # Create lookup dict for previous period data
+        # Get the previous period's amounts per method for trend calculation
         previous_amounts = {
-            item["method"]: float(item["total_amount"] or 0)
-            for item in previous_payment_methods
+            item["method"]: float(item["amount"] or 0)
+            for item in previous_successful_transactions.values("method").annotate(
+                amount=Sum("amount")
+            )
         }
 
-        payments_data = {
-            "payment_methods": [
+        # Build the final payment_methods list using successful transaction amounts
+        final_payment_methods = []
+        for item in payment_methods_agg:
+            method_amount = float(item["amount"] or 0)
+            method_fees = float(item["processing_fees"] or 0)
+            method_name = item["method"]
+
+            # Get refunded amounts for this method
+            refunded_info = refunded_by_method.get(method_name, {"amount": 0, "count": 0})
+            refunded_amount = refunded_info["amount"]
+            refunded_count = refunded_info["count"]
+
+            # Calculate total processed (successful + refunded) for this method
+            total_method_processed = method_amount + refunded_amount
+
+            # Calculate percentage based on successful transaction totals
+            amount_percentage = (
+                (method_amount / total_processed_from_transactions * 100)
+                if total_processed_from_transactions > 0
+                else 0
+            )
+
+            # Trend calculation
+            previous_amount = previous_amounts.get(method_name, 0)
+            trend = (
+                round(
+                    (
+                        (method_amount - previous_amount)
+                        / (previous_amount or 1)
+                    )
+                    * 100,
+                    2,
+                )
+                if previous_amount > 0
+                else 0
+            )
+
+            final_payment_methods.append(
                 {
-                    "method": item["method"],
-                    "amount": float(item["total_amount"] or 0),
-                    "count": item["transaction_count"],
-                    "avg_amount": float(item["avg_amount"] or 0),
-                    "processing_fees": float(item["processing_fees"] or 0),
-                    "percentage": (
-                        round(
-                            (float(item["total_amount"] or 0) / total_amount * 100), 2
-                        )
-                        if total_amount > 0
+                    "method": method_name,
+                    "amount": method_amount,  # Successful transactions only
+                    "count": item["count"],
+                    "avg_amount": (
+                        method_amount / item["count"]
+                        if item["count"] > 0
                         else 0
                     ),
-                    "trend": (
-                        round(
-                            (
-                                (float(item["total_amount"] or 0) - previous_amounts.get(item["method"], 0))
-                                / previous_amounts.get(item["method"], 1)
-                            )
-                            * 100,
-                            2,
-                        )
-                        if previous_amounts.get(item["method"], 0) > 0
-                        else 0
-                    ),
+                    "processing_fees": method_fees,
+                    "percentage": round(amount_percentage, 2),
+                    "trend": trend,
+                    # New fields for complete picture
+                    "refunded_amount": refunded_amount,
+                    "refunded_count": refunded_count,
+                    "total_processed": total_method_processed,  # For reconciliation
+                    "net_amount": method_amount,  # Successful amount (refunds already excluded)
                 }
-                for item in payment_methods
-            ]
-        }
+            )
 
-        # Transaction volume by day (include tips and surcharges)
-        daily_transactions = (
-            transactions.annotate(date=ReportService.trunc_date_local("created_at"))
+        payments_data = {"payment_methods": final_payment_methods}
+
+        # Daily payment volume (use Payment model for accuracy)
+        daily_payments = (
+            payments.annotate(date=ReportService.trunc_date_local("order__created_at"))
             .values("date")
-            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
+            .annotate(amount=Sum("total_collected"), count=Count("id"))
             .order_by("date")
         )
 
@@ -742,37 +857,47 @@ class ReportService:
                 "amount": float(item["amount"] or 0),
                 "count": item["count"],
             }
-            for item in daily_transactions
+            for item in daily_payments
         ]
 
-        # Daily breakdown by payment method (include tips and surcharges)
-        daily_by_method = (
-            transactions.annotate(date=ReportService.trunc_date_local("created_at"))
+        # Daily breakdown by payment method (successful transactions only)
+        daily_breakdown_data = (
+            successful_transactions.annotate(date=ReportService.trunc_date_local("created_at"))
             .values("date", "method")
-            .annotate(amount=Sum(F("amount") + F("tip") + F("surcharge")), count=Count("id"))
+            .annotate(total=Sum("amount"))
             .order_by("date", "method")
         )
 
-        # Group by date for easier frontend consumption
         daily_breakdown = {}
-        for item in daily_by_method:
+        for item in daily_breakdown_data:
             date_str = item["date"].strftime("%Y-%m-%d")
             if date_str not in daily_breakdown:
-                daily_breakdown[date_str] = {
-                    "date": date_str,
-                    "total": 0,
-                }
-            
+                daily_breakdown[date_str] = {"date": date_str, "total": 0}
             method_key = item["method"].lower().replace("_", "")
-            daily_breakdown[date_str][method_key] = float(item["amount"] or 0)
-            daily_breakdown[date_str]["total"] += float(item["amount"] or 0)
+            daily_breakdown[date_str][method_key] = float(item["total"] or 0)
 
-        payments_data["daily_breakdown"] = list(daily_breakdown.values())
+        for date_str, breakdown in daily_breakdown.items():
+            breakdown["total"] = sum(
+                v for k, v in breakdown.items() if k not in ["date", "total"]
+            )
 
-        # Add total from order grand_totals for comparison with summary report
+        payments_data["daily_breakdown"] = sorted(
+            list(daily_breakdown.values()), key=lambda x: x["date"]
+        )
+
+        # Calculate comprehensive totals first (before using them)
+        total_refunds = float(
+            refunded_transactions.aggregate(total=Sum("amount"))["total"] or 0
+        )
+        
+        # Calculate total processed including refunds (for complete picture)
+        total_all_processed = total_processed_from_transactions + total_refunds
+
+        # Order totals for comparison
         completed_orders = Order.objects.filter(
             status=Order.OrderStatus.COMPLETED,
             created_at__range=(start_date, end_date),
+            subtotal__gt=0,
         ).aggregate(
             order_total=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             order_count=Count("id"),
@@ -781,16 +906,30 @@ class ReportService:
         payments_data["order_totals_comparison"] = {
             "order_grand_total": float(completed_orders["order_total"] or 0),
             "order_count": completed_orders["order_count"],
-            "payment_transaction_total": total_amount,
-            "difference": float(completed_orders["order_total"] or 0) - total_amount,
+            "payment_transaction_total": total_all_processed,  # Use total including refunds
+            "difference": float(completed_orders["order_total"] or 0)
+            - total_all_processed,  # Compare against total processed amount
+        }
+        
+        payments_data["summary"] = {
+            "total_processed": total_processed_from_transactions,  # Successful transactions only
+            "total_transactions": successful_transactions.count(),
+            "total_refunds": total_refunds,
+            "total_refunded_transactions": refunded_transactions.count(),
+            "net_revenue": total_processed_from_transactions,  # Successful transactions ARE the net revenue
+            # New comprehensive fields
+            "total_all_processed": total_all_processed,  # Including refunds for reconciliation
+            "refund_rate": round((total_refunds / total_all_processed * 100), 2) if total_all_processed > 0 else 0,
         }
 
-        # Processing statistics
-        all_transactions = PaymentTransaction.objects.filter(
-            payment__order__created_at__range=(start_date, end_date)
+        # Processing statistics (use all transactions for complete picture)
+        all_transactions_for_stats = PaymentTransaction.objects.filter(
+            payment__order__status=Order.OrderStatus.COMPLETED,
+            payment__order__created_at__range=(start_date, end_date),
+            payment__order__subtotal__gt=0,
         )
 
-        processing_stats = all_transactions.aggregate(
+        processing_stats = all_transactions_for_stats.aggregate(
             total_attempts=Count("id"),
             successful=Count(
                 "id", filter=Q(status=PaymentTransaction.TransactionStatus.SUCCESSFUL)
@@ -854,7 +993,9 @@ class ReportService:
 
         # Base queryset
         orders = Order.objects.filter(
-            status=Order.OrderStatus.COMPLETED, created_at__range=(start_date, end_date)
+            status=Order.OrderStatus.COMPLETED,
+            created_at__range=(start_date, end_date),
+            subtotal__gt=0,  # Exclude orders with $0.00 subtotals
         ).select_related("cashier")
 
         # Hourly patterns
@@ -1067,80 +1208,83 @@ class ReportService:
     @transaction.atomic
     def get_quick_metrics() -> Dict[str, Any]:
         """Get today/MTD/YTD metrics for dashboard"""
-        
+
         # Get local timezone for date calculations
         local_tz = ReportService.get_local_timezone()
         now = timezone.now().astimezone(local_tz)
-        
+
         # Calculate date ranges
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = now
-        
+
         # Month to date
         mtd_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         mtd_end = now
-        
-        # Year to date  
-        ytd_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Year to date
+        ytd_start = now.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
         ytd_end = now
-        
+
         # Base queryset for completed orders
         def get_metrics_for_period(start_time, end_time):
             # Get order-level metrics WITHOUT JOINs to avoid duplication
             orders = Order.objects.filter(
                 status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_time, end_time)
+                created_at__range=(start_time, end_time),
+                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
             ).aggregate(
                 total_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
-                total_orders=Count("id")
+                total_orders=Count("id"),
             )
-            
+
             # Calculate total items separately to avoid JOIN duplication
             total_items = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__range=(start_time, end_time)
-            ).aggregate(
-                total_items=Coalesce(Sum("quantity"), Value(0))
-            )["total_items"]
-            
+                order__created_at__range=(start_time, end_time),
+                order__subtotal__gt=0,  # Exclude orders with $0.00 subtotals
+            ).aggregate(total_items=Coalesce(Sum("quantity"), Value(0)))["total_items"]
+
             return {
                 "sales": float(orders["total_sales"] or 0),
                 "orders": orders["total_orders"] or 0,
                 "items": total_items or 0,
                 "avg_order_value": (
                     float(orders["total_sales"] or 0) / (orders["total_orders"] or 1)
-                    if orders["total_orders"] > 0 else 0
-                )
+                    if orders["total_orders"] > 0
+                    else 0
+                ),
             }
-        
+
         # Get metrics for each period
         today_metrics = get_metrics_for_period(today_start, today_end)
         mtd_metrics = get_metrics_for_period(mtd_start, mtd_end)
         ytd_metrics = get_metrics_for_period(ytd_start, ytd_end)
-        
+
         return {
             "today": {
                 **today_metrics,
                 "date_range": {
                     "start": today_start.isoformat(),
-                    "end": today_end.isoformat()
-                }
+                    "end": today_end.isoformat(),
+                },
             },
             "month_to_date": {
                 **mtd_metrics,
                 "date_range": {
                     "start": mtd_start.isoformat(),
-                    "end": mtd_end.isoformat()
-                }
+                    "end": mtd_end.isoformat(),
+                },
             },
             "year_to_date": {
                 **ytd_metrics,
                 "date_range": {
                     "start": ytd_start.isoformat(),
-                    "end": ytd_end.isoformat()
-                }
+                    "end": ytd_end.isoformat(),
+                },
             },
-            "generated_at": timezone.now().isoformat()
+            "generated_at": timezone.now().isoformat(),
         }
 
     # Export functionality methods
