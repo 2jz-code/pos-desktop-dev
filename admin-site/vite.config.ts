@@ -19,4 +19,32 @@ export default defineConfig({
 			"@/store": path.resolve(__dirname, "./src/store"),
 		},
 	},
+	build: {
+		target: "es2015",
+		outDir: "dist",
+		assetsDir: "assets",
+		sourcemap: false,
+		minify: "terser",
+		terserOptions: {
+			compress: {
+				drop_console: true,
+				drop_debugger: true,
+			},
+		},
+		rollupOptions: {
+			output: {
+				manualChunks: {
+					vendor: ["react", "react-dom", "react-router-dom"],
+					ui: [
+						"@radix-ui/react-dialog",
+						"@radix-ui/react-dropdown-menu",
+						"@radix-ui/react-select",
+					],
+					charts: ["recharts"],
+					utils: ["axios", "@tanstack/react-query", "date-fns"],
+				},
+			},
+		},
+		chunkSizeWarningLimit: 1000,
+	},
 });

@@ -1,10 +1,14 @@
 import React, { useEffect } from "react";
+import {
+	generateRestaurantStructuredData,
+	generateWebsiteStructuredData,
+} from "../utils/structuredData";
 
 const SEO = ({
-	title = "Ajeen Restaurant - Authentic Middle Eastern Cuisine",
-	description = "Experience authentic Middle Eastern flavors at Ajeen Restaurant. Fresh ingredients, traditional recipes, and exceptional service. Order online for pickup or delivery.",
+	title = "Ajeen Bakery - Authentic Middle Eastern Cuisine",
+	description = "Experience authentic Middle Eastern flavors at Ajeen Bakery. Fresh and halal ingredients, traditional recipes, and exceptional service. Order online for pickup or delivery.",
 	keywords = "middle eastern food, authentic cuisine, restaurant, halal food, fresh ingredients, traditional recipes, online ordering",
-	image = "/og-image.jpg",
+	image = "/logo512.png",
 	url = window.location.href,
 	type = "website",
 	structuredData = null,
@@ -51,11 +55,11 @@ const SEO = ({
 		updateMetaTag("twitter:image", image);
 
 		// Additional meta tags for restaurants
-		updateMetaTag("business:contact_data:locality", "Your City");
-		updateMetaTag("business:contact_data:region", "Your State");
+		updateMetaTag("business:contact_data:locality", "Eagan");
+		updateMetaTag("business:contact_data:region", "Minnesota");
 		updateMetaTag("business:contact_data:country_name", "United States");
-		updateMetaTag("place:location:latitude", "40.7128"); // Replace with actual coordinates
-		updateMetaTag("place:location:longitude", "-74.0060"); // Replace with actual coordinates
+		updateMetaTag("place:location:latitude", "44.804131");
+		updateMetaTag("place:location:longitude", "-93.166885");
 
 		// Add canonical link
 		let canonical = document.querySelector('link[rel="canonical"]');
@@ -66,17 +70,28 @@ const SEO = ({
 		}
 		canonical.setAttribute("href", url);
 
-		// Add structured data if provided
+		// Add structured data
+		const combinedStructuredData = [];
+		
+		// Always include restaurant structured data
+		combinedStructuredData.push(generateRestaurantStructuredData());
+		
+		// Always include website structured data
+		combinedStructuredData.push(generateWebsiteStructuredData());
+		
+		// Add custom structured data if provided
 		if (structuredData) {
-			let script = document.querySelector("#structured-data");
-			if (!script) {
-				script = document.createElement("script");
-				script.setAttribute("type", "application/ld+json");
-				script.setAttribute("id", "structured-data");
-				document.head.appendChild(script);
-			}
-			script.textContent = JSON.stringify(structuredData);
+			combinedStructuredData.push(structuredData);
 		}
+		
+		let script = document.querySelector("#structured-data");
+		if (!script) {
+			script = document.createElement("script");
+			script.setAttribute("type", "application/ld+json");
+			script.setAttribute("id", "structured-data");
+			document.head.appendChild(script);
+		}
+		script.textContent = JSON.stringify(combinedStructuredData);
 
 		// Cleanup function
 		return () => {

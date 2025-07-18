@@ -109,8 +109,8 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
         """Filter orders based on user type (authenticated or guest)."""
         queryset = super().get_queryset()
 
-        # If user is staff, return all orders
-        if self.request.user and self.request.user.is_staff:
+        # If user is POS staff (cashier, manager, owner, admin), return all orders
+        if self.request.user and self.request.user.is_pos_staff:
             return queryset
 
         # If user is authenticated, return their orders
@@ -255,6 +255,11 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     def resume(self, request: Request, pk=None) -> Response:
         """Resumes a held order by setting its status to PENDING."""
         return self._handle_status_change(request, OrderService.resume_order)
+
+    @action(detail=True, methods=["post"], url_path="hold")
+    def hold(self, request: Request, pk=None) -> Response:
+        """Holds the order by setting its status to HOLD."""
+        return self._handle_status_change(request, OrderService.hold_order)
 
     @action(
         detail=True,

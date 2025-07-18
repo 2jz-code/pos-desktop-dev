@@ -6,6 +6,7 @@ import MenuNav from "./components/MenuNav";
 import ProductList from "./components/ProductList";
 import { useCategories } from "../../hooks/useCategories";
 import SEO from "@/components/SEO";
+import { generateBreadcrumbStructuredData } from "@/utils/structuredData";
 
 // Helper function to get category from URL search params
 const getCategoryFromURL = (search) => {
@@ -29,6 +30,12 @@ const MenuPage = () => {
 
 	// Use our new organized hooks
 	const { categories, isLoading: isLoadingCategories } = useCategories();
+
+	// Generate breadcrumb structured data for menu page
+	const breadcrumbData = generateBreadcrumbStructuredData([
+		{ name: "Home", url: "https://bakeajeen.com/" },
+		{ name: "Menu", url: "https://bakeajeen.com/menu" },
+	]);
 
 	// Reset checkout state when user comes to menu page after completing checkout
 	useEffect(() => {
@@ -71,9 +78,10 @@ const MenuPage = () => {
 	return (
 		<main className="min-h-screen">
 			<SEO
-				title="Our Menu - Ajeen | Mana'eesh, Soups, Hummus, Desserts"
-				description="Explore the delicious menu at Ajeen. From traditional Mana'eesh to savory Hummus and sweet desserts, all our dishes are prepared with the freshest ingredients."
-				keywords="restaurant menu, online menu, middle eastern dishes, appetizers, main courses, desserts, Ajeen"
+				title="Our Menu - Ajeen Bakery | Mana'eesh, Soups, Hummus, Desserts"
+				description="Explore the delicious menu at Ajeen Bakery. From traditional Mana'eesh to savory Hummus and sweet desserts, all our dishes are prepared with the freshest ingredients."
+				keywords="restaurant menu, online menu, middle eastern dishes, appetizers, main courses, desserts, Ajeen bakery, Ajeen, mana'eesh, hummus, soups"
+				structuredData={breadcrumbData}
 			/>
 			{/* Header section */}
 			<div className="bg-gradient-to-r from-primary-green to-accent-dark-green text-accent-light-beige py-12">

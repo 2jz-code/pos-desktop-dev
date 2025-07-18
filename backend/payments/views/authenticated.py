@@ -120,7 +120,7 @@ class AuthenticatedOrderAccessMixin(OrderAccessMixin):
         if (
             order.customer
             and order.customer != request.user
-            and not request.user.is_staff
+            and not request.user.is_pos_staff
         ):
             raise ValueError(PAYMENT_MESSAGES["ACCESS_DENIED"])
         return True
@@ -157,7 +157,7 @@ class PaymentViewSet(
         # The base queryset is now optimized by the mixin
         queryset = super().get_queryset()
         user = self.request.user
-        if user.is_staff:
+        if user.is_pos_staff:
             return queryset.order_by("-created_at")
         return queryset.filter(order__customer=user).order_by("-created_at")
 
@@ -505,8 +505,8 @@ class GiftCardListView(generics.ListAPIView):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        """Only allow staff to view gift cards."""
-        if self.request.user and self.request.user.is_staff:
+        """Only allow POS staff to view gift cards."""
+        if self.request.user and self.request.user.is_pos_staff:
             from ..models import GiftCard
 
             return GiftCard.objects.all().order_by("-created_at")

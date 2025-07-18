@@ -249,7 +249,7 @@ export function UsersPage() {
 	const handlePinFormSubmit = async (e) => {
 		e.preventDefault();
 		try {
-			await setPin(selectedUserForPin.id, pinData);
+			await setPin(selectedUserForPin.id, pinData.pin);
 			toast({
 				title: "Success",
 				description: "PIN set successfully.",

@@ -372,7 +372,7 @@ export const createCartSlice = (set, get) => {
 				return;
 			}
 			try {
-				await orderService.updateOrder(orderId, { status: "HOLD" });
+				await orderService.holdOrder(orderId);
 				get().showToast({
 					title: "Order Held",
 					description: `Order ${orderId.substring(0, 8)}... placed on hold.`,

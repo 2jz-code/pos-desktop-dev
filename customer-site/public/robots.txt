@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.your-domain.com/sitemap.xml 
+Sitemap: https://bakeajeen.com/sitemap.xml 

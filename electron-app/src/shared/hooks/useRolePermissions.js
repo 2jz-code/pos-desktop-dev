@@ -13,14 +13,15 @@ export const useRolePermissions = () => {
 	const { user, isOwner, isManager, isCashier } = useAuth();
 
 	// Page-level permissions
-	const canAccessDashboard = () => true; // All authenticated users
+	const canAccessDashboard = () => true; // All authenticated users can access dashboard
 	const canAccessPOS = () => true; // All authenticated users
 	const canAccessOrders = () => true; // All authenticated users (cashiers need to resume held orders)
 	const canAccessPayments = () => isOwner || isManager;
 	const canAccessProducts = () => true; // All authenticated users (cashiers need to view products)
+	const canAccessInventory = () => isOwner || isManager; // Only owners and managers can access inventory
 	const canAccessUsers = () => isOwner || isManager;
 	const canAccessDiscounts = () => isOwner || isManager;
-	const canAccessSettings = () => true; // All users can access settings (with restrictions inside)
+	const canAccessSettings = () => isOwner || isManager; // Only owners and managers can access settings
 
 	// Settings-level permissions
 	const canAccessBusinessSettings = () => isOwner || isManager;
@@ -101,6 +102,7 @@ export const useRolePermissions = () => {
 		canAccessOrders,
 		canAccessPayments,
 		canAccessProducts,
+		canAccessInventory,
 		canAccessUsers,
 		canAccessDiscounts,
 		canAccessSettings,

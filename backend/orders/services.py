@@ -221,6 +221,11 @@ class OrderService:
         return OrderService.update_order_status(order, Order.OrderStatus.PENDING)
 
     @staticmethod
+    def hold_order(order: Order) -> Order:
+        """Sets an order's status to HOLD after checking transition validity."""
+        return OrderService.update_order_status(order, Order.OrderStatus.HOLD)
+
+    @staticmethod
     @transaction.atomic
     def update_customer_info(order: Order, data: dict) -> Order:
         """

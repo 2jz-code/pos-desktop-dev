@@ -20,8 +20,8 @@ class IsAuthenticatedOrGuestOrder(permissions.BasePermission):
         )
 
     def has_object_permission(self, request, view, obj):
-        # Staff users can access any order
-        if request.user and request.user.is_staff:
+        # POS staff users (cashier, manager, owner, admin) can access any order
+        if request.user and request.user.is_pos_staff:
             return True
 
         # Get the order object (handle both Order and OrderItem)

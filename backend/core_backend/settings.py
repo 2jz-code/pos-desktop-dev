@@ -27,12 +27,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-n8qdo8-8=_mal=&ae=+_2ei2st2e)nuzf)plw)#laj_+c7v#m&")
+SECRET_KEY = os.getenv(
+    "SECRET_KEY", "django-insecure-n8qdo8-8=_mal=&ae=+_2ei2st2e)nuzf)plw)#laj_+c7v#m&"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+ALLOWED_HOSTS = (
+    os.getenv("ALLOWED_HOSTS", "").split(",") if os.getenv("ALLOWED_HOSTS") else ["*"]
+)
 
 
 # Application definition
@@ -73,6 +77,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core_backend.middleware.BusinessHoursMiddleware",  # Business hours enforcement
+    "core_backend.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -111,6 +116,17 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+
+# PostgreSQL SSL configuration for production
+if not DEBUG and DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
+    DB_SSLMODE = os.getenv("DB_SSLMODE", "verify-ca")
+    DATABASES['default']['OPTIONS'] = {
+        'sslmode': DB_SSLMODE,
+    }
+    
+    # Add SSL certificate path if using verify-ca or verify-full
+    if DB_SSLMODE in ["verify-ca", "verify-full"]:
+        DATABASES['default']['OPTIONS']['sslrootcert'] = "/app/certs/global-bundle.pem"
 
 
 # Password validation
@@ -216,40 +232,82 @@ AUTH_USER_MODEL = "users.User"
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # React/Vite dev server
-    "http://127.0.0.1:5173",
-    "http://localhost:8001",  # For electron app requests
-    "http://127.0.0.1:8001",
-    "http://localhost:5174",  # React/Vite dev server
-    "http://127.0.0.1:5174",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-    "http://localhost:5175",
-    "http://127.0.0.1:5175",
+# CORS settings - dynamically load from environment
+CORS_ALLOWED_ORIGINS = (
+    os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if os.getenv("CORS_ALLOWED_ORIGINS") else [
+        "http://localhost:5173",  # React/Vite dev server
+        "http://127.0.0.1:5173",
+        "http://localhost:8001",  # For electron app requests
+        "http://127.0.0.1:8001",
+        "http://localhost:5174",  # React/Vite dev server
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "https://pos.bakeajeen.com",  # Production Electron POS app
+    ]
+)
+
+# Allow custom headers for Electron POS app
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-client-type',
+    'x-client-version',
 ]
 
-# CSRF Trusted Origins
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8001",
-    "http://127.0.0.1:8001",
-    "http://localhost:5174",  # React/Vite dev server
-    "http://127.0.0.1:5174",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-    "http://localhost:5175",
-    "http://127.0.0.1:5175",
-]
+# CSRF Trusted Origins - dynamically load from environment
+CSRF_TRUSTED_ORIGINS = (
+    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
+        "http://localhost:5174",  # React/Vite dev server
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "https://pos.bakeajeen.com",  # Production Electron POS app
+    ]
+)
 
 # Session Configuration for Guest Users
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS
 SESSION_COOKIE_SAMESITE = "Lax"
+
+# Production security settings
+if not DEBUG:
+    # SSL settings
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Cookie security
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = "Lax"
+    
+    # Additional security headers
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    
+    # Proxy settings for AWS ALB
+    USE_X_FORWARDED_HOST = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
@@ -454,6 +512,49 @@ EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL")
 BUSINESS_CONTACT_EMAIL = os.environ.get("DJANGO_BUSINESS_CONTACT_EMAIL")
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING' if not DEBUG else 'DEBUG',
+            'propagate': False,
+        },
+        'core_backend': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
 
 # ==============================================================================
 # CELERY SETTINGS

@@ -42,6 +42,10 @@ function createMainWindow() {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
 			nodeIntegration: false,
 			contextIsolation: true,
+			enableRemoteModule: false,
+			allowRunningInsecureContent: false,
+			webSecurity: true,
+			experimentalFeatures: false,
 		},
 	});
 

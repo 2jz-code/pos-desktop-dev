@@ -53,8 +53,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
         """Filter payments based on user permissions."""
         queryset = super().get_queryset()
         
-        # If user is staff, return all payments
-        if self.request.user and self.request.user.is_staff:
+        # If user is POS staff (cashier, manager, owner, admin), return all payments
+        if self.request.user and self.request.user.is_pos_staff:
             return queryset
         
         # For regular users, return payments from their orders only

@@ -6,6 +6,7 @@ export { default as ProductCard } from "./components/ProductCard.jsx";
 
 // Pages
 export { default as ProductsPage } from "./pages/ProductsPage.jsx";
+export { default as ProductDetailsPage } from "./pages/ProductDetailsPage.jsx";
 
 // Services
 export * as productService from "./services/productService.js";

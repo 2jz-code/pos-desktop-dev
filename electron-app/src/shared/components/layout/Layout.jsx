@@ -134,13 +134,15 @@ export function Layout({ children }) {
 					{/* Navigation */}
 					<div className="flex-1 overflow-auto py-4">
 						<nav className="grid items-start px-3 text-sm font-medium gap-1">
-							<NavLink
-								to="/"
-								icon={Home}
-								isCollapsed={isCollapsed}
-							>
-								Dashboard
-							</NavLink>
+							{permissions.canAccessDashboard() && (
+								<NavLink
+									to="/"
+									icon={Home}
+									isCollapsed={isCollapsed}
+								>
+									Dashboard
+								</NavLink>
+							)}
 							<NavLink
 								to="/pos"
 								icon={ShoppingCart}
@@ -180,7 +182,7 @@ export function Layout({ children }) {
 							>
 								Products
 							</NavLink>
-							{permissions.canAccessProducts() && (
+							{permissions.canAccessInventory() && (
 								<NavLink
 									to="/inventory"
 									icon={Warehouse}
@@ -198,13 +200,15 @@ export function Layout({ children }) {
 									Discounts
 								</NavLink>
 							)}
-							<NavLink
-								to="/settings"
-								icon={Settings}
-								isCollapsed={isCollapsed}
-							>
-								Settings
-							</NavLink>
+							{permissions.canAccessSettings() && (
+								<NavLink
+									to="/settings"
+									icon={Settings}
+									isCollapsed={isCollapsed}
+								>
+									Settings
+								</NavLink>
+							)}
 						</nav>
 					</div>
 
@@ -280,13 +284,15 @@ export function Layout({ children }) {
 									<span>Ajeen POS</span>
 								</Link>
 
-								<NavLink
-									to="/"
-									icon={Home}
-									isCollapsed={false}
-								>
-									Dashboard
-								</NavLink>
+								{permissions.canAccessDashboard() && (
+									<NavLink
+										to="/"
+										icon={Home}
+										isCollapsed={false}
+									>
+										Dashboard
+									</NavLink>
+								)}
 								<NavLink
 									to="/pos"
 									icon={ShoppingCart}
@@ -326,7 +332,7 @@ export function Layout({ children }) {
 								>
 									Products
 								</NavLink>
-								{permissions.canAccessProducts() && (
+								{permissions.canAccessInventory() && (
 									<NavLink
 										to="/inventory"
 										icon={Warehouse}
@@ -344,13 +350,15 @@ export function Layout({ children }) {
 										Discounts
 									</NavLink>
 								)}
-								<NavLink
-									to="/settings"
-									icon={Settings}
-									isCollapsed={false}
-								>
-									Settings
-								</NavLink>
+								{permissions.canAccessSettings() && (
+									<NavLink
+										to="/settings"
+										icon={Settings}
+										isCollapsed={false}
+									>
+										Settings
+									</NavLink>
+								)}
 							</nav>
 							<div className="mt-auto p-4">
 								<button

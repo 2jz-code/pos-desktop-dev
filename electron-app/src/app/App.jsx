@@ -26,7 +26,7 @@ import { POSPage } from "@/domains/pos";
 import { OrdersPage, OrderDetailsPage } from "@/domains/orders";
 import { PaymentsPage, PaymentDetailsPage } from "@/domains/payments";
 import { UsersPage } from "@/domains/users";
-import { ProductsPage } from "@/domains/products";
+import { ProductsPage, ProductDetailsPage } from "@/domains/products";
 import { InventoryPage } from "@/domains/inventory";
 import { DiscountsPage } from "@/domains/discounts";
 import { SettingsPage } from "@/domains/settings";
@@ -188,10 +188,14 @@ function AppRoutes() {
 					element={<ProductsPage />} // Accessible to all (cashiers need to view products)
 				/>
 				<Route
+					path="products/:productId"
+					element={<ProductDetailsPage />} // Accessible to all (cashiers need to view product details)
+				/>
+				<Route
 					path="inventory"
 					element={
 						<RoleProtectedRoute
-							requiredPermission={(p) => p.canAccessProducts()}
+							requiredPermission={(p) => p.canAccessInventory()}
 						>
 							<InventoryPage />
 						</RoleProtectedRoute>
@@ -209,7 +213,13 @@ function AppRoutes() {
 				/>
 				<Route
 					path="settings"
-					element={<SettingsPage />} // Settings has internal role protection
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessSettings()}
+						>
+							<SettingsPage />
+						</RoleProtectedRoute>
+					}
 				/>
 				<Route
 					path="*"

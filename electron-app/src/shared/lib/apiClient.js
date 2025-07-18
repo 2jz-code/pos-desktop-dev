@@ -4,7 +4,33 @@ const apiClient = axios.create({
 	baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
 	timeout: parseInt(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
 	withCredentials: true, // This is crucial for sending cookies
+	headers: {
+		'X-Client-Type': 'electron-pos',
+		'X-Client-Version': '1.0.0',
+		'User-Agent': 'Ajeen-POS-Electron/1.0.0',
+	},
 });
+
+// Request Interceptor - Set custom origin for CORS
+apiClient.interceptors.request.use(
+	(config) => {
+		// Set custom origin to match your web domain for CORS
+		const apiUrl = config.baseURL || import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api";
+		
+		if (apiUrl.includes('bakeajeen.com')) {
+			// Production - use pos domain
+			config.headers['Origin'] = 'https://pos.bakeajeen.com';
+		} else {
+			// Development - use localhost
+			config.headers['Origin'] = 'http://localhost:5173';
+		}
+		
+		return config;
+	},
+	(error) => {
+		return Promise.reject(error);
+	}
+);
 
 // Response Interceptor
 apiClient.interceptors.response.use(

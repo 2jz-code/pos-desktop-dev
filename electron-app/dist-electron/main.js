@@ -326,7 +326,11 @@ function createMainWindow() {
       session: persistentSession,
       preload: path.join(__dirname, "../dist-electron/preload.js"),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      enableRemoteModule: false,
+      allowRunningInsecureContent: false,
+      webSecurity: true,
+      experimentalFeatures: false
     }
   });
   mainWindow.webContents.on("did-finish-load", () => {

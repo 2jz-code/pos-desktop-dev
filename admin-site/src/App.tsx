@@ -12,6 +12,7 @@ import { LoginPage } from "@/pages/auth/LoginPage";
 import OrdersPage from "@/pages/orders/OrdersPage";
 import OrderDetailsPage from "@/pages/orders/OrderDetailsPage";
 import { ProductsPage } from "@/pages/products/ProductsPage";
+import { ProductDetailsPage } from "@/pages/products/ProductDetailsPage";
 import { UsersPage } from "@/pages/users/UsersPage";
 import { InventoryPage } from "@/pages/inventory/InventoryPage";
 import ReportsPage from "@/pages/reports/ReportsPage";
@@ -125,6 +126,16 @@ const AppRoutes = () => {
 					<ProtectedRoute>
 						<Layout>
 							<ProductsPage />
+						</Layout>
+					</ProtectedRoute>
+				}
+			/>
+			<Route
+				path="/products/:productId"
+				element={
+					<ProtectedRoute>
+						<Layout>
+							<ProductDetailsPage />
 						</Layout>
 					</ProtectedRoute>
 				}
