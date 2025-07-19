@@ -38,6 +38,89 @@ import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { Edit, Trash2 } from "lucide-react";
 
+// Inline Order Editor Component
+function InlineOrderEditor({ category, onOrderChange }) {
+	const [isEditing, setIsEditing] = useState(false);
+	const [orderValue, setOrderValue] = useState(category.order);
+	const [isSaving, setIsSaving] = useState(false);
+	const { toast } = useToast();
+
+	const handleSave = async () => {
+		if (orderValue === category.order) {
+			setIsEditing(false);
+			return;
+		}
+
+		setIsSaving(true);
+		try {
+			// Send all existing category data with the updated order
+			const updateData = {
+				name: category.name,
+				description: category.description,
+				parent_id: category.parent?.id || null,
+				order: parseInt(orderValue),
+				is_public: category.is_public,
+			};
+			await updateCategory(category.id, updateData);
+			onOrderChange(category.id, parseInt(orderValue));
+			setIsEditing(false);
+			toast({
+				title: "Success",
+				description: `Order updated to ${orderValue}`,
+			});
+		} catch (error) {
+			console.error("Failed to update order:", error);
+			setOrderValue(category.order); // Reset to original value
+			toast({
+				title: "Error",
+				description: "Failed to update order.",
+				variant: "destructive",
+			});
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	const handleKeyPress = (e) => {
+		if (e.key === "Enter") {
+			handleSave();
+		} else if (e.key === "Escape") {
+			setOrderValue(category.order);
+			setIsEditing(false);
+		}
+	};
+
+	const handleBlur = () => {
+		handleSave();
+	};
+
+	if (isEditing) {
+		return (
+			<Input
+				type="number"
+				value={orderValue}
+				onChange={(e) => setOrderValue(e.target.value)}
+				onKeyDown={handleKeyPress}
+				onBlur={handleBlur}
+				className="w-16 h-6 text-center text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+				disabled={isSaving}
+				autoFocus
+			/>
+		);
+	}
+
+	return (
+		<Badge
+			variant="secondary"
+			className="text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700"
+			onClick={() => setIsEditing(true)}
+			title="Click to edit order"
+		>
+			{category.order}
+		</Badge>
+	);
+}
+
 export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [categories, setCategories] = useState([]);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -70,6 +153,16 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				variant: "destructive",
 			});
 		}
+	};
+
+	const handleOrderChange = (categoryId, newOrder) => {
+		setCategories((prevCategories) => {
+			const updated = prevCategories.map((cat) =>
+				cat.id === categoryId ? { ...cat, order: newOrder } : cat
+			);
+			// Re-sort categories by order
+			return updated.sort((a, b) => a.order - b.order);
+		});
 	};
 
 	const handleFormChange = (e) => {
@@ -236,12 +329,10 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 											)}
 										</TableCell>
 										<TableCell className="text-center">
-											<Badge
-												variant="secondary"
-												className="text-xs"
-											>
-												{category.order}
-											</Badge>
+											<InlineOrderEditor
+												category={category}
+												onOrderChange={handleOrderChange}
+											/>
 										</TableCell>
 										<TableCell className="text-center">
 											<Badge

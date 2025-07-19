@@ -1,4 +1,5 @@
 import inventoryService from "@/domains/inventory/services/inventoryService";
+import { getProducts } from "@/domains/products/services/productService";
 import { toast } from "@/shared/components/ui/use-toast";
 
 export const createInventorySlice = (set, get) => ({
@@ -7,6 +8,8 @@ export const createInventorySlice = (set, get) => ({
 	stockData: [],
 	locations: [],
 	recipes: [],
+	products: [],
+	stockLevels: {},
 	isLoading: false,
 	error: null,
 
@@ -93,20 +96,48 @@ export const createInventorySlice = (set, get) => ({
 		}
 	},
 
+	fetchProducts: async () => {
+		try {
+			const response = await getProducts({ limit: 1000 });
+			set({ products: response.data });
+		} catch (error) {
+			console.error("Failed to fetch products:", error);
+			set({ error: "Failed to load products: " + error.message });
+		}
+	},
+
+	fetchStockByProduct: async (productId) => {
+		try {
+			const stockData = await inventoryService.getAllStock({ product: productId });
+			const levels = stockData.reduce((acc, stock) => {
+				acc[stock.location.id] = stock.quantity;
+				return acc;
+			}, {});
+			set({ stockLevels: levels });
+			return levels;
+		} catch (error) {
+			console.error("Failed to fetch stock by product:", error);
+			set({ error: "Failed to load stock data: " + error.message });
+			return {};
+		}
+	},
+
 	// Load all inventory data
 	loadInventoryData: async () => {
 		set({ isLoading: true, error: null });
 		try {
-			const [dashboard, stock, locations] = await Promise.all([
+			const [dashboard, stock, locations, productsResponse] = await Promise.all([
 				inventoryService.getDashboardData(),
 				inventoryService.getAllStock(),
 				inventoryService.getLocations(),
+				getProducts({ limit: 1000 }),
 			]);
 
 			set({
 				dashboardData: dashboard,
 				stockData: stock,
 				locations,
+				products: productsResponse.data,
 				isLoading: false,
 				error: null,
 			});

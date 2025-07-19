@@ -51,11 +51,32 @@ class InventoryService {
 
 	/**
 	 * Get all inventory stock levels
+	 * @param {Object} filters - Optional filters {location, search, product}
 	 * @returns {Promise} API response with all stock records
 	 */
-	async getAllStock() {
+	async getAllStock(filters = {}) {
 		try {
-			const response = await apiClient.get("/inventory/stock/");
+			const params = new URLSearchParams();
+			
+			// Add location filter if provided
+			if (filters.location) {
+				params.append('location', filters.location);
+			}
+			
+			// Add search filter if provided
+			if (filters.search) {
+				params.append('search', filters.search);
+			}
+			
+			// Add product filter if provided
+			if (filters.product) {
+				params.append('product', filters.product);
+			}
+			
+			const queryString = params.toString();
+			const url = queryString ? `/inventory/stock/?${queryString}` : "/inventory/stock/";
+			
+			const response = await apiClient.get(url);
 			return response.data;
 		} catch (error) {
 			console.error("Failed to get all stock:", error);
@@ -267,4 +288,24 @@ class InventoryService {
 	}
 }
 
-export default new InventoryService();
+const inventoryService = new InventoryService();
+
+// Export the service instance as default
+export default inventoryService;
+
+// Export individual methods for easier imports
+export const getDashboardData = () => inventoryService.getDashboardData();
+export const getAllStock = (filters) => inventoryService.getAllStock(filters);
+export const getLocations = () => inventoryService.getLocations();
+export const createLocation = (locationData) => inventoryService.createLocation(locationData);
+export const updateLocation = (locationId, locationData) => inventoryService.updateLocation(locationId, locationData);
+export const deleteLocation = (locationId) => inventoryService.deleteLocation(locationId);
+export const adjustStock = (productId, locationId, quantity) => inventoryService.adjustStock(productId, locationId, quantity);
+export const transferStock = (productId, fromLocationId, toLocationId, quantity) => inventoryService.transferStock(productId, fromLocationId, toLocationId, quantity);
+export const checkProductStock = (productId) => inventoryService.checkProductStock(productId);
+export const checkBulkStock = (productIds) => inventoryService.checkBulkStock(productIds);
+export const quickStockAdjustment = (productId, foundQuantity, reason) => inventoryService.quickStockAdjustment(productId, foundQuantity, reason);
+export const getRecipes = () => inventoryService.getRecipes();
+export const createRecipe = (recipeData) => inventoryService.createRecipe(recipeData);
+export const updateRecipe = (recipeId, recipeData) => inventoryService.updateRecipe(recipeId, recipeData);
+export const deleteRecipe = (recipeId) => inventoryService.deleteRecipe(recipeId);

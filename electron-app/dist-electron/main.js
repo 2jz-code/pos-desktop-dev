@@ -352,18 +352,10 @@ function createMainWindow() {
   });
 }
 function createCustomerWindow() {
-  const displays = screen.getAllDisplays();
-  const secondaryDisplay = displays.find(
-    (display) => display.id !== screen.getPrimaryDisplay().id
-  );
-  if (!secondaryDisplay) {
-    console.log("No secondary display found, not creating customer window.");
-    return;
-  }
   customerWindow = new BrowserWindow({
-    x: secondaryDisplay.bounds.x,
-    y: secondaryDisplay.bounds.y,
-    fullscreen: true,
+    // x: secondaryDisplay.bounds.x,
+    // y: secondaryDisplay.bounds.y,
+    // fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, "../dist-electron/preload.js")
     }

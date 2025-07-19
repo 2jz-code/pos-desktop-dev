@@ -20,9 +20,11 @@ import {
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Plus, Minus, Package } from "lucide-react";
+import { toast } from "sonner";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import SearchableSelect from "@/shared/components/SearchableSelect";
 
-const StockAdjustmentDialog = ({ isOpen, onClose }) => {
+const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, onSuccess }) => {
 	const [formData, setFormData] = useState({
 		product_id: "",
 		location_id: "",
@@ -34,29 +36,84 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 	const [error, setError] = useState("");
 
 	// Get data and actions from the store
-	const { products, locations, adjustStock, currentEditingProduct } =
-		usePosStore((state) => ({
-			products: state.products,
-			locations: state.locations,
-			adjustStock: state.adjustStock,
-			currentEditingProduct: state.currentEditingProduct,
-		}));
+	const { 
+		products, 
+		locations, 
+		stockLevels, 
+		isLoading, 
+		adjustStock, 
+		loadInventoryData, 
+		fetchStockByProduct 
+	} = usePosStore((state) => ({
+		products: state.products,
+		locations: state.locations,
+		stockLevels: state.stockLevels,
+		isLoading: state.isLoading,
+		adjustStock: state.adjustStock,
+		loadInventoryData: state.loadInventoryData,
+		fetchStockByProduct: state.fetchStockByProduct,
+	}));
 
 	useEffect(() => {
 		if (isOpen) {
-			if (currentEditingProduct) {
+			// Load initial data if not already loaded
+			if (!products.length || !locations.length) {
+				loadInventoryData();
+			}
+			
+			if (product) {
 				setFormData((prev) => ({
 					...prev,
-					product_id: currentEditingProduct.id.toString(),
+					product_id: product.id?.toString() || "",
 				}));
+				fetchStockByProduct(product.id);
 			}
 		}
-	}, [isOpen, currentEditingProduct]);
+	}, [isOpen, product, products.length, locations.length, loadInventoryData, fetchStockByProduct]);
+
+	const handleProductChange = (productId) => {
+		setFormData({
+			...formData,
+			product_id: productId,
+			location_id: "",
+		});
+		fetchStockByProduct(productId);
+	};
+
+	const handleQuantityChange = (e) => {
+		const value = e.target.value;
+		const fromLocationStock = stockLevels[formData.location_id] || 0;
+
+		// Capping logic for decimal places
+		const decimalRegex = /^\d*(\.\d{0,2})?$/;
+		if (value !== "" && !decimalRegex.test(value)) {
+			return;
+		}
+
+		const numericValue = Number.parseFloat(value);
+
+		// Cap the total value if it exceeds the maximum available stock
+		if (
+			formData.adjustment_type === "remove" &&
+			!isNaN(numericValue) &&
+			numericValue > fromLocationStock
+		) {
+			setFormData({ ...formData, quantity: fromLocationStock.toString() });
+			toast.info("Quantity adjusted to maximum available stock.");
+		} else {
+			setFormData({ ...formData, quantity: value });
+		}
+	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		if (!formData.product_id || !formData.location_id || !formData.quantity) {
 			setError("Please fill in all required fields");
+			return;
+		}
+
+		if (parseFloat(formData.quantity) <= 0) {
+			setError("Quantity must be greater than 0");
 			return;
 		}
 
@@ -76,13 +133,36 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 			);
 
 			if (result.success) {
+				const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
+				const selectedLocation = locations.find((l) => l.id.toString() === formData.location_id);
+
+				toast.success("Stock Adjusted", {
+					description: `${
+						formData.adjustment_type === "add" ? "Added" : "Removed"
+					} ${Math.abs(quantity)} units of ${selectedProduct?.name} at ${
+						selectedLocation?.name
+					}`,
+				});
+
+				if (onSuccess) {
+					onSuccess();
+				}
+
 				handleClose();
 			} else {
-				setError(result.error || "Failed to adjust stock");
+				const errorMessage = result.error || "Failed to adjust stock";
+				setError(errorMessage);
+				toast.error("Stock Adjustment Failed", {
+					description: errorMessage,
+				});
 			}
 		} catch (error) {
 			console.error("Failed to adjust stock:", error);
-			setError("Failed to adjust stock");
+			const errorMessage = "Failed to adjust stock";
+			setError(errorMessage);
+			toast.error("Stock Adjustment Failed", {
+				description: errorMessage,
+			});
 		} finally {
 			setLoading(false);
 		}
@@ -97,8 +177,41 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 			reason: "",
 		});
 		setError("");
-		onClose();
+		if (onOpenChange) {
+			onOpenChange(false);
+		} else if (onClose) {
+			onClose();
+		}
 	};
+
+	const productOptions = products.map((p) => ({
+		value: p.id.toString(),
+		label: `${p.name} - ${p.barcode || "N/A"}`,
+	}));
+
+	if (isLoading) {
+		return (
+			<Dialog
+				open={isOpen}
+				onOpenChange={handleClose}
+			>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<Package className="h-5 w-5" />
+							Adjust Stock
+						</DialogTitle>
+					</DialogHeader>
+					<div className="flex items-center justify-center py-8">
+						<div className="text-center">
+							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+							<p className="mt-2 text-sm text-muted-foreground">Loading...</p>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+		);
+	}
 
 	return (
 		<Dialog
@@ -128,27 +241,13 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 
 					<div className="space-y-2">
 						<Label htmlFor="product">Product *</Label>
-						<Select
+						<SearchableSelect
+							options={productOptions}
 							value={formData.product_id}
-							onValueChange={(value) =>
-								setFormData({ ...formData, product_id: value })
-							}
-							disabled={!!currentEditingProduct}
-						>
-							<SelectTrigger>
-								<SelectValue placeholder="Select a product" />
-							</SelectTrigger>
-							<SelectContent>
-								{products.map((product) => (
-									<SelectItem
-										key={product.id}
-										value={product.id.toString()}
-									>
-										{product.name} - ${product.price}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							onChange={handleProductChange}
+							placeholder="Select a product"
+							disabled={!!product}
+						/>
 					</div>
 
 					<div className="space-y-2">
@@ -158,6 +257,7 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 							onValueChange={(value) =>
 								setFormData({ ...formData, location_id: value })
 							}
+							disabled={!formData.product_id}
 						>
 							<SelectTrigger>
 								<SelectValue placeholder="Select a location" />
@@ -173,6 +273,11 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 								))}
 							</SelectContent>
 						</Select>
+						{formData.location_id && (
+							<p className="text-xs text-gray-500">
+								Available: {stockLevels[formData.location_id] || 0}
+							</p>
+						)}
 					</div>
 
 					<div className="grid grid-cols-2 gap-4">
@@ -212,10 +317,9 @@ const StockAdjustmentDialog = ({ isOpen, onClose }) => {
 								min="0"
 								step="0.01"
 								value={formData.quantity}
-								onChange={(e) =>
-									setFormData({ ...formData, quantity: e.target.value })
-								}
+								onChange={handleQuantityChange}
 								placeholder="Enter quantity"
+								disabled={!formData.location_id}
 							/>
 						</div>
 					</div>

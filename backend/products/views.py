@@ -5,6 +5,7 @@ from rest_framework.filters import SearchFilter
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from .models import Product, Category, Tax, ProductType
+from users.permissions import ReadOnlyForCashiers
 from .serializers import (
     ProductSerializer,
     ProductCreateSerializer,
@@ -184,10 +185,10 @@ class TaxDetailView(generics.RetrieveUpdateDestroyAPIView):
 class ProductTypeListView(generics.ListCreateAPIView):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [ReadOnlyForCashiers]
 
 
 class ProductTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [ReadOnlyForCashiers]

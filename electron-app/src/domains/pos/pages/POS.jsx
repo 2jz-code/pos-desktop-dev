@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { usePosStore, useCustomerTipListener } from "@/domains/pos";
 import Cart from "@/domains/pos/components/Cart";
 import ProductGrid from "@/domains/pos/components/ProductGrid";
@@ -72,26 +72,62 @@ const POS = () => {
 	// Smart barcode scanning - automatically adds items to cart
 	const { scanBarcode, isScanning } = usePOSBarcode(addItem);
 
+	// Create stable function references
+	const initializePOS = useCallback(async () => {
+		console.log("🚀 [POS] Initializing POS page...");
+		console.log("🚀 [POS] Available functions:", {
+			resetFilters: !!resetFilters,
+			fetchProducts: !!fetchProducts,
+			fetchParentCategories: !!fetchParentCategories,
+			login: !!login,
+			loadCartFromOrderId: !!loadCartFromOrderId,
+		});
+		console.log("🚀 [POS] Current state:", { currentUser: !!currentUser, orderId });
+		
+		// Handle user authentication first
+		if (!currentUser && login) {
+			console.log("👤 [POS] Logging in user...");
+			login();
+		}
+		
+		// Fetch data FIRST, then reset filters
+		if (fetchProducts) {
+			console.log("📦 [POS] Fetching products...");
+			try {
+				await fetchProducts();
+				console.log("✅ [POS] Products fetch completed");
+			} catch (error) {
+				console.error("❌ [POS] Error fetching products:", error);
+			}
+		} else {
+			console.error("❌ [POS] fetchProducts function not available!");
+		}
+		
+		if (fetchParentCategories) {
+			console.log("📂 [POS] Fetching parent categories...");
+			await fetchParentCategories();
+		} else {
+			console.error("❌ [POS] fetchParentCategories function not available!");
+		}
+		
+		// Reset filters AFTER products are loaded
+		if (resetFilters) {
+			console.log("🔄 [POS] Resetting filters after products loaded...");
+			resetFilters();
+		}
+		
+		// Load cart if there's an existing order
+		if (orderId && loadCartFromOrderId) {
+			console.log("🛒 [POS] Loading cart from order ID:", orderId);
+			loadCartFromOrderId(orderId);
+		}
+		
+		console.log("✅ [POS] POS page initialization complete");
+	}, [resetFilters, fetchProducts, fetchParentCategories, login, currentUser, loadCartFromOrderId, orderId]);
+
 	useEffect(() => {
-		// Reset filters when navigating to POS page
-		resetFilters?.();
-		fetchProducts?.();
-		fetchParentCategories?.();
-		if (!currentUser) {
-			login?.();
-		}
-		if (orderId) {
-			loadCartFromOrderId?.(orderId);
-		}
-	}, [
-		resetFilters,
-		fetchProducts,
-		fetchParentCategories,
-		login,
-		currentUser,
-		loadCartFromOrderId,
-		orderId,
-	]);
+		initializePOS();
+	}, [initializePOS]);
 
 	useEffect(() => {
 		if (window.ipcApi) {

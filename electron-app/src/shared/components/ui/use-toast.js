@@ -117,6 +117,7 @@ function toast(props) {
 		type: actionTypes.ADD_TOAST,
 		toast: {
 			...props,
+			duration: props.duration || 1500, // Default duration of 3 seconds
 			id,
 			open: true,
 			onOpenChange: (open) => {

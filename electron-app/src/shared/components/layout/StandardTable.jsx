@@ -22,6 +22,7 @@ export function StandardTable({
 	onRowClick,
 	renderRow,
 	colSpan,
+	getRowProps = () => ({}),
 }) {
 	if (loading) {
 		return <OrdersTableSkeleton />;
@@ -43,15 +44,19 @@ export function StandardTable({
 			</TableHeader>
 			<TableBody>
 				{data.length > 0 ? (
-					data.map((item, index) => (
-						<TableRow
-							key={item.id || index}
-							onClick={onRowClick ? () => onRowClick(item) : undefined}
-							className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
-						>
-							{renderRow(item)}
-						</TableRow>
-					))
+					data.map((item, index) => {
+						const rowProps = getRowProps(item, index);
+						return (
+							<TableRow
+								key={item.id || index}
+								onClick={onRowClick ? () => onRowClick(item) : undefined}
+								className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
+								{...rowProps}
+							>
+								{renderRow(item)}
+							</TableRow>
+						);
+					})
 				) : (
 					<TableRow>
 						<TableCell
@@ -80,6 +85,7 @@ StandardTable.propTypes = {
 	onRowClick: PropTypes.func,
 	renderRow: PropTypes.func.isRequired,
 	colSpan: PropTypes.number,
+	getRowProps: PropTypes.func,
 };
 
 export default StandardTable;

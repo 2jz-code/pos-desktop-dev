@@ -144,7 +144,7 @@ const CartSummary = () => {
 					}
 
 					const filterConfig = {
-						categories: zone.category_ids || [],
+						categories: zone.categories || zone.category_ids || [],
 						productTypes: zone.productTypes || [],
 					};
 

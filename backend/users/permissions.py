@@ -49,3 +49,22 @@ class CanEditUserDetails(permissions.BasePermission):
             return True
 
         return False
+
+
+class ReadOnlyForCashiers(permissions.BasePermission):
+    """
+    Custom permission to allow all authenticated users to read,
+    but only managers and above to create/update/delete.
+    """
+
+    def has_permission(self, request, view):
+        # All authenticated users can read
+        if request.method in permissions.SAFE_METHODS:
+            return request.user.is_authenticated and request.user.is_pos_staff
+        
+        # Only managers and above can create/update/delete
+        return request.user.role in [
+            User.Role.OWNER,
+            User.Role.ADMIN,
+            User.Role.MANAGER,
+        ]

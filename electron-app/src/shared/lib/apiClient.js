@@ -7,24 +7,14 @@ const apiClient = axios.create({
 	headers: {
 		'X-Client-Type': 'electron-pos',
 		'X-Client-Version': '1.0.0',
-		'User-Agent': 'Ajeen-POS-Electron/1.0.0',
 	},
 });
 
-// Request Interceptor - Set custom origin for CORS
+// Request Interceptor - Add any additional headers or processing
 apiClient.interceptors.request.use(
 	(config) => {
-		// Set custom origin to match your web domain for CORS
-		const apiUrl = config.baseURL || import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api";
-		
-		if (apiUrl.includes('bakeajeen.com')) {
-			// Production - use pos domain
-			config.headers['Origin'] = 'https://pos.bakeajeen.com';
-		} else {
-			// Development - use localhost
-			config.headers['Origin'] = 'http://localhost:5173';
-		}
-		
+		// Note: User-Agent and Origin headers are managed by the browser/Electron
+		// and should not be manually set as they are considered unsafe headers
 		return config;
 	},
 	(error) => {

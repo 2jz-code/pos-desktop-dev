@@ -9,6 +9,7 @@ import { ArrowLeft, Edit, Archive, ArchiveRestore, Package } from "lucide-react"
 import { formatCurrency } from "@/shared/lib/utils";
 import { toast } from "@/shared/components/ui/use-toast";
 import { ProductFormDialog } from "@/domains/products/components/dialogs/ProductFormDialog";
+import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
 const ProductDetailsPage = () => {
 	const { productId } = useParams();
@@ -18,6 +19,9 @@ const ProductDetailsPage = () => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+	
+	// Role-based permissions
+	const { canEditProducts, canDeleteProducts } = useRolePermissions();
 
 	const fetchProduct = async () => {
 		if (!productId) return;
@@ -129,31 +133,37 @@ const ProductDetailsPage = () => {
 							</p>
 						</div>
 					</div>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							onClick={handleEdit}
-						>
-							<Edit className="mr-2 h-4 w-4" />
-							Edit Product
-						</Button>
-						<Button
-							variant={product.is_active ? "destructive" : "default"}
-							onClick={handleArchiveToggle}
-						>
-							{product.is_active ? (
-								<>
-									<Archive className="mr-2 h-4 w-4" />
-									Archive
-								</>
-							) : (
-								<>
-									<ArchiveRestore className="mr-2 h-4 w-4" />
-									Restore
-								</>
+					{(canEditProducts() || canDeleteProducts()) && (
+						<div className="flex items-center gap-2">
+							{canEditProducts() && (
+								<Button
+									variant="outline"
+									onClick={handleEdit}
+								>
+									<Edit className="mr-2 h-4 w-4" />
+									Edit Product
+								</Button>
 							)}
-						</Button>
-					</div>
+							{canDeleteProducts() && (
+								<Button
+									variant={product.is_active ? "destructive" : "default"}
+									onClick={handleArchiveToggle}
+								>
+									{product.is_active ? (
+										<>
+											<Archive className="mr-2 h-4 w-4" />
+											Archive
+										</>
+									) : (
+										<>
+											<ArchiveRestore className="mr-2 h-4 w-4" />
+											Restore
+										</>
+									)}
+								</Button>
+							)}
+						</div>
+					)}
 				</div>
 
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

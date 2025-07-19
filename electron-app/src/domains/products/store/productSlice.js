@@ -73,11 +73,26 @@ export const createProductSlice = (set, get) => ({
 	childCategories: [],
 	selectedParentCategory: "all",
 	selectedChildCategory: "all",
+	isLoadingProducts: false,
+	isLoadingCategories: false,
 
 	fetchProducts: async () => {
+		console.log("🔄 [ProductSlice] fetchProducts function called!");
+		console.log("🔄 [ProductSlice] Starting to fetch products...");
+		set({ isLoadingProducts: true });
 		try {
+			console.log("📡 [ProductSlice] Making API call to /products/");
 			const response = await getProducts();
+			console.log("📦 [ProductSlice] Raw API response:", response);
+			
 			const products = response.data;
+			console.log("📦 [ProductSlice] Products data:", products);
+
+			if (!Array.isArray(products)) {
+				console.error("❌ [ProductSlice] Products is not an array:", typeof products, products);
+				set({ products: [], filteredProducts: [], isLoadingProducts: false });
+				return;
+			}
 
 			// Sort products using the helper function
 			const sortedProducts = sortProductsByCategory(products);
@@ -92,28 +107,35 @@ export const createProductSlice = (set, get) => ({
 			set({
 				products: sortedProducts,
 				filteredProducts: filteredProducts,
+				isLoadingProducts: false,
 			});
 		} catch (error) {
 			console.error(
 				"❌ [ProductSlice] Failed to fetch products from API:",
-				error.response?.data?.detail || error.message
+				error
+			);
+			console.error(
+				"❌ [ProductSlice] Error details:",
+				error.response?.status,
+				error.response?.data
 			);
 			// Set empty state on failure
-			set({ products: [], filteredProducts: [] });
+			set({ products: [], filteredProducts: [], isLoadingProducts: false });
 		}
 	},
 
 	fetchParentCategories: async () => {
+		set({ isLoadingCategories: true });
 		try {
 			const response = await getCategories({ parent: "null" });
 			const categories = response.data;
-			set({ parentCategories: categories });
+			set({ parentCategories: categories, isLoadingCategories: false });
 		} catch (error) {
 			console.error(
 				"❌ [ProductSlice] Failed to fetch parent categories from API:",
 				error.response?.data?.detail || error.message
 			);
-			set({ parentCategories: [] });
+			set({ parentCategories: [], isLoadingCategories: false });
 		}
 	},
 

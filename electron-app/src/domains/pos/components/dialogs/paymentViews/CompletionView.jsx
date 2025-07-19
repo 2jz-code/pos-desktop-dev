@@ -47,7 +47,7 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 
 				// Create filter configuration from zone settings
 				const filterConfig = {
-					categories: zone.category_ids || [],
+					categories: zone.categories || zone.category_ids || [],
 					productTypes: zone.productTypes || [],
 				};
 

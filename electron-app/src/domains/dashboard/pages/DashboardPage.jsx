@@ -167,7 +167,7 @@ export function DashboardPage() {
 			description:
 				"Manage stock levels, track inventory, and handle adjustments",
 			icon: Package,
-			show: permissions.canAccessProducts(),
+			show: permissions.canAccessInventory(),
 			roleRequired: true,
 		},
 		{

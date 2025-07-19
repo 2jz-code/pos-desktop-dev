@@ -7,7 +7,7 @@ import {
 	CardTitle,
 } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
+import TouchNumberInput from "@/shared/components/ui/TouchNumberInput";
 import { Heart, DollarSign, Percent, Coffee } from "lucide-react";
 
 const TipSelectionView = ({ amountDue, onTipSelect }) => {
@@ -31,7 +31,7 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 
 	const handleCustomTipSubmit = () => {
 		const customAmount = Number.parseFloat(customTip);
-		if (customAmount >= 0) {
+		if (customAmount > 0) {
 			handleTipSelect(customAmount);
 		}
 	};
@@ -154,26 +154,25 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 							<h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4 text-center">
 								Custom Amount
 							</h3>
-							<div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-								<div className="flex gap-2 items-center">
+							<div className="flex flex-col gap-6 items-center justify-center">
+								<div className="flex gap-3 items-center justify-center">
 									<DollarSign className="w-6 h-6 text-slate-500 dark:text-slate-400" />
-									<Input
-										type="number"
-										placeholder="Enter tip amount"
-										value={customTip}
-										onChange={(e) => setCustomTip(e.target.value)}
-										className="w-48 text-center text-xl font-semibold border-slate-300 dark:border-slate-600 h-14"
-										min="0"
-										step="0.01"
-									/>
-									<Button
-										onClick={handleCustomTipSubmit}
-										disabled={!customTip}
-										className="bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-600 hover:to-blue-700 h-14 px-6"
-									>
-										Add Tip
-									</Button>
+									<div className="w-64">
+										<TouchNumberInput
+											placeholder="0.00"
+											value={customTip}
+											onChange={setCustomTip}
+											className="w-full text-center text-2xl font-semibold border-slate-300 dark:border-slate-600 h-16"
+										/>
+									</div>
 								</div>
+								<Button
+									onClick={handleCustomTipSubmit}
+									disabled={!customTip || customTip === "0" || customTip === "0."}
+									className="bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-600 hover:to-blue-700 h-16 px-8 text-lg font-semibold min-w-[200px] transition-all duration-200 disabled:opacity-50"
+								>
+									Add ${customTip || "0.00"} Tip
+								</Button>
 							</div>
 						</motion.div>
 

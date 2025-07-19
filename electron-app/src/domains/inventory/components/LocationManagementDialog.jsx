@@ -13,13 +13,16 @@ import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { MapPin } from "lucide-react";
+import { toast } from "sonner";
 import { usePosStore } from "@/domains/pos/store/posStore";
 
 const LocationManagementDialog = ({
 	isOpen,
 	onClose,
-	location,
+	onOpenChange,
+	location = null,
 	mode = "create",
+	onSuccess,
 }) => {
 	const [formData, setFormData] = useState({
 		name: "",
@@ -28,7 +31,7 @@ const LocationManagementDialog = ({
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 
-	// Get actions from the store
+	// Get actions from the inventory store
 	const { createLocation, updateLocation } = usePosStore((state) => ({
 		createLocation: state.createLocation,
 		updateLocation: state.updateLocation,
@@ -58,25 +61,67 @@ const LocationManagementDialog = ({
 			return;
 		}
 
+		if (formData.name.length > 100) {
+			setError("Location name must be 100 characters or less");
+			return;
+		}
+
+		if (formData.description.length > 500) {
+			setError("Description must be 500 characters or less");
+			return;
+		}
+
 		setLoading(true);
 		setError("");
 
 		try {
+			const dataToSubmit = {
+				name: formData.name.trim(),
+				description: formData.description.trim(),
+			};
+
 			let result;
 			if (mode === "edit" && location) {
-				result = await updateLocation(location.id, formData);
+				result = await updateLocation(location.id, dataToSubmit);
 			} else {
-				result = await createLocation(formData);
+				result = await createLocation(dataToSubmit);
 			}
 
 			if (result.success) {
+				toast.success(
+					mode === "edit" ? "Location Updated" : "Location Created",
+					{
+						description: `Location "${dataToSubmit.name}" ${
+							mode === "edit" ? "updated" : "created"
+						} successfully`,
+					}
+				);
+
+				if (onSuccess) {
+					onSuccess();
+				}
+
 				handleClose();
 			} else {
-				setError(result.error || `Failed to ${mode} location`);
+				const errorMessage = result.error || `Failed to ${mode} location`;
+				setError(errorMessage);
+				toast.error(
+					`Location ${mode === "edit" ? "Update" : "Creation"} Failed`,
+					{
+						description: errorMessage,
+					}
+				);
 			}
 		} catch (error) {
 			console.error(`Failed to ${mode} location:`, error);
-			setError(`Failed to ${mode} location`);
+			const errorMessage = `Failed to ${mode} location`;
+			setError(errorMessage);
+			toast.error(
+				`Location ${mode === "edit" ? "Update" : "Creation"} Failed`,
+				{
+					description: errorMessage,
+				}
+			);
 		} finally {
 			setLoading(false);
 		}
@@ -88,8 +133,14 @@ const LocationManagementDialog = ({
 			description: "",
 		});
 		setError("");
-		onClose();
+		if (onOpenChange) {
+			onOpenChange(false);
+		} else if (onClose) {
+			onClose();
+		}
 	};
+
+	const isEditing = mode === "edit";
 
 	return (
 		<Dialog
@@ -100,10 +151,10 @@ const LocationManagementDialog = ({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<MapPin className="h-5 w-5" />
-						{mode === "edit" ? "Edit Location" : "Create Location"}
+						{isEditing ? "Edit Location" : "Create Location"}
 					</DialogTitle>
 					<DialogDescription>
-						{mode === "edit"
+						{isEditing
 							? "Update the location details"
 							: "Add a new inventory storage location"}
 					</DialogDescription>
@@ -130,6 +181,9 @@ const LocationManagementDialog = ({
 							placeholder="e.g., Main Warehouse, Kitchen Storage"
 							maxLength={100}
 						/>
+						<p className="text-xs text-muted-foreground">
+							{formData.name.length}/100 characters
+						</p>
 					</div>
 
 					<div className="space-y-2">
@@ -144,6 +198,9 @@ const LocationManagementDialog = ({
 							rows={3}
 							maxLength={500}
 						/>
+						<p className="text-xs text-muted-foreground">
+							{formData.description.length}/500 characters
+						</p>
 					</div>
 
 					<DialogFooter>
@@ -159,10 +216,10 @@ const LocationManagementDialog = ({
 							disabled={loading}
 						>
 							{loading
-								? mode === "edit"
+								? isEditing
 									? "Updating..."
 									: "Creating..."
-								: mode === "edit"
+								: isEditing
 								? "Update Location"
 								: "Create Location"}
 						</Button>

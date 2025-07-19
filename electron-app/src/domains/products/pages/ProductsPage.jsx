@@ -37,7 +37,8 @@ import {
 import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { toast } from "@/shared/components/ui/use-toast";
 import { formatCurrency } from "@/shared/lib/utils";
-import { useProductBarcode } from "@/shared/hooks";
+import { useProductBarcode, useScrollToScannedItem } from "@/shared/hooks";
+import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
 // Import dialog components
 import { ProductFormDialog } from "@/domains/products/components/dialogs/ProductFormDialog";
@@ -52,6 +53,9 @@ const ProductsPage = () => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [showArchivedProducts, setShowArchivedProducts] = useState(false);
+	
+	// Role-based permissions
+	const { canCreateProducts, canEditProducts, canDeleteProducts } = useRolePermissions();
 	const [filters, setFilters] = useState({
 		search: "",
 		category: "",
@@ -73,6 +77,9 @@ const ProductsPage = () => {
 
 	const navigate = useNavigate();
 
+	// Scroll to scanned item functionality
+	const { scrollToItem } = useScrollToScannedItem();
+
 	// Smart barcode scanning - automatically searches for scanned product
 	const { scanBarcode, isScanning } = useProductBarcode((product) => {
 		// Clear filters and search for this specific product
@@ -90,6 +97,11 @@ const ProductsPage = () => {
 		// Apply filters to show the product
 		setTimeout(() => {
 			applyFilters(allProducts);
+			// Scroll to the highlighted product after filters are applied
+			scrollToItem(product.id, {
+				dataAttribute: "data-product-id",
+				delay: 200,
+			});
 		}, 100);
 	});
 
@@ -351,14 +363,6 @@ const ProductsPage = () => {
 					}`}
 				>
 					{product.name}
-					{isHighlighted && (
-						<Badge
-							variant="default"
-							className="ml-2 bg-blue-500"
-						>
-							Scanned
-						</Badge>
-					)}
 				</TableCell>
 				<TableCell className={isHighlighted ? "bg-blue-100" : ""}>
 					{product.category ? (
@@ -378,44 +382,50 @@ const ProductsPage = () => {
 					onClick={(e) => e.stopPropagation()}
 					className={`text-right ${isHighlighted ? "bg-blue-100" : ""}`}
 				>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="icon"
-							>
-								<MoreHorizontal className="h-4 w-4" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuLabel>Actions</DropdownMenuLabel>
-							<DropdownMenuItem onClick={() => handleEditProduct(product.id)}>
-								<Edit className="mr-2 h-4 w-4" />
-								Edit
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								onClick={() =>
-									handleArchiveToggle(product.id, product.is_active)
-								}
-								className={
-									product.is_active ? "text-orange-600" : "text-green-600"
-								}
-							>
-								{product.is_active ? (
-									<>
-										<Archive className="mr-2 h-4 w-4" />
-										Archive
-									</>
-								) : (
-									<>
-										<ArchiveRestore className="mr-2 h-4 w-4" />
-										Restore
-									</>
+					{(canEditProducts() || canDeleteProducts()) && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+								>
+									<MoreHorizontal className="h-4 w-4" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								<DropdownMenuLabel>Actions</DropdownMenuLabel>
+								{canEditProducts() && (
+									<DropdownMenuItem onClick={() => handleEditProduct(product.id)}>
+										<Edit className="mr-2 h-4 w-4" />
+										Edit
+									</DropdownMenuItem>
 								)}
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
+								{canEditProducts() && canDeleteProducts() && <DropdownMenuSeparator />}
+								{canDeleteProducts() && (
+									<DropdownMenuItem
+										onClick={() =>
+											handleArchiveToggle(product.id, product.is_active)
+										}
+										className={
+											product.is_active ? "text-orange-600" : "text-green-600"
+										}
+									>
+										{product.is_active ? (
+											<>
+												<Archive className="mr-2 h-4 w-4" />
+												Archive
+											</>
+										) : (
+											<>
+												<ArchiveRestore className="mr-2 h-4 w-4" />
+												Restore
+											</>
+										)}
+									</DropdownMenuItem>
+								)}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
 				</TableCell>
 			</>
 		);
@@ -484,30 +494,38 @@ const ProductsPage = () => {
 				{showArchivedProducts ? "Show Active" : "Show Archived"}
 			</Button>
 
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button>
-						<Settings className="mr-2 h-4 w-4" />
-						Actions
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end">
-					<DropdownMenuLabel>Product Management</DropdownMenuLabel>
-					<DropdownMenuItem onClick={handleCreateProduct}>
-						<PlusCircle className="mr-2 h-4 w-4" />
-						Add Product
-					</DropdownMenuItem>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={handleManageTypes}>
-						<Tags className="mr-2 h-4 w-4" />
-						Manage Types
-					</DropdownMenuItem>
-					<DropdownMenuItem onClick={handleManageCategories}>
-						<FolderOpen className="mr-2 h-4 w-4" />
-						Manage Categories
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			{(canCreateProducts() || canEditProducts()) && (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button>
+							<Settings className="mr-2 h-4 w-4" />
+							Actions
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						<DropdownMenuLabel>Product Management</DropdownMenuLabel>
+						{canCreateProducts() && (
+							<DropdownMenuItem onClick={handleCreateProduct}>
+								<PlusCircle className="mr-2 h-4 w-4" />
+								Add Product
+							</DropdownMenuItem>
+						)}
+						{canCreateProducts() && canEditProducts() && <DropdownMenuSeparator />}
+						{canEditProducts() && (
+							<DropdownMenuItem onClick={handleManageTypes}>
+								<Tags className="mr-2 h-4 w-4" />
+								Manage Types
+							</DropdownMenuItem>
+						)}
+						{canEditProducts() && (
+							<DropdownMenuItem onClick={handleManageCategories}>
+								<FolderOpen className="mr-2 h-4 w-4" />
+								Manage Categories
+							</DropdownMenuItem>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			)}
 		</>
 	);
 
@@ -538,6 +556,9 @@ const ProductsPage = () => {
 					}
 					onRowClick={(product) => navigate(`/products/${product.id}`)}
 					renderRow={renderProductRow}
+					getRowProps={(product) => ({
+						"data-product-id": product.id,
+					})}
 				/>
 			</DomainPageLayout>
 

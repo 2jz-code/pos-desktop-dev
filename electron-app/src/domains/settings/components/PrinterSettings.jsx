@@ -162,7 +162,7 @@ export function PrinterSettings() {
 			const mappedZones = (config.kitchen_zones || []).map((z) => ({
 				id: z.id,
 				name: z.name,
-				printer_name: printerNameById[z.printerId] || "",
+				printer_name: z.printer_name || printerNameById[z.printerId] || "",
 				category_ids: z.categories || [],
 			}));
 
@@ -195,6 +195,9 @@ export function PrinterSettings() {
 	const kitchenPrinters = form.watch("kitchen_printers");
 
 	const onSubmit = (values) => {
+		console.log("Form submitted with values:", values);
+		console.log("Form errors:", form.formState.errors);
+		
 		const printerIdByName = values.kitchen_printers.reduce((acc, p) => {
 			acc[p.name] = p.id;
 			return acc;
@@ -214,7 +217,7 @@ export function PrinterSettings() {
 			kitchen_zones: values.kitchen_zones.map((z) => ({
 				id: z.id,
 				name: z.name.trim(),
-				printerId: printerIdByName[z.printer_name],
+				printer_name: z.printer_name,
 				categories: z.category_ids || [],
 			})),
 		};
@@ -289,14 +292,14 @@ export function PrinterSettings() {
 								<FormItem className="flex flex-col space-y-2">
 									<FormLabel>Selected Receipt Printer</FormLabel>
 									<Select
-										value={receiptPrinterId || ""}
-										onValueChange={setReceiptPrinterId}
+										value={receiptPrinterId || "none"}
+										onValueChange={(value) => setReceiptPrinterId(value === "none" ? null : value)}
 									>
 										<SelectTrigger>
 											<SelectValue placeholder="Select a printer" />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value={null}>None</SelectItem>
+											<SelectItem value="none">None</SelectItem>
 											{allReceiptPrinters.map((p) => (
 												<SelectItem
 													key={p.id || p.name}
@@ -409,7 +412,7 @@ export function PrinterSettings() {
 								<Button
 									type="button"
 									variant="outline"
-									onClick={() => appendKitchen({ name: "", ip_address: "" })}
+									onClick={() => appendKitchen({ id: `new-${Date.now()}`, name: "", ip_address: "" })}
 								>
 									<PlusCircle className="mr-2 h-4 w-4" />
 									Add Kitchen Printer
@@ -458,10 +461,10 @@ export function PrinterSettings() {
 																</SelectTrigger>
 															</FormControl>
 															<SelectContent>
-																{kitchenPrinters.map((p) => (
+																{kitchenPrinters.filter(p => p.name && p.name.trim()).map((p, index) => (
 																	<SelectItem
-																		key={p.id}
-																		value={p.name}
+																		key={p.id || `printer-${index}`}
+																		value={p.name || `printer-${index}`}
 																	>
 																		{p.name}
 																	</SelectItem>
@@ -526,6 +529,12 @@ export function PrinterSettings() {
 					<Button
 						type="submit"
 						disabled={mutation.isPending}
+						onClick={() => {
+							console.log("Save button clicked");
+							console.log("Form values:", form.getValues());
+							console.log("Form errors:", form.formState.errors);
+							console.log("Form isValid:", form.formState.isValid);
+						}}
 					>
 						{mutation.isPending ? "Saving..." : "Save All Settings"}
 					</Button>

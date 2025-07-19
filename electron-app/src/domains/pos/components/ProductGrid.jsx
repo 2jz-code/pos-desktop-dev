@@ -7,7 +7,10 @@ import { ProductCard } from "./ProductSubcategoryGroup";
 import { Package } from "lucide-react";
 
 const ProductGrid = () => {
-	const filteredProducts = usePosStore((state) => state.filteredProducts);
+	const { filteredProducts, isLoadingProducts } = usePosStore((state) => ({
+		filteredProducts: state.filteredProducts,
+		isLoadingProducts: state.isLoadingProducts,
+	}));
 
 	const groupedProducts = useMemo(() => {
 		if (!Array.isArray(filteredProducts)) {
@@ -74,6 +77,28 @@ const ProductGrid = () => {
 		return groups;
 	}, [filteredProducts]);
 
+	// Show loading state only when actually loading
+	if (isLoadingProducts) {
+		return (
+			<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col">
+				<div className="p-6 border-b border-slate-200 dark:border-slate-700">
+					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+						Products
+					</h2>
+				</div>
+				<div className="flex-1 flex items-center justify-center">
+					<div className="text-center py-12">
+						<div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-4" />
+						<p className="text-slate-500 dark:text-slate-400 text-lg">
+							Loading products...
+						</p>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Show empty state when not loading but no products
 	if (
 		!Array.isArray(filteredProducts) ||
 		(filteredProducts.length === 0 && Object.keys(groupedProducts).length === 0)
@@ -89,7 +114,7 @@ const ProductGrid = () => {
 					<div className="text-center py-12">
 						<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
 						<p className="text-slate-500 dark:text-slate-400 text-lg">
-							Loading products...
+							No products available
 						</p>
 					</div>
 				</div>
