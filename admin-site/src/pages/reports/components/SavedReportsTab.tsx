@@ -19,15 +19,15 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
+import { AddEditSavedReportDialog } from "./AddEditSavedReportDialog";
 
 interface SavedReport {
 	id: number;
@@ -75,14 +76,10 @@ export function SavedReportsTab() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [filterType, setFilterType] = useState<string>("all");
 	const [filterStatus, setFilterStatus] = useState<string>("all");
-	const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-	const [newReport, setNewReport] = useState({
-		name: "",
-		report_type: "summary",
-		schedule: "manual",
-		format: "xlsx",
-		parameters: {},
-	});
+	const [isDialogOpen, setIsDialogOpen] = useState(false);
+	const [editingReport, setEditingReport] = useState<SavedReport | null>(null);
+	const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+	const [pendingDownloadId, setPendingDownloadId] = useState<number | null>(null);
 
 	const fetchSavedReports = async () => {
 		setLoading(true);
@@ -107,30 +104,40 @@ export function SavedReportsTab() {
 		fetchSavedReports();
 	}, [filterType, filterStatus, searchTerm]);
 
-	const handleCreateReport = async () => {
-		try {
-			await reportsService.createSavedReport(newReport);
-			setIsCreateDialogOpen(false);
-			setNewReport({
-				name: "",
-				report_type: "summary",
-				schedule: "manual",
-				format: "xlsx",
-				parameters: {},
-			});
-			fetchSavedReports();
-		} catch (err) {
-			console.error("Failed to create report:", err);
-		}
+	const handleOpenCreateDialog = () => {
+		setEditingReport(null);
+		setIsDialogOpen(true);
+	};
+
+	const handleOpenEditDialog = (report: SavedReport) => {
+		setEditingReport(report);
+		setIsDialogOpen(true);
+	};
+
+	const handleSaveComplete = () => {
+		setEditingReport(null);
+		fetchSavedReports();
 	};
 
 	const handleRunReport = async (reportId: number) => {
 		try {
 			await reportsService.generateSavedReport(reportId.toString());
 			fetchSavedReports();
+			
+			// Show download confirmation dialog
+			setPendingDownloadId(reportId);
+			setShowDownloadDialog(true);
 		} catch (err) {
 			console.error("Failed to run report:", err);
 		}
+	};
+
+	const handleConfirmDownload = async () => {
+		if (pendingDownloadId) {
+			await handleDownloadReport(pendingDownloadId);
+		}
+		setShowDownloadDialog(false);
+		setPendingDownloadId(null);
 	};
 
 	const handleDuplicateReport = async (reportId: number) => {
@@ -163,6 +170,25 @@ export function SavedReportsTab() {
 			} catch (err) {
 				console.error("Failed to delete report:", err);
 			}
+		}
+	};
+
+
+	const handleDownloadReport = async (reportId: number) => {
+		try {
+			const report = reports.find(r => r.id === reportId);
+			if (!report) return;
+			
+			// Use the working export endpoint with saved report parameters
+			await reportsService.exportReport(
+				report.report_type,
+				report.parameters.start_date,
+				report.parameters.end_date,
+				report.format,
+				report.parameters.filters || {}
+			);
+		} catch (err) {
+			console.error("Failed to download report:", err);
 		}
 	};
 
@@ -263,105 +289,42 @@ export function SavedReportsTab() {
 						Manage and schedule your reports
 					</p>
 				</div>
-				<Dialog
-					open={isCreateDialogOpen}
-					onOpenChange={setIsCreateDialogOpen}
-				>
-					<DialogTrigger asChild>
-						<Button>
-							<Plus className="mr-2 h-4 w-4" />
-							New Report
-						</Button>
-					</DialogTrigger>
-					<DialogContent className="sm:max-w-[425px]">
-						<DialogHeader>
-							<DialogTitle>Create New Report</DialogTitle>
-							<DialogDescription>
-								Set up a new saved report with custom parameters and scheduling.
-							</DialogDescription>
-						</DialogHeader>
-						<div className="grid gap-4 py-4">
-							<div className="grid gap-2">
-								<Label htmlFor="name">Report Name</Label>
-								<Input
-									id="name"
-									value={newReport.name}
-									onChange={(e) =>
-										setNewReport({ ...newReport, name: e.target.value })
-									}
-									placeholder="Enter report name"
-								/>
-							</div>
-							<div className="grid gap-2">
-								<Label htmlFor="type">Report Type</Label>
-								<Select
-									value={newReport.report_type}
-									onValueChange={(value) =>
-										setNewReport({ ...newReport, report_type: value })
-									}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="summary">Dashboard Summary</SelectItem>
-										<SelectItem value="sales">Sales Report</SelectItem>
-										<SelectItem value="products">Products Report</SelectItem>
-										<SelectItem value="payments">Payments Report</SelectItem>
-										<SelectItem value="operations">
-											Operations Report
-										</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-							<div className="grid gap-2">
-								<Label htmlFor="schedule">Schedule</Label>
-								<Select
-									value={newReport.schedule}
-									onValueChange={(value) =>
-										setNewReport({ ...newReport, schedule: value })
-									}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="manual">Manual</SelectItem>
-										<SelectItem value="daily">Daily</SelectItem>
-										<SelectItem value="weekly">Weekly</SelectItem>
-										<SelectItem value="monthly">Monthly</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-							<div className="grid gap-2">
-								<Label htmlFor="format">Export Format</Label>
-								<Select
-									value={newReport.format}
-									onValueChange={(value) =>
-										setNewReport({ ...newReport, format: value })
-									}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="xlsx">Excel (XLSX)</SelectItem>
-										<SelectItem value="csv">CSV</SelectItem>
-										<SelectItem value="pdf">PDF</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-						</div>
-						<DialogFooter>
-							<Button
-								type="submit"
-								onClick={handleCreateReport}
-							>
-								Create Report
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+				<Button onClick={handleOpenCreateDialog}>
+					<Plus className="mr-2 h-4 w-4" />
+					New Report
+				</Button>
+
+				{/* Add/Edit Report Dialog */}
+				<AddEditSavedReportDialog
+					isOpen={isDialogOpen}
+					onOpenChange={setIsDialogOpen}
+					editingReport={editingReport}
+					onSaveComplete={handleSaveComplete}
+				/>
+
+				{/* Download Confirmation Dialog */}
+				<AlertDialog open={showDownloadDialog} onOpenChange={setShowDownloadDialog}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Report Generated Successfully!</AlertDialogTitle>
+							<AlertDialogDescription>
+								Your report has been generated and is ready. Would you like to download it now?
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel onClick={() => {
+								setShowDownloadDialog(false);
+								setPendingDownloadId(null);
+							}}>
+								Not now
+							</AlertDialogCancel>
+							<AlertDialogAction onClick={handleConfirmDownload}>
+								Yes, download
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+
 			</div>
 
 			{/* Filters */}
@@ -443,7 +406,9 @@ export function SavedReportsTab() {
 											Duplicate
 										</DropdownMenuItem>
 										<DropdownMenuSeparator />
-										<DropdownMenuItem>
+										<DropdownMenuItem
+											onClick={() => handleOpenEditDialog(report)}
+										>
 											<Edit className="mr-2 h-4 w-4" />
 											Edit
 										</DropdownMenuItem>
@@ -511,6 +476,7 @@ export function SavedReportsTab() {
 									<Button
 										size="sm"
 										variant="outline"
+										onClick={() => handleDownloadReport(report.id)}
 									>
 										<Download className="h-4 w-4" />
 									</Button>
@@ -530,7 +496,7 @@ export function SavedReportsTab() {
 							<p className="text-sm text-muted-foreground mb-4">
 								Create your first saved report to get started.
 							</p>
-							<Button onClick={() => setIsCreateDialogOpen(true)}>
+							<Button onClick={handleOpenCreateDialog}>
 								<Plus className="mr-2 h-4 w-4" />
 								Create Report
 							</Button>
