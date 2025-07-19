@@ -36,8 +36,15 @@ export const usePosStore = createWithEqualityFn(
 				tip: state.tip,
 				appliedDiscounts: state.appliedDiscounts,
 				currentUser: state.currentUser,
+				// Persist payment state across sessions for order continuity
+				order: state.order,
+				balanceDue: state.balanceDue,
+				paymentHistory: state.paymentHistory,
+				changeDue: state.changeDue,
 				// Explicitly exclude filter state so it resets on navigation:
 				// selectedParentCategory, selectedChildCategory, searchTerm, childCategories
+				// Also exclude dialog states and temporary states:
+				// isTenderDialogOpen, tenderState, paymentMethod, partialAmount, etc.
 			}),
 			merge: (persistedState, currentState) => {
 				return { ...currentState, ...persistedState };

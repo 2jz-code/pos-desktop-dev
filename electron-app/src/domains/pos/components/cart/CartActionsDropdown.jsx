@@ -1,6 +1,9 @@
 "use client";
 
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { openCashDrawer } from "@/shared/lib/hardware";
 import { Button } from "@/shared/components/ui/button";
 import {
 	DropdownMenu,
@@ -8,7 +11,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { MoreVertical, Trash2, PauseCircle } from "lucide-react";
+import { MoreVertical, Trash2, PauseCircle, DollarSign } from "lucide-react";
 import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
@@ -20,6 +23,10 @@ const CartActionsDropdown = () => {
 		}),
 		shallow
 	);
+
+	const { isOwner, isManager } = useRolePermissions();
+	const printers = useSettingsStore((state) => state.printers);
+	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
 	const handleClearCart = () => {
 		if (window.confirm("Are you sure you want to clear the cart?")) {
@@ -33,7 +40,30 @@ const CartActionsDropdown = () => {
 		}
 	};
 
+	const handleOpenCashDrawer = async () => {
+		try {
+			// Find the receipt printer to use for opening cash drawer
+			const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+			
+			if (!receiptPrinter) {
+				alert("No receipt printer configured. Please configure a printer in settings.");
+				return;
+			}
+
+			const result = await openCashDrawer(receiptPrinter);
+			
+			if (!result.success) {
+				console.error("Failed to open cash drawer:", result.error);
+				alert(`Failed to open cash drawer: ${result.error || "Unknown error"}`);
+			}
+		} catch (error) {
+			console.error("Error opening cash drawer:", error);
+			alert("Failed to open cash drawer. Please check your printer connection.");
+		}
+	};
+
 	const isCartEmpty = items.length === 0;
+	const canOpenCashDrawer = isOwner || isManager;
 
 	return (
 		<DropdownMenu>
@@ -66,6 +96,15 @@ const CartActionsDropdown = () => {
 					<PauseCircle className="mr-2 h-4 w-4" />
 					<span>Hold Order</span>
 				</DropdownMenuItem>
+				{canOpenCashDrawer && (
+					<DropdownMenuItem
+						onClick={handleOpenCashDrawer}
+						className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+					>
+						<DollarSign className="mr-2 h-4 w-4" />
+						<span>Open Cash Drawer</span>
+					</DropdownMenuItem>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

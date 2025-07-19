@@ -390,6 +390,10 @@ export const createCartSlice = (set, get) => {
 
 		resetCart: () => {
 			get().disconnectCartSocket();
+			// Also reset the tender state when starting a completely new cart
+			if (get().resetTender) {
+				get().resetTender();
+			}
 			set({
 				...defaultCartState,
 			});

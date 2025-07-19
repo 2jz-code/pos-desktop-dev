@@ -7,6 +7,8 @@ import {
 	calculateSurcharge,
 } from "@/domains/payments/services/paymentService";
 import useTerminalStore from "@/domains/pos/store/terminalStore";
+import { openCashDrawer } from "@/shared/lib/hardware";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 
 export const createPaymentSlice = (set, get) => ({
 	// CORE DIALOG STATE
@@ -31,17 +33,24 @@ export const createPaymentSlice = (set, get) => ({
 
 	// UI ACTIONS
 	startTender: (fullOrderObject) => {
+		// Calculate balance due from order's payment details if available
+		const grandTotal = parseFloat(fullOrderObject.grand_total) || 0;
+		const amountPaid = parseFloat(fullOrderObject.payment_details?.amount_paid) || 0;
+		const calculatedBalanceDue = grandTotal - amountPaid;
+		
+		// Get existing payment history from order if available
+		const existingPaymentHistory = fullOrderObject.payment_details?.transactions || [];
+		
 		set({
 			order: fullOrderObject,
 			lastCompletedOrder: null,
 			isTenderDialogOpen: true,
 			tenderState: "awaitingPaymentMethod",
 			paymentMethod: null, // RESET
-			// --- FIX: Ensure grand_total from the API is parsed into a number ---
-			balanceDue: parseFloat(fullOrderObject.grand_total) || 0,
+			balanceDue: calculatedBalanceDue,
 			orderId: fullOrderObject.id,
 			tipAmount: 0,
-			paymentHistory: [],
+			paymentHistory: existingPaymentHistory,
 			changeDue: 0,
 			error: null,
 			currentPaymentIntentId: null,
@@ -55,13 +64,41 @@ export const createPaymentSlice = (set, get) => ({
 		if (intentIdToCancel) {
 			cancelTerminalIntent(intentIdToCancel);
 		}
+		// Only close the dialog, don't reset payment state
+		// Payment state should persist across dialog opens/closes
 		set({
 			isTenderDialogOpen: false,
-			tenderState: "idle",
-			paymentMethod: null, // RESET
-			lastCompletedOrder: null,
+			tenderState: "awaitingPaymentMethod", // Reset to initial payment state for next open
+			paymentMethod: null, // Reset method selection for next open
 			currentPaymentIntentId: null,
 			partialAmount: 0,
+			surchargeAmount: 0,
+			error: null, // Clear any errors when closing
+		});
+		// Keep: order, balanceDue, paymentHistory, changeDue, orderId, tipAmount, lastCompletedOrder
+	},
+
+	// Complete reset for new orders - use this when starting fresh
+	resetTender: () => {
+		const intentIdToCancel = get().currentPaymentIntentId;
+		if (intentIdToCancel) {
+			cancelTerminalIntent(intentIdToCancel);
+		}
+		set({
+			order: null,
+			lastCompletedOrder: null,
+			isTenderDialogOpen: false,
+			tenderState: "idle",
+			paymentMethod: null,
+			balanceDue: 0,
+			tipAmount: 0,
+			paymentHistory: [],
+			changeDue: 0,
+			orderId: null,
+			currentPaymentIntentId: null,
+			partialAmount: 0,
+			surchargeAmount: 0,
+			error: null,
 		});
 	},
 
@@ -183,6 +220,31 @@ export const createPaymentSlice = (set, get) => ({
 					: 0;
 			const isComplete = newBalance <= 0;
 
+			// Open cash drawer if the order is complete and any cash payment was made
+			if (isComplete) {
+				// Check if there are any cash payments in the transaction history
+				const hasCashPayment = data.transactions.some(transaction => 
+					transaction.method === 'CASH'
+				);
+				
+				if (hasCashPayment) {
+					try {
+						const settingsState = useSettingsStore.getState();
+						const { printers, receiptPrinterId } = settingsState;
+						const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+						
+						if (receiptPrinter) {
+							await openCashDrawer(receiptPrinter);
+						} else {
+							console.warn("No receipt printer configured for cash drawer opening");
+						}
+					} catch (error) {
+						console.error("Failed to open cash drawer:", error);
+						// Don't fail the payment if cash drawer fails to open
+					}
+				}
+			}
+
 			set({
 				lastCompletedOrder: isComplete ? state.order : null,
 				balanceDue: newBalance,
@@ -225,6 +287,31 @@ export const createPaymentSlice = (set, get) => ({
 			const { data } = result;
 			const newBalance = parseFloat(data.balance_due);
 			const isComplete = newBalance <= 0;
+
+			// Open cash drawer if the order is complete and any cash payment was made
+			if (isComplete) {
+				// Check if there are any cash payments in the transaction history
+				const hasCashPayment = data.transactions.some(transaction => 
+					transaction.method === 'CASH'
+				);
+				
+				if (hasCashPayment) {
+					try {
+						const settingsState = useSettingsStore.getState();
+						const { printers, receiptPrinterId } = settingsState;
+						const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+						
+						if (receiptPrinter) {
+							await openCashDrawer(receiptPrinter);
+						} else {
+							console.warn("No receipt printer configured for cash drawer opening");
+						}
+					} catch (error) {
+						console.error("Failed to open cash drawer:", error);
+						// Don't fail the payment if cash drawer fails to open
+					}
+				}
+			}
 
 			set({
 				lastCompletedOrder: isComplete ? get().order : null,
@@ -269,6 +356,31 @@ export const createPaymentSlice = (set, get) => ({
 			const data = result.data;
 			const newBalance = parseFloat(data.balance_due || 0);
 			const isComplete = newBalance <= 0;
+
+			// Open cash drawer if the order is complete and any cash payment was made
+			if (isComplete) {
+				// Check if there are any cash payments in the transaction history
+				const hasCashPayment = (data.transactions || []).some(transaction => 
+					transaction.method === 'CASH'
+				);
+				
+				if (hasCashPayment) {
+					try {
+						const settingsState = useSettingsStore.getState();
+						const { printers, receiptPrinterId } = settingsState;
+						const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+						
+						if (receiptPrinter) {
+							await openCashDrawer(receiptPrinter);
+						} else {
+							console.warn("No receipt printer configured for cash drawer opening");
+						}
+					} catch (error) {
+						console.error("Failed to open cash drawer:", error);
+						// Don't fail the payment if cash drawer fails to open
+					}
+				}
+			}
 
 			set({
 				lastCompletedOrder: isComplete ? state.order : null,

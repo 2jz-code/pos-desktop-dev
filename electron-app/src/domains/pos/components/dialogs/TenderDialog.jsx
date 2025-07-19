@@ -2,12 +2,13 @@ import React from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
 } from "@/shared/components/ui/dialog";
 import { Button } from "@/shared/components/ui/button";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, X } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/utils";
 import { shallow } from "zustand/shallow";
 
@@ -134,22 +135,38 @@ const TenderDialog = () => {
 	return (
 		<Dialog
 			open={isTenderDialogOpen}
-			onOpenChange={(open) => !open && handleClose()}
+			onOpenChange={() => {}} // Disable closing by clicking outside or pressing ESC
 		>
-			<DialogContent className="sm:max-w-[500px]">
+			<DialogContent 
+				className="sm:max-w-[500px]"
+				showCloseButton={false} // Disable default close button
+				onInteractOutside={(e) => e.preventDefault()} // Prevent closing by clicking outside
+				onEscapeKeyDown={(e) => e.preventDefault()} // Prevent closing with ESC key
+			>
 				<DialogHeader>
-					<div className="flex items-center">
-						{canGoBack && (
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={goBack}
-								className="mr-2"
-							>
-								<ArrowLeft className="h-4 w-4" />
-							</Button>
-						)}
-						<DialogTitle>Tender: {orderNumber || "..."}</DialogTitle>
+					<div className="flex items-center justify-between">
+						<div className="flex items-center">
+							{canGoBack && (
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={goBack}
+									className="mr-2"
+								>
+									<ArrowLeft className="h-4 w-4" />
+								</Button>
+							)}
+							<DialogTitle>Tender: {orderNumber || "..."}</DialogTitle>
+						</div>
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={handleClose}
+							className="h-6 w-6 rounded-xs opacity-70 hover:opacity-100"
+						>
+							<X className="h-4 w-4" />
+							<span className="sr-only">Close</span>
+						</Button>
 					</div>
 				</DialogHeader>
 
