@@ -12,13 +12,6 @@ export { PaymentSettings } from "./components/PaymentSettings";
 export { StoreLocationsManagement } from "./components/StoreLocationsManagement";
 
 // Legacy Components (should be phased out or re-evaluated)
-export { BusinessStoreInfo } from "./components/BusinessStoreInfo";
-export { BusinessFinancialSettings } from "./components/BusinessFinancialSettings";
-export { BusinessReceiptSettings } from "./components/BusinessReceiptSettings";
-export { BusinessHoursSettings } from "./components/BusinessHoursSettings";
-export { TerminalDisplaySettings } from "./components/TerminalDisplaySettings";
-export { TerminalBehaviorSettings } from "./components/TerminalBehaviorSettings";
-export { RoleBasedAccessSummary } from "./components/RoleBasedAccessSummary";
 
 // Services
 export * as settingsService from "./services/settingsService.js";

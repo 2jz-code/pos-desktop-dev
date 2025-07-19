@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion"; // eslint-disable-line
 import { Sparkles, Coffee, ShoppingBag, Heart } from "lucide-react";
+import Logo from "@/assets/images/logo.png";
 
 const WelcomeView = () => {
 	const [currentTime, setCurrentTime] = useState(new Date());
@@ -29,12 +30,12 @@ const WelcomeView = () => {
 	};
 
 	return (
-		<div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 overflow-hidden">
+		<div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#faf5ef] via-[#f3e1ca] to-[#d1c7bc] dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 overflow-hidden">
 			{/* Background Pattern */}
 			<div className="absolute inset-0 opacity-5">
-				<div className="absolute top-20 left-20 w-32 h-32 bg-blue-500 rounded-full blur-3xl"></div>
-				<div className="absolute bottom-20 right-20 w-40 h-40 bg-purple-500 rounded-full blur-3xl"></div>
-				<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-emerald-500 rounded-full blur-3xl"></div>
+				<div className="absolute top-20 left-20 w-32 h-32 bg-[#909373] rounded-full blur-3xl"></div>
+				<div className="absolute bottom-20 right-20 w-40 h-40 bg-[#a0522d] rounded-full blur-3xl"></div>
+				<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-[#5e6650] rounded-full blur-3xl"></div>
 			</div>
 
 			{/* Floating Icons */}
@@ -50,7 +51,7 @@ const WelcomeView = () => {
 					ease: "easeInOut",
 				}}
 			>
-				<Coffee className="w-8 h-8 text-amber-400 opacity-30" />
+				<Coffee className="w-8 h-8 text-[#5e6650] opacity-40" />
 			</motion.div>
 
 			<motion.div
@@ -66,7 +67,7 @@ const WelcomeView = () => {
 					delay: 1,
 				}}
 			>
-				<ShoppingBag className="w-10 h-10 text-blue-400 opacity-30" />
+				<ShoppingBag className="w-10 h-10 text-[#a0522d] opacity-40" />
 			</motion.div>
 
 			<motion.div
@@ -82,7 +83,7 @@ const WelcomeView = () => {
 					delay: 2,
 				}}
 			>
-				<Heart className="w-6 h-6 text-rose-400 opacity-30" />
+				<Heart className="w-6 h-6 text-[#909373] opacity-40" />
 			</motion.div>
 
 			{/* Main Content */}
@@ -99,30 +100,39 @@ const WelcomeView = () => {
 					transition={{ duration: 0.6, delay: 0.2 }}
 					className="mb-12"
 				>
-					{/* Replace with your actual logo */}
-					<div className="w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl">
-						<Sparkles className="w-16 h-16 text-white" />
-					</div>
-
-					<motion.h1
-						className="text-7xl font-bold bg-gradient-to-r from-slate-800 via-slate-600 to-slate-800 dark:from-slate-100 dark:via-slate-300 dark:to-slate-100 bg-clip-text text-transparent mb-4"
+					{/* Ajeen Logo */}
+					<motion.div
+						className="mx-auto mb-8"
 						animate={{
-							backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+							y: [0, -10, 0],
 						}}
 						transition={{
 							duration: 3,
 							repeat: Number.POSITIVE_INFINITY,
-							ease: "linear",
+							ease: "easeInOut",
 						}}
 					>
-						Welcome
-					</motion.h1>
+						<img
+							src={Logo}
+							alt="Ajeen Logo"
+							className="w-auto h-auto object-contain mx-auto"
+						/>
+					</motion.div>
+
+					<motion.p
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ duration: 0.6, delay: 0.8 }}
+						className="text-lg text-[#5e6650] dark:text-[#909373] font-medium mb-6"
+					>
+						Fresh • Authentic • Delicious
+					</motion.p>
 
 					<motion.div
 						initial={{ width: 0 }}
 						animate={{ width: "100%" }}
 						transition={{ duration: 1, delay: 0.5 }}
-						className="h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full mx-auto max-w-md"
+						className="h-1 bg-gradient-to-r from-[#909373] via-[#a0522d] to-[#5e6650] rounded-full mx-auto max-w-md"
 					/>
 				</motion.div>
 
@@ -133,11 +143,11 @@ const WelcomeView = () => {
 					transition={{ duration: 0.6, delay: 0.4 }}
 					className="mb-16"
 				>
-					<p className="text-3xl text-slate-600 dark:text-slate-300 font-light leading-relaxed">
-						Thank you for choosing us today
+					<p className="text-3xl text-[#5e6650] dark:text-slate-300 font-bold leading-relaxed">
+						Welcome to your fresh food experience
 					</p>
-					<p className="text-xl text-slate-500 dark:text-slate-400 mt-4 font-light">
-						Please see our cashier to begin your order
+					<p className="text-xl text-[#654321] dark:text-slate-400 mt-4 ">
+						Our team is ready to serve you!!
 					</p>
 				</motion.div>
 
@@ -146,12 +156,12 @@ const WelcomeView = () => {
 					initial={{ opacity: 0, scale: 0.9 }}
 					animate={{ opacity: 1, scale: 1 }}
 					transition={{ duration: 0.6, delay: 0.6 }}
-					className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-slate-200/50 dark:border-slate-700/50"
+					className="bg-[#faf5ef]/90 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-[#d1c7bc]/50 dark:border-slate-700/50"
 				>
-					<div className="text-5xl font-bold text-slate-800 dark:text-slate-100 mb-2 font-mono">
+					<div className="text-5xl font-bold text-[#5e6650] dark:text-[#909373] mb-2 font-mono">
 						{formatTime(currentTime)}
 					</div>
-					<div className="text-lg text-slate-500 dark:text-slate-400 font-medium">
+					<div className="text-lg text-[#a0522d] dark:text-[#a0522d] font-medium">
 						{formatDate(currentTime)}
 					</div>
 				</motion.div>
@@ -173,24 +183,12 @@ const WelcomeView = () => {
 							repeat: Number.POSITIVE_INFINITY,
 							ease: "easeInOut",
 						}}
-						className="inline-flex items-center gap-2 text-slate-400 dark:text-slate-500 text-sm font-medium"
+						className="inline-flex items-center gap-2 text-[#5e6650] dark:text-[#909373] text-sm font-medium"
 					>
-						<div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-						Ready to serve you
+						<div className="w-2 h-2 bg-[#909373] rounded-full animate-pulse"></div>
+						Fresh food, prepared with care
 					</motion.div>
 				</motion.div>
-			</motion.div>
-
-			{/* Bottom Branding */}
-			<motion.div
-				initial={{ opacity: 0, y: 20 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.6, delay: 0.8 }}
-				className="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-center"
-			>
-				<p className="text-sm text-slate-400 dark:text-slate-500 font-medium">
-					Powered by Ajeen
-				</p>
 			</motion.div>
 		</div>
 	);

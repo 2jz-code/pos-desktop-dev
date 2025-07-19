@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion"; // eslint-disable-line
-import { Card, CardContent } from "@/shared/components/ui/card";
 import { CheckCircle, Sparkles, Heart, Star, Gift } from "lucide-react";
 
 const PaymentSuccessView = () => {
@@ -15,7 +14,7 @@ const PaymentSuccessView = () => {
 	const confettiPieces = Array.from({ length: 50 }, (_, i) => i);
 
 	return (
-		<div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-blue-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-8 overflow-hidden">
+		<div className="relative w-full h-full bg-gradient-to-br from-[#faf5ef] via-[#f3e1ca] to-[#d1c7bc] dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-8 overflow-hidden">
 			{/* Confetti Animation */}
 			{showConfetti && (
 				<div className="absolute inset-0 pointer-events-none">
@@ -40,10 +39,10 @@ const PaymentSuccessView = () => {
 							}}
 							className={`absolute w-3 h-3 ${
 								Math.random() > 0.5
-									? "bg-emerald-400"
+									? "bg-[#909373]"
 									: Math.random() > 0.5
-									? "bg-blue-400"
-									: "bg-purple-400"
+									? "bg-[#a0522d]"
+									: "bg-[#5e6650]"
 							} rounded-full`}
 						/>
 					))}
@@ -54,10 +53,8 @@ const PaymentSuccessView = () => {
 				initial={{ opacity: 0, scale: 0.8 }}
 				animate={{ opacity: 1, scale: 1 }}
 				transition={{ duration: 0.8, ease: "easeOut" }}
-				className="w-full max-w-2xl z-10"
+				className="w-full h-full z-10 p-12 text-center flex flex-col justify-center"
 			>
-				<Card className="border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shadow-2xl">
-					<CardContent className="p-12 text-center">
 						{/* Success Icon with Animation */}
 						<motion.div
 							initial={{ scale: 0 }}
@@ -81,11 +78,11 @@ const PaymentSuccessView = () => {
 									repeat: Number.POSITIVE_INFINITY,
 									ease: "easeInOut",
 								}}
-								className="absolute inset-0 w-32 h-32 mx-auto bg-emerald-400 rounded-full blur-xl"
+								className="absolute inset-0 w-32 h-32 mx-auto bg-[#909373] rounded-full blur-xl"
 							/>
 
 							{/* Main Success Icon */}
-							<div className="relative w-32 h-32 mx-auto bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center shadow-2xl">
+							<div className="relative w-32 h-32 mx-auto bg-gradient-to-br from-[#909373] to-[#5e6650] rounded-full flex items-center justify-center shadow-2xl">
 								<CheckCircle className="w-16 h-16 text-white" />
 							</div>
 
@@ -102,7 +99,7 @@ const PaymentSuccessView = () => {
 								}}
 								className="absolute -top-2 -right-2"
 							>
-								<Sparkles className="w-8 h-8 text-yellow-400" />
+								<Sparkles className="w-8 h-8 text-[#a0522d]" />
 							</motion.div>
 
 							<motion.div
@@ -118,7 +115,7 @@ const PaymentSuccessView = () => {
 								}}
 								className="absolute -bottom-2 -left-2"
 							>
-								<Star className="w-6 h-6 text-purple-400" />
+								<Star className="w-6 h-6 text-[#909373]" />
 							</motion.div>
 						</motion.div>
 
@@ -129,10 +126,10 @@ const PaymentSuccessView = () => {
 							transition={{ duration: 0.6, delay: 0.4 }}
 							className="mb-8"
 						>
-							<h2 className="text-5xl font-bold text-slate-900 dark:text-slate-100 mb-4">
+							<h2 className="text-5xl font-bold text-[#5e6650] dark:text-slate-100 mb-4">
 								Thank You!
 							</h2>
-							<p className="text-2xl text-slate-600 dark:text-slate-300 font-light">
+							<p className="text-2xl text-[#654321] dark:text-slate-300 font-light">
 								Your payment was successful
 							</p>
 						</motion.div>
@@ -144,16 +141,16 @@ const PaymentSuccessView = () => {
 							transition={{ duration: 0.6, delay: 0.6 }}
 							className="space-y-4 mb-8"
 						>
-							<div className="flex items-center justify-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-								<CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-								<span className="text-emerald-800 dark:text-emerald-200 font-medium">
+							<div className="flex items-center justify-center gap-3 p-4 bg-[#f3e1ca]/50 dark:bg-[#909373]/20 rounded-xl border border-[#a0522d]/30 dark:border-[#909373]">
+								<CheckCircle className="w-5 h-5 text-[#5e6650] dark:text-[#909373]" />
+								<span className="text-[#5e6650] dark:text-[#909373] font-medium">
 									Payment processed successfully
 								</span>
 							</div>
 
-							<div className="flex items-center justify-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-								<Gift className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-								<span className="text-blue-800 dark:text-blue-200 font-medium">
+							<div className="flex items-center justify-center gap-3 p-4 bg-[#faf5ef]/50 dark:bg-slate-800/50 rounded-xl border border-[#d1c7bc] dark:border-slate-700">
+								<Gift className="w-5 h-5 text-[#a0522d] dark:text-slate-400" />
+								<span className="text-[#a0522d] dark:text-slate-400 font-medium">
 									Receipt will be sent shortly
 								</span>
 							</div>
@@ -199,8 +196,6 @@ const PaymentSuccessView = () => {
 								This screen will return to welcome shortly
 							</motion.div>
 						</motion.div>
-					</CardContent>
-				</Card>
 			</motion.div>
 		</div>
 	);
