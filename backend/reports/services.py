@@ -409,12 +409,94 @@ class ReportService:
         # Step 3: Merge the two aggregations in memory for the final result.
         items_dict = {item["period"]: item["items"] for item in items_agg}
 
+        # Get detailed transaction data for each period
+        transaction_details_by_period = {}
+        from calendar import monthrange
+
+        for period_item in sales_agg:
+            period_start = period_item["period"]
+            
+            # Create timezone-aware datetime objects for the period range
+            local_tz = ReportService.get_local_timezone()
+            start_dt = timezone.make_aware(datetime.combine(period_start, datetime.min.time()), local_tz)
+            
+            if group_by == "week":
+                end_dt = start_dt + timedelta(days=7)
+            elif group_by == "month":
+                days_in_month = monthrange(start_dt.year, start_dt.month)[1]
+                end_dt = start_dt + timedelta(days=days_in_month)
+            else:  # day
+                end_dt = start_dt + timedelta(days=1)
+
+            # Get transactions for this period using the precise datetime range
+            period_transactions = PaymentTransaction.objects.filter(
+                payment__order__in=orders_queryset,
+                payment__created_at__gte=start_dt,
+                payment__created_at__lt=end_dt,
+                status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+            ).select_related('payment', 'payment__order').order_by('-payment__created_at')
+            
+            # Get payment totals for this period
+            period_payments = Payment.objects.filter(
+                order__in=orders_queryset,
+                created_at__gte=start_dt,
+                created_at__lt=end_dt
+            ).aggregate(
+                total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
+                total_surcharges=Coalesce(Sum("total_surcharges"), Value(Decimal("0.00"))),
+                total_collected=Coalesce(Sum("total_collected"), Value(Decimal("0.00")))
+            )
+            
+            # Group transactions by payment method
+            method_breakdown = {}
+            for transaction in period_transactions:
+                method = transaction.method
+                if method not in method_breakdown:
+                    method_breakdown[method] = {
+                        'count': 0,
+                        'total_amount': 0,
+                        'total_tips': 0,
+                        'total_surcharges': 0
+                    }
+                method_breakdown[method]['count'] += 1
+                method_breakdown[method]['total_amount'] += float(transaction.amount or 0)
+                method_breakdown[method]['total_tips'] += float(transaction.tip or 0)
+                method_breakdown[method]['total_surcharges'] += float(transaction.surcharge or 0)
+            
+            transaction_details_by_period[period_item["period"]] = {
+                'transactions': [
+                    {
+                        'order_number': trans.payment.order.order_number,
+                        'created_at': trans.payment.order.created_at.isoformat(),
+                        'amount': float(trans.amount or 0),
+                        'tip': float(trans.tip or 0),
+                        'surcharge': float(trans.surcharge or 0),
+                        'method': trans.method,
+                        'transaction_id': trans.transaction_id,
+                        'card_brand': trans.card_brand,
+                        'card_last4': trans.card_last4
+                    }
+                    for trans in period_transactions
+                ],
+                'payment_totals': {
+                    'total_tips': float(period_payments['total_tips']),
+                    'total_surcharges': float(period_payments['total_surcharges']),
+                    'total_collected': float(period_payments['total_collected'])
+                },
+                'method_breakdown': method_breakdown
+            }
+
         sales_data["sales_by_period"] = [
             {
                 "date": item["period"].strftime("%Y-%m-%d"),
                 "revenue": float(item["revenue"] or 0),
                 "orders": item["orders"],
                 "items": items_dict.get(item["period"], 0) or 0,
+                "transaction_details": transaction_details_by_period.get(item["period"], {
+                    'transactions': [],
+                    'payment_totals': {'total_tips': 0, 'total_surcharges': 0, 'total_collected': 0},
+                    'method_breakdown': {}
+                })
             }
             for item in sales_agg
         ]

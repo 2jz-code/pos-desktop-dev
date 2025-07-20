@@ -1,6 +1,4 @@
-"use client";
-
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
 	Card,
 	CardContent,
@@ -35,6 +33,11 @@ import {
 	Package,
 	Download,
 	RefreshCw,
+	ChevronDown,
+	ChevronRight,
+	CreditCard,
+	Banknote,
+	Gift,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -48,6 +51,39 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+
+interface Transaction {
+	order_number: string;
+	created_at: string;
+	amount: number;
+	tip: number;
+	surcharge: number;
+	method: string;
+	transaction_id: string;
+	card_brand: string;
+	card_last4: string;
+}
+
+interface PaymentTotals {
+	total_tips: number;
+	total_surcharges: number;
+	total_collected: number;
+}
+
+interface MethodBreakdown {
+	[method: string]: {
+		count: number;
+		total_amount: number;
+		total_tips: number;
+		total_surcharges: number;
+	};
+}
+
+interface TransactionDetails {
+	transactions: Transaction[];
+	payment_totals: PaymentTotals;
+	method_breakdown: MethodBreakdown;
+}
 
 interface SalesData {
 	total_revenue: number;
@@ -64,6 +100,7 @@ interface SalesData {
 		revenue: number;
 		orders: number;
 		items: number;
+		transaction_details: TransactionDetails;
 	}>;
 	sales_by_category: Array<{
 		category: string;
@@ -87,6 +124,46 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [groupBy, setGroupBy] = useState<"day" | "week" | "month">("day");
+	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+	const toggleRowExpansion = (date: string) => {
+		const newExpandedRows = new Set(expandedRows);
+		if (newExpandedRows.has(date)) {
+			newExpandedRows.delete(date);
+		} else {
+			newExpandedRows.add(date);
+		}
+		setExpandedRows(newExpandedRows);
+	};
+
+	const getPaymentMethodIcon = (method: string) => {
+		switch (method) {
+			case "CASH":
+				return <Banknote className="h-4 w-4" />;
+			case "CARD_TERMINAL":
+			case "CARD_ONLINE":
+				return <CreditCard className="h-4 w-4" />;
+			case "GIFT_CARD":
+				return <Gift className="h-4 w-4" />;
+			default:
+				return <CreditCard className="h-4 w-4" />;
+		}
+	};
+
+	const getPaymentMethodLabel = (method: string) => {
+		switch (method) {
+			case "CASH":
+				return "Cash";
+			case "CARD_TERMINAL":
+				return "Card (Terminal)";
+			case "CARD_ONLINE":
+				return "Card (Online)";
+			case "GIFT_CARD":
+				return "Gift Card";
+			default:
+				return method;
+		}
+	};
 
 	const fetchSalesData = async () => {
 		if (!dateRange?.from || !dateRange?.to) return;
@@ -434,8 +511,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							<p className="text-2xl font-bold">
 								$
 								{(
-									(data?.total_subtotal || 0) +
-									(data?.total_tips || 0)
+									(data?.total_subtotal || 0) + (data?.total_tips || 0)
 								).toLocaleString()}
 							</p>
 						</div>
@@ -445,30 +521,257 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 			{/* Sales Breakdown by Period */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Sales by {groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}</CardTitle>
+					<CardTitle>
+						Sales by {groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}
+					</CardTitle>
 					<CardDescription>
-						Detailed sales breakdown by {groupBy}
+						Detailed sales breakdown by {groupBy} - Click on any row to view
+						transactions and tips
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>{groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}</TableHead>
+								<TableHead className="w-12"></TableHead>
+								<TableHead>
+									{groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}
+								</TableHead>
 								<TableHead>Revenue</TableHead>
 								<TableHead>Orders</TableHead>
 								<TableHead>Items Sold</TableHead>
+								<TableHead>Tips</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{data?.sales_by_period?.map((period) => (
-								<TableRow key={period.date}>
-									<TableCell>{format(reportsService.parseLocalDate(period.date), "MMM dd, yyyy")}</TableCell>
-									<TableCell>${period.revenue.toLocaleString()}</TableCell>
-									<TableCell>{period.orders.toLocaleString()}</TableCell>
-									<TableCell>{period.items.toLocaleString()}</TableCell>
-								</TableRow>
-							))}
+							{data?.sales_by_period?.map((period) => {
+								const isExpanded = expandedRows.has(period.date);
+								return (
+									<React.Fragment key={period.date}>
+										<TableRow
+											className="cursor-pointer hover:bg-muted/50"
+											onClick={() => toggleRowExpansion(period.date)}
+										>
+											<TableCell>
+												{isExpanded ? (
+													<ChevronDown className="h-4 w-4" />
+												) : (
+													<ChevronRight className="h-4 w-4" />
+												)}
+											</TableCell>
+											<TableCell>
+												{format(
+													reportsService.parseLocalDate(period.date),
+													"MMM dd, yyyy"
+												)}
+											</TableCell>
+											<TableCell>${period.revenue.toLocaleString()}</TableCell>
+											<TableCell>{period.orders.toLocaleString()}</TableCell>
+											<TableCell>{period.items.toLocaleString()}</TableCell>
+											<TableCell>
+												$
+												{(
+													period.transaction_details?.payment_totals
+														?.total_tips ?? 0
+												).toLocaleString()}
+											</TableCell>
+										</TableRow>
+										{isExpanded && (
+											<TableRow>
+												<TableCell colSpan={6} className="p-0">
+													<div className="p-4 bg-muted/20 border-t">
+														<div className="space-y-4">
+															{/* Payment Summary */}
+															<div>
+																<h4 className="font-semibold mb-2">
+																	Payment Summary
+																</h4>
+																<div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+																	<div>
+																		<span className="text-muted-foreground">
+																			Total Tips:
+																		</span>
+																		<div className="font-medium">
+																			$
+																			{(
+																				period.transaction_details
+																						?.payment_totals?.total_tips ?? 0
+																			).toLocaleString()}
+																		</div>
+																	</div>
+																	<div>
+																		<span className="text-muted-foreground">
+																			Total Surcharges:
+																		</span>
+																		<div className="font-medium">
+																			$
+																			{(
+																					period.transaction_details
+																						?.payment_totals?.total_surcharges ??
+																					0
+																				).toLocaleString()}
+																		</div>
+																	</div>
+																	<div>
+																		<span className="text-muted-foreground">
+																			Total Collected:
+																		</span>
+																		<div className="font-medium">
+																			$
+																			{(
+																					period.transaction_details
+																						?.payment_totals?.total_collected ?? 0
+																			).toLocaleString()}
+																		</div>
+																	</div>
+																</div>
+															</div>
+
+															{/* Payment Methods Breakdown */}
+															{Object.keys(
+																period.transaction_details?.method_breakdown ??
+																	{}
+															).length > 0 && (
+																<div>
+																	<h4 className="font-semibold mb-2">
+																		Payment Methods
+																	</h4>
+																	<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+																		{Object.entries(
+																			period.transaction_details
+																					?.method_breakdown ?? {}
+																		).map(([method, breakdown]) => (
+																			<div
+																				key={method}
+																				className="flex items-center space-x-2 p-2 bg-background rounded border"
+																			>
+																				{getPaymentMethodIcon(method)}
+																				<div className="flex-1">
+																					<div className="font-medium text-sm">
+																						{getPaymentMethodLabel(method)}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						{breakdown.count} transactions • $
+																						{breakdown.total_amount.toLocaleString()}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						Tips: $
+																						{breakdown.total_tips.toLocaleString()}{" "}
+																						• Fees: $
+																						{breakdown.total_surcharges.toLocaleString()}
+																					</div>
+																				</div>
+																			</div>
+																		))}
+																	</div>
+																</div>
+															)}
+
+															{/* Individual Transactions */}
+															{(period.transaction_details?.transactions
+																?.length ?? 0) > 0 && (
+																<div>
+																	<h4 className="font-semibold mb-2">
+																		Individual Transactions (
+																		{period.transaction_details?.transactions
+																			?.length ?? 0}
+																		)
+																	</h4>
+																	<div className="max-h-64 overflow-y-auto">
+																		<Table>
+																			<TableHeader>
+																				<TableRow>
+																					<TableHead className="text-xs">
+																						Order #
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Time
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Amount
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Tip
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Surcharge
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Method
+																					</TableHead>
+																					<TableHead className="text-xs">
+																						Card Info
+																					</TableHead>
+																				</TableRow>
+																			</TableHeader>
+																			<TableBody>
+																				{period.transaction_details?.transactions?.map(
+																					(transaction, index) => (
+																						<TableRow
+																							key={index}
+																							className="text-xs"
+																						>
+																							<TableCell className="font-mono">
+																								{transaction.order_number}
+																							</TableCell>
+																							<TableCell>
+																								{format(
+																									new Date(
+																										transaction.created_at
+																									),
+																									"HH:mm"
+																								)}
+																							</TableCell>
+																							<TableCell>
+																								$
+																								{transaction.amount.toLocaleString()}
+																							</TableCell>
+																							<TableCell className="font-medium text-green-600">
+																								$
+																								{transaction.tip.toLocaleString()}
+																							</TableCell>
+																							<TableCell>
+																								$
+																								{transaction.surcharge.toLocaleString()}
+																							</TableCell>
+																							<TableCell>
+																								<div className="flex items-center space-x-1">
+																									{getPaymentMethodIcon(
+																										transaction.method
+																									)}
+																									<span>
+																										{getPaymentMethodLabel(
+																											transaction.method
+																										)}
+																									</span>
+																								</div>
+																							</TableCell>
+																							<TableCell>
+																								{transaction.card_brand &&
+																									transaction.card_last4 && (
+																										<span className="text-muted-foreground">
+																											{transaction.card_brand}{" "}
+																											****
+																											{transaction.card_last4}
+																										</span>
+																									)}
+																							</TableCell>
+																						</TableRow>
+																					)
+																				)}
+																			</TableBody>
+																		</Table>
+																	</div>
+																</div>
+															)}
+														</div>
+													</div>
+												</TableCell>
+											</TableRow>
+										)}
+									</React.Fragment>
+								);
+							})}
 						</TableBody>
 					</Table>
 				</CardContent>
