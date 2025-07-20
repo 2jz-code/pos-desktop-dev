@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
 	Card,
 	CardContent,
@@ -39,6 +40,8 @@ import {
 	Building,
 	Warehouse,
 	Search,
+	Clock,
+	Settings,
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
 import { useInventoryBarcode, useScrollToScannedItem } from "@/shared/hooks";
@@ -63,12 +66,14 @@ const stockTableHeaders = [
 	{ key: "product", label: "Product" },
 	{ key: "location", label: "Location" },
 	{ key: "quantity", label: "Quantity", className: "text-right" },
+	{ key: "expiration", label: "Expiration", className: "text-center" },
 	{ key: "status", label: "Status", className: "text-center" },
 	{ key: "actions", label: "Actions", className: "w-[50px]" },
 ];
 
 const InventoryPage = () => {
 	const { toast } = useToast();
+	const navigate = useNavigate();
 	const [highlightedProductId, setHighlightedProductId] = useState(null);
 	const [scannedProductId, setScannedProductId] = useState(null);
 	const [currentEditingProduct, setCurrentEditingProduct] = useState(null);
@@ -84,6 +89,7 @@ const InventoryPage = () => {
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedLocation, setSelectedLocation] = useState(null);
+	const [stockFilter, setStockFilter] = useState("all"); // all, low_stock, expiring_soon
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
 	const queryClient = useQueryClient();
@@ -100,6 +106,7 @@ const InventoryPage = () => {
 		// Clear any active filters to ensure the scanned item is visible
 		setSearchQuery("");
 		setSelectedLocation(null);
+		setStockFilter("all");
 
 		// Switch to the all-stock tab to ensure the item is visible
 		setActiveTab("all-stock");
@@ -193,8 +200,10 @@ const InventoryPage = () => {
 		() => ({
 			location: selectedLocation,
 			search: debouncedSearchQuery,
+			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
+			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
 		}),
-		[selectedLocation, debouncedSearchQuery]
+		[selectedLocation, debouncedSearchQuery, stockFilter]
 	);
 
 	const { data: stockData, isLoading: stockLoading } = useQuery({
@@ -271,6 +280,25 @@ const InventoryPage = () => {
 
 	const renderStockRow = (item) => {
 		const isHighlighted = highlightedProductId === item.product.id;
+		const isLowStock = item.is_low_stock;
+		const isExpiringSoon = item.is_expiring_soon;
+		const isOutOfStock = Number(item.quantity) <= 0;
+
+		// Determine status priority: Out of Stock > Expiring Soon > Low Stock > In Stock
+		let statusVariant = "default";
+		let statusText = "In Stock";
+
+		if (isOutOfStock) {
+			statusVariant = "destructive";
+			statusText = "Out of Stock";
+		} else if (isExpiringSoon) {
+			statusVariant = "outline";
+			statusText = "Expiring Soon";
+		} else if (isLowStock) {
+			statusVariant = "secondary";
+			statusText = "Low Stock";
+		}
+
 		return (
 			<>
 				<td className={`py-3 px-4 font-medium ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>{item.product.name}</td>
@@ -282,21 +310,38 @@ const InventoryPage = () => {
 				</td>
 				<td className={`py-3 px-4 text-right ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>{Number(item.quantity).toFixed(2)}</td>
 				<td className={`py-3 px-4 text-center ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
-					<Badge
-						variant={
-							Number(item.quantity) <= 0
-								? "destructive"
-								: Number(item.quantity) <= 10
-								? "secondary"
-								: "default"
-						}
-					>
-						{Number(item.quantity) <= 0
-							? "Out of Stock"
-							: Number(item.quantity) <= 10
-							? "Low Stock"
-							: "In Stock"}
-					</Badge>
+					{item.expiration_date ? (
+						<div className="text-sm">
+							<div>{new Date(item.expiration_date).toLocaleDateString()}</div>
+							{isExpiringSoon && (
+								<div className="text-xs text-orange-600 dark:text-orange-400">
+									{item.effective_expiration_threshold} day threshold
+								</div>
+							)}
+						</div>
+					) : (
+						<span className="text-muted-foreground text-sm">No expiration</span>
+					)}
+				</td>
+				<td className={`py-3 px-4 text-center ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+					<div className="flex flex-col gap-1 items-center justify-center">
+						<Badge
+							variant={statusVariant}
+							className={
+								isExpiringSoon && !isOutOfStock
+									? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/50 dark:text-orange-200"
+									: ""
+							}
+						>
+							{statusText}
+						</Badge>
+						{/* Show additional status if item has multiple issues */}
+						{isExpiringSoon && isLowStock && !isOutOfStock && (
+							<Badge variant="secondary" className="text-xs">
+								Low Stock
+							</Badge>
+						)}
+					</div>
 				</td>
 				<td className={`py-3 px-4 text-right ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
 					<DropdownMenu>
@@ -352,6 +397,14 @@ const InventoryPage = () => {
 						<RefreshCw className="h-4 w-4 mr-2" />
 						Refresh Data
 					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => navigate('/settings?tab=inventory')}
+					>
+						<Settings className="h-4 w-4 mr-2" />
+						Configure Defaults
+					</Button>
 
 					<Button
 						size="sm"
@@ -370,7 +423,7 @@ const InventoryPage = () => {
 				</div>
 			</header>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-shrink-0">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
@@ -394,6 +447,19 @@ const InventoryPage = () => {
 					<CardContent>
 						<div className="text-2xl font-bold text-amber-600">
 							{dashboardData?.summary?.low_stock_count || 0}
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Expiring Soon
+						</CardTitle>
+						<Clock className="h-4 w-4 text-orange-500" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-orange-600">
+							{dashboardData?.summary?.expiring_soon_count || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -502,6 +568,66 @@ const InventoryPage = () => {
 									</CardContent>
 								</Card>
 							)}
+
+						{dashboardData?.expiring_soon_items &&
+							dashboardData.expiring_soon_items.length > 0 && (
+								<Card className="mt-4 border-orange-200 bg-orange-50 dark:bg-orange-900/20">
+									<CardHeader>
+										<CardTitle className="text-orange-800 dark:text-orange-200 flex items-center gap-2">
+											<Clock className="h-5 w-5" />
+											Expiring Soon Alert
+										</CardTitle>
+										<CardDescription>
+											Items that will expire within their warning threshold
+										</CardDescription>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										{dashboardData.expiring_soon_items
+											.slice(0, 5)
+											.map((item) => (
+												<div
+													key={item.product_id}
+													className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-100 dark:border-orange-800/50 shadow-sm"
+												>
+													<div className="flex items-center gap-3">
+														<div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+														<div>
+															<div className="font-medium text-gray-900 dark:text-gray-100">
+																{item.product_name}
+															</div>
+															<div className="text-sm text-gray-500 dark:text-gray-400">
+																Expires: {new Date(item.expiration_date).toLocaleDateString()}
+															</div>
+														</div>
+													</div>
+													<div className="flex items-center gap-2">
+														<Badge
+															variant="secondary"
+															className="bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+														>
+															{Number(item.quantity)} units
+														</Badge>
+														<Button
+															size="sm"
+															variant="outline"
+															className="h-8 px-3 text-xs border-orange-200 hover:bg-orange-100 dark:border-orange-800 dark:hover:bg-orange-900/50"
+															onClick={() =>
+																handleStockAdjustmentDialog(true, {
+																	id: item.product_id,
+																	name: item.product_name,
+																	price: 0,
+																})
+															}
+														>
+															<Edit className="h-3 w-3 mr-1" />
+															Update
+														</Button>
+													</div>
+												</div>
+											))}
+									</CardContent>
+								</Card>
+							)}
 					</div>
 				</TabsContent>
 
@@ -548,6 +674,19 @@ const InventoryPage = () => {
 														{loc.name}
 													</SelectItem>
 												))}
+											</SelectContent>
+										</Select>
+										<Select
+											value={stockFilter}
+											onValueChange={setStockFilter}
+										>
+											<SelectTrigger className="w-[180px]">
+												<SelectValue placeholder="All Items" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Items</SelectItem>
+												<SelectItem value="low_stock">Low Stock</SelectItem>
+												<SelectItem value="expiring_soon">Expiring Soon</SelectItem>
 											</SelectContent>
 										</Select>
 									</div>

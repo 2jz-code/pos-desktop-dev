@@ -14,10 +14,26 @@ class LocationSerializer(serializers.ModelSerializer):
 class InventoryStockSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
     location = LocationSerializer(read_only=True)
+    is_low_stock = serializers.ReadOnlyField()
+    is_expiring_soon = serializers.ReadOnlyField()
+    effective_low_stock_threshold = serializers.ReadOnlyField()
+    effective_expiration_threshold = serializers.ReadOnlyField()
 
     class Meta:
         model = InventoryStock
-        fields = ["id", "product", "location", "quantity"]
+        fields = [
+            "id", 
+            "product", 
+            "location", 
+            "quantity", 
+            "expiration_date", 
+            "low_stock_threshold", 
+            "expiration_threshold",
+            "effective_low_stock_threshold",
+            "effective_expiration_threshold",
+            "is_low_stock",
+            "is_expiring_soon"
+        ]
 
 
 class RecipeItemSerializer(serializers.ModelSerializer):
@@ -59,17 +75,36 @@ class StockAdjustmentSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+    expiration_date = serializers.DateField(required=False, allow_null=True)
+    low_stock_threshold = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    expiration_threshold = serializers.IntegerField(required=False)
 
     def save(self):
         product = Product.objects.get(id=self.validated_data["product_id"])
         location = Location.objects.get(id=self.validated_data["location_id"])
         quantity = self.validated_data["quantity"]
+        expiration_date = self.validated_data.get("expiration_date")
+        low_stock_threshold = self.validated_data.get("low_stock_threshold")
+        expiration_threshold = self.validated_data.get("expiration_threshold")
 
         # A positive quantity adds stock, a negative quantity decrements stock
         if quantity > 0:
-            return InventoryService.add_stock(product, location, quantity)
+            stock = InventoryService.add_stock(product, location, quantity)
         else:
-            return InventoryService.decrement_stock(product, location, abs(quantity))
+            stock = InventoryService.decrement_stock(product, location, abs(quantity))
+        
+        # Update additional fields if provided
+        if expiration_date is not None:
+            stock.expiration_date = expiration_date
+        if low_stock_threshold is not None:
+            stock.low_stock_threshold = low_stock_threshold
+        if expiration_threshold is not None:
+            stock.expiration_threshold = expiration_threshold
+        
+        if any([expiration_date is not None, low_stock_threshold is not None, expiration_threshold is not None]):
+            stock.save()
+        
+        return stock
 
 
 class StockTransferSerializer(serializers.Serializer):

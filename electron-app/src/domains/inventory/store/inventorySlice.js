@@ -108,7 +108,8 @@ export const createInventorySlice = (set, get) => ({
 
 	fetchStockByProduct: async (productId) => {
 		try {
-			const stockData = await inventoryService.getAllStock({ product: productId });
+			const response = await inventoryService.getStockByProduct(productId);
+			const stockData = response.data?.results || response.data || response.results || response;
 			const levels = stockData.reduce((acc, stock) => {
 				acc[stock.location.id] = stock.quantity;
 				return acc;
@@ -151,9 +152,9 @@ export const createInventorySlice = (set, get) => ({
 	},
 
 	// === STOCK MANAGEMENT ACTIONS ===
-	adjustStock: async (productId, locationId, quantity) => {
+	adjustStock: async (productId, locationId, quantity, expirationDate = null, lowStockThreshold = null, expirationThreshold = null) => {
 		try {
-			await inventoryService.adjustStock(productId, locationId, quantity);
+			await inventoryService.adjustStock(productId, locationId, quantity, expirationDate, lowStockThreshold, expirationThreshold);
 
 			toast({
 				title: "Stock Adjusted",

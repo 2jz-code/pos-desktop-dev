@@ -12,6 +12,7 @@ from .views import (
     BulkStockCheckView,
     InventoryDashboardView,
     QuickStockAdjustmentView,
+    InventoryDefaultsView,
     barcode_stock_lookup,
     barcode_stock_adjustment,
 )
@@ -61,4 +62,6 @@ urlpatterns = [
         QuickStockAdjustmentView.as_view(),
         name="quick-stock-adjustment",
     ),
+    # Global defaults
+    path("defaults/", InventoryDefaultsView.as_view(), name="inventory-defaults"),
 ]

@@ -51,7 +51,7 @@ class InventoryService {
 
 	/**
 	 * Get all inventory stock levels
-	 * @param {Object} filters - Optional filters {location, search, product}
+	 * @param {Object} filters - Optional filters {location, search, product, is_low_stock, is_expiring_soon}
 	 * @returns {Promise} API response with all stock records
 	 */
 	async getAllStock(filters = {}) {
@@ -73,6 +73,15 @@ class InventoryService {
 				params.append('product', filters.product);
 			}
 			
+			// Add status filters if provided
+			if (filters.is_low_stock) {
+				params.append('is_low_stock', filters.is_low_stock);
+			}
+			
+			if (filters.is_expiring_soon) {
+				params.append('is_expiring_soon', filters.is_expiring_soon);
+			}
+			
 			const queryString = params.toString();
 			const url = queryString ? `/inventory/stock/?${queryString}` : "/inventory/stock/";
 			
@@ -85,19 +94,50 @@ class InventoryService {
 	}
 
 	/**
+	 * Get stock levels for a specific product across all locations
+	 * @param {number} productId - Product ID to get stock for
+	 * @returns {Promise} API response with stock records for the specific product
+	 */
+	async getStockByProduct(productId) {
+		try {
+			const response = await apiClient.get(`/inventory/stock/product/${productId}/`);
+			return response.data;
+		} catch (error) {
+			console.error(`Failed to get stock for product ${productId}:`, error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Adjust stock for a product
 	 * @param {number} productId - Product ID
 	 * @param {number} locationId - Location ID
 	 * @param {number} quantity - Quantity to adjust (positive to add, negative to remove)
+	 * @param {string} expirationDate - Optional expiration date (YYYY-MM-DD)
+	 * @param {number} lowStockThreshold - Optional low stock threshold
+	 * @param {number} expirationThreshold - Optional expiration warning threshold in days
 	 * @returns {Promise} API response
 	 */
-	async adjustStock(productId, locationId, quantity) {
+	async adjustStock(productId, locationId, quantity, expirationDate = null, lowStockThreshold = null, expirationThreshold = null) {
 		try {
-			const response = await apiClient.post("/inventory/stock/adjust/", {
+			const payload = {
 				product_id: productId,
 				location_id: locationId,
 				quantity: quantity,
-			});
+			};
+
+			// Add optional fields if provided
+			if (expirationDate) {
+				payload.expiration_date = expirationDate;
+			}
+			if (lowStockThreshold !== null && lowStockThreshold !== undefined) {
+				payload.low_stock_threshold = lowStockThreshold;
+			}
+			if (expirationThreshold !== null && expirationThreshold !== undefined) {
+				payload.expiration_threshold = expirationThreshold;
+			}
+
+			const response = await apiClient.post("/inventory/stock/adjust/", payload);
 			return response.data;
 		} catch (error) {
 			console.error("Failed to adjust stock:", error);
@@ -286,6 +326,20 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get global inventory default settings
+	 * @returns {Promise} API response with default thresholds
+	 */
+	async getInventoryDefaults() {
+		try {
+			const response = await apiClient.get("/inventory/defaults/");
+			return response.data;
+		} catch (error) {
+			console.error("Failed to get inventory defaults:", error);
+			throw error;
+		}
+	}
 }
 
 const inventoryService = new InventoryService();
@@ -296,11 +350,12 @@ export default inventoryService;
 // Export individual methods for easier imports
 export const getDashboardData = () => inventoryService.getDashboardData();
 export const getAllStock = (filters) => inventoryService.getAllStock(filters);
+export const getStockByProduct = (productId) => inventoryService.getStockByProduct(productId);
 export const getLocations = () => inventoryService.getLocations();
 export const createLocation = (locationData) => inventoryService.createLocation(locationData);
 export const updateLocation = (locationId, locationData) => inventoryService.updateLocation(locationId, locationData);
 export const deleteLocation = (locationId) => inventoryService.deleteLocation(locationId);
-export const adjustStock = (productId, locationId, quantity) => inventoryService.adjustStock(productId, locationId, quantity);
+export const adjustStock = (productId, locationId, quantity, expirationDate, lowStockThreshold, expirationThreshold) => inventoryService.adjustStock(productId, locationId, quantity, expirationDate, lowStockThreshold, expirationThreshold);
 export const transferStock = (productId, fromLocationId, toLocationId, quantity) => inventoryService.transferStock(productId, fromLocationId, toLocationId, quantity);
 export const checkProductStock = (productId) => inventoryService.checkProductStock(productId);
 export const checkBulkStock = (productIds) => inventoryService.checkBulkStock(productIds);
@@ -309,3 +364,4 @@ export const getRecipes = () => inventoryService.getRecipes();
 export const createRecipe = (recipeData) => inventoryService.createRecipe(recipeData);
 export const updateRecipe = (recipeId, recipeData) => inventoryService.updateRecipe(recipeId, recipeData);
 export const deleteRecipe = (recipeId) => inventoryService.deleteRecipe(recipeId);
+export const getInventoryDefaults = () => inventoryService.getInventoryDefaults();

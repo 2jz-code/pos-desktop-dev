@@ -35,7 +35,7 @@ services:
     env_file:
       - .env
     environment:
-      - SKIP_MIGRATIONS=true
+      - SKIP_MIGRATIONS=false
       - DATABASE_URL=postgresql://${DB_USER:-pos_user}:${DB_PASSWORD:-pos_password}@db:5432/${DB_NAME:-pos_db}
       - REDIS_URL=redis://127.0.0.1:6379/0
       - DJANGO_SETTINGS_MODULE=core_backend.settings

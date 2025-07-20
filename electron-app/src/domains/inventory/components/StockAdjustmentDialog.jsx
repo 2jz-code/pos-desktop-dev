@@ -19,10 +19,11 @@ import {
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
-import { Plus, Minus, Package } from "lucide-react";
+import { Plus, Minus, Package, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import SearchableSelect from "@/shared/components/SearchableSelect";
+import { adjustStock as adjustStockAPI, getInventoryDefaults } from "@/domains/inventory/services/inventoryService";
 
 const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, onSuccess }) => {
 	const [formData, setFormData] = useState({
@@ -31,9 +32,16 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 		quantity: "",
 		adjustment_type: "add", // 'add' or 'remove'
 		reason: "",
+		expiration_date: "",
+		low_stock_threshold: "",
+		expiration_threshold: "",
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
+	const [defaults, setDefaults] = useState({
+		default_low_stock_threshold: 10,
+		default_expiration_threshold: 7
+	});
 
 	// Get data and actions from the store
 	const { 
@@ -60,6 +68,17 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 			if (!products.length || !locations.length) {
 				loadInventoryData();
 			}
+			
+			// Fetch global defaults
+			const fetchDefaults = async () => {
+				try {
+					const defaultSettings = await getInventoryDefaults();
+					setDefaults(defaultSettings);
+				} catch (error) {
+					console.error("Failed to fetch inventory defaults:", error);
+				}
+			};
+			fetchDefaults();
 			
 			if (product) {
 				setFormData((prev) => ({
@@ -126,36 +145,50 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 					? parseFloat(formData.quantity)
 					: -parseFloat(formData.quantity);
 
-			const result = await adjustStock(
-				parseInt(formData.product_id),
-				parseInt(formData.location_id),
-				quantity
+			// Prepare the API payload with new fields
+			const payload = {
+				product_id: parseInt(formData.product_id),
+				location_id: parseInt(formData.location_id),
+				quantity: quantity,
+			};
+
+			// Add optional fields if provided
+			if (formData.expiration_date) {
+				payload.expiration_date = formData.expiration_date;
+			}
+			if (formData.low_stock_threshold) {
+				payload.low_stock_threshold = parseFloat(formData.low_stock_threshold);
+			}
+			if (formData.expiration_threshold) {
+				payload.expiration_threshold = parseInt(formData.expiration_threshold);
+			}
+
+			// Use the direct API call that supports the new fields
+			const result = await adjustStockAPI(
+				payload.product_id,
+				payload.location_id,
+				payload.quantity,
+				payload.expiration_date,
+				payload.low_stock_threshold,
+				payload.expiration_threshold
 			);
 
-			if (result.success) {
-				const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
-				const selectedLocation = locations.find((l) => l.id.toString() === formData.location_id);
+			const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
+			const selectedLocation = locations.find((l) => l.id.toString() === formData.location_id);
 
-				toast.success("Stock Adjusted", {
-					description: `${
-						formData.adjustment_type === "add" ? "Added" : "Removed"
-					} ${Math.abs(quantity)} units of ${selectedProduct?.name} at ${
-						selectedLocation?.name
-					}`,
-				});
+			toast.success("Stock Adjusted", {
+				description: `${
+					formData.adjustment_type === "add" ? "Added" : "Removed"
+				} ${Math.abs(quantity)} units of ${selectedProduct?.name} at ${
+					selectedLocation?.name
+				}`,
+			});
 
-				if (onSuccess) {
-					onSuccess();
-				}
-
-				handleClose();
-			} else {
-				const errorMessage = result.error || "Failed to adjust stock";
-				setError(errorMessage);
-				toast.error("Stock Adjustment Failed", {
-					description: errorMessage,
-				});
+			if (onSuccess) {
+				onSuccess();
 			}
+
+			handleClose();
 		} catch (error) {
 			console.error("Failed to adjust stock:", error);
 			const errorMessage = "Failed to adjust stock";
@@ -175,6 +208,9 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 			quantity: "",
 			adjustment_type: "add",
 			reason: "",
+			expiration_date: "",
+			low_stock_threshold: "",
+			expiration_threshold: "",
 		});
 		setError("");
 		if (onOpenChange) {
@@ -335,6 +371,63 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 							placeholder="Reason for adjustment (e.g., damaged goods, found extra stock)"
 							rows={3}
 						/>
+					</div>
+
+					<div className="space-y-4 border-t pt-4">
+						<div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+							<Calendar className="h-4 w-4" />
+							Expiration & Threshold Settings
+						</div>
+						
+						<div className="space-y-2">
+							<Label htmlFor="expiration_date">Expiration Date (Optional)</Label>
+							<Input
+								id="expiration_date"
+								type="date"
+								value={formData.expiration_date}
+								onChange={(e) =>
+									setFormData({ ...formData, expiration_date: e.target.value })
+								}
+								placeholder="Select expiration date"
+							/>
+						</div>
+
+						<div className="grid grid-cols-2 gap-4">
+							<div className="space-y-2">
+								<Label htmlFor="low_stock_threshold">Low Stock Threshold</Label>
+								<Input
+									id="low_stock_threshold"
+									type="number"
+									min="0"
+									step="0.01"
+									value={formData.low_stock_threshold}
+									onChange={(e) =>
+										setFormData({ ...formData, low_stock_threshold: e.target.value })
+									}
+									placeholder={`Default: ${defaults.default_low_stock_threshold}`}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Warn when stock falls below this level (leave empty for global default: {defaults.default_low_stock_threshold})
+								</p>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="expiration_threshold">Expiration Warning (Days)</Label>
+								<Input
+									id="expiration_threshold"
+									type="number"
+									min="1"
+									value={formData.expiration_threshold}
+									onChange={(e) =>
+										setFormData({ ...formData, expiration_threshold: e.target.value })
+									}
+									placeholder={`Default: ${defaults.default_expiration_threshold}`}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Warn this many days before expiration (leave empty for global default: {defaults.default_expiration_threshold})
+								</p>
+							</div>
+						</div>
 					</div>
 
 					<DialogFooter>

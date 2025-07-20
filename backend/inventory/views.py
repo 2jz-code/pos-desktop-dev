@@ -1,5 +1,7 @@
 from django.db.models import Q
 from django.shortcuts import render, get_object_or_404
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -55,6 +57,8 @@ class InventoryStockListView(generics.ListAPIView):
         
         location_id = self.request.query_params.get('location', None)
         search_query = self.request.query_params.get('search', None)
+        is_low_stock = self.request.query_params.get('is_low_stock', None)
+        is_expiring_soon = self.request.query_params.get('is_expiring_soon', None)
         
         if location_id:
             queryset = queryset.filter(location_id=location_id)
@@ -64,6 +68,38 @@ class InventoryStockListView(generics.ListAPIView):
                 Q(product__name__icontains=search_query) |
                 Q(product__barcode__icontains=search_query)
             )
+        
+        # Filter by low stock (using effective thresholds)
+        if is_low_stock and is_low_stock.lower() == 'true':
+            from django.db.models import F, Case, When, Value
+            from settings.config import app_settings
+            
+            # Use item-specific threshold if set, otherwise use global default
+            queryset = queryset.filter(
+                quantity__lte=Case(
+                    When(low_stock_threshold__isnull=False, then=F('low_stock_threshold')),
+                    default=Value(app_settings.default_low_stock_threshold),
+                )
+            )
+        
+        # Filter by expiring soon
+        if is_expiring_soon and is_expiring_soon.lower() == 'true':
+            from django.db.models import Case, When, DateField
+            from django.db.models.functions import Cast
+            
+            today = timezone.now().date()
+            # We need to use raw SQL or handle this differently since F() + timedelta is complex
+            # For simplicity, let's use a subquery approach
+            expiring_stock_ids = []
+            for stock in queryset.filter(expiration_date__isnull=False):
+                threshold_date = today + timedelta(days=stock.effective_expiration_threshold)
+                if stock.expiration_date <= threshold_date:
+                    expiring_stock_ids.append(stock.id)
+            
+            if expiring_stock_ids:
+                queryset = queryset.filter(id__in=expiring_stock_ids)
+            else:
+                queryset = queryset.none()
             
         return queryset
 
@@ -362,11 +398,27 @@ class InventoryDashboardView(APIView):
             ).select_related("product")
 
             total_products = stock_records.count()
-            low_stock_threshold = 10  # This could be configurable per product later
-            low_stock_count = stock_records.filter(
-                quantity__lt=low_stock_threshold
-            ).count()
+            
+            # Use effective low_stock_threshold for each product
+            from django.db.models import F, Case, When, Value
+            low_stock_items = stock_records.filter(
+                quantity__lte=Case(
+                    When(low_stock_threshold__isnull=False, then=F('low_stock_threshold')),
+                    default=Value(app_settings.default_low_stock_threshold),
+                )
+            )
+            low_stock_count = low_stock_items.count()
             out_of_stock_count = stock_records.filter(quantity=0).count()
+            
+            # Calculate expiring soon items
+            today = timezone.now().date()
+            expiring_soon_items = []
+            for stock in stock_records.filter(expiration_date__isnull=False):
+                threshold_date = today + timedelta(days=stock.effective_expiration_threshold)
+                if stock.expiration_date <= threshold_date:
+                    expiring_soon_items.append(stock)
+            
+            expiring_soon_count = len(expiring_soon_items)
 
             # Calculate total inventory value (basic calculation)
             total_value = sum(
@@ -380,6 +432,7 @@ class InventoryDashboardView(APIView):
                         "total_products": total_products,
                         "low_stock_count": low_stock_count,
                         "out_of_stock_count": out_of_stock_count,
+                        "expiring_soon_count": expiring_soon_count,
                         "total_value": total_value,
                     },
                     "low_stock_items": [
@@ -388,10 +441,20 @@ class InventoryDashboardView(APIView):
                             "product_name": stock.product.name,
                             "quantity": stock.quantity,
                             "price": stock.product.price,
+                            "low_stock_threshold": stock.effective_low_stock_threshold,
                         }
-                        for stock in stock_records.filter(
-                            quantity__lt=low_stock_threshold
-                        )[:10]
+                        for stock in low_stock_items[:10]
+                    ],
+                    "expiring_soon_items": [
+                        {
+                            "product_id": stock.product.id,
+                            "product_name": stock.product.name,
+                            "quantity": stock.quantity,
+                            "price": stock.product.price,
+                            "expiration_date": stock.expiration_date,
+                            "expiration_threshold": stock.effective_expiration_threshold,
+                        }
+                        for stock in expiring_soon_items[:10]
                     ],
                 }
             )
@@ -461,4 +524,25 @@ class QuickStockAdjustmentView(APIView):
             return Response(
                 {"error": f"Failed to adjust stock: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class InventoryDefaultsView(APIView):
+    """
+    Get the global inventory default settings.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            return Response(
+                {
+                    "default_low_stock_threshold": float(app_settings.default_low_stock_threshold),
+                    "default_expiration_threshold": app_settings.default_expiration_threshold,
+                }
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

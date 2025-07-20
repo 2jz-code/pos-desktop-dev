@@ -126,6 +126,18 @@ class GlobalSettings(models.Model):
         blank=True,
         help_text="Default store location for web orders and single-location setups.",
     )
+    
+    # === INVENTORY THRESHOLD DEFAULTS ===
+    default_low_stock_threshold = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=10.00,
+        help_text="Default threshold below which stock is considered low. Can be overridden per product.",
+    )
+    default_expiration_threshold = models.PositiveIntegerField(
+        default=7,
+        help_text="Default number of days before expiration to warn about expiring stock. Can be overridden per product.",
+    )
 
     def clean(self):
         if GlobalSettings.objects.exists() and not self.pk:

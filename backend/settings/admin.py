@@ -37,6 +37,13 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Inventory Defaults",
+            {
+                "fields": ("default_low_stock_threshold", "default_expiration_threshold"),
+                "description": "Global default thresholds for inventory warnings. These can be overridden per product.",
+            },
+        ),
+        (
             "Business Hours",
             {
                 "fields": ("opening_time", "closing_time", "timezone"),

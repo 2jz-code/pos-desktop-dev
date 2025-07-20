@@ -1,3 +1,5 @@
+import React, { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
 	Tabs,
 	TabsContent,
@@ -21,8 +23,20 @@ import { DeviceSettings } from "../components/DeviceSettings";
 import { PrinterSettings } from "../components/PrinterSettings";
 import { PaymentSettings } from "../components/PaymentSettings";
 import { WebOrderNotificationSettings } from "../components/WebOrderNotificationSettings";
+import { InventorySettings } from "../components/InventorySettings";
 
 export function SettingsPage() {
+	const [searchParams] = useSearchParams();
+	const [activeTab, setActiveTab] = React.useState("general");
+
+	// Handle URL tab parameter
+	useEffect(() => {
+		const tabParam = searchParams.get("tab");
+		if (tabParam) {
+			setActiveTab(tabParam);
+		}
+	}, [searchParams]);
+
 	return (
 		<>
 			<Toaster />
@@ -37,14 +51,16 @@ export function SettingsPage() {
 				{/* Tabs Section - Scrollable */}
 				<div className="flex flex-col flex-1 min-h-0 px-4 md:px-8 pb-4">
 					<Tabs
-						defaultValue="general"
+						value={activeTab}
+						onValueChange={setActiveTab}
 						className="w-full flex flex-col h-full"
 					>
 						{/* Tabs List - Fixed */}
-						<TabsList className="flex-shrink-0 grid w-full grid-cols-1 md:grid-cols-3 lg:grid-cols-7 mb-4">
+						<TabsList className="flex-shrink-0 grid w-full grid-cols-1 md:grid-cols-4 lg:grid-cols-8 mb-4">
 							<TabsTrigger value="general">General</TabsTrigger>
 							<TabsTrigger value="locations">Locations</TabsTrigger>
 							<TabsTrigger value="financials">Financial</TabsTrigger>
+							<TabsTrigger value="inventory">Inventory</TabsTrigger>
 							<TabsTrigger value="receipts">Receipts</TabsTrigger>
 							<TabsTrigger value="device">This Device</TabsTrigger>
 							<TabsTrigger value="printers">Printers & Zones</TabsTrigger>
@@ -71,6 +87,12 @@ export function SettingsPage() {
 									className="mt-0"
 								>
 									<FinancialSettings />
+								</TabsContent>
+								<TabsContent
+									value="inventory"
+									className="mt-0"
+								>
+									<InventorySettings />
 								</TabsContent>
 								<TabsContent
 									value="receipts"

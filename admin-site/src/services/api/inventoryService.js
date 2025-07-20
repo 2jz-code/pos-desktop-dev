@@ -28,6 +28,12 @@ class InventoryService {
 			if (filters.search) {
 				params.append("search", filters.search);
 			}
+			if (filters.is_low_stock) {
+				params.append("is_low_stock", filters.is_low_stock);
+			}
+			if (filters.is_expiring_soon) {
+				params.append("is_expiring_soon", filters.is_expiring_soon);
+			}
 
 			const response = await apiClient.get("/inventory/stock/", { params });
 			return response.data;
@@ -128,16 +134,30 @@ class InventoryService {
 	 * @param {number} locationId - Location ID
 	 * @param {number} quantity - Quantity to adjust (positive to add, negative to remove)
 	 * @param {string} reason - Reason for adjustment
+	 * @param {Object} extraFields - Additional fields for expiration and thresholds
 	 * @returns {Promise} API response
 	 */
-	async adjustStock(productId, locationId, quantity, reason = "") {
+	async adjustStock(productId, locationId, quantity, reason = "", extraFields = {}) {
 		try {
-			const response = await apiClient.post("/inventory/stock/adjust/", {
+			const payload = {
 				product_id: productId,
 				location_id: locationId,
 				quantity: quantity,
 				reason: reason,
-			});
+			};
+
+			// Add expiration and threshold fields if provided
+			if (extraFields.expiration_date) {
+				payload.expiration_date = extraFields.expiration_date;
+			}
+			if (extraFields.low_stock_threshold !== undefined && extraFields.low_stock_threshold !== "") {
+				payload.low_stock_threshold = parseFloat(extraFields.low_stock_threshold);
+			}
+			if (extraFields.expiration_threshold !== undefined && extraFields.expiration_threshold !== "") {
+				payload.expiration_threshold = parseInt(extraFields.expiration_threshold);
+			}
+
+			const response = await apiClient.post("/inventory/stock/adjust/", payload);
 			return response.data;
 		} catch (error) {
 			console.error("Failed to adjust stock:", error);
@@ -337,6 +357,20 @@ class InventoryService {
 			return response.data;
 		} catch (error) {
 			console.error("Failed to delete recipe:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Get inventory defaults (global threshold settings)
+	 * @returns {Promise} API response with default thresholds
+	 */
+	async getInventoryDefaults() {
+		try {
+			const response = await apiClient.get("/inventory/defaults/");
+			return response.data;
+		} catch (error) {
+			console.error("Failed to get inventory defaults:", error);
 			throw error;
 		}
 	}

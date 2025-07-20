@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
 	Card,
 	CardContent,
@@ -39,6 +40,8 @@ import {
 	Building,
 	Warehouse,
 	Search,
+	Clock,
+	Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 // @ts-expect-error - No types for JS file
@@ -70,6 +73,13 @@ interface StockItem {
 	product: Product;
 	location: Location;
 	quantity: number;
+	expiration_date?: string;
+	low_stock_threshold?: number;
+	expiration_threshold?: number;
+	effective_low_stock_threshold: number;
+	effective_expiration_threshold: number;
+	is_low_stock: boolean;
+	is_expiring_soon: boolean;
 }
 
 interface LowStockItem {
@@ -82,6 +92,7 @@ interface DashboardSummary {
 	total_products: number;
 	low_stock_count: number;
 	out_of_stock_count: number;
+	expiring_soon_count: number;
 	total_value: number;
 }
 
@@ -89,9 +100,11 @@ interface DashboardData {
 	location?: string;
 	summary?: DashboardSummary;
 	low_stock_items?: LowStockItem[];
+	expiring_soon_items?: LowStockItem[];
 }
 
 export const InventoryPage = () => {
+	const navigate = useNavigate();
 	const [highlightedProductId] = useState<number | null>(null);
 	const [currentEditingProduct, setCurrentEditingProduct] =
 		useState<Product | null>(null);
@@ -100,7 +113,7 @@ export const InventoryPage = () => {
 	const [currentLocationMode, setCurrentLocationMode] = useState<
 		"create" | "edit"
 	>("create");
-	const [activeTab, setActiveTab] = useState("all-stock");
+	const [activeTab, setActiveTab] = useState("overview");
 
 	// Dialog states
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] =
@@ -112,6 +125,7 @@ export const InventoryPage = () => {
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+	const [stockFilter, setStockFilter] = useState("all"); // all, low_stock, expiring_soon
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
 	const queryClient = useQueryClient();
@@ -127,8 +141,10 @@ export const InventoryPage = () => {
 		() => ({
 			location: selectedLocation,
 			search: debouncedSearchQuery,
+			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
+			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
 		}),
-		[selectedLocation, debouncedSearchQuery]
+		[selectedLocation, debouncedSearchQuery, stockFilter]
 	);
 
 	const { data: stockData, isLoading: stockLoading } = useQuery<StockItem[]>({
@@ -246,6 +262,14 @@ export const InventoryPage = () => {
 						<RefreshCw className="h-4 w-4 mr-2" />
 						Refresh Data
 					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => navigate('/settings?tab=inventory')}
+					>
+						<Settings className="h-4 w-4 mr-2" />
+						Configure Defaults
+					</Button>
 
 					<Button
 						size="sm"
@@ -264,7 +288,7 @@ export const InventoryPage = () => {
 				</div>
 			</header>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-shrink-0">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
@@ -288,6 +312,19 @@ export const InventoryPage = () => {
 					<CardContent>
 						<div className="text-2xl font-bold text-amber-600">
 							{dashboardData?.summary?.low_stock_count || 0}
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Expiring Soon
+						</CardTitle>
+						<Clock className="h-4 w-4 text-orange-500" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-orange-600">
+							{dashboardData?.summary?.expiring_soon_count || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -397,6 +434,66 @@ export const InventoryPage = () => {
 									</CardContent>
 								</Card>
 							)}
+
+						{dashboardData?.expiring_soon_items &&
+							dashboardData.expiring_soon_items.length > 0 && (
+								<Card className="mt-4 border-orange-200 bg-orange-50 dark:bg-orange-900/20">
+									<CardHeader>
+										<CardTitle className="text-orange-800 dark:text-orange-200 flex items-center gap-2">
+											<Clock className="h-5 w-5" />
+											Expiring Soon Alert
+										</CardTitle>
+										<CardDescription>
+											Items that will expire within their warning threshold
+										</CardDescription>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										{dashboardData.expiring_soon_items
+											.slice(0, 5)
+											.map((item: LowStockItem) => (
+												<div
+													key={item.product_id}
+													className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-100 dark:border-orange-800/50 shadow-sm"
+												>
+													<div className="flex items-center gap-3">
+														<div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+														<div>
+															<div className="font-medium text-gray-900 dark:text-gray-100">
+																{item.product_name}
+															</div>
+															<div className="text-sm text-gray-500 dark:text-gray-400">
+																{Number(item.quantity)} units
+															</div>
+														</div>
+													</div>
+													<div className="flex items-center gap-2">
+														<Badge
+															variant="secondary"
+															className="bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+														>
+															{Number(item.quantity)} units
+														</Badge>
+														<Button
+															size="sm"
+															variant="outline"
+															className="h-8 px-3 text-xs border-orange-200 hover:bg-orange-100 dark:border-orange-800 dark:hover:bg-orange-900/50"
+															onClick={() =>
+																handleStockAdjustmentDialog(true, {
+																	id: item.product_id,
+																	name: item.product_name,
+																	price: 0,
+																})
+															}
+														>
+															<Edit className="h-3 w-3 mr-1" />
+															Update
+														</Button>
+													</div>
+												</div>
+											))}
+									</CardContent>
+								</Card>
+							)}
 					</div>
 				</TabsContent>
 
@@ -445,6 +542,19 @@ export const InventoryPage = () => {
 											))}
 										</SelectContent>
 									</Select>
+									<Select
+										value={stockFilter}
+										onValueChange={setStockFilter}
+									>
+										<SelectTrigger className="w-[180px]">
+											<SelectValue placeholder="All Items" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Items</SelectItem>
+											<SelectItem value="low_stock">Low Stock</SelectItem>
+											<SelectItem value="expiring_soon">Expiring Soon</SelectItem>
+										</SelectContent>
+									</Select>
 								</div>
 							</div>
 						</CardHeader>
@@ -452,9 +562,10 @@ export const InventoryPage = () => {
 							<div className="h-full flex flex-col">
 								{/* Table Header */}
 								<div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-medium rounded-t-lg flex-shrink-0">
-									<div className="col-span-4">Product</div>
-									<div className="col-span-3">Location</div>
+									<div className="col-span-3">Product</div>
+									<div className="col-span-2">Location</div>
 									<div className="col-span-2 text-right">Quantity</div>
+									<div className="col-span-2 text-center">Expiration</div>
 									<div className="col-span-2 text-center">Status</div>
 									<div className="col-span-1 text-right">Actions</div>
 								</div>
@@ -466,77 +577,120 @@ export const InventoryPage = () => {
 											<RefreshCw className="h-6 w-6 animate-spin" />
 										</div>
 									) : stockData && stockData.length > 0 ? (
-										stockData.map((item) => (
-											<div
-												key={item.id}
-												className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
-													highlightedProductId === item.product.id
-														? "bg-blue-50 dark:bg-blue-900/50"
-														: ""
-												}`}
-											>
-												<div className="col-span-4 font-medium">
-													{item.product.name}
+										stockData.map((item) => {
+											const isHighlighted = highlightedProductId === item.product.id;
+											const isLowStock = item.is_low_stock;
+											const isExpiringSoon = item.is_expiring_soon;
+											const isOutOfStock = Number(item.quantity) <= 0;
+
+											// Determine status priority: Out of Stock > Expiring Soon > Low Stock > In Stock
+											let statusVariant: "default" | "secondary" | "destructive" | "outline" = "default";
+											let statusText = "In Stock";
+
+											if (isOutOfStock) {
+												statusVariant = "destructive";
+												statusText = "Out of Stock";
+											} else if (isExpiringSoon) {
+												statusVariant = "outline";
+												statusText = "Expiring Soon";
+											} else if (isLowStock) {
+												statusVariant = "secondary";
+												statusText = "Low Stock";
+											}
+
+											return (
+												<div
+													key={item.id}
+													className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
+														isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""
+													}`}
+												>
+													<div className={`col-span-3 font-medium ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														{item.product.name}
+													</div>
+													<div className={`col-span-2 text-muted-foreground flex items-center ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														<MapPin className="h-4 w-4 mr-2" />
+														{item.location.name}
+													</div>
+													<div className={`col-span-2 text-right ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														{Number(item.quantity).toFixed(2)}
+													</div>
+													<div className={`col-span-2 ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														<div className="text-center">
+															{item.expiration_date ? (
+																<div className="text-sm">
+																	<div>{new Date(item.expiration_date).toLocaleDateString()}</div>
+																	{isExpiringSoon && (
+																		<div className="text-xs text-orange-600 dark:text-orange-400">
+																			{item.effective_expiration_threshold} day threshold
+																		</div>
+																	)}
+																</div>
+															) : (
+																<span className="text-muted-foreground text-sm">No expiration</span>
+															)}
+														</div>
+													</div>
+													<div className={`col-span-2 ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														<div className="text-center space-y-1">
+															<div>
+																<Badge
+																	variant={statusVariant}
+																	className={
+																		isExpiringSoon && !isOutOfStock
+																			? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/50 dark:text-orange-200"
+																			: ""
+																	}
+																>
+																	{statusText}
+																</Badge>
+															</div>
+															{/* Show additional status if item has multiple issues */}
+															{isExpiringSoon && isLowStock && !isOutOfStock && (
+																<div>
+																	<Badge variant="secondary" className="text-xs">
+																		Low Stock
+																	</Badge>
+																</div>
+															)}
+														</div>
+													</div>
+													<div className={`col-span-1 flex justify-end ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+														<DropdownMenu>
+															<DropdownMenuTrigger asChild>
+																<Button
+																	variant="ghost"
+																	size="icon"
+																>
+																	<MoreVertical className="h-4 w-4" />
+																</Button>
+															</DropdownMenuTrigger>
+															<DropdownMenuContent align="end">
+																<DropdownMenuItem
+																	onClick={() =>
+																		handleStockAdjustmentDialog(
+																			true,
+																			item.product
+																		)
+																	}
+																>
+																	<Edit className="mr-2 h-4 w-4" />
+																	Adjust Stock
+																</DropdownMenuItem>
+																<DropdownMenuItem
+																	onClick={() =>
+																		handleStockTransferDialog(true, item.product)
+																	}
+																>
+																	<ArrowUpDown className="mr-2 h-4 w-4" />
+																	Transfer
+																</DropdownMenuItem>
+															</DropdownMenuContent>
+														</DropdownMenu>
+													</div>
 												</div>
-												<div className="col-span-3 text-muted-foreground flex items-center">
-													<MapPin className="h-4 w-4 mr-2" />
-													{item.location.name}
-												</div>
-												<div className="col-span-2 text-right">
-													{Number(item.quantity).toFixed(2)}
-												</div>
-												<div className="col-span-2 text-center">
-													<Badge
-														variant={
-															Number(item.quantity) <= 0
-																? "destructive"
-																: Number(item.quantity) <= 10
-																? "secondary"
-																: "default"
-														}
-													>
-														{Number(item.quantity) <= 0
-															? "Out of Stock"
-															: Number(item.quantity) <= 10
-															? "Low Stock"
-															: "In Stock"}
-													</Badge>
-												</div>
-												<div className="col-span-1 flex justify-end">
-													<DropdownMenu>
-														<DropdownMenuTrigger asChild>
-															<Button
-																variant="ghost"
-																size="icon"
-															>
-																<MoreVertical className="h-4 w-4" />
-															</Button>
-														</DropdownMenuTrigger>
-														<DropdownMenuContent align="end">
-															<DropdownMenuItem
-																onClick={() =>
-																	handleStockAdjustmentDialog(
-																		true,
-																		item.product
-																	)
-																}
-															>
-																<Edit className="mr-2 h-4 w-4" />
-																Adjust Stock
-															</DropdownMenuItem>
-															<DropdownMenuItem
-																onClick={() =>
-																	handleStockTransferDialog(true, item.product)
-																}
-															>
-																<ArrowUpDown className="mr-2 h-4 w-4" />
-																Transfer
-															</DropdownMenuItem>
-														</DropdownMenuContent>
-													</DropdownMenu>
-												</div>
-											</div>
-										))
+											);
+										})
 									) : (
 										<div className="flex flex-col items-center justify-center h-full text-center py-10">
 											<Package className="h-12 w-12 text-muted-foreground" />

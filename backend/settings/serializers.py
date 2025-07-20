@@ -24,6 +24,8 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "active_terminal_provider",
             "default_inventory_location",
             "allow_discount_stacking",
+            "default_low_stock_threshold",
+            "default_expiration_threshold",
         ]
 
 

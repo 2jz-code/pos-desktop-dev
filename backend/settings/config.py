@@ -98,6 +98,10 @@ class AppSettings:
             self.default_inventory_location_id: int | None = (
                 settings_obj.default_inventory_location_id
             )
+            
+            # === INVENTORY THRESHOLD DEFAULTS ===
+            self.default_low_stock_threshold: Decimal = settings_obj.default_low_stock_threshold
+            self.default_expiration_threshold: int = settings_obj.default_expiration_threshold
 
             if created:
                 print("Created default GlobalSettings instance")

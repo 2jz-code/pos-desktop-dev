@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from datetime import timedelta
 from products.models import Product
 
 
@@ -41,6 +43,58 @@ class InventoryStock(models.Model):
         default=0.00,
         help_text=_("Quantity of stock on hand."),
     )
+    expiration_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=_("Date when this stock expires."),
+    )
+    low_stock_threshold = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("Threshold below which stock is considered low. If not set, uses global default."),
+    )
+    expiration_threshold = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Number of days before expiration to warn about expiring stock. If not set, uses global default."),
+    )
+
+    @property
+    def effective_low_stock_threshold(self):
+        """Returns the effective low stock threshold (item-specific or global default)."""
+        if self.low_stock_threshold is not None:
+            return self.low_stock_threshold
+        
+        # Import here to avoid circular imports
+        from settings.config import app_settings
+        return app_settings.default_low_stock_threshold
+
+    @property
+    def effective_expiration_threshold(self):
+        """Returns the effective expiration threshold (item-specific or global default)."""
+        if self.expiration_threshold is not None:
+            return self.expiration_threshold
+        
+        # Import here to avoid circular imports
+        from settings.config import app_settings
+        return app_settings.default_expiration_threshold
+
+    @property
+    def is_low_stock(self):
+        """Returns True if the current quantity is at or below the effective low stock threshold."""
+        return self.quantity <= self.effective_low_stock_threshold
+
+    @property
+    def is_expiring_soon(self):
+        """Returns True if the expiration date is within the effective expiration threshold days."""
+        if not self.expiration_date:
+            return False
+        
+        today = timezone.now().date()
+        threshold_date = today + timedelta(days=self.effective_expiration_threshold)
+        return self.expiration_date <= threshold_date
 
     class Meta:
         verbose_name = _("Inventory Stock")
