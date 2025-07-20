@@ -296,15 +296,55 @@ const Navbar = () => {
 			</Link>
 		));
 
+	const renderMobileNavLinks = () =>
+		navLinks.map((link) => (
+			<Link
+				key={link.name}
+				to={link.href}
+				className="block px-3 py-2 text-base font-medium text-accent-dark-brown hover:text-primary-green hover:bg-gray-50 rounded-md transition-colors"
+				onClick={() => setMobileMenuOpen(false)}
+			>
+				{link.name}
+			</Link>
+		));
+
 	const renderAuthButtons = () => {
 		if (isAuthenticated) {
+			// Mobile profile menu: My Profile link with logout button
+			if (mobileMenuOpen) {
+				return (
+					<div className="flex items-center justify-between w-full px-3 py-2 bg-gray-50 rounded-md">
+						<Link
+							to="/dashboard"
+							onClick={() => setMobileMenuOpen(false)}
+							className="flex items-center text-accent-dark-brown hover:text-primary-green transition-colors"
+						>
+							<User size={20} className="mr-3" />
+							<span className="font-medium">My Profile</span>
+						</Link>
+						<button
+							onClick={() => {
+								logout();
+								setMobileMenuOpen(false);
+							}}
+							className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+							aria-label="Logout"
+						>
+							<LogOut size={20} />
+						</button>
+					</div>
+				);
+			}
+			// Desktop profile dropdown
 			return <ProfileDropdown />;
 		}
 		return (
 			<Button
 				onClick={() => navigate("/login")}
 				className={`${
-					isHomePage && !scrolled && !mobileMenuOpen
+					mobileMenuOpen
+						? "w-full bg-primary-green text-white hover:bg-primary-green/90"
+						: isHomePage && !scrolled
 						? "bg-white/20 text-white hover:bg-white/30 rounded-full"
 						: "bg-primary-green text-white hover:bg-primary-green/90 rounded-full"
 				} transition-colors`}
@@ -413,42 +453,39 @@ const Navbar = () => {
 						className="md:hidden bg-accent-light-beige/95 backdrop-blur-sm"
 					>
 						<div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-							{renderNavLinks()}
+							{renderMobileNavLinks()}
 							<div className="border-t border-gray-200 pt-4 pb-3">
-								<div className="flex items-center px-2">
-									<div className="flex-shrink-0">
-										<Button
-											variant="ghost"
-											size="icon"
-											onClick={(e) => {
-												handleCartClick(e);
-												setMobileMenuOpen(false);
-											}}
-											className="text-accent-dark-brown relative"
-										>
-											<ShoppingCart
-												aria-hidden="true"
-												size={24}
-											/>
-											{cartItemCount > 0 && (
-												<span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary-green text-xs font-bold text-white">
-													{cartItemCount}
-												</span>
-											)}
-											<span className="sr-only">Open cart</span>
-										</Button>
-									</div>
-									<div className="ml-auto flex items-center space-x-2">
-										<Button
-											onClick={() => {
-												navigate("/menu");
-												setMobileMenuOpen(false);
-											}}
-											className="bg-accent-warm-brown text-white hover:bg-accent-warm-brown/90 text-sm"
-											size="sm"
-										>
-											Order Now
-										</Button>
+								<div className="px-2 space-y-3">
+									<Button
+										variant="ghost"
+										onClick={(e) => {
+											handleCartClick(e);
+											setMobileMenuOpen(false);
+										}}
+										className="w-full justify-start text-accent-dark-brown relative"
+									>
+										<ShoppingCart
+											aria-hidden="true"
+											size={20}
+											className="mr-3"
+										/>
+										<span>Cart</span>
+										{cartItemCount > 0 && (
+											<span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-primary-green text-xs font-bold text-white">
+												{cartItemCount}
+											</span>
+										)}
+									</Button>
+									<Button
+										onClick={() => {
+											navigate("/menu");
+											setMobileMenuOpen(false);
+										}}
+										className="w-full bg-accent-warm-brown text-white hover:bg-accent-warm-brown/90"
+									>
+										Order Now
+									</Button>
+									<div className="w-full">
 										{renderAuthButtons()}
 									</div>
 								</div>

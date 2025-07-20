@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import TipSelector from "./TipSelector";
 import {
 	ArrowLeft,
 	CreditCard,
@@ -13,17 +14,25 @@ import {
 
 const PaymentForm = ({
 	formData,
+	updateFormData,
 	onBack,
 	onSubmit,
 	isLoading,
 	isAuthenticated,
 	user,
+	cart,
 }) => {
 	const stripe = useStripe();
 	const elements = useElements();
 	const [cardComplete, setCardComplete] = useState(false);
 	const [cardError, setCardError] = useState(null);
 	const [isProcessing, setIsProcessing] = useState(false);
+
+	// Get current tip from formData, default to 0
+	const currentTip = formData.tip || 0;
+	
+	// Get subtotal for tip calculation
+	const subtotal = cart?.subtotal || 0;
 
 	useEffect(() => {
 		if (!isLoading) {
@@ -36,12 +45,23 @@ const PaymentForm = ({
 		setCardError(event.error ? event.error.message : null);
 	};
 
+	const handleTipChange = (tipAmount) => {
+		// Update formData with tip amount for payment processing
+		console.log('🎯 TipSelector called handleTipChange with:', tipAmount);
+		updateFormData('tip', tipAmount);
+		console.log('🎯 After updateFormData, formData.tip should be:', tipAmount);
+		// Note: OrderSummary will handle display calculations using this tip amount
+	};
+
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 
 		if (!stripe || !elements || !cardComplete || isLoading || isProcessing) {
 			return;
 		}
+
+		console.log('🎯 PaymentForm handleSubmit - Current formData.tip:', formData.tip);
+		console.log('🎯 PaymentForm handleSubmit - Full formData:', formData);
 
 		setIsProcessing(true);
 
@@ -164,6 +184,13 @@ const PaymentForm = ({
 							</div>
 						)}
 					</div>
+
+					{/* Tip Selection */}
+					<TipSelector
+						onTipChange={handleTipChange}
+						subtotal={subtotal}
+						currentTip={currentTip}
+					/>
 
 					{/* Payment Method */}
 					<div className="space-y-4">

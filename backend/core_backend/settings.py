@@ -117,17 +117,6 @@ DATABASES = {
     )
 }
 
-# PostgreSQL SSL configuration for production
-if not DEBUG and DATABASES['default']['ENGINE'] == 'django.db.backends.postgresql':
-    DB_SSLMODE = os.getenv("DB_SSLMODE", "verify-ca")
-    DATABASES['default']['OPTIONS'] = {
-        'sslmode': DB_SSLMODE,
-    }
-    
-    # Add SSL certificate path if using verify-ca or verify-full
-    if DB_SSLMODE in ["verify-ca", "verify-full"]:
-        DATABASES['default']['OPTIONS']['sslrootcert'] = "/app/certs/global-bundle.pem"
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -234,7 +223,9 @@ AUTH_USER_MODEL = "users.User"
 CORS_ALLOW_CREDENTIALS = True
 # CORS settings - dynamically load from environment
 CORS_ALLOWED_ORIGINS = (
-    os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if os.getenv("CORS_ALLOWED_ORIGINS") else [
+    os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if os.getenv("CORS_ALLOWED_ORIGINS")
+    else [
         "http://localhost:5173",  # React/Vite dev server
         "http://127.0.0.1:5173",
         "http://localhost:8001",  # For electron app requests
@@ -251,22 +242,24 @@ CORS_ALLOWED_ORIGINS = (
 
 # Allow custom headers for Electron POS app
 CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'x-client-type',
-    'x-client-version',
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-client-type",
+    "x-client-version",
 ]
 
 # CSRF Trusted Origins - dynamically load from environment
 CSRF_TRUSTED_ORIGINS = (
-    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else [
+    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if os.getenv("CSRF_TRUSTED_ORIGINS")
+    else [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8001",
@@ -296,15 +289,15 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    
+
     # Cookie security
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = "Lax"
-    
+
     # Additional security headers
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    
+
     # Proxy settings for AWS ALB
     USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -512,49 +505,6 @@ EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL")
 BUSINESS_CONTACT_EMAIL = os.environ.get("DJANGO_BUSINESS_CONTACT_EMAIL")
-
-# Logging Configuration
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'django.db.backends': {
-            'handlers': ['console'],
-            'level': 'WARNING' if not DEBUG else 'DEBUG',
-            'propagate': False,
-        },
-        'core_backend': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-    },
-}
 
 # ==============================================================================
 # CELERY SETTINGS

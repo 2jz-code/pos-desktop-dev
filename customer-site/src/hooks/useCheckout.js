@@ -17,6 +17,7 @@ const initialFormData = {
 	email: "",
 	phone: "",
 	orderNotes: "",
+	tip: 0,
 };
 
 export const useCheckout = () => {
@@ -45,7 +46,13 @@ export const useCheckout = () => {
 	// Update form data
 	const updateFormData = useCallback(
 		(field, value) => {
-			setFormData((prev) => ({ ...prev, [field]: value }));
+			console.log('🎯 updateFormData called with field:', field, 'value:', value);
+			setFormData((prev) => {
+				const newFormData = { ...prev, [field]: value };
+				console.log('🎯 updateFormData - previous formData:', prev);
+				console.log('🎯 updateFormData - new formData:', newFormData);
+				return newFormData;
+			});
 			// Clear error when user makes changes
 			if (error) setError(null);
 		},
@@ -164,6 +171,7 @@ export const useCheckout = () => {
 	useEffect(() => {
 		fetchSurchargeDisplay();
 	}, [fetchSurchargeDisplay]);
+
 
 	// Step navigation
 	const nextStep = useCallback(() => {
@@ -308,10 +316,11 @@ export const useCheckout = () => {
 	// Note: Authenticated payment intents are now handled in handleAuthenticatedCheckout
 
 	// Complete guest payment
-	const completeGuestPayment = useCallback(async (paymentIntentId, orderId) => {
+	const completeGuestPayment = useCallback(async (paymentIntentId, orderId, tipAmount = 0) => {
 		return await paymentsAPI.completeGuestPayment({
 			payment_intent_id: paymentIntentId,
 			order_id: orderId,
+			tip: tipAmount,
 		});
 	}, []);
 
@@ -319,7 +328,7 @@ export const useCheckout = () => {
 
 	// Authenticated user checkout function (must be defined before submitOrder)
 	const handleAuthenticatedCheckout = useCallback(
-		async ({ stripe, cardElement }) => {
+		async ({ stripe, cardElement, tipAmount = 0 }) => {
 			try {
 				setIsLoading(true);
 				setError(null);
@@ -367,10 +376,13 @@ export const useCheckout = () => {
 
 				// Step 3: Complete payment on backend
 				console.log("Completing payment on backend...");
+				console.log('🎯 About to send payment completion with tipAmount:', tipAmount);
+				console.log('🎯 Full formData at payment completion:', formData);
 				const completionResponse =
 					await paymentsAPI.completeAuthenticatedPayment({
 						payment_intent_id: paymentIntent.id,
 						order_id: cart.id, // Use the cart ID
+						tip: tipAmount,
 					});
 
 				console.log("Payment completed on backend:", completionResponse);
@@ -424,10 +436,11 @@ export const useCheckout = () => {
 				// Step 1: Create/get the order based on user type
 				if (isAuthenticated && user) {
 					console.log("Routing to authenticated checkout...");
+					console.log('🎯 Passing tip to handleAuthenticatedCheckout:', formData.tip);
 					// Use the new authenticated checkout method
 					isProcessingRef.current = false; // Reset flag before calling
 					setIsLoading(false);
-					return handleAuthenticatedCheckout({ stripe, cardElement });
+					return handleAuthenticatedCheckout({ stripe, cardElement, tipAmount: formData.tip || 0 });
 				} else {
 					console.log("Processing guest user order...");
 					order = await createGuestOrder();
@@ -468,7 +481,8 @@ export const useCheckout = () => {
 					// Complete the guest payment (now returns order data directly)
 					const completionResponse = await completeGuestPayment(
 						confirmedPayment.id,
-						order.id
+						order.id,
+						formData.tip || 0
 					);
 
 					// Use the order data returned from payment completion

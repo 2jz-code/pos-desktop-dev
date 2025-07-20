@@ -14,7 +14,7 @@ payment_completed = Signal()
 def update_order_payment_status(sender, instance, created, **kwargs):
     """
     Listens for changes on the Payment model and updates the related
-    Order's payment_status field through the OrderService.
+    Order's payment_status field and financial totals through the OrderService.
     """
     order = instance.order
     # Map the Payment status to the Order's payment_status choices

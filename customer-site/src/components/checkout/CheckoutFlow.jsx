@@ -104,6 +104,7 @@ const CheckoutFlow = () => {
 						isLoading={isSubmitting}
 						isAuthenticated={isAuthenticated}
 						user={user}
+						cart={cart}
 					/>
 				);
 			default:
@@ -186,6 +187,7 @@ const CheckoutFlow = () => {
 						cart={cart}
 						isLoading={isLoading}
 						surchargeDisplay={surchargeDisplay}
+						tip={formData.tip || 0}
 					/>
 				</div>
 			</div>

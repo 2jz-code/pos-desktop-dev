@@ -257,6 +257,7 @@ class OrderService:
         order.save()
         return order
 
+
     @staticmethod
     @transaction.atomic
     def apply_discount_to_order_by_id(order: Order, discount_id: int):

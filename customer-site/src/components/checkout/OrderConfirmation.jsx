@@ -250,19 +250,36 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								</div>
 							)}
 
-							{/* Card Processing Fee */}
+							{/* Service Fee */}
 							{(() => {
 								// Use surchargeDisplay if available, otherwise calculate from payment transactions
-								const cardProcessingFee = surchargeDisplay?.surcharge_total ||
+								const serviceFee = surchargeDisplay?.surcharge_total ||
 									(orderData.payment_details?.transactions
 										?.filter(t => t.surcharge > 0)
 										?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0)) || 0;
 								
-								return cardProcessingFee > 0 && (
+								return serviceFee > 0 && (
 									<div className="flex justify-between text-sm">
-										<span className="text-accent-dark-brown">Card Processing Fee</span>
+										<span className="text-accent-dark-brown">Service Fee</span>
 										<span className="text-accent-dark-brown">
-											${formatPrice(cardProcessingFee)}
+											${formatPrice(serviceFee)}
+										</span>
+									</div>
+								);
+							})()}
+
+							{/* Tip */}
+							{(() => {
+								// Calculate total tip from payment transactions
+								const totalTip = orderData.payment_details?.transactions
+									?.filter(t => t.tip > 0)
+									?.reduce((sum, t) => sum + parseFloat(t.tip || 0), 0) || 0;
+								
+								return totalTip > 0 && (
+									<div className="flex justify-between text-sm">
+										<span className="text-accent-dark-brown">Tip</span>
+										<span className="text-accent-dark-brown">
+											${formatPrice(totalTip)}
 										</span>
 									</div>
 								);
@@ -273,11 +290,20 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								<span className="text-accent-dark-green">Total Paid</span>
 								<span className="text-accent-dark-green">
 									${formatPrice(
-										surchargeDisplay?.totalWithSurcharge ||
-										(parseFloat(orderData.grand_total) + 
-											(orderData.payment_details?.transactions
+										(() => {
+											// Calculate the total including tip
+											const baseTotal = surchargeDisplay?.totalWithSurcharge || parseFloat(orderData.grand_total);
+											const surcharges = orderData.payment_details?.transactions
 												?.filter(t => t.surcharge > 0)
-												?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0)) || 0)
+												?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0) || 0;
+											const tips = orderData.payment_details?.transactions
+												?.filter(t => t.tip > 0)
+												?.reduce((sum, t) => sum + parseFloat(t.tip || 0), 0) || 0;
+											
+											return (surchargeDisplay?.totalWithSurcharge) 
+												? baseTotal + tips 
+												: baseTotal + surcharges + tips;
+										})()
 									)}
 								</span>
 							</div>

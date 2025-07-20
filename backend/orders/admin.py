@@ -46,7 +46,7 @@ class OrderAdmin(admin.ModelAdmin):
         "status",
         "payment_status",
         "order_type",
-        "get_grand_total_formatted",
+        "get_total_collected_formatted",
         "get_payment_in_progress_display",  # NEW: Use derived property
         "created_at",
     )
@@ -97,8 +97,8 @@ class OrderAdmin(admin.ModelAdmin):
                     "get_subtotal_formatted",
                     "get_total_discounts_formatted",
                     "get_tax_total_formatted",
-                    "get_tips_total_formatted",
                     "get_surcharges_total_formatted",
+                    "get_tips_total_formatted",
                     "get_total_collected_formatted",
                 ),
                 "description": "Order totals and payment amounts collected.",
@@ -184,7 +184,7 @@ class OrderAdmin(admin.ModelAdmin):
     def get_grand_total_formatted(self, obj):
         return self._format_currency(obj.grand_total)
 
-    get_grand_total_formatted.short_description = "Grand Total"
+    get_grand_total_formatted.short_description = "Order Total (incl. Tips & Surcharges)"
 
     def get_amount_paid_formatted(self, obj):
         """Display amount paid from Payment model (excluding tips and surcharges)."""

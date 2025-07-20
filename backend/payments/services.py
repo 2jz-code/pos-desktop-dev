@@ -569,19 +569,25 @@ class PaymentService:
 
     @staticmethod
     @transaction.atomic
-    def complete_payment(payment_intent_id: str):
+    def complete_payment(payment_intent_id: str, tip=None):
         """
         Finalizes a payment after it has been confirmed by a webhook.
         This updates the transaction, payment, and order statuses.
+        Optionally includes a tip amount in the transaction.
         """
+        from decimal import Decimal
+        
         transaction = get_object_or_404(
             PaymentTransaction.objects.select_related("payment__order"),
             transaction_id=payment_intent_id,
         )
 
-        # Mark transaction as successful
+        # Mark transaction as successful and add tip if provided
         transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-        transaction.save(update_fields=["status"])
+        if tip and tip > 0:
+            transaction.tip = Decimal(str(tip))
+        
+        transaction.save(update_fields=["status", "tip"])
 
         # Get the payment and recalculate amounts
         payment = transaction.payment

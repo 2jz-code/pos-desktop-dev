@@ -7,7 +7,7 @@ import {
 	formatSurchargeRate,
 } from "@/hooks/useSettings";
 
-const OrderSummary = ({ cart, isLoading, surchargeDisplay }) => {
+const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 	// Fetch financial settings for display purposes
 	const { data: financialSettings } = useFinancialSettings();
 
@@ -39,6 +39,9 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay }) => {
 	const taxAmount = cart.tax_total || 0;
 	const surchargeAmount = cart.surcharges_total || 0;
 	const total = cart.grand_total || 0;
+	
+	// Calculate total with frontend tip
+	const totalWithTip = total + tip;
 
 	// Get display rates from backend settings or calculate from cart data as fallback
 	const taxRateDisplay = financialSettings?.tax_rate
@@ -134,12 +137,28 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay }) => {
 							</span>
 						</div>
 					)}
+
+					{tip > 0 && (
+						<div className="flex justify-between">
+							<span className="text-accent-dark-brown/70">
+								Tip
+							</span>
+							<span className="text-accent-dark-brown">
+								${formatPrice(tip)}
+							</span>
+						</div>
+					)}
+
 					<Separator className="bg-accent-subtle-gray/30" />
 
 					<div className="flex justify-between font-semibold text-base">
 						<span className="text-accent-dark-green">Total</span>
 						<span className="text-accent-dark-green">
-							${formatPrice(surchargeDisplay ? surchargeDisplay.totalWithSurcharge : total)}
+							${formatPrice(
+								surchargeDisplay 
+									? surchargeDisplay.totalWithSurcharge + tip
+									: totalWithTip
+							)}
 						</span>
 					</div>
 				</div>

@@ -98,6 +98,8 @@ class SurchargeCalculationView(APIView):
             return Response({"surcharge": surcharge}, status=status.HTTP_200_OK)
 
 
+
+
 class AuthenticatedOrderAccessMixin(OrderAccessMixin):
     """Mixin for validating authenticated user order access."""
 
@@ -317,14 +319,19 @@ class CompleteUserPaymentView(BasePaymentView, AuthenticatedOrderAccessMixin):
     def post(self, request, *args, **kwargs):
         """Handles the completion of a payment."""
         payment_intent_id = request.data.get("payment_intent_id")
+        tip_amount = request.data.get("tip", 0)
 
         if not payment_intent_id:
             return self.create_error_response("payment_intent_id is required.")
 
         try:
-            # Delegate completion logic to the PaymentService
-            # This service method handles everything: transaction status, payment status, and order status.
-            completed_payment = PaymentService.complete_payment(payment_intent_id)
+            # Delegate completion logic to the PaymentService with tip amount
+            from decimal import Decimal
+            
+            # Convert tip to Decimal for precise calculation
+            tip_decimal = Decimal(str(tip_amount)) if tip_amount else Decimal('0.00')
+            
+            completed_payment = PaymentService.complete_payment(payment_intent_id, tip=tip_decimal)
 
             # Get the completed order data for the confirmation page
             completed_order = completed_payment.order
@@ -506,7 +513,7 @@ class GiftCardListView(generics.ListAPIView):
 
     def get_queryset(self):
         """Only allow POS staff to view gift cards."""
-        if self.request.user and self.request.user.is_pos_staff:
+        if self.request.user and self.request.user.is_authenticated and self.request.user.is_pos_staff:
             from ..models import GiftCard
 
             return GiftCard.objects.all().order_by("-created_at")

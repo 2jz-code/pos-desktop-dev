@@ -10,6 +10,7 @@ export const paymentsAPI = {
 		return response.data;
 	},
 
+
 	// Create payment intent for guest checkout
 	createGuestPaymentIntent: async (orderData) => {
 		const response = await apiClient.post(

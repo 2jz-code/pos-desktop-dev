@@ -182,6 +182,7 @@ class CompleteGuestPaymentView(
     def post(self, request, *args, **kwargs):
         payment_intent_id = request.data.get("payment_intent_id")
         order_id = request.data.get("order_id")
+        tip_amount = request.data.get("tip", 0)
 
         # Validate required fields
         if not payment_intent_id:
@@ -194,10 +195,14 @@ class CompleteGuestPaymentView(
                 # Validate order access using the mixin
                 self.validate_order_access(order, request)
 
-            # Complete the payment using the service
+            # Complete the payment using the service with tip amount
             from ..services import PaymentService
+            from decimal import Decimal
 
-            completed_payment = PaymentService.complete_payment(payment_intent_id)
+            # Convert tip to Decimal for precise calculation
+            tip_decimal = Decimal(str(tip_amount)) if tip_amount else Decimal('0.00')
+
+            completed_payment = PaymentService.complete_payment(payment_intent_id, tip=tip_decimal)
 
             # Get the completed order data before clearing the session
             completed_order = completed_payment.order

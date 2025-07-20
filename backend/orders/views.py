@@ -110,7 +110,7 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
         queryset = super().get_queryset()
 
         # If user is POS staff (cashier, manager, owner, admin), return all orders
-        if self.request.user and self.request.user.is_pos_staff:
+        if self.request.user and self.request.user.is_authenticated and self.request.user.is_pos_staff:
             return queryset
 
         # If user is authenticated, return their orders
@@ -323,6 +323,7 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
                 {"error": "An error occurred while updating customer information."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
     @action(
         detail=True,
