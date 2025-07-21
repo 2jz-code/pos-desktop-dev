@@ -39,7 +39,7 @@ export async function formatReceipt(order, storeSettings = null) {
 	// Print Logo
 	try {
 		// Vite copies files from /public to the root of the dist folder.
-		const logoPath = path.join(process.env.PUBLIC, "logo.png");
+		const logoPath = path.join(process.env.PUBLIC, "logo-receipt.png");
 		await printer.printImage(logoPath);
 		printer.println(""); // Add some space after the logo
 	} catch (error) {

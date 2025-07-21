@@ -72,9 +72,16 @@ export default defineConfig({
 	},
 	// Performance optimizations
 	server: {
+		host: "0.0.0.0", // Allow external connections
+		port: 5174, // Use different port from admin-site to avoid conflicts
+		strictPort: false, // Allow port changes if 5174 is taken
 		hmr: {
 			overlay: false, // Disable error overlay for better performance
 		},
+	},
+	preview: {
+		host: "0.0.0.0", // Allow external connections for preview mode
+		port: 4174, // Use different preview port from admin-site
 	},
 	// Optimize deps
 	optimizeDeps: {

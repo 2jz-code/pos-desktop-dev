@@ -35,13 +35,15 @@ class UserService:
         """
         Set authentication cookies for staff/admin users.
         """
-        is_secure = True  # FORCE SECURE FOR SAMESITE=NONE
-        samesite_policy = "None"  # FORCE SAMESITE=NONE
+        # Use settings from environment/settings.py instead of hardcoded values
+        is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+        samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
 
         response.set_cookie(
             key=settings.SIMPLE_JWT["AUTH_COOKIE"],
             value=access_token,
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,
@@ -51,6 +53,7 @@ class UserService:
             key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
             value=refresh_token,
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,

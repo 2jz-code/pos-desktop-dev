@@ -24,7 +24,7 @@ async function formatReceipt(order, storeSettings = null) {
   });
   printer.alignCenter();
   try {
-    const logoPath = path.join(process.env.PUBLIC, "logo.png");
+    const logoPath = path.join(process.env.PUBLIC, "logo-receipt.png");
     await printer.printImage(logoPath);
     printer.println("");
   } catch (error) {
@@ -316,7 +316,7 @@ let lastKnownState = null;
 const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
 function createMainWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const persistentSession = session.fromPartition("persist:electron-app");
+  const persistentSession = session.defaultSession;
   mainWindow = new BrowserWindow({
     icon: path.join(process$1.env.PUBLIC, "electron-vite.svg"),
     x: primaryDisplay.bounds.x,
@@ -328,8 +328,8 @@ function createMainWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      allowRunningInsecureContent: false,
-      webSecurity: true,
+      allowRunningInsecureContent: true,
+      webSecurity: false,
       experimentalFeatures: false
     }
   });
@@ -661,6 +661,8 @@ ipcMain.on("shutdown-app", () => {
 });
 app.whenReady().then(async () => {
   console.log("[Main Process] Starting Electron app - online-only mode");
+  app.commandLine.appendSwitch("--ignore-certificate-errors");
+  app.commandLine.appendSwitch("--allow-running-insecure-content");
   createMainWindow();
   createCustomerWindow();
 });

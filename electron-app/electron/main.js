@@ -30,7 +30,8 @@ const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 function createMainWindow() {
 	const primaryDisplay = screen.getPrimaryDisplay();
-	const persistentSession = session.fromPartition("persist:electron-app");
+	// Use default session for proper cookie sharing with backend
+	const persistentSession = session.defaultSession;
 
 	mainWindow = new BrowserWindow({
 		icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
@@ -43,8 +44,8 @@ function createMainWindow() {
 			nodeIntegration: false,
 			contextIsolation: true,
 			enableRemoteModule: false,
-			allowRunningInsecureContent: false,
-			webSecurity: true,
+			allowRunningInsecureContent: true,
+			webSecurity: false,
 			experimentalFeatures: false,
 		},
 	});
@@ -471,6 +472,11 @@ ipcMain.on("shutdown-app", () => {
 
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
+	
+	// Allow secure cookies over HTTP in development
+	app.commandLine.appendSwitch('--ignore-certificate-errors');
+	app.commandLine.appendSwitch('--allow-running-insecure-content');
+	
 	createMainWindow();
 	createCustomerWindow();
 });

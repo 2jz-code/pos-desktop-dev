@@ -21,8 +21,13 @@ const SearchableSelect = ({
 	disabled,
 }) => {
 	const [open, setOpen] = React.useState(false);
+	const [searchValue, setSearchValue] = React.useState("");
 
 	const selectedOption = options.find((option) => option.value === value);
+
+	const filteredOptions = options.filter((option) =>
+		option.label.toLowerCase().includes(searchValue.toLowerCase())
+	);
 
 	return (
 		<Popover
@@ -43,14 +48,18 @@ const SearchableSelect = ({
 			</PopoverTrigger>
 			<PopoverContent className="w-full p-0">
 				<Command>
-					<CommandInput placeholder="Search..." />
+					<CommandInput 
+						placeholder="Search..." 
+						value={searchValue}
+						onValueChange={setSearchValue}
+					/>
 					<CommandEmpty>No options found.</CommandEmpty>
 					<ScrollArea
 						className="h-[200px]"
 						onWheel={(e) => e.stopPropagation()}
 					>
 						<CommandGroup>
-							{options.map((option) => (
+							{filteredOptions.map((option) => (
 								<CommandItem
 									key={option.value}
 									value={option.label}

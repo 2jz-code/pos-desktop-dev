@@ -121,13 +121,15 @@ class POSLoginView(APIView):
         tokens = UserService.generate_tokens_for_user(user)
         response = Response({"user": UserSerializer(user).data})
 
-        is_secure = True  # FORCE SECURE FOR SAMESITE=NONE
-        samesite_policy = "None"  # FORCE SAMESITE=NONE
+        # Use settings from environment/settings.py instead of hardcoded values
+        is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+        samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
 
         response.set_cookie(
             key=settings.SIMPLE_JWT["AUTH_COOKIE"],
             value=tokens["access"],
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,
@@ -137,6 +139,7 @@ class POSLoginView(APIView):
             key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
             value=tokens["refresh"],
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,
@@ -182,8 +185,9 @@ class WebTokenRefreshView(TokenRefreshView):
             access_token = response.data.pop("access")
             new_refresh_token = response.data.pop("refresh", None) or refresh_token
 
-            is_secure = True  # FORCE SECURE FOR SAMESITE=NONE
-            samesite_policy = "None"  # FORCE SAMESITE=NONE
+            # Use settings from environment/settings.py instead of hardcoded values
+            is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+            samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
 
             response.set_cookie(
                 key=settings.SIMPLE_JWT["AUTH_COOKIE"],
@@ -234,8 +238,8 @@ class LogoutView(APIView):
             value="",
             max_age=0,
             path="/",
-            samesite="None",
-            secure=True,
+            samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+            secure=getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
             httponly=True,
         )
         response.set_cookie(
@@ -243,8 +247,8 @@ class LogoutView(APIView):
             value="",
             max_age=0,
             path="/",
-            samesite="None",
-            secure=True,
+            samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+            secure=getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
             httponly=True,
         )
 

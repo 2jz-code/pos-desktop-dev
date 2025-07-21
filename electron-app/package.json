@@ -78,6 +78,7 @@
 		"@types/react-dom": "^19.1.2",
 		"@vitejs/plugin-react-swc": "^3.9.0",
 		"babel-jest": "^30.0.0-beta.3",
+		"cross-env": "^7.0.3",
 		"electron": "^36.4.0",
 		"electron-builder": "^26.0.12",
 		"electron-rebuild": "^3.2.9",
@@ -93,8 +94,7 @@
 		"vite": "^6.3.5",
 		"vite-plugin-electron": "^0.29.0",
 		"vite-plugin-electron-renderer": "^0.14.6",
-		"vite-plugin-static-copy": "^3.0.2",
-		"cross-env": "^7.0.3"
+		"vite-plugin-static-copy": "^3.0.2"
 	},
 	"build": {
 		"appId": "com.bakeajeen.pos",
@@ -112,16 +112,23 @@
 			"target": [
 				{
 					"target": "dmg",
-					"arch": ["x64", "arm64"]
+					"arch": [
+						"x64",
+						"arm64"
+					]
 				}
 			],
 			"icon": "public/logo.png"
 		},
 		"win": {
+			"signAndEditExecutable": false,
+			"verifyUpdateCodeSignature": false,
 			"target": [
 				{
 					"target": "nsis",
-					"arch": ["x64"]
+					"arch": [
+						"x64"
+					]
 				}
 			],
 			"icon": "public/logo.png"
@@ -130,7 +137,9 @@
 			"target": [
 				{
 					"target": "AppImage",
-					"arch": ["x64"]
+					"arch": [
+						"x64"
+					]
 				}
 			],
 			"icon": "public/logo.png"

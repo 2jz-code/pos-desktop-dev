@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party apps
+    "django_extensions",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -236,6 +237,7 @@ CORS_ALLOWED_ORIGINS = (
         "http://127.0.0.1:4173",
         "http://localhost:5175",
         "http://127.0.0.1:5175",
+        "http://192.168.5.144:8001",  # LAN backend server
         "https://pos.bakeajeen.com",  # Production Electron POS app
     ]
 )
@@ -270,6 +272,7 @@ CSRF_TRUSTED_ORIGINS = (
         "http://127.0.0.1:4173",
         "http://localhost:5175",
         "http://127.0.0.1:5175",
+        "http://192.168.5.144:8001",  # LAN backend server
         "https://pos.bakeajeen.com",  # Production Electron POS app
     ]
 )
@@ -279,8 +282,13 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS
-SESSION_COOKIE_SAMESITE = "Lax"
+# Cookie security - check environment first, then use DEBUG-based logic
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", str(not DEBUG)).lower() == "true"
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax") or None
+
+# CSRF cookie security - check environment first, then use DEBUG-based logic  
+CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", str(not DEBUG)).lower() == "true"
+CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax") or None
 
 # Production security settings
 if not DEBUG:

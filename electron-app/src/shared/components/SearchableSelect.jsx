@@ -38,7 +38,7 @@ const SearchableSelect = ({
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-full p-0">
-				<Command>
+				<Command shouldFilter={false}>
 					<CommandInput
 						placeholder="Search..."
 						value={searchValue}

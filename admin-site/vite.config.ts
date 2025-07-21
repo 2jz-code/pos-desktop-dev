@@ -6,6 +6,15 @@ import { defineConfig } from "vite";
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
+	server: {
+		host: "0.0.0.0", // Allow external connections
+		port: 5173, // Default Vite port, change if needed
+		strictPort: false, // Allow port changes if 5173 is taken
+	},
+	preview: {
+		host: "0.0.0.0", // Allow external connections for preview mode
+		port: 4173, // Default Vite preview port
+	},
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
