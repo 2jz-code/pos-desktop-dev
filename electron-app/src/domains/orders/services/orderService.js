@@ -58,3 +58,7 @@ export const holdOrder = async (orderId) => {
 export const resendConfirmationEmail = async (orderId) => {
 	return apiClient.post(`/orders/${orderId}/resend-confirmation/`);
 };
+
+export const markSentToKitchen = async (orderId) => {
+	return apiClient.post(`/orders/${orderId}/mark-sent-to-kitchen/`);
+};

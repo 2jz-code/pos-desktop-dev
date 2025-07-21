@@ -438,6 +438,23 @@ class OrderService:
         print(f"Recalculated {count} in-progress orders due to configuration change")
         return count
 
+    @staticmethod
+    @transaction.atomic
+    def mark_items_sent_to_kitchen(order_id):
+        """
+        Mark all items in an order as sent to kitchen (sets kitchen_printed_at timestamp).
+        Only updates items that haven't been marked yet.
+        """
+        from django.utils import timezone
+        
+        order = Order.objects.get(id=order_id)
+        items_to_update = order.items.filter(kitchen_printed_at__isnull=True)
+        
+        now = timezone.now()
+        updated_count = items_to_update.update(kitchen_printed_at=now)
+        
+        return updated_count
+
 
 class GuestSessionService:
     """

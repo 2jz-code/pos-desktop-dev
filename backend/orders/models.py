@@ -376,6 +376,13 @@ class OrderItem(models.Model):
     )
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order item ID from the old system.")
+    
+    # Kitchen printing tracking
+    kitchen_printed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("Timestamp when this item was first sent to kitchen. Prevents duplicate printing.")
+    )
 
     class Meta:
         verbose_name = _("Order Item")

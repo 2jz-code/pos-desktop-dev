@@ -61,10 +61,25 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 
 				console.log(`Printing kitchen ticket for zone "${zone.name}"`);
 
+				// Filter out items that have already been sent to kitchen
+				const unprintedItems = order.items.filter(item => !item.kitchen_printed_at);
+				
+				// If all items were already printed, skip this zone
+				if (unprintedItems.length === 0) {
+					console.log(`All items already sent to kitchen for zone "${zone.name}", skipping`);
+					continue;
+				}
+				
+				// Create a modified order with only unprinted items
+				const filteredOrder = {
+					...order,
+					items: unprintedItems
+				};
+
 				// Print the kitchen ticket with filtering
 				const result = await printKitchenTicket(
 					zone.printer,
-					order,
+					filteredOrder,
 					zone.name,
 					filterConfig
 				);

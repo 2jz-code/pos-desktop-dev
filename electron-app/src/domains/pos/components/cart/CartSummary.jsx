@@ -9,6 +9,7 @@ import { toast } from "@/shared/components/ui/use-toast";
 import { Loader2, Tag, X, ChefHat, CreditCard } from "lucide-react";
 import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
 import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
+import { markSentToKitchen } from "@/domains/orders/services/orderService";
 
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
@@ -193,6 +194,13 @@ const CartSummary = () => {
 			}
 
 			if (ticketsPrinted > 0) {
+				// Mark items as sent to kitchen in the backend
+				try {
+					await markSentToKitchen(orderId);
+				} catch (error) {
+					console.error("Failed to mark items as sent to kitchen:", error);
+				}
+
 				toast({
 					title: "Order Sent to Kitchen",
 					description: `${ticketsPrinted} kitchen ticket(s) printed successfully. Customer can continue shopping while food is prepared.`,

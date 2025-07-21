@@ -497,6 +497,29 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["post"], url_path="mark-sent-to-kitchen")
+    def mark_sent_to_kitchen(self, request, pk=None):
+        """
+        Mark all items in this order as sent to kitchen.
+        This prevents duplicate kitchen ticket printing.
+        """
+        try:
+            updated_count = OrderService.mark_items_sent_to_kitchen(pk)
+            return Response({
+                "message": f"Marked {updated_count} items as sent to kitchen",
+                "updated_count": updated_count
+            }, status=status.HTTP_200_OK)
+        except Order.DoesNotExist:
+            return Response(
+                {"error": "Order not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class OrderItemViewSet(viewsets.ModelViewSet):
     """
