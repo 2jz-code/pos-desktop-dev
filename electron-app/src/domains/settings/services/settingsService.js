@@ -74,7 +74,7 @@ export const upsertTerminalRegistration = async (data) => {
 	// This function acts as an adapter to map the keys correctly.
 	const payload = {
 		nickname: data.nickname,
-		store_location: data.store_location,
+		store_location_id: data.store_location,
 		reader_id: data.reader_id,
 		device_id: data.machineId, // Map machineId to device_id
 	};

@@ -126,7 +126,7 @@ export function DeviceSettings() {
 	});
 
 	useEffect(() => {
-		if (registration) {
+		if (registration && storeLocations) {
 			// Use the ID from the nested store_location object
 			const locationId = registration.store_location?.id?.toString() || "";
 			terminalForm.reset({
@@ -138,13 +138,13 @@ export function DeviceSettings() {
 			const readerId = registration.reader_id || null;
 			setSelectedReader(readerId);
 			setInitialReaderId(readerId);
-		} else if (!isLoadingRegistration) {
+		} else if (!isLoadingRegistration && !isLoadingLocations) {
 			terminalForm.reset({
 				nickname: "",
 				store_location: "",
 			});
 		}
-	}, [registration, terminalForm, isLoadingRegistration, setSelectedReader]);
+	}, [registration, terminalForm, isLoadingRegistration, isLoadingLocations, storeLocations, setSelectedReader]);
 
 	const { mutate: upsertRegistration, isPending: isUpsertingTerminal } =
 		useMutation({

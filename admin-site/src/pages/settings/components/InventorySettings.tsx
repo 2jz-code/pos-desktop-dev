@@ -7,6 +7,7 @@ import {
 	getGlobalSettings,
 	updateGlobalSettings,
 } from "@/services/api/settingsService";
+import inventoryService from "@/services/api/inventoryService";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +28,14 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Package, AlertTriangle, Clock } from "lucide-react";
+import { Package, AlertTriangle, Clock, MapPin } from "lucide-react";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 
 const formSchema = z.object({
 	default_low_stock_threshold: z.coerce
@@ -39,6 +47,7 @@ const formSchema = z.object({
 		.int()
 		.min(1, "Expiration threshold must be at least 1 day.")
 		.max(365, "Expiration threshold cannot exceed 365 days."),
+	default_inventory_location: z.string().optional(),
 });
 
 export function InventorySettings() {
@@ -47,6 +56,11 @@ export function InventorySettings() {
 	const { data: settings, isLoading } = useQuery({
 		queryKey: ["globalSettings"],
 		queryFn: getGlobalSettings,
+	});
+
+	const { data: locations } = useQuery({
+		queryKey: ["locations"],
+		queryFn: inventoryService.getLocations,
 	});
 
 	const mutation = useMutation({
@@ -72,21 +86,45 @@ export function InventorySettings() {
 		defaultValues: {
 			default_low_stock_threshold: 10.0,
 			default_expiration_threshold: 7,
+			default_inventory_location: "none",
 		},
 	});
 
 	// Update form when settings data is loaded
 	React.useEffect(() => {
-		if (settings) {
+		if (settings && locations && locations.length > 0) {
+			const locationValue = settings.default_inventory_location 
+				? settings.default_inventory_location.toString() 
+				: "none";
+			
 			form.reset({
 				default_low_stock_threshold: parseFloat(settings.default_low_stock_threshold || 10.0),
 				default_expiration_threshold: parseInt(settings.default_expiration_threshold || 7),
+				default_inventory_location: locationValue,
 			});
 		}
-	}, [settings, form]);
+	}, [settings, locations]);
+
+	// Additional effect to ensure form is set even if data loads in different order
+	React.useEffect(() => {
+		if (settings?.default_inventory_location && locations?.length > 0) {
+			const currentValue = form.getValues("default_inventory_location");
+			const expectedValue = settings.default_inventory_location.toString();
+			
+			// Only update if the current value doesn't match what it should be
+			if (currentValue !== expectedValue) {
+				form.setValue("default_inventory_location", expectedValue);
+			}
+		}
+	}, [settings?.default_inventory_location, locations, form]);
 
 	const onSubmit = (data: any) => {
-		mutation.mutate(data);
+		// Convert "none" to null for the API
+		const submitData = {
+			...data,
+			default_inventory_location: data.default_inventory_location === "none" ? null : data.default_inventory_location
+		};
+		mutation.mutate(submitData);
 	};
 
 	if (isLoading) {
@@ -124,7 +162,7 @@ export function InventorySettings() {
 			<CardContent>
 				<Form {...form}>
 					<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 							<FormField
 								control={form.control}
 								name="default_low_stock_threshold"
@@ -176,14 +214,47 @@ export function InventorySettings() {
 									</FormItem>
 								)}
 							/>
+
+							<FormField
+								control={form.control}
+								name="default_inventory_location"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel className="flex items-center gap-2">
+											<MapPin className="h-4 w-4 text-blue-500" />
+											Default Stock Location
+										</FormLabel>
+										<Select onValueChange={field.onChange} value={field.value}>
+											<FormControl>
+												<SelectTrigger>
+													<SelectValue placeholder="Select location" />
+												</SelectTrigger>
+											</FormControl>
+											<SelectContent>
+												<SelectItem value="none">None (Manual Selection)</SelectItem>
+												{locations?.map((location) => (
+													<SelectItem key={location.id} value={location.id.toString()}>
+														{location.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<FormDescription>
+											Default location for stock operations and sales deductions.
+										</FormDescription>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
 						</div>
 
 						<div className="bg-muted/50 rounded-lg p-4">
-							<h4 className="text-sm font-medium mb-2">How it works:</h4>
+							<h4 className="text-sm font-medium mb-2">3-Tier Threshold System:</h4>
 							<ul className="text-sm text-muted-foreground space-y-1">
-								<li>• These are global defaults used when products don't have specific thresholds set</li>
-								<li>• You can override these defaults for individual products in the stock adjustment dialog</li>
-								<li>• Changes apply immediately to all products using the global defaults</li>
+								<li>• <strong>Global defaults</strong> (set here) - used as fallback for all locations</li>
+								<li>• <strong>Location-specific defaults</strong> - override global defaults per location</li>
+								<li>• <strong>Individual stock overrides</strong> - override location/global defaults per product</li>
+								<li>• Priority: Individual → Location → Global</li>
 							</ul>
 						</div>
 

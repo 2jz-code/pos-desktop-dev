@@ -4,8 +4,17 @@ from .models import Location, InventoryStock, Recipe, RecipeItem
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-    list_display = ("name", "description")
+    list_display = ("name", "description", "low_stock_threshold", "expiration_threshold")
     search_fields = ("name",)
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'description')
+        }),
+        ('Threshold Settings', {
+            'fields': ('low_stock_threshold', 'expiration_threshold'),
+            'description': 'Location-specific threshold settings. Leave blank to use global defaults.'
+        }),
+    )
 
 
 @admin.register(InventoryStock)

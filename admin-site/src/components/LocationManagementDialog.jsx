@@ -12,9 +12,11 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Alert, AlertDescription } from "./ui/alert";
-import { MapPin } from "lucide-react";
+import { MapPin, AlertTriangle, Clock } from "lucide-react";
 import { toast } from "sonner";
 import inventoryService from "../services/api/inventoryService";
+import { useQuery } from "@tanstack/react-query";
+import { getGlobalSettings } from "../services/api/settingsService";
 
 const LocationManagementDialog = ({
 	isOpen,
@@ -26,6 +28,8 @@ const LocationManagementDialog = ({
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
+		low_stock_threshold: "",
+		expiration_threshold: "",
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -36,11 +40,15 @@ const LocationManagementDialog = ({
 				setFormData({
 					name: location.name || "",
 					description: location.description || "",
+					low_stock_threshold: location.low_stock_threshold || "",
+					expiration_threshold: location.expiration_threshold || "",
 				});
 			} else {
 				setFormData({
 					name: "",
 					description: "",
+					low_stock_threshold: "",
+					expiration_threshold: "",
 				});
 			}
 			setError("");
@@ -64,6 +72,17 @@ const LocationManagementDialog = ({
 			return;
 		}
 
+		// Validate threshold fields if provided
+		if (formData.low_stock_threshold && (isNaN(formData.low_stock_threshold) || parseFloat(formData.low_stock_threshold) < 0)) {
+			setError("Low stock threshold must be a positive number");
+			return;
+		}
+
+		if (formData.expiration_threshold && (isNaN(formData.expiration_threshold) || parseInt(formData.expiration_threshold) < 1 || parseInt(formData.expiration_threshold) > 365)) {
+			setError("Expiration threshold must be between 1 and 365 days");
+			return;
+		}
+
 		setLoading(true);
 		setError("");
 
@@ -71,6 +90,8 @@ const LocationManagementDialog = ({
 			const dataToSubmit = {
 				name: formData.name.trim(),
 				description: formData.description.trim(),
+				...(formData.low_stock_threshold && { low_stock_threshold: parseFloat(formData.low_stock_threshold) }),
+				...(formData.expiration_threshold && { expiration_threshold: parseInt(formData.expiration_threshold) }),
 			};
 
 			if (mode === "edit" && location) {
@@ -112,6 +133,8 @@ const LocationManagementDialog = ({
 		setFormData({
 			name: "",
 			description: "",
+			low_stock_threshold: "",
+			expiration_threshold: "",
 		});
 		setError("");
 		onOpenChange(false);
@@ -178,6 +201,57 @@ const LocationManagementDialog = ({
 						<p className="text-xs text-muted-foreground">
 							{formData.description.length}/500 characters
 						</p>
+					</div>
+
+					<div className="space-y-4 border-t pt-4">
+						<h4 className="text-sm font-medium">Threshold Settings (Optional)</h4>
+						<p className="text-xs text-muted-foreground">
+							Set location-specific thresholds. Leave blank to use global defaults.
+						</p>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="space-y-2">
+								<Label htmlFor="low_stock_threshold" className="flex items-center gap-2">
+									<AlertTriangle className="h-4 w-4 text-amber-500" />
+									Low Stock Threshold
+								</Label>
+								<Input
+									id="low_stock_threshold"
+									type="number"
+									step="0.01"
+									min="0"
+									value={formData.low_stock_threshold}
+									onChange={(e) =>
+										setFormData({ ...formData, low_stock_threshold: e.target.value })
+									}
+									placeholder="Use global default"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Items below this quantity will be marked as low stock
+								</p>
+							</div>
+
+							<div className="space-y-2">
+								<Label htmlFor="expiration_threshold" className="flex items-center gap-2">
+									<Clock className="h-4 w-4 text-orange-500" />
+									Expiration Warning (Days)
+								</Label>
+								<Input
+									id="expiration_threshold"
+									type="number"
+									min="1"
+									max="365"
+									value={formData.expiration_threshold}
+									onChange={(e) =>
+										setFormData({ ...formData, expiration_threshold: e.target.value })
+									}
+									placeholder="Use global default"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Warn this many days before expiration
+								</p>
+							</div>
+						</div>
 					</div>
 
 					<DialogFooter>

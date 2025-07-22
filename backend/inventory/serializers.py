@@ -6,9 +6,20 @@ from .services import InventoryService
 
 
 class LocationSerializer(serializers.ModelSerializer):
+    effective_low_stock_threshold = serializers.ReadOnlyField()
+    effective_expiration_threshold = serializers.ReadOnlyField()
+    
     class Meta:
         model = Location
-        fields = ["id", "name", "description"]
+        fields = [
+            "id", 
+            "name", 
+            "description",
+            "low_stock_threshold",
+            "expiration_threshold", 
+            "effective_low_stock_threshold",
+            "effective_expiration_threshold"
+        ]
 
 
 class InventoryStockSerializer(serializers.ModelSerializer):

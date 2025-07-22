@@ -17,6 +17,18 @@ class Location(models.Model):
     description = models.TextField(
         blank=True, help_text=_("Description of the location.")
     )
+    low_stock_threshold = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("Default low stock threshold for this location. If not set, uses global default."),
+    )
+    expiration_threshold = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Default number of days before expiration to warn about expiring stock for this location. If not set, uses global default."),
+    )
 
     class Meta:
         verbose_name = _("Location")
@@ -24,6 +36,26 @@ class Location(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def effective_low_stock_threshold(self):
+        """Returns the effective low stock threshold (location-specific or global default)."""
+        if self.low_stock_threshold is not None:
+            return self.low_stock_threshold
+        
+        # Import here to avoid circular imports
+        from settings.config import app_settings
+        return app_settings.default_low_stock_threshold
+
+    @property
+    def effective_expiration_threshold(self):
+        """Returns the effective expiration threshold (location-specific or global default)."""
+        if self.expiration_threshold is not None:
+            return self.expiration_threshold
+        
+        # Import here to avoid circular imports
+        from settings.config import app_settings
+        return app_settings.default_expiration_threshold
 
 
 class InventoryStock(models.Model):
@@ -67,21 +99,41 @@ class InventoryStock(models.Model):
 
     @property
     def effective_low_stock_threshold(self):
-        """Returns the effective low stock threshold (item-specific or global default)."""
+        """
+        Returns the effective low stock threshold using 3-tier hierarchy:
+        1. Individual stock override
+        2. Location-specific default
+        3. Global default
+        """
+        # First check for item-specific override
         if self.low_stock_threshold is not None:
             return self.low_stock_threshold
         
-        # Import here to avoid circular imports
+        # Then check for location-specific default
+        if self.location.low_stock_threshold is not None:
+            return self.location.low_stock_threshold
+        
+        # Finally fall back to global default
         from settings.config import app_settings
         return app_settings.default_low_stock_threshold
 
     @property
     def effective_expiration_threshold(self):
-        """Returns the effective expiration threshold (item-specific or global default)."""
+        """
+        Returns the effective expiration threshold using 3-tier hierarchy:
+        1. Individual stock override
+        2. Location-specific default
+        3. Global default
+        """
+        # First check for item-specific override
         if self.expiration_threshold is not None:
             return self.expiration_threshold
         
-        # Import here to avoid circular imports
+        # Then check for location-specific default
+        if self.location.expiration_threshold is not None:
+            return self.location.expiration_threshold
+        
+        # Finally fall back to global default
         from settings.config import app_settings
         return app_settings.default_expiration_threshold
 

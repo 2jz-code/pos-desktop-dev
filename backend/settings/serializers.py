@@ -47,6 +47,13 @@ class NestedStoreLocationSerializer(serializers.ModelSerializer):
 
 class TerminalRegistrationSerializer(serializers.ModelSerializer):
     store_location = NestedStoreLocationSerializer(read_only=True)
+    store_location_id = serializers.PrimaryKeyRelatedField(
+        queryset=StoreLocation.objects.all(),
+        source='store_location',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = TerminalRegistration
@@ -54,6 +61,7 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             "device_id",
             "nickname",
             "store_location",
+            "store_location_id",
             "is_active",
             "last_seen",
             "reader_id",
