@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Low Stock Alert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #e74c3c;
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 20px -30px;
+        }
+        .alert-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        .product-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .quantity-warning {
+            color: #e74c3c;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="alert-icon">⚠️</span>Low Stock Alert</h1>
+        </div>
+        
+        <p>Hello,</p>
+        
+        <p>This is an automated notification to inform you that one of your products is running low on stock and requires immediate attention.</p>
+        
+        <div class="product-info">
+            <h3>Product Details:</h3>
+            <p><strong>Product Name:</strong> {{ product.name }}</p>
+            <p><strong>Location:</strong> {{ product.location }}</p>
+            <p class="quantity-warning"><strong>Current Stock:</strong> {{ product.current_quantity }} units</p>
+            {% if product.threshold %}
+                <p><strong>Low Stock Threshold:</strong> {{ product.threshold }} units</p>
+            {% endif %}
+        </div>
+        
+        <p>Please take action to restock this item as soon as possible to avoid running out of inventory.</p>
+        
+        <p><strong>Recommended Actions:</strong></p>
+        <ul>
+            <li>Check your inventory management system</li>
+            <li>Contact your suppliers if needed</li>
+            <li>Consider adjusting the low stock threshold if necessary</li>
+        </ul>
+        
+        <div class="footer">
+            <p>This alert was sent from your Ajeen POS system.</p>
+            {% if store_info.address %}
+                <p>{{ store_info.address }}</p>
+            {% endif %}
+            {% if store_info.phone_display %}
+                <p>Phone: {{ store_info.phone_display }}</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

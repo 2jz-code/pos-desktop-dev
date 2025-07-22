@@ -318,7 +318,7 @@ function createMainWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const persistentSession = session.defaultSession;
   mainWindow = new BrowserWindow({
-    icon: path.join(process$1.env.PUBLIC, "electron-vite.svg"),
+    icon: path.join(process$1.env.PUBLIC, "logo.png"),
     x: primaryDisplay.bounds.x,
     y: primaryDisplay.bounds.y,
     fullscreen: true,

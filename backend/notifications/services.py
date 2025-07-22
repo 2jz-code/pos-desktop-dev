@@ -14,7 +14,7 @@ class EmailService:
     def __init__(self):
         # Format the sender's email to include a display name
         from_email_address = getattr(
-            settings, "DEFAULT_FROM_EMAIL", "contact@example.com"
+            settings, "DEFAULT_FROM_EMAIL", "contact@bakeajeen.com"
         )
         self.default_from_email = f"Ajeen <{from_email_address}>"
 
@@ -196,3 +196,120 @@ class EmailService:
         except Exception as e:
             logger.error(f"Failed to send contact form email: {e}")
             return False
+
+    def send_low_stock_alert(
+        self, recipient_email, product, current_quantity, location, threshold=None
+    ):
+        """
+        Sends a low stock alert email to owners.
+
+        Args:
+            recipient_email (str): Email address to send the alert to
+            product: The Product instance with low stock
+            current_quantity: Current stock quantity
+            location: The Location where stock is low
+            threshold: The threshold that triggered this alert
+        """
+        try:
+            template_name = "emails/low_stock_alert.html"
+            context = {
+                "product": {
+                    "name": product.name,
+                    "current_quantity": float(current_quantity),
+                    "location": location.name,
+                    "threshold": float(threshold) if threshold is not None else 0,
+                },
+                "store_info": self._get_store_info(),
+            }
+
+            subject = f"Low Stock Alert: {product.name}"
+
+            self.send_email(
+                recipient_list=[recipient_email],
+                subject=subject,
+                template_name=template_name,
+                context=context,
+            )
+
+            logger.info(
+                f"Low stock alert sent to {recipient_email} for {product.name} at {location.name}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send low stock alert for {product.name}: {e}")
+            return False
+
+    def _get_store_info(self):
+        """Get store information from settings with fallback defaults."""
+        try:
+            store_settings = GlobalSettings.objects.first()
+            if store_settings:
+                return {
+                    "address": store_settings.store_address
+                    or "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
+                    "phone_display": store_settings.store_phone_display
+                    or "(651) 412-5336",
+                    "phone": store_settings.store_phone or "6514125336",
+                }
+        except (GlobalSettings.DoesNotExist, Exception):
+            pass
+
+        return {
+            "address": "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
+            "phone_display": "(651) 412-5336",
+            "phone": "6514125336",
+        }
+
+    def send_daily_low_stock_summary(self, recipient_email, low_stock_items):
+        """
+        Sends a daily summary email of all items below threshold that weren't individually notified.
+
+        Args:
+            recipient_email (str): Email address to send the summary to
+            low_stock_items: List of InventoryStock instances below threshold
+        """
+        try:
+            template_name = "emails/daily_low_stock_summary.html"
+            
+            # Prepare item data for template
+            items_data = []
+            for item in low_stock_items:
+                items_data.append({
+                    "name": item.product.name,
+                    "current_quantity": float(item.quantity),
+                    "location": item.location.name,
+                    "threshold": float(item.effective_low_stock_threshold),
+                    "shortage": float(item.effective_low_stock_threshold - item.quantity),
+                })
+            
+            context = {
+                "items": items_data,
+                "total_items": len(items_data),
+                "store_info": self._get_store_info(),
+                "report_date": timezone.now().strftime("%B %d, %Y"),
+            }
+
+            subject = f"Daily Low Stock Report - {len(items_data)} Items Need Attention"
+            
+            self.send_email(
+                recipient_list=[recipient_email],
+                subject=subject,
+                template_name=template_name,
+                context=context,
+            )
+
+            logger.info(
+                f"Daily low stock summary sent to {recipient_email} for {len(items_data)} items"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to send daily low stock summary: {e}"
+            )
+            return False
+
+
+# Singleton instance
+email_service = EmailService()

@@ -34,7 +34,7 @@ function createMainWindow() {
 	const persistentSession = session.defaultSession;
 
 	mainWindow = new BrowserWindow({
-		icon: path.join(process.env.PUBLIC, "electron-vite.svg"),
+		icon: path.join(process.env.PUBLIC, "logo.png"),
 		x: primaryDisplay.bounds.x,
 		y: primaryDisplay.bounds.y,
 		fullscreen: true,
@@ -472,11 +472,11 @@ ipcMain.on("shutdown-app", () => {
 
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
-	
+
 	// Allow secure cookies over HTTP in development
-	app.commandLine.appendSwitch('--ignore-certificate-errors');
-	app.commandLine.appendSwitch('--allow-running-insecure-content');
-	
+	app.commandLine.appendSwitch("--ignore-certificate-errors");
+	app.commandLine.appendSwitch("--allow-running-insecure-content");
+
 	createMainWindow();
 	createCustomerWindow();
 });

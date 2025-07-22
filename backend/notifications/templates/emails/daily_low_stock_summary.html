@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Daily Low Stock Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #3498db;
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 20px -30px;
+            text-align: center;
+        }
+        .summary-stats {
+            background-color: #e8f4fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .items-table th, .items-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .items-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .items-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .low-quantity {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .shortage {
+            color: #c0392b;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .priority-high {
+            background-color: #ffebee;
+        }
+        .action-needed {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #f39c12;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Daily Low Stock Report</h1>
+            <p>{{ report_date }}</p>
+        </div>
+        
+        <div class="summary-stats">
+            <h2>📊 Summary</h2>
+            <p><strong>{{ total_items }}</strong> item{{ total_items|pluralize }} require{{ total_items|pluralize:"s," }} immediate attention</p>
+        </div>
+
+        {% if total_items > 0 %}
+            <div class="action-needed">
+                <h3>⚠️ Action Required</h3>
+                <p>The following items are below their low stock thresholds and need to be restocked:</p>
+            </div>
+
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Product Name</th>
+                        <th>Location</th>
+                        <th>Current Stock</th>
+                        <th>Threshold</th>
+                        <th>Shortage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr{% if item.shortage > item.threshold|floatformat:0 %} class="priority-high"{% endif %}>
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>{{ item.location }}</td>
+                        <td class="low-quantity">{{ item.current_quantity }} units</td>
+                        <td>{{ item.threshold }} units</td>
+                        <td class="shortage">{{ item.shortage }} units short</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="action-needed">
+                <h3>📝 Recommended Actions:</h3>
+                <ul>
+                    <li><strong>Priority items</strong> (highlighted in pink): Critically low - order immediately</li>
+                    <li><strong>Review supplier inventory</strong> and place orders for all listed items</li>
+                    <li><strong>Consider adjusting thresholds</strong> for frequently low items</li>
+                    <li><strong>Check for upcoming promotions</strong> that might increase demand</li>
+                </ul>
+            </div>
+        {% else %}
+            <div style="text-align: center; padding: 40px; color: #27ae60;">
+                <h2>✅ All Good!</h2>
+                <p>No items are currently below their low stock thresholds.</p>
+            </div>
+        {% endif %}
+        
+        <div class="footer">
+            <p><strong>Note:</strong> This report includes items that were not individually notified during sales transactions. Individual alerts are still sent immediately when items cross thresholds during sales.</p>
+            
+            <p>This daily report was generated automatically by your Ajeen POS system.</p>
+            {% if store_info.address %}
+                <p>{{ store_info.address }}</p>
+            {% endif %}
+            {% if store_info.phone_display %}
+                <p>Phone: {{ store_info.phone_display }}</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

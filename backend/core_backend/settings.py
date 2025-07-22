@@ -14,6 +14,7 @@ from pathlib import Path
 import os  # <-- Import the os module
 from dotenv import load_dotenv  # <-- Add this import
 import stripe
+from celery.schedules import crontab
 
 # Load environment variables from .env file
 load_dotenv()
@@ -283,10 +284,12 @@ SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
 # Cookie security - check environment first, then use DEBUG-based logic
-SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", str(not DEBUG)).lower() == "true"
+SESSION_COOKIE_SECURE = (
+    os.getenv("SESSION_COOKIE_SECURE", str(not DEBUG)).lower() == "true"
+)
 SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax") or None
 
-# CSRF cookie security - check environment first, then use DEBUG-based logic  
+# CSRF cookie security - check environment first, then use DEBUG-based logic
 CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", str(not DEBUG)).lower() == "true"
 CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax") or None
 
@@ -552,6 +555,9 @@ CELERY_TASK_ROUTES = {
     "reports.tasks.create_bulk_export_async": {"queue": "exports"},
     "reports.tasks.process_export_queue": {"queue": "exports"},
     "reports.tasks.cleanup_export_files": {"queue": "maintenance"},
+    # Inventory tasks
+    "inventory.tasks.daily_low_stock_sweep": {"queue": "maintenance"},
+    "inventory.tasks.reset_low_stock_notifications": {"queue": "maintenance"},
 }
 
 # Beat schedule for periodic tasks
@@ -576,5 +582,18 @@ CELERY_BEAT_SCHEDULE = {
     "process-export-queue": {
         "task": "reports.tasks.process_export_queue",
         "schedule": 300.0,  # Every 5 minutes
+    },
+    # Inventory management tasks
+    "daily-low-stock-sweep": {
+        "task": "inventory.tasks.daily_low_stock_sweep",
+        "schedule": crontab(
+            hour=7, minute=30
+        ),  # Every day at 8:00 AM (server timezone)
+        "options": {"expires": 3600},  # Task expires after 1 hour if not run
+    },
+    "reset-low-stock-notifications": {
+        "task": "inventory.tasks.reset_low_stock_notifications",
+        "schedule": crontab(hour=5, minute=0, day_of_week=0),  # Every Sunday at 2:00 AM
+        "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
 }

@@ -16,7 +16,18 @@ class InventoryService:
         stock, created = InventoryStock.objects.get_or_create(
             product=product, location=location, defaults={"quantity": Decimal("0.0")}
         )
+        
+        # Track previous quantity for notification logic
+        previous_quantity = stock.quantity
         stock.quantity += Decimal(str(quantity))
+        
+        # Check if stock crossed back above threshold (reset notification flag)
+        threshold = stock.effective_low_stock_threshold
+        if (previous_quantity <= threshold and 
+            stock.quantity > threshold and 
+            stock.low_stock_notified):
+            stock.low_stock_notified = False
+        
         stock.save()
         return stock
 
@@ -42,7 +53,17 @@ class InventoryService:
                 f"Insufficient stock for {product.name} at {location.name}. Required: {quantity_decimal}, Available: {stock.quantity}"
             )
 
+        # Track previous quantity for notification logic
+        previous_quantity = stock.quantity
         stock.quantity -= quantity_decimal
+        
+        # Check if stock crossed below threshold (send notification)
+        threshold = stock.effective_low_stock_threshold
+        if (previous_quantity > threshold and 
+            stock.quantity <= threshold and 
+            not stock.low_stock_notified):
+            InventoryService._send_low_stock_notification(stock)
+        
         stock.save()
         return stock
 
@@ -228,3 +249,96 @@ class InventoryService:
         Currently returns total stock - can be extended to handle reserved stock later.
         """
         return InventoryService.get_stock_level(product, location)
+
+    @staticmethod
+    def _send_low_stock_notification(stock: InventoryStock):
+        """
+        Send low stock notification to users with owner role.
+        """
+        from users.models import User
+        from notifications.services import email_service
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Get all owners with valid email addresses
+        owners = User.objects.filter(
+            role='OWNER', 
+            email__isnull=False, 
+            email__gt=''
+        ).values_list('email', flat=True)
+        
+        if not owners:
+            logger.warning("No owner users with valid emails found for low stock notification")
+            return
+        
+        # Send individual emails to each owner
+        for owner_email in owners:
+            try:
+                email_service.send_low_stock_alert(
+                    owner_email, 
+                    stock.product, 
+                    stock.quantity,
+                    stock.location,
+                    stock.effective_low_stock_threshold
+                )
+            except Exception as e:
+                logger.error(f"Failed to send low stock alert to {owner_email}: {e}")
+                # Continue sending to other owners even if one fails
+        
+        # Mark as notified
+        stock.low_stock_notified = True
+
+    @staticmethod
+    def send_daily_low_stock_summary():
+        """
+        Daily sweep to catch any items below threshold that haven't been notified.
+        This runs in addition to individual item notifications.
+        Returns the count of items that were included in the notification.
+        """
+        from users.models import User
+        from notifications.services import email_service
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Find all items below threshold that haven't been notified
+        low_stock_items = InventoryStock.objects.filter(
+            low_stock_notified=False
+        ).select_related('product', 'location')
+        
+        # Filter to only items actually below their threshold
+        items_to_notify = []
+        for item in low_stock_items:
+            if item.quantity <= item.effective_low_stock_threshold:
+                items_to_notify.append(item)
+        
+        if not items_to_notify:
+            logger.info("Daily low stock sweep: No missed items found")
+            return 0
+        
+        # Get all owners with valid email addresses
+        owners = User.objects.filter(
+            role='OWNER', 
+            email__isnull=False, 
+            email__gt=''
+        ).values_list('email', flat=True)
+        
+        if not owners:
+            logger.warning("No owner users with valid emails found for daily low stock sweep")
+            return 0
+        
+        # Send daily summary to each owner
+        for owner_email in owners:
+            try:
+                email_service.send_daily_low_stock_summary(owner_email, items_to_notify)
+            except Exception as e:
+                logger.error(f"Failed to send daily low stock summary to {owner_email}: {e}")
+        
+        # Mark all items as notified
+        for item in items_to_notify:
+            item.low_stock_notified = True
+            item.save(update_fields=['low_stock_notified'])
+        
+        logger.info(f"Daily low stock summary sent for {len(items_to_notify)} missed items to {len(owners)} owners")
+        return len(items_to_notify)

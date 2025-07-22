@@ -60,6 +60,10 @@ class InventoryStock(models.Model):
         blank=True,
         help_text=_("Number of days before expiration to warn about expiring stock. If not set, uses global default."),
     )
+    low_stock_notified = models.BooleanField(
+        default=False,
+        help_text=_("Whether a low stock notification has been sent for this item."),
+    )
 
     @property
     def effective_low_stock_threshold(self):

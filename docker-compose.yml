@@ -1,17 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: pos_redis
-    ports:
-      - "0.0.0.0:6379:6379"
-    networks:
-      - pos_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   db:
     image: postgres:16-alpine
     container_name: pos_db
@@ -46,21 +33,16 @@ services:
       - ./certs:/app/certs
     ports:
       - "0.0.0.0:${BACKEND_PORT:-8001}:8001"
-    command: >
-      sh -c "python manage.py migrate &&
-             daphne -e ssl:8001:privateKey=/app/certs/key.pem:certKey=/app/certs/cert.pem core_backend.asgi:application"
     env_file:
       - .env
     environment:
       - SKIP_MIGRATIONS=false
       - DATABASE_URL=postgresql://${DB_USER:-pos_user}:${DB_PASSWORD:-pos_password}@db:5432/${DB_NAME:-pos_db}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://localhost:6379/0
       - DJANGO_SETTINGS_MODULE=core_backend.settings
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-3}
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - pos_network
