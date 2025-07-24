@@ -384,50 +384,85 @@ class BulkStockCheckView(APIView):
 class InventoryDashboardView(APIView):
     """
     Get inventory overview data for dashboard display.
+    Shows aggregated inventory data across ALL locations.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         try:
-            default_location = app_settings.get_default_location()
-
-            # Get all stock records for the default location
-            stock_records = InventoryStock.objects.filter(
-                location=default_location
-            ).select_related("product")
-
-            total_products = stock_records.count()
+            from django.db.models import Sum, F, Case, When, Value, Q
             
-            # Use effective low_stock_threshold for each product
-            from django.db.models import F, Case, When, Value
-            low_stock_items = stock_records.filter(
-                quantity__lte=Case(
-                    When(low_stock_threshold__isnull=False, then=F('low_stock_threshold')),
-                    default=Value(app_settings.default_low_stock_threshold),
-                )
+            # Get all stock records across all locations
+            all_stock_records = InventoryStock.objects.select_related(
+                "product", "location"
+            ).all()
+
+            # Aggregate total quantities per product across all locations
+            product_totals = all_stock_records.values('product').annotate(
+                total_quantity=Sum('quantity'),
+                product_name=F('product__name'),
+                product_price=F('product__price'),
+                product_id=F('product__id'),
             )
-            low_stock_count = low_stock_items.count()
-            out_of_stock_count = stock_records.filter(quantity=0).count()
+
+            total_products = product_totals.count()
             
-            # Calculate expiring soon items
+            # Calculate low stock count based on aggregated quantities
+            low_stock_count = 0
+            out_of_stock_count = 0
+            low_stock_products = []
+            
+            for product_data in product_totals:
+                total_qty = product_data['total_quantity'] or 0
+                
+                # Get the most restrictive low stock threshold for this product
+                product_stocks = all_stock_records.filter(product_id=product_data['product_id'])
+                min_threshold = min(
+                    stock.effective_low_stock_threshold for stock in product_stocks
+                )
+                
+                if total_qty == 0:
+                    out_of_stock_count += 1
+                elif total_qty <= min_threshold:
+                    low_stock_count += 1
+                    low_stock_products.append({
+                        "product_id": product_data['product_id'],
+                        "product_name": product_data['product_name'],
+                        "quantity": total_qty,
+                        "price": product_data['product_price'],
+                        "low_stock_threshold": min_threshold,
+                    })
+            
+            # Calculate expiring soon items across all locations
             today = timezone.now().date()
             expiring_soon_items = []
-            for stock in stock_records.filter(expiration_date__isnull=False):
+            expiring_soon_count = 0
+            
+            for stock in all_stock_records.filter(expiration_date__isnull=False):
                 threshold_date = today + timedelta(days=stock.effective_expiration_threshold)
                 if stock.expiration_date <= threshold_date:
-                    expiring_soon_items.append(stock)
+                    expiring_soon_items.append({
+                        "product_id": stock.product.id,
+                        "product_name": stock.product.name,
+                        "quantity": stock.quantity,
+                        "price": stock.product.price,
+                        "expiration_date": stock.expiration_date,
+                        "expiration_threshold": stock.effective_expiration_threshold,
+                        "location": stock.location.name,
+                    })
             
             expiring_soon_count = len(expiring_soon_items)
 
-            # Calculate total inventory value (basic calculation)
+            # Calculate total inventory value across all locations
             total_value = sum(
-                stock.quantity * stock.product.price for stock in stock_records
+                (product_data['total_quantity'] or 0) * (product_data['product_price'] or 0) 
+                for product_data in product_totals
             )
 
             return Response(
                 {
-                    "location": default_location.name,
+                    "scope": "All Locations",
                     "summary": {
                         "total_products": total_products,
                         "low_stock_count": low_stock_count,
@@ -435,27 +470,8 @@ class InventoryDashboardView(APIView):
                         "expiring_soon_count": expiring_soon_count,
                         "total_value": total_value,
                     },
-                    "low_stock_items": [
-                        {
-                            "product_id": stock.product.id,
-                            "product_name": stock.product.name,
-                            "quantity": stock.quantity,
-                            "price": stock.product.price,
-                            "low_stock_threshold": stock.effective_low_stock_threshold,
-                        }
-                        for stock in low_stock_items[:10]
-                    ],
-                    "expiring_soon_items": [
-                        {
-                            "product_id": stock.product.id,
-                            "product_name": stock.product.name,
-                            "quantity": stock.quantity,
-                            "price": stock.product.price,
-                            "expiration_date": stock.expiration_date,
-                            "expiration_threshold": stock.effective_expiration_threshold,
-                        }
-                        for stock in expiring_soon_items[:10]
-                    ],
+                    "low_stock_items": low_stock_products[:10],
+                    "expiring_soon_items": expiring_soon_items[:10],
                 }
             )
         except Exception as e:

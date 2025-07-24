@@ -83,6 +83,7 @@ function createCustomerWindow() {
 	// }
 
 	customerWindow = new BrowserWindow({
+		icon: path.join(process.env.PUBLIC, "logo.png"),
 		// x: secondaryDisplay.bounds.x,
 		// y: secondaryDisplay.bounds.y,
 		// fullscreen: true,
