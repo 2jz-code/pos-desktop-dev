@@ -24,7 +24,9 @@ class Category(MPTTModel):
     )
     is_public = models.BooleanField(
         default=True,
-        help_text=_("Whether this category and its products are publicly visible on the website."),
+        help_text=_(
+            "Whether this category and its products are publicly visible on the website."
+        ),
     )
 
     class MPTTMeta:
@@ -104,12 +106,17 @@ class Product(models.Model):
         blank=True,
         help_text=_("Product-specific taxes. General taxes are handled in Orders."),
     )
+    modifier_sets = models.ManyToManyField(
+        'ModifierSet', through="ProductModifierSet", related_name="products", blank=True
+    )
     is_active = models.BooleanField(
         default=True, help_text=_("Is this product available for sale?")
     )
     is_public = models.BooleanField(
         default=True,
-        help_text=_("Whether this product is publicly visible. Note: The parent category must also be public."),
+        help_text=_(
+            "Whether this product is publicly visible. Note: The parent category must also be public."
+        ),
     )
     image = models.ImageField(
         upload_to="products/",
@@ -134,7 +141,13 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The product ID from the old system.")
+    legacy_id = models.IntegerField(
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="The product ID from the old system.",
+    )
     # The ForeignKey to Recipe will be added later when we create the Inventory app.
 
     class Meta:
@@ -144,3 +157,113 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ModifierSet(models.Model):
+    class SelectionType(models.TextChoices):
+        SINGLE = "SINGLE", _("Single Choice")
+        MULTIPLE = "MULTIPLE", _("Multiple Choices")
+
+    name = models.CharField(
+        max_length=100, help_text=_("Customer-facing name, e.g., 'Choose your size'")
+    )
+    internal_name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text=_("Internal name for easy reference, e.g., 'drink-size'"),
+    )
+    selection_type = models.CharField(
+        max_length=10, choices=SelectionType.choices, default=SelectionType.SINGLE
+    )
+
+    min_selections = models.PositiveIntegerField(
+        default=0, help_text=_("Minimum required selections (0 for optional)")
+    )
+    max_selections = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Maximum allowed selections (null for unlimited)"),
+    )
+
+    triggered_by_option = models.ForeignKey(
+        "ModifierOption",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggers_modifier_sets",
+        help_text=_(
+            "If set, this group will only appear when the selected option is chosen."
+        ),
+    )
+
+    def __str__(self):
+        return self.name
+
+
+class ModifierOption(models.Model):
+    modifier_set = models.ForeignKey(
+        ModifierSet, on_delete=models.CASCADE, related_name="options"
+    )
+    name = models.CharField(max_length=100)
+    price_delta = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        help_text=_("The amount to add or subtract from the base product price."),
+    )
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["display_order", "name"]
+        unique_together = ("modifier_set", "name")
+
+    def __str__(self):
+        return f"{self.modifier_set.name} - {self.name}"
+
+
+class ProductSpecificOption(models.Model):
+    product_modifier_set = models.ForeignKey(
+        "ProductModifierSet", on_delete=models.CASCADE
+    )
+    modifier_option = models.ForeignKey(ModifierOption, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("product_modifier_set", "modifier_option")
+
+
+class ProductModifierSet(models.Model):
+    product = models.ForeignKey(
+        "Product", on_delete=models.CASCADE, related_name="product_modifier_sets"
+    )
+    modifier_set = models.ForeignKey(
+        ModifierSet, on_delete=models.CASCADE, related_name="product_modifier_sets"
+    )
+
+    display_order = models.PositiveIntegerField(
+        default=0, help_text=_("The order this modifier set appears for this product.")
+    )
+    is_required_override = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "Override the 'min_selections' rule for this product. True makes it required."
+        ),
+    )
+
+    hidden_options = models.ManyToManyField(
+        ModifierOption,
+        blank=True,
+        related_name="hidden_in_product_sets",
+        help_text=_("Hide specific options from this set for this product only."),
+    )
+
+    extra_options = models.ManyToManyField(
+        ModifierOption,
+        through=ProductSpecificOption,
+        related_name="extra_in_product_sets",
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["display_order"]
+        unique_together = ("product", "modifier_set")

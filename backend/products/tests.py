@@ -1,70 +1,62 @@
 from django.test import TestCase
-from .models import Category, Tax, MenuItem, GroceryItem, Product
-from .services import ProductService
+from rest_framework.exceptions import ValidationError
+from .models import Category, Tax, Product, ProductType, ModifierSet, ModifierOption, ProductModifierSet
+from .services import ModifierValidationService
 
 
-class ProductServiceTests(TestCase):
+class ModifierValidationServiceTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        """Set up non-modified objects used by all test methods."""
-        cls.category = Category.objects.create(name="Beverages")
-        cls.tax = Tax.objects.create(name="Sales Tax", rate=8.00)
+        """Set up data for the whole test case."""
+        cls.product_type = ProductType.objects.create(name="Menu Item")
+        cls.product = Product.objects.create(name="Test Product", price=10.00, product_type=cls.product_type)
 
-    def test_create_menu_item_successfully(self):
-        """Test that a MenuItem can be created successfully with valid data."""
-        product_data = {
-            "name": "Coffee",
-            "price": "2.50",
-            "category_id": self.category.id,
-            "tax_ids": [self.tax.id],
-        }
+        # Single choice, required
+        cls.size_set = ModifierSet.objects.create(name="Size", internal_name="size", selection_type="SINGLE", min_selections=1)
+        cls.small_opt = ModifierOption.objects.create(modifier_set=cls.size_set, name="Small", price_delta=-1.00)
+        cls.large_opt = ModifierOption.objects.create(modifier_set=cls.size_set, name="Large", price_delta=1.00)
+        ProductModifierSet.objects.create(product=cls.product, modifier_set=cls.size_set)
 
-        menu_item = ProductService.create_product("menu", **product_data)
+        # Multiple choice, optional, max 2
+        cls.toppings_set = ModifierSet.objects.create(name="Toppings", internal_name="toppings", selection_type="MULTIPLE", max_selections=2)
+        cls.cheese_opt = ModifierOption.objects.create(modifier_set=cls.toppings_set, name="Cheese", price_delta=0.50)
+        cls.bacon_opt = ModifierOption.objects.create(modifier_set=cls.toppings_set, name="Bacon", price_delta=1.00)
+        cls.lettuce_opt = ModifierOption.objects.create(modifier_set=cls.toppings_set, name="Lettuce", price_delta=0.25)
+        ProductModifierSet.objects.create(product=cls.product, modifier_set=cls.toppings_set)
 
-        self.assertIsInstance(menu_item, MenuItem)
-        self.assertEqual(menu_item.name, "Coffee")
-        self.assertEqual(menu_item.category, self.category)
-        self.assertEqual(menu_item.taxes.count(), 1)
-        self.assertEqual(menu_item.taxes.first(), self.tax)
-        self.assertTrue(Product.objects.filter(name="Coffee").exists())
+    def test_valid_single_choice(self):
+        """Test that a valid single choice selection passes."""
+        try:
+            ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id])
+        except ValidationError:
+            self.fail("Validation raised ValidationError unexpectedly!")
 
-    def test_create_grocery_item_successfully(self):
-        """Test that a GroceryItem can be created successfully."""
-        product_data = {
-            "name": "Coffee Beans",
-            "price": "10.00",
-            "category_id": self.category.id,
-        }
+    def test_invalid_multiple_options_for_single_choice(self):
+        """Test that selecting multiple options for a single choice set fails."""
+        with self.assertRaisesRegex(ValidationError, "Only one option can be selected for 'Size'."):
+            ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id, self.large_opt.id])
 
-        grocery_item = ProductService.create_product("grocery", **product_data)
+    def test_missing_required_single_choice(self):
+        """Test that not selecting an option for a required single choice set fails."""
+        with self.assertRaisesRegex(ValidationError, "A selection is required for 'Size'."):
+            ModifierValidationService.validate_product_selection(self.product, [self.cheese_opt.id]) # Only provide optional topping
 
-        self.assertIsInstance(grocery_item, GroceryItem)
-        self.assertEqual(grocery_item.name, "Coffee Beans")
-        self.assertEqual(grocery_item.category, self.category)
-        self.assertEqual(grocery_item.taxes.count(), 0)
+    def test_valid_multiple_choice(self):
+        """Test that a valid multiple choice selection passes."""
+        try:
+            ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id, self.cheese_opt.id, self.bacon_opt.id])
+        except ValidationError:
+            self.fail("Validation raised ValidationError unexpectedly!")
 
-    def test_create_product_with_invalid_type(self):
-        """Test that creating a product with an invalid type raises a ValueError."""
-        with self.assertRaises(ValueError):
-            ProductService.create_product("invalid_type", name="Test", price="1.00")
+    def test_too_many_options_for_multiple_choice(self):
+        """Test that selecting too many options for a multiple choice set fails."""
+        with self.assertRaisesRegex(ValidationError, "You can select at most 2 options for 'Toppings'."):
+            ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id, self.cheese_opt.id, self.bacon_opt.id, self.lettuce_opt.id])
 
-    def test_create_product_transaction_atomicity(self):
-        """Test that the transaction is rolled back if an error occurs."""
-        invalid_data = {
-            "name": "Tea",
-            "price": "2.00",
-            "category_id": 999,  # Non-existent category
-        }
-
-        initial_product_count = Product.objects.count()
-
-        with self.assertRaises(Category.DoesNotExist):
-            ProductService.create_product("menu", **invalid_data)
-
-        final_product_count = Product.objects.count()
-        self.assertEqual(
-            initial_product_count,
-            final_product_count,
-            "Product should not be created if category does not exist.",
-        )
+    def test_invalid_option_for_product(self):
+        """Test that selecting an option not associated with the product fails."""
+        other_set = ModifierSet.objects.create(name="Other", internal_name="other", selection_type="SINGLE")
+        other_option = ModifierOption.objects.create(modifier_set=other_set, name="Other Option")
+        with self.assertRaisesRegex(ValidationError, "Invalid modifier option\(s\) selected"):
+            ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id, other_option.id])

@@ -1,13 +1,11 @@
 from decimal import Decimal
 from django.db import transaction
-from .models import Order, OrderItem, OrderDiscount
-from products.models import Product
+from .models import Order, OrderItem, OrderDiscount, OrderItemModifier
+from products.models import Product, ModifierOption
 from users.models import User
-
-# This should point to your actual discount service file
 from discounts.services import DiscountService
 from discounts.models import Discount
-
+from products.services import ModifierValidationService
 
 class OrderService:
 
@@ -55,73 +53,39 @@ class OrderService:
     @staticmethod
     @transaction.atomic
     def add_item_to_order(
-        order: Order, product: Product, quantity: int, notes: str = ""
+        order: Order, product: Product, quantity: int, selected_option_ids: list[int] = None, notes: str = ""
     ) -> OrderItem:
-        """
-        Adds a product as an item to an order. If an item with the same
-        product and notes exists, it increments its quantity. Otherwise, it
-        creates a new item. Also recalculates order totals.
-        Validates stock availability before adding items.
-        """
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError(
                 "Cannot add items to an order that is not Pending or on Hold."
             )
 
-        # Check stock availability before adding item
-        from inventory.services import InventoryService
-        from settings.config import app_settings
+        selected_option_ids = selected_option_ids or []
+        ModifierValidationService.validate_product_selection(product, selected_option_ids)
 
-        try:
-            default_location = app_settings.get_default_inventory_location()
+        # Calculate price with modifiers
+        modifier_price_delta = sum(ModifierOption.objects.filter(id__in=selected_option_ids).values_list('price_delta', flat=True))
+        final_price_at_sale = Decimal(str(product.price)) + modifier_price_delta
 
-            # Calculate total quantity needed (existing + new)
-            order_item = OrderItem.objects.filter(
-                order=order, product=product, notes=notes
-            ).first()
+        # For now, we assume items with different modifiers are different line items.
+        # A more advanced implementation could group them.
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=quantity,
+            price_at_sale=final_price_at_sale,
+            notes=notes,
+        )
 
-            total_quantity_needed = quantity
-            if order_item:
-                total_quantity_needed += order_item.quantity
-
-            # Check if this is a menu item - different validation rules
-            if product.product_type.name.lower() == "menu":
-                # Menu items: allow cook-to-order, just log ingredient status
-                if hasattr(product, "recipe") and product.recipe:
-                    InventoryService.check_recipe_availability(
-                        product, default_location, total_quantity_needed
-                    )
-                # Always allow menu items regardless of stock
-            else:
-                # Regular products: strict stock validation
-                if not InventoryService.check_stock_availability(
-                    product, default_location, total_quantity_needed
-                ):
-                    current_stock = InventoryService.get_stock_level(
-                        product, default_location
-                    )
-                    raise ValueError(
-                        f"Insufficient stock for {product.name}. "
-                        f"Requested: {total_quantity_needed}, Available: {current_stock}"
-                    )
-        except ValueError as e:
-            # Re-raise ValueError (stock validation errors)
-            raise e
-        except Exception as e:
-            # Log other errors but don't block the sale
-            print(f"Stock check warning for {product.name}: {e}")
-
-        # Add the item to the order
-        if order_item:
-            order_item.quantity += quantity
-            order_item.save(update_fields=["quantity"])
-        else:
-            order_item = OrderItem.objects.create(
-                order=order,
-                product=product,
-                quantity=quantity,
-                price_at_sale=product.price,
-                notes=notes,
+        # Create snapshot records for the selected modifiers
+        selected_modifiers = ModifierOption.objects.filter(id__in=selected_option_ids).select_related('modifier_set')
+        for modifier in selected_modifiers:
+            OrderItemModifier.objects.create(
+                order_item=order_item,
+                modifier_set_name=modifier.modifier_set.name,
+                option_name=modifier.name,
+                price_at_sale=modifier.price_delta,
+                quantity=1 # Assuming quantity of 1 for each modifier option for now
             )
 
         OrderService.recalculate_order_totals(order)
@@ -358,7 +322,7 @@ class OrderService:
                         )
                 else:
                     # Use the fresh configuration for tax rate
-                    tax_total += discounted_item_price * app_settings.tax_rate
+                    tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
 
         order.tax_total = tax_total.quantize(Decimal("0.01"))
 

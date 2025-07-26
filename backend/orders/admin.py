@@ -4,28 +4,30 @@ from .models import (
     Order,
     OrderItem,
     OrderDiscount,
-)  # Make sure OrderDiscount is imported if used
+    OrderItemModifier
+)
 
+class OrderItemModifierInline(admin.TabularInline):
+    model = OrderItemModifier
+    extra = 0
+    readonly_fields = ('modifier_set_name', 'option_name', 'price_at_sale', 'quantity')
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 class OrderItemInline(admin.TabularInline):
-    """
-    Allows for the editing of OrderItems from within the Order admin page.
-    """
-
     model = OrderItem
     extra = 0
-    # Add a calculated total for each line item and make fields readonly
     readonly_fields = ("price_at_sale", "get_line_item_total")
     fields = ("product", "quantity", "price_at_sale", "get_line_item_total")
     autocomplete_fields = ("product",)
 
     def get_line_item_total(self, obj):
-        """Calculates and formats the total for the order item."""
         return f"${(obj.price_at_sale * obj.quantity):,.2f}"
 
     get_line_item_total.short_description = "Line Item Total"
 
-    # Prevent adding new items from a saved order to maintain integrity
     def has_add_permission(self, request, obj=None):
         return False
 
@@ -239,6 +241,7 @@ class OrderItemAdmin(admin.ModelAdmin):
     )  # Changed search field for order
     autocomplete_fields = ("order", "product")
     readonly_fields = ("price_at_sale",)
+    inlines = [OrderItemModifierInline]
 
 
 @admin.register(OrderDiscount)
@@ -249,3 +252,15 @@ class OrderDiscountAdmin(admin.ModelAdmin):
         "discount__name",
     )  # Changed search field for order
     raw_id_fields = ("order", "discount")
+
+
+@admin.register(OrderItemModifier)
+class OrderItemModifierAdmin(admin.ModelAdmin):
+    list_display = ("order_item", "modifier_set_name", "option_name", "price_at_sale", "quantity")
+    search_fields = (
+        "order_item__order__order_number",
+        "modifier_set_name",
+        "option_name",
+    )
+    readonly_fields = ("modifier_set_name", "option_name", "price_at_sale", "quantity")
+    raw_id_fields = ("order_item",)

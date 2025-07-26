@@ -585,6 +585,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
             order=order,
             product=product,
             quantity=serializer.validated_data.get("quantity", 1),
+            selected_option_ids=serializer.validated_data.get("selected_options", []),
             notes=serializer.validated_data.get("notes", ""),
         )
 

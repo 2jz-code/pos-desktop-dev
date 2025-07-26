@@ -1,5 +1,7 @@
 from .models import Product, Category, Tax
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
+from .models import Product, ModifierSet, ModifierOption, ProductModifierSet
 
 
 class ProductService:
@@ -64,3 +66,107 @@ class ProductService:
             )
 
         return product
+
+
+class BaseSelectionStrategy:
+    def validate(self, pms, options_in_set):
+        raise NotImplementedError("Subclasses must implement this method.")
+
+
+class SingleSelectionStrategy(BaseSelectionStrategy):
+    def validate(self, pms, options_in_set):
+        is_required = pms.is_required_override or (pms.modifier_set.min_selections > 0)
+        if is_required and not options_in_set:
+            raise ValidationError(
+                f"A selection is required for '{pms.modifier_set.name}'."
+            )
+        if len(options_in_set) > 1:
+            raise ValidationError(
+                f"Only one option can be selected for '{pms.modifier_set.name}'."
+            )
+
+
+class MultipleSelectionStrategy(BaseSelectionStrategy):
+    def validate(self, pms, options_in_set):
+        num_options = len(options_in_set)
+        min_selections = pms.modifier_set.min_selections
+        max_selections = pms.modifier_set.max_selections
+
+        if num_options < min_selections:
+            raise ValidationError(
+                f"You must select at least {min_selections} options for '{pms.modifier_set.name}'."
+            )
+        if max_selections is not None and num_options > max_selections:
+            raise ValidationError(
+                f"You can select at most {max_selections} options for '{pms.modifier_set.name}'."
+            )
+
+
+class ModifierValidationService:
+    STRATEGIES = {
+        "SINGLE": SingleSelectionStrategy(),
+        "MULTIPLE": MultipleSelectionStrategy(),
+    }
+
+    @classmethod
+    def validate_product_selection(cls, product, selected_option_ids):
+        if not selected_option_ids:
+            # If no options are selected, we only need to check if any required groups were missed.
+            required_sets = ProductModifierSet.objects.filter(
+                product=product, is_required_override=True
+            )
+            if required_sets.exists():
+                raise ValidationError(
+                    f"A selection for '{required_sets.first().modifier_set.name}' is required."
+                )
+            return
+
+        selected_ids_set = set(selected_option_ids)
+        product_modifier_sets = (
+            product.product_modifier_sets.all()
+            .select_related("modifier_set")
+            .prefetch_related(
+                "modifier_set__options",
+                "hidden_options",
+                "extra_options",
+                "modifier_set__triggered_by_option",
+            )
+        )
+
+        all_valid_option_ids = set()
+        selections_by_pms = {pms.id: [] for pms in product_modifier_sets}
+
+        for pms in product_modifier_sets:
+            valid_options = (
+                set(pms.modifier_set.options.all()) | set(pms.extra_options.all())
+            ) - set(pms.hidden_options.all())
+            valid_ids_for_set = {opt.id for opt in valid_options}
+            all_valid_option_ids.update(valid_ids_for_set)
+
+            for opt_id in selected_ids_set:
+                if opt_id in valid_ids_for_set:
+                    selections_by_pms[pms.id].append(opt_id)
+
+        # 1. Check for any invalid or disallowed options
+        if not selected_ids_set.issubset(all_valid_option_ids):
+            invalid_options = selected_ids_set - all_valid_option_ids
+            raise ValidationError(
+                f"Invalid modifier option(s) selected: {invalid_options}"
+            )
+
+        # 2. Validate rules for each group and check for conditional logic violations
+        for pms in product_modifier_sets:
+            # If a group is conditional, its trigger option MUST be selected
+            trigger_option = pms.modifier_set.triggered_by_option
+            if trigger_option and trigger_option.id not in selected_ids_set:
+                if selections_by_pms[
+                    pms.id
+                ]:  # A selection was made for a group that shouldn't be visible
+                    raise ValidationError(
+                        f"Cannot select options from '{pms.modifier_set.name}' without selecting its trigger option '{trigger_option.name}'."
+                    )
+                continue  # Skip validation for non-triggered conditional groups
+
+            strategy = cls.STRATEGIES.get(pms.modifier_set.selection_type)
+            if strategy:
+                strategy.validate(pms, selections_by_pms[pms.id])

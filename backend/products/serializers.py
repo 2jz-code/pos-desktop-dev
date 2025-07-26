@@ -1,181 +1,195 @@
 from rest_framework import serializers
-from .models import Category, Tax, Product, ProductType
+from .models import (
+    Category, Tax, Product, ProductType,
+    ModifierSet, ModifierOption, ProductModifierSet
+)
 from .services import ProductService
 from rest_framework.fields import ImageField
 from django.conf import settings
+from collections import defaultdict
+
+class ModifierOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ModifierOption
+        fields = ['id', 'name', 'price_delta', 'display_order', 'modifier_set']
+
+class ModifierSetSerializer(serializers.ModelSerializer):
+    options = ModifierOptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ModifierSet
+        fields = ['id', 'name', 'internal_name', 'selection_type', 'min_selections', 'max_selections', 'triggered_by_option', 'options']
+
+class ProductModifierSetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductModifierSet
+        fields = '__all__'
 
 
-# --- NEW: Basic serializers for nested data ---
+# --- Optimized Read-Only Serializers for Product Detail View ---
+
+class FinalModifierOptionSerializer(serializers.ModelSerializer):
+    triggered_sets = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ModifierOption
+        fields = ['id', 'name', 'price_delta', 'display_order', 'triggered_sets']
+
+    def get_triggered_sets(self, obj):
+        return self.context.get('triggered_sets_for_option', {}).get(obj.id, [])
+
+class FinalProductModifierSetSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    internal_name = serializers.CharField()
+    selection_type = serializers.CharField()
+    min_selections = serializers.IntegerField()
+    max_selections = serializers.IntegerField(allow_null=True)
+    options = serializers.SerializerMethodField()
+
+    def get_options(self, obj):
+        options_data = self.context.get('options_for_set', {}).get(obj['id'], [])
+        return FinalModifierOptionSerializer(options_data, many=True, context=self.context).data
+
+# --- Existing Serializers ---
+
 class BasicCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ["id", "name", "order"]
-
 
 class BasicProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ["id", "name", "barcode"]
 
-
-# --- END NEW ---
-
-
 class ProductTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductType
         fields = ["id", "name", "description"]
 
-
 class CategorySerializer(serializers.ModelSerializer):
     parent = BasicCategorySerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(
-        source="parent",
-        queryset=Category.objects.all(),
-        allow_null=True,
-        required=False,
-        write_only=True,
+        source="parent", queryset=Category.objects.all(), allow_null=True, required=False, write_only=True
     )
 
     class Meta:
         model = Category
-        fields = [
-            "id",
-            "name",
-            "description",
-            "parent",
-            "parent_id",
-            "order",
-            "is_public",
-        ]
-
+        fields = ["id", "name", "description", "parent", "parent_id", "order", "is_public"]
 
 class TaxSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tax
         fields = ["id", "name", "rate"]
 
-
 class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     subcategory = CategorySerializer(source="category.parent", read_only=True)
     taxes = TaxSerializer(many=True, read_only=True)
     product_type = ProductTypeSerializer(read_only=True)
-    image = ImageField(read_only=True)  # Add image field
-    image_url = (
-        serializers.SerializerMethodField()
-    )  # Add image_url field for frontend compatibility
-    original_filename = serializers.CharField(
-        read_only=True
-    )  # Add original_filename field
+    image = ImageField(read_only=True)
+    image_url = serializers.SerializerMethodField()
+    original_filename = serializers.CharField(read_only=True)
+    modifier_groups = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
-            "id",
-            "name",
-            "description",
-            "price",
-            "category",
-            "subcategory",
-            "taxes",
-            "is_active",
-            "is_public",
-            "track_inventory",
-            "product_type",
-            "barcode",
-            "created_at",
-            "updated_at",
-            "image",  # Add image to fields
-            "image_url",  # Add image_url to fields
-            "original_filename",  # Add original_filename to fields
+            "id", "name", "description", "price", "category", "subcategory", "taxes",
+            "is_active", "is_public", "track_inventory", "product_type", "barcode",
+            "created_at", "updated_at", "image", "image_url", "original_filename",
+            "modifier_groups",
         ]
 
-    def validate_barcode(self, value):
-        """Convert empty string to None for barcode to handle unique constraint properly"""
-        if value == "" or value is None:
-            return None
-        return value
-
     def get_image_url(self, obj):
-        """Return the full URL for the product image"""
         if obj.image:
             request = self.context.get("request")
             if request:
                 return request.build_absolute_uri(obj.image.url)
             else:
-                # For S3 URLs, obj.image.url is already absolute
-                # For local storage, we need to build absolute URL
                 image_url = obj.image.url
                 if image_url.startswith("http"):
-                    # Already absolute (S3)
                     return image_url
                 else:
-                    # Local storage - build absolute URL
                     base_url = getattr(settings, "BASE_URL", "http://127.0.0.1:8001")
                     return f"{base_url}{image_url}"
         return None
 
+    def get_modifier_groups(self, obj):
+        product_modifier_sets = obj.product_modifier_sets.all().select_related('modifier_set').prefetch_related(
+            'modifier_set__options', 'hidden_options', 'extra_options'
+        )
 
-# Sync-specific serializers that send IDs instead of nested objects
+        all_sets_data = {}
+        options_map = {}
+        triggered_map = defaultdict(list)
+
+        for pms in product_modifier_sets:
+            ms = pms.modifier_set
+            all_sets_data[ms.id] = {
+                'id': ms.id,
+                'name': ms.name,
+                'internal_name': ms.internal_name,
+                'selection_type': ms.selection_type,
+                'min_selections': 1 if pms.is_required_override else ms.min_selections,
+                'max_selections': ms.max_selections,
+                'triggered_by_option_id': ms.triggered_by_option_id
+            }
+
+            global_options = {opt.id: opt for opt in ms.options.all()}
+            hidden_ids = {opt.id for opt in pms.hidden_options.all()}
+            visible_options = {k: v for k, v in global_options.items() if k not in hidden_ids}
+            extra_options = {opt.id: opt for opt in pms.extra_options.all()}
+            final_options = sorted(list(visible_options.values()) + list(extra_options.values()), key=lambda o: o.display_order)
+            options_map[ms.id] = final_options
+
+        for set_id, set_data in all_sets_data.items():
+            trigger_id = set_data.pop('triggered_by_option_id')
+            if trigger_id:
+                triggered_map[trigger_id].append(set_data)
+
+        context = self.context.copy()
+        context['options_for_set'] = options_map
+        context['triggered_sets_for_option'] = triggered_map
+
+        # Find sets that are not triggered by any option (root-level sets)
+        triggered_set_ids = {s['id'] for sets_list in triggered_map.values() for s in sets_list}
+        root_sets = [data for data in all_sets_data.values() if data['id'] not in triggered_set_ids]
+        
+        return FinalProductModifierSetSerializer(root_sets, many=True, context=context).data
+
+
 class ProductSyncSerializer(serializers.ModelSerializer):
-    category_id = serializers.IntegerField(
-        source="category.id", read_only=True, allow_null=True
-    )
+    category_id = serializers.IntegerField(source="category.id", read_only=True, allow_null=True)
     product_type_id = serializers.IntegerField(source="product_type.id", read_only=True)
 
     class Meta:
         model = Product
         fields = [
-            "id",
-            "name",
-            "description",
-            "price",
-            "category_id",
-            "product_type_id",
-            "is_active",
-            "is_public",
-            "track_inventory",
-            "barcode",
-            "created_at",
-            "updated_at",
+            "id", "name", "description", "price", "category_id", "product_type_id",
+            "is_active", "is_public", "track_inventory", "barcode", "created_at", "updated_at",
         ]
-
 
 class ProductCreateSerializer(serializers.ModelSerializer):
     category_id = serializers.IntegerField(write_only=True, required=False)
-    tax_ids = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True, required=False
-    )
+    tax_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
     product_type_id = serializers.IntegerField(write_only=True)
-
-    # Inventory fields
     initial_stock = serializers.DecimalField(
         max_digits=10, decimal_places=2, write_only=True, required=False, default=0
     )
     location_id = serializers.IntegerField(write_only=True, required=False)
-    image = ImageField(write_only=True, required=False)  # Add image field for upload
+    image = ImageField(write_only=True, required=False)
 
     class Meta:
         model = Product
         fields = [
-            "name",
-            "description",
-            "price",
-            "is_active",
-            "is_public",
-            "track_inventory",
-            "product_type_id",
-            "category_id",
-            "tax_ids",
-            "barcode",
-            "initial_stock",
-            "location_id",
-            "image",  # Add image to fields
+            "name", "description", "price", "is_active", "is_public", "track_inventory",
+            "product_type_id", "category_id", "tax_ids", "barcode", "initial_stock",
+            "location_id", "image",
         ]
 
     def validate_barcode(self, value):
-        """Convert empty string to None for barcode to handle unique constraint properly"""
         if value == "" or value is None:
             return None
         return value

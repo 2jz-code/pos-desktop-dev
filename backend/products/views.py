@@ -4,7 +4,7 @@ from rest_framework import permissions, viewsets, generics, status
 from rest_framework.filters import SearchFilter
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from .models import Product, Category, Tax, ProductType
+from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet
 from users.permissions import ReadOnlyForCashiers
 from .serializers import (
     ProductSerializer,
@@ -13,9 +13,33 @@ from .serializers import (
     CategorySerializer,
     TaxSerializer,
     ProductTypeSerializer,
+    ModifierSetSerializer,
+    ModifierOptionSerializer,
+    ProductModifierSetSerializer
 )
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
+
+class ProductModifierSetViewSet(viewsets.ModelViewSet):
+    queryset = ProductModifierSet.objects.all()
+    serializer_class = ProductModifierSetSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        return self.queryset.filter(product_id=self.kwargs['product_pk'])
+
+    def perform_create(self, serializer):
+        serializer.save(product_id=self.kwargs['product_pk'])
+
+class ModifierSetViewSet(viewsets.ModelViewSet):
+    queryset = ModifierSet.objects.all().prefetch_related('options')
+    serializer_class = ModifierSetSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class ModifierOptionViewSet(viewsets.ModelViewSet):
+    queryset = ModifierOption.objects.all()
+    serializer_class = ModifierOptionSerializer
+    permission_classes = [permissions.IsAdminUser]
 
 # Create your views here.
 

@@ -255,6 +255,9 @@ class AddItemSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
     notes = serializers.CharField(required=False, allow_blank=True)
+    selected_options = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
 
     def validate_product_id(self, value):
         """
@@ -284,6 +287,7 @@ class AddItemSerializer(serializers.Serializer):
             order=order,
             product=product,
             quantity=self.validated_data["quantity"],
+            selected_option_ids=self.validated_data.get("selected_options", []),
             notes=self.validated_data.get("notes", ""),
         )
 

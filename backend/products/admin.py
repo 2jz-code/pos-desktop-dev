@@ -1,7 +1,26 @@
 from django.contrib import admin
 from mptt.admin import DraggableMPTTAdmin
-from .models import Category, Tax, Product, ProductType
+from .models import (
+    Category, Tax, Product, ProductType, 
+    ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption
+)
 
+class ModifierOptionInline(admin.TabularInline):
+    model = ModifierOption
+    extra = 1
+
+@admin.register(ModifierSet)
+class ModifierSetAdmin(admin.ModelAdmin):
+    list_display = ('name', 'internal_name', 'selection_type', 'min_selections', 'max_selections')
+    search_fields = ('name', 'internal_name')
+    list_filter = ('selection_type',)
+    autocomplete_fields = ('triggered_by_option',)
+    inlines = [ModifierOptionInline]
+
+class ProductModifierSetInline(admin.TabularInline):
+    model = ProductModifierSet
+    extra = 1
+    autocomplete_fields = ['modifier_set']
 
 @admin.register(ProductType)
 class ProductTypeAdmin(admin.ModelAdmin):
@@ -19,7 +38,6 @@ class CategoryAdmin(DraggableMPTTAdmin):
     list_display_links = ("indented_title",)
     search_fields = ("name",)
     list_filter = ("parent",)
-    # Using raw_id_fields for parent makes it easier to select a parent from a long list of categories.
     raw_id_fields = ("parent",)
 
 
@@ -37,6 +55,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_editable = ("price", "is_active", "is_public")
     autocomplete_fields = ("category", "taxes")
     actions = ["make_public", "make_private"]
+    inlines = [ProductModifierSetInline]
 
     def make_public(self, request, queryset):
         queryset.update(is_public=True)
@@ -47,5 +66,16 @@ class ProductAdmin(admin.ModelAdmin):
     make_private.short_description = "Mark selected products as private"
 
 
-# We don't register the base Product model itself because we only want to interact
-# with the specific subtypes (MenuItem, GroceryItem) in the admin.
+@admin.register(ModifierOption)
+class ModifierOptionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'modifier_set', 'price_delta', 'display_order')
+    search_fields = ('name', 'modifier_set__name')
+    list_filter = ('modifier_set',)
+    autocomplete_fields = ('modifier_set',)
+
+
+@admin.register(ProductSpecificOption)
+class ProductSpecificOptionAdmin(admin.ModelAdmin):
+    list_display = ('product_modifier_set', 'modifier_option')
+    search_fields = ('product_modifier_set__product__name', 'modifier_option__name')
+    raw_id_fields = ('product_modifier_set', 'modifier_option')

@@ -396,3 +396,14 @@ class OrderItem(models.Model):
     @property
     def total_price(self):
         return self.quantity * self.price_at_sale
+
+class OrderItemModifier(models.Model):
+    order_item = models.ForeignKey('OrderItem', on_delete=models.CASCADE, related_name='selected_modifiers_snapshot')
+    
+    modifier_set_name = models.CharField(max_length=100)
+    option_name = models.CharField(max_length=100)
+    price_at_sale = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.modifier_set_name}: {self.option_name} ({self.price_at_sale})"
