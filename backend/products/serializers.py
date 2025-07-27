@@ -15,15 +15,27 @@ class ModifierOptionSerializer(serializers.ModelSerializer):
 
 class ModifierSetSerializer(serializers.ModelSerializer):
     options = serializers.SerializerMethodField()
+    product_count = serializers.SerializerMethodField()
+    related_products = serializers.SerializerMethodField()
 
     class Meta:
         model = ModifierSet
-        fields = ['id', 'name', 'internal_name', 'selection_type', 'min_selections', 'max_selections', 'triggered_by_option', 'options']
+        fields = ['id', 'name', 'internal_name', 'selection_type', 'min_selections', 'max_selections', 'triggered_by_option', 'options', 'product_count', 'related_products']
     
     def get_options(self, obj):
         # Only return non-product-specific options for global modifier set views
         global_options = obj.options.filter(is_product_specific=False)
         return ModifierOptionSerializer(global_options, many=True).data
+    
+    def get_product_count(self, obj):
+        """Return the count of products using this modifier set"""
+        return obj.product_modifier_sets.count()
+    
+    def get_related_products(self, obj):
+        """Return basic info about products using this modifier set"""
+        # Access the prefetched products to avoid N+1 queries
+        products = [pms.product for pms in obj.product_modifier_sets.all()]
+        return BasicProductSerializer(products, many=True).data
 
 class ProductModifierSetSerializer(serializers.ModelSerializer):
     class Meta:

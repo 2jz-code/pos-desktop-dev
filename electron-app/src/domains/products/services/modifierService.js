@@ -367,8 +367,8 @@ export const createModifierFromTemplate = async (templateData) => {
       name: templateData.name,
       internal_name: templateData.name.toLowerCase().replace(/\s+/g, '-'),
       selection_type: templateData.type,
-      min_selections: templateData.type === 'SINGLE' ? 1 : 0,
-      max_selections: templateData.type === 'SINGLE' ? 1 : null
+      min_selections: templateData.min_selections !== undefined ? templateData.min_selections : (templateData.type === 'SINGLE' ? 1 : 0),
+      max_selections: templateData.max_selections !== undefined ? templateData.max_selections : (templateData.type === 'SINGLE' ? 1 : null)
     });
 
     const modifierSet = modifierSetResponse.data;

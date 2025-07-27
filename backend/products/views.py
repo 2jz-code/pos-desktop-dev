@@ -1,5 +1,6 @@
 from django.shortcuts import render, get_object_or_404
 from django.utils.dateparse import parse_datetime
+from django.db import models
 from rest_framework import permissions, viewsets, generics, status
 from rest_framework.filters import SearchFilter
 from rest_framework.decorators import api_view, permission_classes, action
@@ -15,7 +16,8 @@ from .serializers import (
     ProductTypeSerializer,
     ModifierSetSerializer,
     ModifierOptionSerializer,
-    ProductModifierSetSerializer
+    ProductModifierSetSerializer,
+    BasicProductSerializer
 )
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -112,9 +114,184 @@ class ProductModifierSetViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ModifierSetViewSet(viewsets.ModelViewSet):
-    queryset = ModifierSet.objects.all().prefetch_related('options')
+    queryset = ModifierSet.objects.all().prefetch_related(
+        'options',
+        'product_modifier_sets__product'
+    )
     serializer_class = ModifierSetSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    @action(detail=True, methods=['get'], url_path='usage')
+    def get_usage_analytics(self, request, pk=None):
+        """
+        Get usage analytics for a specific modifier set.
+        Returns statistics about how this modifier set is being used.
+        """
+        try:
+            modifier_set = self.get_object()
+            
+            # Get basic usage statistics
+            product_count = modifier_set.product_modifier_sets.count()
+            
+            # Get list of products using this modifier set
+            product_modifier_sets = modifier_set.product_modifier_sets.select_related('product').all()
+            products = [pms.product for pms in product_modifier_sets]
+            
+            # Calculate additional analytics
+            usage_data = {
+                'modifier_set_id': modifier_set.id,
+                'modifier_set_name': modifier_set.name,
+                'product_count': product_count,
+                'products': BasicProductSerializer(products, many=True).data,
+                'is_used': product_count > 0,
+                'usage_level': self._get_usage_level(product_count),
+                'option_count': modifier_set.options.count(),
+                'selection_type': modifier_set.selection_type,
+                'min_selections': modifier_set.min_selections,
+                'max_selections': modifier_set.max_selections,
+                'is_conditional': modifier_set.triggered_by_option is not None,
+            }
+            
+            return Response(usage_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='products')
+    def get_products_using_modifier_set(self, request, pk=None):
+        """
+        Get all products that use this modifier set.
+        Returns detailed information about products and their modifier configurations.
+        """
+        try:
+            modifier_set = self.get_object()
+            
+            # Get products using this modifier set with their configurations
+            product_modifier_sets = modifier_set.product_modifier_sets.select_related('product').prefetch_related(
+                'hidden_options',
+                'extra_options'
+            ).all()
+            
+            products_data = []
+            for pms in product_modifier_sets:
+                product = pms.product
+                
+                # Get hidden and extra options for this product
+                hidden_options = list(pms.hidden_options.values('id', 'name'))
+                extra_options = list(pms.extra_options.values('id', 'name', 'price_delta'))
+                
+                product_data = {
+                    'id': product.id,
+                    'name': product.name,
+                    'barcode': product.barcode,
+                    'price': float(product.price),
+                    'is_active': product.is_active,
+                    'category': product.category.name if product.category else None,
+                    'modifier_config': {
+                        'display_order': pms.display_order,
+                        'is_required_override': pms.is_required_override,
+                        'hidden_options': hidden_options,
+                        'extra_options': extra_options,
+                        'hidden_option_count': len(hidden_options),
+                        'extra_option_count': len(extra_options),
+                    }
+                }
+                products_data.append(product_data)
+            
+            # Sort by display order, then by product name
+            products_data.sort(key=lambda x: (x['modifier_config']['display_order'], x['name']))
+            
+            return Response(products_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='analytics-summary')
+    def get_analytics_summary(self, request):
+        """
+        Get overall analytics summary for all modifier sets.
+        Returns aggregated statistics across all modifier sets.
+        """
+        try:
+            modifier_sets = self.get_queryset()
+            
+            total_sets = modifier_sets.count()
+            used_sets = modifier_sets.filter(product_modifier_sets__isnull=False).distinct().count()
+            unused_sets = total_sets - used_sets
+            
+            # Calculate total products using modifiers
+            total_products_with_modifiers = Product.objects.filter(
+                product_modifier_sets__isnull=False
+            ).distinct().count()
+            
+            # Get modifier set usage distribution
+            usage_distribution = {
+                'unused': modifier_sets.filter(product_modifier_sets__isnull=True).count(),
+                'low_usage': modifier_sets.annotate(
+                    product_count=models.Count('product_modifier_sets')
+                ).filter(product_count__gt=0, product_count__lte=3).count(),
+                'medium_usage': modifier_sets.annotate(
+                    product_count=models.Count('product_modifier_sets')
+                ).filter(product_count__gt=3, product_count__lte=10).count(),
+                'high_usage': modifier_sets.annotate(
+                    product_count=models.Count('product_modifier_sets')
+                ).filter(product_count__gt=10).count(),
+            }
+            
+            # Calculate average options per set
+            avg_options_per_set = modifier_sets.annotate(
+                option_count=models.Count('options')
+            ).aggregate(models.Avg('option_count'))['option_count__avg'] or 0
+            
+            summary_data = {
+                'total_modifier_sets': total_sets,
+                'used_modifier_sets': used_sets,
+                'unused_modifier_sets': unused_sets,
+                'usage_percentage': round((used_sets / total_sets * 100) if total_sets > 0 else 0, 1),
+                'total_products_with_modifiers': total_products_with_modifiers,
+                'average_options_per_set': round(avg_options_per_set, 1),
+                'usage_distribution': usage_distribution,
+                'most_used_sets': self._get_most_used_sets(),
+                'least_used_sets': self._get_least_used_sets(),
+            }
+            
+            return Response(summary_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _get_usage_level(self, product_count):
+        """Helper method to determine usage level based on product count."""
+        if product_count == 0:
+            return 'unused'
+        elif product_count <= 3:
+            return 'low'
+        elif product_count <= 10:
+            return 'medium'
+        else:
+            return 'high'
+
+    def _get_most_used_sets(self):
+        """Get the top 5 most used modifier sets."""
+        return ModifierSet.objects.annotate(
+            product_count=models.Count('product_modifier_sets')
+        ).filter(product_count__gt=0).order_by('-product_count')[:5].values(
+            'id', 'name', 'internal_name', 'product_count'
+        )
+
+    def _get_least_used_sets(self):
+        """Get modifier sets that are unused or have low usage."""
+        return ModifierSet.objects.annotate(
+            product_count=models.Count('product_modifier_sets')
+        ).filter(product_count__lte=1).order_by('product_count', 'name')[:10].values(
+            'id', 'name', 'internal_name', 'product_count'
+        )
 
 class ModifierOptionViewSet(viewsets.ModelViewSet):
     queryset = ModifierOption.objects.all()

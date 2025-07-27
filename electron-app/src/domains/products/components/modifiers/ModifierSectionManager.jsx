@@ -57,14 +57,15 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
-  const [pendingChanges, setPendingChanges] = useState(new Map()); // Map of modifierSetId -> Set of hidden option IDs
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [optimisticHiddenOptions, setOptimisticHiddenOptions] = useState(new Map()); // Map of modifierSetId -> Set of hidden option IDs
   const { toast } = useToast();
 
   // Quick create form state
   const [quickCreateForm, setQuickCreateForm] = useState({
     name: '',
     type: 'SINGLE',
+    min_selections: 0,
+    max_selections: 1,
     options: [{ name: '', price_delta: 0.00, isProductSpecific: false }]
   });
 
@@ -82,7 +83,15 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
       const modifiers = await modifierService.getProductModifiers(productId);
       
       setModifierGroups(modifiers);
-      // Note: Don't clear pending changes here - only clear them in save/discard functions
+      
+      // Initialize optimistic hidden options from the server data
+      const hiddenOptionsMap = new Map();
+      modifiers.forEach(group => {
+        const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
+        const hiddenIds = group.options?.filter(opt => opt.is_hidden)?.map(opt => opt.id) || [];
+        hiddenOptionsMap.set(modifierSetId, new Set(hiddenIds));
+      });
+      setOptimisticHiddenOptions(hiddenOptionsMap);
     } catch (error) {
       console.error('Error fetching product modifiers:', error);
       toast({
@@ -197,6 +206,8 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
       const templateData = {
         name: quickCreateForm.name,
         type: quickCreateForm.type,
+        min_selections: quickCreateForm.min_selections,
+        max_selections: quickCreateForm.type === 'SINGLE' ? 1 : quickCreateForm.max_selections,
         options: quickCreateForm.options.filter(opt => opt.name.trim())
       };
 
@@ -221,7 +232,13 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
       });
       
       setIsQuickCreateOpen(false);
-      setQuickCreateForm({ name: '', type: 'SINGLE', options: [{ name: '', price_delta: 0.00, isProductSpecific: false }] });
+      setQuickCreateForm({ 
+        name: '', 
+        type: 'SINGLE', 
+        min_selections: 0,
+        max_selections: 1,
+        options: [{ name: '', price_delta: 0.00, isProductSpecific: false }] 
+      });
     } catch (error) {
       console.error('Error creating modifier from template:', error);
       toast({
@@ -234,96 +251,57 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
 
 
   const isOptionHidden = (modifierSetId, optionId) => {
+    // Use optimistic state for immediate UI updates
+    const optimisticHiddenIds = optimisticHiddenOptions.get(modifierSetId);
+    if (optimisticHiddenIds) {
+      return optimisticHiddenIds.has(optionId);
+    }
+    
+    // Fallback to server data if optimistic state is not available
     const modifierGroup = modifierGroups.find(g => 
       (g.modifier_set_id || g.modifier_set || g.id) === modifierSetId
     );
-    
-    // If there are pending changes for this modifier set, use those
-    const pendingHiddenIds = pendingChanges.get(modifierSetId);
-    if (pendingHiddenIds) {
-      return pendingHiddenIds.has(optionId);
-    }
-    
-    // Otherwise, use the is_hidden field from the backend
     const option = modifierGroup?.options?.find(opt => opt.id === optionId);
-    const isHidden = option?.is_hidden || false;
-    return isHidden;
+    return option?.is_hidden || false;
   };
 
-  const handleOptionToggle = (modifierSetId, optionId, shouldHide) => {
-    const modifierGroup = modifierGroups.find(g => 
-      (g.modifier_set_id || g.modifier_set || g.id) === modifierSetId
-    );
+  const handleOptionToggle = async (modifierSetId, optionId, shouldHide) => {
+    // Optimistically update the UI immediately
+    const currentHiddenIds = optimisticHiddenOptions.get(modifierSetId) || new Set();
+    const newHiddenIds = new Set(currentHiddenIds);
     
-    // Get current hidden IDs from the options' is_hidden field
-    const currentHiddenIds = modifierGroup?.options
-      ?.filter(opt => opt.is_hidden)
-      ?.map(opt => opt.id) || [];
-    
-    const pendingHiddenIds = pendingChanges.get(modifierSetId) || new Set(currentHiddenIds);
-    
-    const newPendingHiddenIds = new Set(pendingHiddenIds);
     if (shouldHide) {
-      newPendingHiddenIds.add(optionId);
+      newHiddenIds.add(optionId);
     } else {
-      newPendingHiddenIds.delete(optionId);
+      newHiddenIds.delete(optionId);
     }
     
-    // Update pending changes
-    const newPendingChanges = new Map(pendingChanges);
-    newPendingChanges.set(modifierSetId, newPendingHiddenIds);
-    setPendingChanges(newPendingChanges);
-    setHasUnsavedChanges(true);
-  };
-
-  const handleSaveChanges = async () => {
+    // Update optimistic state immediately for instant UI response
+    const newOptimisticHiddenOptions = new Map(optimisticHiddenOptions);
+    newOptimisticHiddenOptions.set(modifierSetId, newHiddenIds);
+    setOptimisticHiddenOptions(newOptimisticHiddenOptions);
+    
+    // Update server in the background
     try {
-      setLoading(true);
+      const hiddenIdsArray = Array.from(newHiddenIds);
+      await modifierService.updateHiddenOptions(productId, modifierSetId, hiddenIdsArray);
       
-      
-      // Apply all pending changes
-      const savePromises = [];
-      for (const [modifierSetId, hiddenIds] of pendingChanges) {
-        const hiddenIdsArray = Array.from(hiddenIds);
-        savePromises.push(
-          modifierService.updateHiddenOptions(productId, modifierSetId, hiddenIdsArray)
-        );
-      }
-      
-      await Promise.all(savePromises);
-      
-      // Clear pending changes BEFORE refetching to avoid race conditions
-      setPendingChanges(new Map());
-      setHasUnsavedChanges(false);
-      
-      // Refetch the updated data
-      await fetchProductModifiers();
+      // Optionally call onModifierChange to notify parent component
       onModifierChange?.();
-      
-      toast({
-        title: "Success",
-        description: "Modifier visibility changes saved successfully.",
-      });
     } catch (error) {
-      console.error('Error saving visibility changes:', error);
+      console.error('Error updating option visibility:', error);
+      
+      // Revert optimistic update on error
+      setOptimisticHiddenOptions(optimisticHiddenOptions);
+      
       toast({
         title: "Error",
-        description: "Failed to save visibility changes.",
+        description: "Failed to update option visibility.",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleDiscardChanges = () => {
-    setPendingChanges(new Map());
-    setHasUnsavedChanges(false);
-    toast({
-      title: "Changes Discarded",
-      description: "All unsaved visibility changes have been reverted.",
-    });
-  };
 
 
   const toggleGroupExpansion = (groupId) => {
@@ -493,9 +471,13 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
                                     </div>
                                     <p className="text-sm text-gray-500">
                                       {group.options?.length || 0} options
-                                      {group.options?.filter(opt => opt.is_hidden).length > 0 && 
-                                        ` • ${group.options.filter(opt => opt.is_hidden).length} hidden`
-                                      }
+                                      {(() => {
+                                        const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
+                                        const optimisticHiddenIds = optimisticHiddenOptions.get(modifierSetId);
+                                        const hiddenCount = optimisticHiddenIds ? optimisticHiddenIds.size : 
+                                          (group.options?.filter(opt => opt.is_hidden).length || 0);
+                                        return hiddenCount > 0 ? ` • ${hiddenCount} hidden` : '';
+                                      })()}
                                     </p>
                                   </div>
                                 </CollapsibleTrigger>
@@ -603,46 +585,6 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
             </Droppable>
           </DragDropContext>
         )}
-        
-        {/* Save Button */}
-        {hasUnsavedChanges && (
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-blue-700 font-medium">
-                  You have unsaved visibility changes
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDiscardChanges}
-                  disabled={loading}
-                >
-                  Discard Changes
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleSaveChanges}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Library Dialog */}
@@ -664,9 +606,21 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
                 >
                   <div>
                     <h4 className="font-medium">{set.name}</h4>
-                    <p className="text-sm text-gray-500">
-                      {set.selection_type} • {set.options?.length || 0} options
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-sm text-gray-500">
+                        {set.selection_type === 'SINGLE' ? 'Single Choice' : 'Multiple Choice'} • {set.options?.length || 0} options
+                      </p>
+                      <Badge 
+                        variant="outline"
+                        className={`text-xs ${
+                          set.min_selections > 0 
+                            ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                            : 'bg-gray-100 border-gray-300 text-gray-600'
+                        }`}
+                      >
+                        {set.min_selections > 0 ? 'Required' : 'Optional'}
+                      </Badge>
+                    </div>
                   </div>
                   <Button
                     type="button"
@@ -703,7 +657,11 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
               <Label htmlFor="type">Selection Type</Label>
               <Select
                 value={quickCreateForm.type}
-                onValueChange={(value) => setQuickCreateForm(prev => ({ ...prev, type: value }))}
+                onValueChange={(value) => setQuickCreateForm(prev => ({
+                  ...prev, 
+                  type: value,
+                  max_selections: value === 'SINGLE' ? 1 : prev.max_selections
+                }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -713,6 +671,30 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
                   <SelectItem value="MULTIPLE">Multiple Choice (☑)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            
+            {/* Required/Optional Toggle */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <Label className="text-sm font-medium">Customer Selection</Label>
+                <p className="text-xs text-gray-500 mt-1">
+                  {quickCreateForm.min_selections > 0 
+                    ? "Customers must make a selection" 
+                    : "Customers can skip this modifier group"
+                  }
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Label className="text-sm">Optional</Label>
+                <Switch
+                  checked={quickCreateForm.min_selections > 0}
+                  onCheckedChange={(checked) => {
+                    const newMinSelections = checked ? 1 : 0;
+                    setQuickCreateForm(prev => ({ ...prev, min_selections: newMinSelections }));
+                  }}
+                />
+                <Label className="text-sm">Required</Label>
+              </div>
             </div>
             <div>
               <Label>Options</Label>
