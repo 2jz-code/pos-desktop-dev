@@ -4,7 +4,7 @@ from rest_framework import permissions, viewsets, generics, status
 from rest_framework.filters import SearchFilter
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet
+from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption
 from users.permissions import ReadOnlyForCashiers
 from .serializers import (
     ProductSerializer,
@@ -30,6 +30,86 @@ class ProductModifierSetViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(product_id=self.kwargs['product_pk'])
+
+    @action(detail=True, methods=['post'], url_path='add-product-specific-option')
+    def add_product_specific_option(self, request, product_pk=None, pk=None):
+        """
+        Add a product-specific option to a modifier set for this product.
+        Creates a new ModifierOption and links it as a product-specific option.
+        """
+        try:
+            product_modifier_set = self.get_object()
+            
+            # Create the modifier option
+            option_data = {
+                'name': request.data.get('name'),
+                'price_delta': request.data.get('price_delta', 0.00),
+                'display_order': request.data.get('display_order', 0),
+                'modifier_set': product_modifier_set.modifier_set.id,
+                'is_product_specific': True  # Mark as product-specific
+            }
+            
+            option_serializer = ModifierOptionSerializer(data=option_data)
+            if option_serializer.is_valid():
+                modifier_option = option_serializer.save()
+                
+                # Create the product-specific relationship
+                ProductSpecificOption.objects.create(
+                    product_modifier_set=product_modifier_set,
+                    modifier_option=modifier_option
+                )
+                
+                return Response({
+                    'success': True,
+                    'option': option_serializer.data,
+                    'message': 'Product-specific option created successfully'
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'success': False,
+                    'errors': option_serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['delete'], url_path='remove-product-specific-option/(?P<option_id>[^/.]+)')
+    def remove_product_specific_option(self, request, product_pk=None, pk=None, option_id=None):
+        """
+        Remove a product-specific option from this product.
+        This deletes both the ProductSpecificOption relationship and the ModifierOption itself.
+        """
+        try:
+            product_modifier_set = self.get_object()
+            
+            # Find the product-specific option
+            product_specific_option = ProductSpecificOption.objects.get(
+                product_modifier_set=product_modifier_set,
+                modifier_option_id=option_id
+            )
+            
+            # Delete the modifier option (this will cascade to delete the ProductSpecificOption)
+            modifier_option = product_specific_option.modifier_option
+            modifier_option.delete()
+            
+            return Response({
+                'success': True,
+                'message': 'Product-specific option removed successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except ProductSpecificOption.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Product-specific option not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ModifierSetViewSet(viewsets.ModelViewSet):
     queryset = ModifierSet.objects.all().prefetch_related('options')

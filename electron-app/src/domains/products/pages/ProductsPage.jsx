@@ -495,7 +495,14 @@ const ProductsPage = () => {
 			</Button>
 
 			{(canCreateProducts() || canEditProducts()) && (
-				<DropdownMenu>
+				<>
+					<Button
+						onClick={() => navigate("/products/modifiers")}
+					>
+						<Settings className="mr-2 h-4 w-4" />
+						Manage Modifiers
+					</Button>
+					<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<Button>
 							<Settings className="mr-2 h-4 w-4" />
@@ -525,6 +532,7 @@ const ProductsPage = () => {
 						)}
 					</DropdownMenuContent>
 				</DropdownMenu>
+				</>
 			)}
 		</>
 	);

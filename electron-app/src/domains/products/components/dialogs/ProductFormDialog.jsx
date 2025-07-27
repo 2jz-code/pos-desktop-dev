@@ -29,6 +29,7 @@ import {
 import { Switch } from "@/shared/components/ui/switch";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { Loader2 } from "lucide-react";
+import ModifierSectionManager from "@/domains/products/components/modifiers/ModifierSectionManager";
 
 export function ProductFormDialog({
 	open,
@@ -317,7 +318,7 @@ export function ProductFormDialog({
 			open={open}
 			onOpenChange={onOpenChange}
 		>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>
 						{isEditing ? "Edit Product" : "Add New Product"}
@@ -334,311 +335,285 @@ export function ProductFormDialog({
 						<Loader2 className="h-6 w-6 animate-spin" />
 					</div>
 				) : (
-					<form onSubmit={handleSubmit}>
-						<div className="grid gap-4 py-4">
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="name"
-									className="text-right"
-								>
-									Name <span className="text-red-500">*</span>
-								</Label>
-								<div className="col-span-3">
-									<Input
-										id="name"
-										name="name"
-										value={formData.name}
-										onChange={handleInputChange}
-										placeholder="Product name"
-										className={errors.name ? "border-red-500" : ""}
-									/>
-									{errors.name && (
-										<p className="text-sm text-red-500 mt-1">{errors.name}</p>
-									)}
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="description"
-									className="text-right"
-								>
-									Description
-								</Label>
-								<div className="col-span-3">
-									<Textarea
-										id="description"
-										name="description"
-										value={formData.description}
-										onChange={handleInputChange}
-										placeholder="Product description"
-										rows={3}
-									/>
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="price"
-									className="text-right"
-								>
-									Price <span className="text-red-500">*</span>
-								</Label>
-								<div className="col-span-3">
-									<Input
-										id="price"
-										name="price"
-										type="number"
-										step="0.01"
-										min="0"
-										value={formData.price}
-										onChange={handleInputChange}
-										placeholder="0.00"
-										className={errors.price ? "border-red-500" : ""}
-									/>
-									{errors.price && (
-										<p className="text-sm text-red-500 mt-1">{errors.price}</p>
-									)}
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="barcode"
-									className="text-right"
-								>
-									Barcode
-								</Label>
-								<div className="col-span-3">
-									<Input
-										id="barcode"
-										name="barcode"
-										value={formData.barcode}
-										onChange={handleInputChange}
-										placeholder="Enter or scan barcode"
-										className={errors.barcode ? "border-red-500" : ""}
-									/>
-									{errors.barcode && (
-										<p className="text-sm text-red-500 mt-1">
-											{errors.barcode}
-										</p>
-									)}
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="category_id"
-									className="text-right"
-								>
-									Category
-								</Label>
-								<div className="col-span-3">
-									<Select
-										value={formData.category_id}
-										onValueChange={(value) =>
-											handleSelectChange("category_id", value)
-										}
-									>
-										<SelectTrigger
-											className={errors.category_id ? "border-red-500" : ""}
-										>
-											<SelectValue placeholder="Select category" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="none">No Category</SelectItem>
-											{renderCategoryOptions()}
-										</SelectContent>
-									</Select>
-									{errors.category_id && (
-										<p className="text-sm text-red-500 mt-1">
-											{errors.category_id}
-										</p>
-									)}
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="product_type_id"
-									className="text-right"
-								>
-									Type <span className="text-red-500">*</span>
-								</Label>
-								<div className="col-span-3">
-									<Select
-										value={formData.product_type_id}
-										onValueChange={(value) =>
-											handleSelectChange("product_type_id", value)
-										}
-									>
-										<SelectTrigger
-											className={errors.product_type_id ? "border-red-500" : ""}
-										>
-											<SelectValue placeholder="Select type" />
-										</SelectTrigger>
-										<SelectContent>
-											{productTypes.map((type) => (
-												<SelectItem
-													key={type.id}
-													value={type.id.toString()}
-												>
-													{type.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.product_type_id && (
-										<p className="text-sm text-red-500 mt-1">
-											{errors.product_type_id}
-										</p>
-									)}
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="track_inventory"
-									className="text-right"
-								>
-									Track Inventory
-								</Label>
-								<div className="col-span-3 flex items-center space-x-2">
-									<Switch
-										id="track_inventory"
-										name="track_inventory"
-										checked={formData.track_inventory}
-										onCheckedChange={(checked) =>
-											handleSwitchChange("track_inventory", checked)
-										}
-									/>
-									<Label htmlFor="track_inventory">
-										Monitor stock levels for this product
-									</Label>
-								</div>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="is_public"
-									className="text-right"
-								>
-									Public
-								</Label>
-								<div className="col-span-3 flex items-center space-x-2">
-									<Switch
-										id="is_public"
-										name="is_public"
-										checked={formData.is_public}
-										onCheckedChange={(checked) =>
-											handleSwitchChange("is_public", checked)
-										}
-									/>
-									<Label htmlFor="is_public">
-										Make this product visible on the website
-									</Label>
-								</div>
-							</div>
-
-							{showStockFields && (
-								<>
-									<div className="grid grid-cols-4 items-center gap-4">
-										<Label
-											htmlFor="initial_quantity"
-											className="text-right"
-										>
-											Initial Quantity
+					<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+						{/* Left Column - Product Form */}
+						<div className="space-y-4">
+							<h3 className="text-lg font-medium border-b pb-2">Product Details</h3>
+							<form onSubmit={handleSubmit}>
+								<div className="grid gap-4 py-4">
+									<div>
+										<Label htmlFor="name">
+											Name <span className="text-red-500">*</span>
 										</Label>
-										<div className="col-span-3">
+										<Input
+											id="name"
+											name="name"
+											value={formData.name}
+											onChange={handleInputChange}
+											placeholder="Product name"
+											className={errors.name ? "border-red-500" : ""}
+										/>
+										{errors.name && (
+											<p className="text-sm text-red-500 mt-1">{errors.name}</p>
+										)}
+									</div>
+									<div>
+										<Label htmlFor="description">Description</Label>
+										<Textarea
+											id="description"
+											name="description"
+											value={formData.description}
+											onChange={handleInputChange}
+											placeholder="Product description"
+											rows={3}
+										/>
+									</div>
+									
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<Label htmlFor="price">
+												Price <span className="text-red-500">*</span>
+											</Label>
 											<Input
-												id="initial_quantity"
-												name="initial_quantity"
+												id="price"
+												name="price"
 												type="number"
-												placeholder="e.g., 100"
-												value={formData.initial_quantity}
+												step="0.01"
+												min="0"
+												value={formData.price}
 												onChange={handleInputChange}
-												className={
-													errors.initial_quantity ? "border-red-500" : ""
-												}
+												placeholder="0.00"
+												className={errors.price ? "border-red-500" : ""}
 											/>
-											{errors.initial_quantity && (
+											{errors.price && (
+												<p className="text-sm text-red-500 mt-1">{errors.price}</p>
+											)}
+										</div>
+										<div>
+											<Label htmlFor="barcode">Barcode</Label>
+											<Input
+												id="barcode"
+												name="barcode"
+												value={formData.barcode}
+												onChange={handleInputChange}
+												placeholder="Enter or scan barcode"
+												className={errors.barcode ? "border-red-500" : ""}
+											/>
+											{errors.barcode && (
 												<p className="text-sm text-red-500 mt-1">
-													{errors.initial_quantity}
+													{errors.barcode}
 												</p>
 											)}
 										</div>
 									</div>
-
-									<div className="grid grid-cols-4 items-center gap-4">
-										<Label
-											htmlFor="location_id"
-											className="text-right"
-										>
-											Location
-										</Label>
-										<div className="col-span-3">
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<Label htmlFor="category_id">Category</Label>
 											<Select
-												name="location_id"
-												value={formData.location_id}
+												value={formData.category_id}
 												onValueChange={(value) =>
-													handleSelectChange("location_id", value)
+													handleSelectChange("category_id", value)
 												}
 											>
 												<SelectTrigger
-													id="location_id"
-													className={errors.location_id ? "border-red-500" : ""}
+													className={errors.category_id ? "border-red-500" : ""}
 												>
-													<SelectValue placeholder="Select location" />
+													<SelectValue placeholder="Select category" />
 												</SelectTrigger>
 												<SelectContent>
-													{locations.length > 0 ? (
-														locations.map((loc) => (
-															<SelectItem
-																key={loc.id}
-																value={loc.id.toString()}
-															>
-																{loc.name}
-															</SelectItem>
-														))
-													) : (
-														<SelectItem
-															value="no-locations"
-															disabled
-														>
-															No locations available
-														</SelectItem>
-													)}
+													<SelectItem value="none">No Category</SelectItem>
+													{renderCategoryOptions()}
 												</SelectContent>
 											</Select>
-											{errors.location_id && (
+											{errors.category_id && (
 												<p className="text-sm text-red-500 mt-1">
-													{errors.location_id}
+													{errors.category_id}
+												</p>
+											)}
+										</div>
+										<div>
+											<Label htmlFor="product_type_id">
+												Type <span className="text-red-500">*</span>
+											</Label>
+											<Select
+												value={formData.product_type_id}
+												onValueChange={(value) =>
+													handleSelectChange("product_type_id", value)
+												}
+											>
+												<SelectTrigger
+													className={errors.product_type_id ? "border-red-500" : ""}
+												>
+													<SelectValue placeholder="Select type" />
+												</SelectTrigger>
+												<SelectContent>
+													{productTypes.map((type) => (
+														<SelectItem
+															key={type.id}
+															value={type.id.toString()}
+														>
+															{type.name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											{errors.product_type_id && (
+												<p className="text-sm text-red-500 mt-1">
+													{errors.product_type_id}
 												</p>
 											)}
 										</div>
 									</div>
-								</>
-							)}
-						</div>
+									<div className="space-y-3">
+										<div className="flex items-center space-x-2">
+											<Switch
+												id="track_inventory"
+												name="track_inventory"
+												checked={formData.track_inventory}
+												onCheckedChange={(checked) =>
+													handleSwitchChange("track_inventory", checked)
+												}
+											/>
+											<Label htmlFor="track_inventory">
+												Track Inventory - Monitor stock levels for this product
+											</Label>
+										</div>
+										<div className="flex items-center space-x-2">
+											<Switch
+												id="is_public"
+												name="is_public"
+												checked={formData.is_public}
+												onCheckedChange={(checked) =>
+													handleSwitchChange("is_public", checked)
+												}
+											/>
+											<Label htmlFor="is_public">
+												Public - Make this product visible on the website
+											</Label>
+										</div>
+									</div>
 
-						<DialogFooter>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => onOpenChange(false)}
-								disabled={loading}
-							>
-								Cancel
-							</Button>
-							<Button
-								type="submit"
-								disabled={loading}
-							>
-								{loading ? (
-									<>
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-										{isEditing ? "Updating..." : "Creating..."}
-									</>
-								) : (
-									<>{isEditing ? "Update Product" : "Create Product"}</>
-								)}
-							</Button>
-						</DialogFooter>
-					</form>
+									{showStockFields && (
+										<>
+											<div className="grid grid-cols-4 items-center gap-4">
+												<Label
+													htmlFor="initial_quantity"
+													className="text-right"
+												>
+													Initial Quantity
+												</Label>
+												<div className="col-span-3">
+													<Input
+														id="initial_quantity"
+														name="initial_quantity"
+														type="number"
+														placeholder="e.g., 100"
+														value={formData.initial_quantity}
+														onChange={handleInputChange}
+														className={
+															errors.initial_quantity ? "border-red-500" : ""
+														}
+													/>
+													{errors.initial_quantity && (
+														<p className="text-sm text-red-500 mt-1">
+															{errors.initial_quantity}
+														</p>
+													)}
+												</div>
+											</div>
+
+											<div className="grid grid-cols-4 items-center gap-4">
+												<Label
+													htmlFor="location_id"
+													className="text-right"
+												>
+													Location
+												</Label>
+												<div className="col-span-3">
+													<Select
+														name="location_id"
+														value={formData.location_id}
+														onValueChange={(value) =>
+															handleSelectChange("location_id", value)
+														}
+													>
+														<SelectTrigger
+															id="location_id"
+															className={errors.location_id ? "border-red-500" : ""}
+														>
+															<SelectValue placeholder="Select location" />
+														</SelectTrigger>
+														<SelectContent>
+															{locations.length > 0 ? (
+																locations.map((loc) => (
+																	<SelectItem
+																		key={loc.id}
+																		value={loc.id.toString()}
+																	>
+																		{loc.name}
+																	</SelectItem>
+																))
+															) : (
+																<SelectItem
+																	value="no-locations"
+																	disabled
+																>
+																	No locations available
+																</SelectItem>
+															)}
+														</SelectContent>
+													</Select>
+													{errors.location_id && (
+														<p className="text-sm text-red-500 mt-1">
+															{errors.location_id}
+														</p>
+													)}
+												</div>
+											</div>
+										</>
+									)}
+									
+									<div className="pt-4 border-t">
+										<Button
+											type="submit"
+											disabled={loading}
+											className="w-full"
+										>
+											{loading ? (
+												<>
+													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+													{isEditing ? "Updating..." : "Creating..."}
+												</>
+											) : (
+												<>{isEditing ? "Update Product" : "Create Product"}</>
+											)}
+										</Button>
+									</div>
+								</div>
+							</form>
+						</div>
+						
+						{/* Right Column - Modifier Section (spans 2 columns) */}
+						<div className="lg:col-span-2 space-y-4">
+							<h3 className="text-lg font-medium border-b pb-2">Modifier Groups</h3>
+							<ModifierSectionManager
+								productId={productId}
+								onModifierChange={() => {}}
+								className=""
+							/>
+						</div>
+					</div>
 				)}
+				
+				<DialogFooter className="mt-6">
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+					>
+						Close
+					</Button>
+				</DialogFooter>
 			</DialogContent>
 		</Dialog>
 	);

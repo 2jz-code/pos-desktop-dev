@@ -138,7 +138,7 @@ class ModifierValidationService:
 
         for pms in product_modifier_sets:
             valid_options = (
-                set(pms.modifier_set.options.all()) | set(pms.extra_options.all())
+                set(pms.modifier_set.options.filter(is_product_specific=False)) | set(pms.extra_options.all())
             ) - set(pms.hidden_options.all())
             valid_ids_for_set = {opt.id for opt in valid_options}
             all_valid_option_ids.update(valid_ids_for_set)

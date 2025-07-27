@@ -11,14 +11,19 @@ from collections import defaultdict
 class ModifierOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ModifierOption
-        fields = ['id', 'name', 'price_delta', 'display_order', 'modifier_set']
+        fields = ['id', 'name', 'price_delta', 'display_order', 'modifier_set', 'is_product_specific']
 
 class ModifierSetSerializer(serializers.ModelSerializer):
-    options = ModifierOptionSerializer(many=True, read_only=True)
+    options = serializers.SerializerMethodField()
 
     class Meta:
         model = ModifierSet
         fields = ['id', 'name', 'internal_name', 'selection_type', 'min_selections', 'max_selections', 'triggered_by_option', 'options']
+    
+    def get_options(self, obj):
+        # Only return non-product-specific options for global modifier set views
+        global_options = obj.options.filter(is_product_specific=False)
+        return ModifierOptionSerializer(global_options, many=True).data
 
 class ProductModifierSetSerializer(serializers.ModelSerializer):
     class Meta:
@@ -30,13 +35,18 @@ class ProductModifierSetSerializer(serializers.ModelSerializer):
 
 class FinalModifierOptionSerializer(serializers.ModelSerializer):
     triggered_sets = serializers.SerializerMethodField()
+    is_hidden = serializers.SerializerMethodField()
 
     class Meta:
         model = ModifierOption
-        fields = ['id', 'name', 'price_delta', 'display_order', 'triggered_sets']
+        fields = ['id', 'name', 'price_delta', 'display_order', 'triggered_sets', 'is_hidden']
 
     def get_triggered_sets(self, obj):
         return self.context.get('triggered_sets_for_option', {}).get(obj.id, [])
+    
+    def get_is_hidden(self, obj):
+        # Check if this option is marked as hidden for the current product
+        return getattr(obj, 'is_hidden_for_product', False)
 
 class FinalProductModifierSetSerializer(serializers.Serializer):
     id = serializers.IntegerField()
@@ -125,6 +135,10 @@ class ProductSerializer(serializers.ModelSerializer):
         options_map = {}
         triggered_map = defaultdict(list)
 
+        # Check for visible_only parameter from request
+        request = self.context.get('request')
+        visible_only = request and request.query_params.get('visible_only', '').lower() == 'true'
+        
         for pms in product_modifier_sets:
             ms = pms.modifier_set
             all_sets_data[ms.id] = {
@@ -137,11 +151,25 @@ class ProductSerializer(serializers.ModelSerializer):
                 'triggered_by_option_id': ms.triggered_by_option_id
             }
 
-            global_options = {opt.id: opt for opt in ms.options.all()}
-            hidden_ids = {opt.id for opt in pms.hidden_options.all()}
-            visible_options = {k: v for k, v in global_options.items() if k not in hidden_ids}
+            # Get all options (global + product-specific)
+            global_options = {opt.id: opt for opt in ms.options.filter(is_product_specific=False)}
             extra_options = {opt.id: opt for opt in pms.extra_options.all()}
-            final_options = sorted(list(visible_options.values()) + list(extra_options.values()), key=lambda o: o.display_order)
+            all_options = {**global_options, **extra_options}
+            
+            # Get hidden option IDs
+            hidden_ids = {opt.id for opt in pms.hidden_options.all()}
+            
+            if visible_only:
+                # Filter out hidden options for customer-facing endpoints
+                final_options = [opt for opt in all_options.values() if opt.id not in hidden_ids]
+            else:
+                # Include all options with is_hidden field for admin/management
+                final_options = list(all_options.values())
+                # Mark which options are hidden
+                for opt in final_options:
+                    opt.is_hidden_for_product = opt.id in hidden_ids
+            
+            final_options = sorted(final_options, key=lambda o: o.display_order)
             options_map[ms.id] = final_options
 
         for set_id, set_data in all_sets_data.items():

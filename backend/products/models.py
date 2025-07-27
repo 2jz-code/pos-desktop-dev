@@ -212,6 +212,10 @@ class ModifierOption(models.Model):
         help_text=_("The amount to add or subtract from the base product price."),
     )
     display_order = models.PositiveIntegerField(default=0)
+    is_product_specific = models.BooleanField(
+        default=False,
+        help_text=_("Whether this option is specific to certain products or available globally."),
+    )
 
     class Meta:
         ordering = ["display_order", "name"]

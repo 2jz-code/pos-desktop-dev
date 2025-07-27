@@ -26,7 +26,7 @@ import { POSPage } from "@/domains/pos";
 import { OrdersPage, OrderDetailsPage } from "@/domains/orders";
 import { PaymentsPage, PaymentDetailsPage } from "@/domains/payments";
 import { UsersPage } from "@/domains/users";
-import { ProductsPage, ProductDetailsPage } from "@/domains/products";
+import { ProductsPage, ProductDetailsPage, ModifierManagementPage } from "@/domains/products";
 import { InventoryPage } from "@/domains/inventory";
 import { DiscountsPage } from "@/domains/discounts";
 import { SettingsPage } from "@/domains/settings";
@@ -190,6 +190,10 @@ function AppRoutes() {
 				<Route
 					path="products/:productId"
 					element={<ProductDetailsPage />} // Accessible to all (cashiers need to view product details)
+				/>
+				<Route
+					path="products/modifiers"
+					element={<ModifierManagementPage />}
 				/>
 				<Route
 					path="inventory"
