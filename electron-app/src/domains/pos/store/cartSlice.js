@@ -405,6 +405,22 @@ export const createCartSlice = (set, get) => {
 			});
 		},
 
+		updateItemViaSocket: (itemId, updatedItemData) => {
+			set((state) => ({
+				updatingItems: [...state.updatingItems, itemId],
+			}));
+
+			const payload = {
+				item_id: itemId,
+				...updatedItemData
+			};
+
+			cartSocket.sendMessage({
+				type: "update_item",
+				payload: payload,
+			});
+		},
+
 		setSocketConnected: (connected) => {
 			set({ isSocketConnected: connected });
 		},

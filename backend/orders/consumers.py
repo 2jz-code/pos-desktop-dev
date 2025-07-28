@@ -64,6 +64,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await self.add_item(payload)
         elif message_type == "update_item_quantity":
             await self.update_item_quantity(payload)
+        elif message_type == "update_item":
+            await self.update_item(payload)
         elif message_type == "remove_item":
             await self.remove_item(payload)
         elif message_type == "apply_discount":
@@ -259,6 +261,44 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 return
         else:
             await self.remove_item({"item_id": item_id})
+
+    async def update_item(self, payload):
+        item_id = payload.get("item_id")
+        selected_modifiers = payload.get("selected_modifiers", [])
+        notes = payload.get("notes", "")
+        quantity = payload.get("quantity", 1)
+
+        try:
+            item = await sync_to_async(OrderItem.objects.get)(id=item_id)
+            product = await sync_to_async(lambda: item.product)()
+            order = await sync_to_async(lambda: item.order)()
+
+            # Remove the old item
+            await sync_to_async(item.delete)()
+
+            # Add new item with updated modifiers
+            await sync_to_async(OrderService.add_item_to_order)(
+                order=order,
+                product=product,
+                quantity=quantity,
+                selected_modifiers=selected_modifiers,
+                notes=notes
+            )
+
+            logging.info(f"OrderConsumer: Successfully updated item {item_id}")
+
+        except Exception as e:
+            logging.error(f"OrderConsumer: Error updating item {item_id}: {e}")
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "error",
+                        "message": "Failed to update item",
+                        "error_type": "general",
+                    }
+                )
+            )
+            return
 
     async def remove_item(self, payload):
         item_id = payload.get("item_id")
