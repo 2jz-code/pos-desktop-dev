@@ -159,13 +159,26 @@ class ModifierValidationService:
             # If a group is conditional, its trigger option MUST be selected
             trigger_option = pms.modifier_set.triggered_by_option
             if trigger_option and trigger_option.id not in selected_ids_set:
-                if selections_by_pms[
-                    pms.id
-                ]:  # A selection was made for a group that shouldn't be visible
-                    raise ValidationError(
-                        f"Cannot select options from '{pms.modifier_set.name}' without selecting its trigger option '{trigger_option.name}'."
-                    )
-                continue  # Skip validation for non-triggered conditional groups
+                # Check if this conditional set is being used as a standalone base modifier
+                # This happens when the trigger option doesn't belong to any modifier set associated with this product
+                trigger_option_in_product = any(
+                    trigger_option.id in {opt.id for opt in other_pms.modifier_set.options.all()}
+                    for other_pms in product_modifier_sets
+                )
+                
+                if trigger_option_in_product:
+                    # Normal conditional logic - trigger option exists in product's modifier sets
+                    if selections_by_pms[
+                        pms.id
+                    ]:  # A selection was made for a group that shouldn't be visible
+                        raise ValidationError(
+                            f"Cannot select options from '{pms.modifier_set.name}' without selecting its trigger option '{trigger_option.name}'."
+                        )
+                    continue  # Skip validation for non-triggered conditional groups
+                else:
+                    # Standalone conditional set - treat as base modifier set
+                    # The trigger option is not available in this product, so this set acts as a base set
+                    pass  # Continue to validation below
 
             strategy = cls.STRATEGIES.get(pms.modifier_set.selection_type)
             if strategy:

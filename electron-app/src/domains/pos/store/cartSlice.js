@@ -9,9 +9,26 @@ const safeParseFloat = (value) => {
 	return isNaN(parsed) ? 0 : parsed;
 };
 
+// Helper function to find a modifier option by ID within a product's modifier sets
+const findModifierOptionById = (product, optionId) => {
+	if (!product.modifier_groups) return null;
+	
+	for (const modifierSet of product.modifier_groups) {
+		if (!modifierSet.options) continue;
+		
+		const option = modifierSet.options.find(opt => opt.id === optionId);
+		if (option) {
+			// Add reference to modifier_set for convenience
+			return { ...option, modifier_set: modifierSet };
+		}
+	}
+	return null;
+};
+
 const calculateLocalTotals = (items) => {
 	const subtotal = items.reduce((acc, item) => {
-		const price = safeParseFloat(item.product?.price);
+		// Use price_at_sale if available (includes modifiers), otherwise fall back to product price
+		const price = safeParseFloat(item.price_at_sale) || safeParseFloat(item.product?.price);
 		const quantity = parseInt(item.quantity, 10) || 0;
 		return acc + price * quantity;
 	}, 0);
@@ -113,6 +130,115 @@ export const createCartSlice = (set, get) => {
 				}
 
 				const payload = { product_id: product.id, quantity: 1 };
+
+				// Store the payload in case we need to retry with force_add
+				set({
+					stockOverrideDialog: {
+						...get().stockOverrideDialog,
+						lastPayload: payload,
+					},
+				});
+
+				cartSocket.sendMessage({
+					type: "add_item",
+					payload: payload,
+				});
+			} catch (error) {
+				console.error("Error during cart sync:", error);
+				// Rollback optimistic update
+				set({
+					items: originalItems,
+					subtotal: originalSubtotal,
+					total: originalTotal,
+				});
+				get().showToast({
+					title: "Failed to Sync Item",
+					description:
+						error.response?.data?.detail || "An unexpected error occurred.",
+					variant: "destructive",
+				});
+			} finally {
+				set({ addingItemId: null });
+			}
+		},
+
+		addItemWithModifiers: async (itemData) => {
+			const { product_id, quantity, selected_modifiers, notes } = itemData;
+			
+			set({ addingItemId: product_id });
+
+			// Store original state for rollback
+			const originalItems = [...get().items];
+			const originalSubtotal = get().subtotal;
+			const originalTotal = get().total;
+
+			// For items with modifiers, we always create new items (no merging)
+			const product = get().products?.find(p => p.id === product_id);
+			if (!product) {
+				console.error("Product not found:", product_id);
+				set({ addingItemId: null });
+				return;
+			}
+
+			// Calculate price with modifiers for optimistic update
+			let totalModifierPrice = 0;
+			if (selected_modifiers) {
+				selected_modifiers.forEach(modifier => {
+					const option = findModifierOptionById(product, modifier.option_id);
+					if (option) {
+						totalModifierPrice += parseFloat(option.price_delta) * (modifier.quantity || 1);
+					}
+				});
+			}
+
+			const optimisticItem = {
+				id: `temp-${product_id}-${Date.now()}`,
+				product: product,
+				quantity: quantity,
+				price_at_sale: parseFloat(product.price) + totalModifierPrice,
+				selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
+					const option = findModifierOptionById(product, modifier.option_id);
+					return option ? {
+						modifier_set_name: option.modifier_set?.name || "Unknown",
+						option_name: option.name,
+						price_at_sale: parseFloat(option.price_delta),
+						quantity: modifier.quantity || 1
+					} : null;
+				}).filter(Boolean) || [],
+				total_modifier_price: totalModifierPrice,
+				notes: notes || ""
+			};
+
+			const optimisticItems = [...get().items, optimisticItem];
+			const { subtotal, total } = calculateLocalTotals(optimisticItems);
+			set({ items: optimisticItems, subtotal, total });
+
+			try {
+				let orderId = get().orderId;
+
+				if (!orderId) {
+					const orderRes = await orderService.createOrder({
+						order_type: "POS",
+					});
+					orderId = orderRes.data.id;
+					set({
+						orderId: orderId,
+						orderStatus: orderRes.data.status,
+						orderNumber: orderRes.data.order_number,
+					});
+					await get().initializeCartSocket();
+					get().showToast({
+						title: "New Order Started",
+						description: `Order #${orderId.substring(0, 4)}...`,
+					});
+				}
+
+				const payload = { 
+					product_id: product_id, 
+					quantity: quantity,
+					selected_modifiers: selected_modifiers || [],
+					notes: notes || ""
+				};
 
 				// Store the payload in case we need to retry with force_add
 				set({

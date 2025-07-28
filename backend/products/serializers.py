@@ -54,7 +54,9 @@ class FinalModifierOptionSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'price_delta', 'display_order', 'triggered_sets', 'is_hidden']
 
     def get_triggered_sets(self, obj):
-        return self.context.get('triggered_sets_for_option', {}).get(obj.id, [])
+        triggered_sets_data = self.context.get('triggered_sets_for_option', {}).get(obj.id, [])
+        # Serialize the triggered sets properly so they include their options
+        return FinalProductModifierSetSerializer(triggered_sets_data, many=True, context=self.context).data
     
     def get_is_hidden(self, obj):
         # Check if this option is marked as hidden for the current product
@@ -142,6 +144,7 @@ class ProductSerializer(serializers.ModelSerializer):
         product_modifier_sets = obj.product_modifier_sets.all().select_related('modifier_set').prefetch_related(
             'modifier_set__options', 'hidden_options', 'extra_options'
         )
+        
 
         all_sets_data = {}
         options_map = {}
@@ -151,6 +154,10 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         visible_only = request and request.query_params.get('visible_only', '').lower() == 'true'
         include_all_modifiers = request and request.query_params.get('include_all_modifiers', '').lower() == 'true'
+        
+        # For cart/order contexts, always include all modifiers if the product has any
+        if not include_all_modifiers and product_modifier_sets.exists():
+            include_all_modifiers = True
         
         for pms in product_modifier_sets:
             ms = pms.modifier_set
@@ -185,10 +192,38 @@ class ProductSerializer(serializers.ModelSerializer):
             final_options = sorted(final_options, key=lambda o: o.display_order)
             options_map[ms.id] = final_options
 
+        # Process triggered sets and ensure they have options loaded
+        triggered_sets_to_load = []
         for set_id, set_data in all_sets_data.items():
             trigger_id = set_data.pop('triggered_by_option_id')
             if trigger_id:
                 triggered_map[trigger_id].append(set_data)
+                # Keep track of triggered sets that need their options loaded
+                if set_id not in options_map:
+                    triggered_sets_to_load.append(set_id)
+        
+        # Load options for triggered sets that aren't already loaded
+        if triggered_sets_to_load:
+            from products.models import ModifierSet
+            triggered_modifier_sets = ModifierSet.objects.filter(
+                id__in=triggered_sets_to_load
+            ).prefetch_related('options')
+            
+            for triggered_ms in triggered_modifier_sets:
+                # Get all options for this triggered set (same logic as main sets)
+                global_options = {opt.id: opt for opt in triggered_ms.options.filter(is_product_specific=False)}
+                # Note: Triggered sets typically don't have product-specific options, but keeping consistent
+                all_options = global_options
+                
+                if visible_only:
+                    final_options = list(all_options.values())
+                else:
+                    final_options = list(all_options.values())
+                    for opt in final_options:
+                        opt.is_hidden_for_product = False  # Triggered sets typically don't hide options
+                
+                final_options = sorted(final_options, key=lambda o: o.display_order)
+                options_map[triggered_ms.id] = final_options
 
         context = self.context.copy()
         context['options_for_set'] = options_map
@@ -201,7 +236,24 @@ class ProductSerializer(serializers.ModelSerializer):
         else:
             # Find sets that are not triggered by any option (root-level sets only)
             triggered_set_ids = {s['id'] for sets_list in triggered_map.values() for s in sets_list}
-            sets_to_return = [data for data in all_sets_data.values() if data['id'] not in triggered_set_ids]
+            root_level_sets = [data for data in all_sets_data.values() if data['id'] not in triggered_set_ids]
+            
+            # Also include conditional sets that are being used as standalone base modifiers
+            # These are sets with triggers, but their trigger options are not available in this product
+            standalone_conditional_sets = []
+            for set_data in all_sets_data.values():
+                trigger_option_id = set_data.get('triggered_by_option_id')
+                if trigger_option_id and set_data['id'] not in [s['id'] for s in root_level_sets]:
+                    # This is a triggered set, check if its trigger option is available in this product
+                    trigger_option_in_product = any(
+                        trigger_option_id in [opt.id for opt in options_map.get(ms_id, [])]
+                        for ms_id in all_sets_data.keys()
+                    )
+                    if not trigger_option_in_product:
+                        # Trigger option not available in this product, treat as standalone
+                        standalone_conditional_sets.append(set_data)
+            
+            sets_to_return = root_level_sets + standalone_conditional_sets
         
         return FinalProductModifierSetSerializer(sets_to_return, many=True, context=context).data
 

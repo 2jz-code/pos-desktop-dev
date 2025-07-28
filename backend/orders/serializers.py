@@ -1,19 +1,34 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, OrderDiscount
+from .models import Order, OrderItem, OrderDiscount, OrderItemModifier
 from users.serializers import UserSerializer
 from products.serializers import ProductSerializer
 from .services import OrderService
-from products.models import Product
+from products.models import Product, ModifierOption
 from django.db import transaction
 from discounts.serializers import DiscountSerializer
 
 
+class OrderItemModifierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderItemModifier
+        fields = ['modifier_set_name', 'option_name', 'price_at_sale', 'quantity']
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
+    selected_modifiers_snapshot = OrderItemModifierSerializer(many=True, read_only=True)
+    total_modifier_price = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = "__all__"
+    
+    def get_total_modifier_price(self, obj):
+        """Calculate total price impact from modifiers"""
+        return sum(
+            modifier.price_at_sale * modifier.quantity 
+            for modifier in obj.selected_modifiers_snapshot.all()
+        )
 
 
 class OrderDiscountSerializer(serializers.ModelSerializer):
@@ -79,6 +94,7 @@ class OrderSerializer(serializers.ModelSerializer):
         prefetch_related_fields = [
             "items",
             "items__product",
+            "items__selected_modifiers_snapshot",
             "applied_discounts",
             "applied_discounts__discount",
         ]
@@ -255,8 +271,8 @@ class AddItemSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
     notes = serializers.CharField(required=False, allow_blank=True)
-    selected_options = serializers.ListField(
-        child=serializers.IntegerField(), required=False
+    selected_modifiers = serializers.ListField(
+        child=serializers.DictField(), required=False, default=list
     )
 
     def validate_product_id(self, value):
@@ -287,7 +303,7 @@ class AddItemSerializer(serializers.Serializer):
             order=order,
             product=product,
             quantity=self.validated_data["quantity"],
-            selected_option_ids=self.validated_data.get("selected_options", []),
+            selected_modifiers=self.validated_data.get("selected_modifiers", []),
             notes=self.validated_data.get("notes", ""),
         )
 

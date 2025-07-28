@@ -1,19 +1,44 @@
 "use client";
 
+import { useState } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import ProductModifierSelector from "./ProductModifierSelector";
 import { Loader2 } from "lucide-react";
 
 export const ProductCard = ({ product }) => {
-	const { addItem, addingItemId } = usePosStore((state) => ({
+	const [showModifierSelector, setShowModifierSelector] = useState(false);
+	const { addItem, addItemWithModifiers, addingItemId } = usePosStore((state) => ({
 		addItem: state.addItem,
+		addItemWithModifiers: state.addItemWithModifiers,
 		addingItemId: state.addingItemId,
 	}));
 
 	const isAdding = addingItemId === product.id;
+	const hasModifiers = product.modifier_groups && product.modifier_groups.length > 0;
+
+	const handleProductClick = () => {
+		if (isAdding) return;
+		
+		if (hasModifiers) {
+			setShowModifierSelector(true);
+		} else {
+			addItem(product);
+		}
+	};
+
+	const handleAddToCart = (itemData) => {
+		if (addItemWithModifiers) {
+			addItemWithModifiers(itemData);
+		} else {
+			// Fallback to regular addItem if addItemWithModifiers doesn't exist yet
+			addItem(product);
+		}
+	};
 
 	return (
+		<>
 		<div
-			onClick={() => !isAdding && addItem(product)}
+			onClick={handleProductClick}
 			className={`
         relative group border border-slate-200 dark:border-slate-700 rounded-xl p-4 
         flex flex-col items-center text-center bg-white dark:bg-slate-900
@@ -57,8 +82,21 @@ export const ProductCard = ({ product }) => {
 				<p className="text-lg font-bold text-slate-900 dark:text-slate-100">
 					${Number.parseFloat(product.price).toFixed(2)}
 				</p>
+				{hasModifiers && (
+					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+						Customizable
+					</p>
+				)}
 			</div>
 		</div>
+		
+		<ProductModifierSelector
+			product={product}
+			open={showModifierSelector}
+			onOpenChange={setShowModifierSelector}
+			onAddToCart={handleAddToCart}
+		/>
+		</>
 	);
 };
 

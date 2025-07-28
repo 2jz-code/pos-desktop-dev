@@ -81,6 +81,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
         product_id = payload.get("product_id")
         quantity = payload.get("quantity", 1)
         force_add = payload.get("force_add", False)
+        selected_modifiers = payload.get("selected_modifiers", [])
 
         if force_add:
             # Force add: bypass all validation and add directly
@@ -92,26 +93,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     f"OrderConsumer: FORCE OVERRIDE - Adding {product.name} despite stock validation failure"
                 )
 
-                # Add the item without stock validation
-                order_item = await sync_to_async(
-                    OrderItem.objects.filter(
-                        order=order, product=product, notes=payload.get("notes", "")
-                    ).first
-                )()
-
-                if order_item:
-                    order_item.quantity += quantity
-                    await sync_to_async(order_item.save)()
-                else:
-                    await sync_to_async(OrderItem.objects.create)(
-                        order=order,
-                        product=product,
-                        quantity=quantity,
-                        price_at_sale=product.price,
-                        notes=payload.get("notes", ""),
-                    )
-
-                await sync_to_async(OrderService.recalculate_order_totals)(order)
+                # Add the item without stock validation using OrderService
+                await sync_to_async(OrderService.add_item_to_order)(
+                    order=order, 
+                    product=product, 
+                    quantity=quantity, 
+                    selected_modifiers=selected_modifiers,
+                    notes=payload.get("notes", ""),
+                    force_add=True
+                )
                 logging.info(
                     f"OrderConsumer: Successfully force-added {quantity} of {product.name}"
                 )
@@ -136,7 +126,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 order = await sync_to_async(Order.objects.get)(id=self.order_id)
                 product = await sync_to_async(Product.objects.get)(id=product_id)
                 await sync_to_async(OrderService.add_item_to_order)(
-                    order=order, product=product, quantity=quantity
+                    order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
                 logging.info(
                     f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}"

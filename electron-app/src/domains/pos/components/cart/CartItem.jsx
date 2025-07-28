@@ -4,21 +4,25 @@ import { useState, useEffect } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { Button } from "@/shared/components/ui/button";
-import { X, Plus, Minus } from "lucide-react";
+import { Badge } from "@/shared/components/ui/badge";
+import { X, Plus, Minus, Edit3 } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
+import ProductModifierSelector from "../ProductModifierSelector";
 
 export default function CartItem({ item }) {
-	const { removeItemViaSocket, updateItemQuantityViaSocket, isUpdating } =
+	const { removeItemViaSocket, updateItemQuantityViaSocket, updateItemViaSocket, isUpdating } =
 		usePosStore(
 			(state) => ({
 				removeItemViaSocket: state.removeItemViaSocket,
 				updateItemQuantityViaSocket: state.updateItemQuantityViaSocket,
+				updateItemViaSocket: state.updateItemViaSocket,
 				isUpdating: state.updatingItems?.includes(item.id) ?? false,
 			}),
 			shallow
 		);
 
 	const [displayQuantity, setDisplayQuantity] = useState(item.quantity);
+	const [showModifierEditor, setShowModifierEditor] = useState(false);
 
 	const debouncedUpdate = useDebouncedCallback((newQuantity) => {
 		if (newQuantity < 1) {
@@ -48,6 +52,14 @@ export default function CartItem({ item }) {
 
 	const handleRemoveItem = () => {
 		removeItemViaSocket(item.id);
+	};
+
+	const handleUpdateModifiers = (updatedItemData) => {
+		// Update the item with new modifier selections
+		updateItemViaSocket(item.id, {
+			...updatedItemData,
+			quantity: displayQuantity // Preserve current quantity
+		});
 	};
 
 	if (!item.product) {
@@ -84,10 +96,55 @@ export default function CartItem({ item }) {
 					<h4 className="font-semibold text-slate-900 dark:text-slate-100 truncate">
 						{item.product.name}
 					</h4>
-					<p className="text-sm text-slate-600 dark:text-slate-400">
-						${Number.parseFloat(item.product.price).toFixed(2)} each
-					</p>
+					
+					{/* Display selected modifiers */}
+					{item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0 && (
+						<div className="flex flex-wrap gap-1 mt-1">
+							{item.selected_modifiers_snapshot.map((modifier, index) => (
+								<Badge 
+									key={index} 
+									variant="secondary" 
+									className="text-xs"
+								>
+									{modifier.option_name}
+									{modifier.quantity > 1 && ` (${modifier.quantity})`}
+									{parseFloat(modifier.price_at_sale) !== 0 && (
+										<span className="ml-1">
+											{parseFloat(modifier.price_at_sale) >= 0 ? '+' : ''}
+											${parseFloat(modifier.price_at_sale).toFixed(2)}
+										</span>
+									)}
+								</Badge>
+							))}
+						</div>
+					)}
+					
+					<div className="flex items-center gap-2 mt-1">
+						<p className="text-sm text-slate-600 dark:text-slate-400">
+							Base: ${Number.parseFloat(item.product.price).toFixed(2)}
+						</p>
+						{item.total_modifier_price && parseFloat(item.total_modifier_price) !== 0 && (
+							<p className="text-sm text-slate-600 dark:text-slate-400">
+								Modifiers: {parseFloat(item.total_modifier_price) >= 0 ? '+' : ''}
+								${parseFloat(item.total_modifier_price).toFixed(2)}
+							</p>
+						)}
+					</div>
 				</div>
+
+				{/* Edit Button for items with modifiers */}
+				{item.product.modifier_groups && item.product.modifier_groups.length > 0 && (
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-8 px-2 text-xs"
+						onClick={() => setShowModifierEditor(true)}
+						disabled={isUpdating}
+					>
+						<Edit3 className="h-3 w-3 mr-1" />
+						Edit
+					</Button>
+				)}
 
 				{/* Quantity Controls */}
 				<div className="flex items-center gap-2">
@@ -140,6 +197,19 @@ export default function CartItem({ item }) {
 					<X className="h-4 w-4" />
 				</Button>
 			</div>
+			
+			{/* Modifier Editor Dialog */}
+			{showModifierEditor && (
+				<ProductModifierSelector
+					product={item.product}
+					open={showModifierEditor}
+					onOpenChange={setShowModifierEditor}
+					onAddToCart={handleUpdateModifiers}
+					initialQuantity={displayQuantity}
+					editMode={true}
+					existingSelections={item.selected_modifiers_snapshot}
+				/>
+			)}
 		</li>
 	);
 }

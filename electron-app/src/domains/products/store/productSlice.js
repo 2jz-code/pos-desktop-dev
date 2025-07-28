@@ -82,7 +82,7 @@ export const createProductSlice = (set, get) => ({
 		set({ isLoadingProducts: true });
 		try {
 			console.log("📡 [ProductSlice] Making API call to /products/");
-			const response = await getProducts();
+			const response = await getProducts({ include_all_modifiers: 'true' });
 			console.log("📦 [ProductSlice] Raw API response:", response);
 			
 			const products = response.data;

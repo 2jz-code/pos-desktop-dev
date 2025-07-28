@@ -53,40 +53,75 @@ class OrderService:
     @staticmethod
     @transaction.atomic
     def add_item_to_order(
-        order: Order, product: Product, quantity: int, selected_option_ids: list[int] = None, notes: str = ""
+        order: Order, product: Product, quantity: int, selected_modifiers: list = None, notes: str = "", force_add: bool = False
     ) -> OrderItem:
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError(
                 "Cannot add items to an order that is not Pending or on Hold."
             )
 
-        selected_option_ids = selected_option_ids or []
-        ModifierValidationService.validate_product_selection(product, selected_option_ids)
+        selected_modifiers = selected_modifiers or []
+        
+        # Skip validation if force_add is True
+        if not force_add:
+            option_ids = [mod.get('option_id') for mod in selected_modifiers if mod.get('option_id')]
+            ModifierValidationService.validate_product_selection(product, option_ids)
 
         # Calculate price with modifiers
-        modifier_price_delta = sum(ModifierOption.objects.filter(id__in=selected_option_ids).values_list('price_delta', flat=True))
+        modifier_price_delta = Decimal('0.00')
+        for modifier_data in selected_modifiers:
+            option_id = modifier_data.get('option_id')
+            mod_quantity = modifier_data.get('quantity', 1)
+            if option_id:
+                try:
+                    modifier_option = ModifierOption.objects.get(id=option_id)
+                    modifier_price_delta += modifier_option.price_delta * mod_quantity
+                except ModifierOption.DoesNotExist:
+                    continue
+
         final_price_at_sale = Decimal(str(product.price)) + modifier_price_delta
 
-        # For now, we assume items with different modifiers are different line items.
-        # A more advanced implementation could group them.
-        order_item = OrderItem.objects.create(
-            order=order,
-            product=product,
-            quantity=quantity,
-            price_at_sale=final_price_at_sale,
-            notes=notes,
-        )
-
-        # Create snapshot records for the selected modifiers
-        selected_modifiers = ModifierOption.objects.filter(id__in=selected_option_ids).select_related('modifier_set')
-        for modifier in selected_modifiers:
-            OrderItemModifier.objects.create(
-                order_item=order_item,
-                modifier_set_name=modifier.modifier_set.name,
-                option_name=modifier.name,
-                price_at_sale=modifier.price_delta,
-                quantity=1 # Assuming quantity of 1 for each modifier option for now
+        # Try to find existing item with same product, notes, and modifiers
+        existing_item = None
+        if not selected_modifiers:  # Only merge items without modifiers
+            existing_item = OrderItem.objects.filter(
+                order=order, 
+                product=product, 
+                notes=notes,
+                selected_modifiers_snapshot__isnull=True
+            ).first()
+        
+        if existing_item:
+            # Update existing item quantity
+            existing_item.quantity += quantity
+            existing_item.save()
+            order_item = existing_item
+        else:
+            # Create new order item
+            order_item = OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=quantity,
+                price_at_sale=final_price_at_sale,
+                notes=notes,
             )
+
+            # Create snapshot records for the selected modifiers
+            for modifier_data in selected_modifiers:
+                option_id = modifier_data.get('option_id')
+                mod_quantity = modifier_data.get('quantity', 1)
+                if option_id:
+                    try:
+                        modifier_option = ModifierOption.objects.select_related('modifier_set').get(id=option_id)
+                        OrderItemModifier.objects.create(
+                            order_item=order_item,
+                            modifier_set_name=modifier_option.modifier_set.name,
+                            option_name=modifier_option.name,
+                            price_at_sale=modifier_option.price_delta,
+                            quantity=mod_quantity
+                        )
+                    except ModifierOption.DoesNotExist:
+                        continue
 
         OrderService.recalculate_order_totals(order)
         return order_item
