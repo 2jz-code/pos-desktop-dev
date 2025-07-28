@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -36,6 +37,7 @@ const UsageAnalytics = ({ modifierSets }) => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (modifierSets.length > 0) {
@@ -275,11 +277,8 @@ const UsageAnalytics = ({ modifierSets }) => {
                               size="sm"
                               onClick={() => {
                                 if (item.products && item.products.length > 0) {
-                                  const productNames = item.products.map(p => p.name).join(', ');
-                                  toast({
-                                    title: `Products Using "${item.name}"`,
-                                    description: `${item.product_count} products: ${productNames}`,
-                                  });
+                                  // Navigate to products page with modifier filter
+                                  navigate(`/products?modifier=${item.id}&modifierName=${encodeURIComponent(item.name)}&from=modifiers`);
                                 } else {
                                   toast({
                                     title: "No Products Found",

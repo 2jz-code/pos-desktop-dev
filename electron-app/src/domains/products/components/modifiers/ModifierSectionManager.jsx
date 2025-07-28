@@ -1,73 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
-import { Badge } from "@/shared/components/ui/badge";
-import { Switch } from "@/shared/components/ui/switch";
-import { Separator } from "@/shared/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/shared/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shared/components/ui/dropdown-menu";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/shared/components/ui/collapsible";
 import {
   Plus,
-  GripVertical,
-  Settings,
-  Eye,
-  EyeOff,
-  Copy,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
   Library,
-  Zap,
-  Users,
-  Loader2
 } from "lucide-react";
 import { useToast } from "@/shared/components/ui/use-toast";
 import * as modifierService from "@/domains/products/services/modifierService";
+import DraggableList from "@/shared/components/ui/draggable-list";
+import ModifierQuickCreate from "./ModifierQuickCreate";
+import ModifierLibraryDrawer from "./ModifierLibraryDrawer";
+import ModifierGroupCard from "./ModifierGroupCard";
 
 const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
   const [modifierGroups, setModifierGroups] = useState([]);
-  const [availableModifierSets, setAvailableModifierSets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [optimisticHiddenOptions, setOptimisticHiddenOptions] = useState(new Map()); // Map of modifierSetId -> Set of hidden option IDs
   const { toast } = useToast();
-
-  // Quick create form state
-  const [quickCreateForm, setQuickCreateForm] = useState({
-    name: '',
-    type: 'SINGLE',
-    min_selections: 0,
-    max_selections: 1,
-    options: [{ name: '', price_delta: 0.00, isProductSpecific: false }]
-  });
 
   useEffect(() => {
     if (productId) {
@@ -80,7 +31,10 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
       setLoading(true);
       
       // Get modifier groups with all options (including hidden ones with is_hidden field)
-      const modifiers = await modifierService.getProductModifiers(productId);
+      // Use includeAll=true to get all associated modifier sets, including conditional ones
+      console.log(`Fetching modifiers for product ${productId}`);
+      const modifiers = await modifierService.getProductModifiers(productId, true);
+      console.log('Fetched modifiers:', modifiers);
       
       setModifierGroups(modifiers);
       
@@ -104,34 +58,14 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
     }
   };
 
-  const fetchAvailableModifierSets = async (searchTerm = '') => {
-    try {
-      const params = {};
-      if (searchTerm) params.search = searchTerm;
-      
-      const response = await modifierService.getModifierSets(params);
-      setAvailableModifierSets(response.data || []);
-    } catch (error) {
-      console.error('Error fetching modifier sets:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load modifier library.",
-        variant: "destructive",
-      });
-    }
-  };
 
-  const handleDragEnd = async (result) => {
-    if (!result.destination || !productId) return;
+  const handleReorder = async (reorderedItems, sourceIndex, destinationIndex) => {
+    if (!productId) return;
 
-    const items = Array.from(modifierGroups);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    setModifierGroups(items);
+    setModifierGroups(reorderedItems);
 
     try {
-      const ordering = items.map((item, index) => ({
+      const ordering = reorderedItems.map((item, index) => ({
         modifier_set_id: item.modifier_set_id || item.modifier_set || item.id,
         display_order: index
       }));
@@ -145,7 +79,8 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
       });
     } catch (error) {
       console.error('Error updating modifier order:', error);
-      setModifierGroups(modifierGroups); // Revert on error
+      // Revert to original order on error
+      fetchProductModifiers();
       toast({
         title: "Error",
         description: "Failed to update modifier order.",
@@ -155,14 +90,19 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
   };
 
   const handleAddFromLibrary = () => {
-    fetchAvailableModifierSets();
     setIsLibraryOpen(true);
   };
 
-  const handleAddModifierSet = async (modifierSetId) => {
+  const handleLibraryModifierSelected = async (modifierSet) => {
     try {
-      await modifierService.addModifierSetToProduct(productId, modifierSetId);
+      console.log(`Adding modifier set ${modifierSet.id} to product ${productId}`);
+      const result = await modifierService.addModifierSetToProduct(productId, modifierSet.id);
+      console.log('Add modifier result:', result);
+      
+      console.log('Refreshing product modifiers...');
       await fetchProductModifiers();
+      console.log('Product modifiers refreshed');
+      
       onModifierChange?.();
       
       toast({
@@ -201,69 +141,12 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
     }
   };
 
-  const handleQuickCreate = async () => {
-    try {
-      const templateData = {
-        name: quickCreateForm.name,
-        type: quickCreateForm.type,
-        min_selections: quickCreateForm.min_selections,
-        max_selections: quickCreateForm.type === 'SINGLE' ? 1 : quickCreateForm.max_selections,
-        options: quickCreateForm.options.filter(opt => opt.name.trim())
-      };
-
-      // Check if any options are product-specific
-      const hasProductSpecificOptions = templateData.options.some(opt => opt.isProductSpecific);
-      
-      if (hasProductSpecificOptions) {
-        // Use the new function that handles product-specific options
-        await modifierService.createModifierFromTemplateWithProductSpecific(templateData, productId);
-      } else {
-        // Use the original function for regular options
-        const createdModifierSet = await modifierService.createModifierFromTemplate(templateData);
-        await modifierService.addModifierSetToProduct(productId, createdModifierSet.id);
-      }
-      
-      await fetchProductModifiers();
-      onModifierChange?.();
-      
-      toast({
-        title: "Success",
-        description: "Modifier group created and added to product.",
-      });
-      
-      setIsQuickCreateOpen(false);
-      setQuickCreateForm({ 
-        name: '', 
-        type: 'SINGLE', 
-        min_selections: 0,
-        max_selections: 1,
-        options: [{ name: '', price_delta: 0.00, isProductSpecific: false }] 
-      });
-    } catch (error) {
-      console.error('Error creating modifier from template:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create modifier group.",
-        variant: "destructive",
-      });
-    }
+  const handleQuickCreateSuccess = async () => {
+    await fetchProductModifiers();
+    onModifierChange?.();
   };
 
 
-  const isOptionHidden = (modifierSetId, optionId) => {
-    // Use optimistic state for immediate UI updates
-    const optimisticHiddenIds = optimisticHiddenOptions.get(modifierSetId);
-    if (optimisticHiddenIds) {
-      return optimisticHiddenIds.has(optionId);
-    }
-    
-    // Fallback to server data if optimistic state is not available
-    const modifierGroup = modifierGroups.find(g => 
-      (g.modifier_set_id || g.modifier_set || g.id) === modifierSetId
-    );
-    const option = modifierGroup?.options?.find(opt => opt.id === optionId);
-    return option?.is_hidden || false;
-  };
 
   const handleOptionToggle = async (modifierSetId, optionId, shouldHide) => {
     // Optimistically update the UI immediately
@@ -314,15 +197,6 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
     setExpandedGroups(newExpanded);
   };
 
-  const getModifierTypeColor = (type, isRequired) => {
-    if (isRequired) return 'bg-blue-100 border-blue-300 text-blue-800';
-    if (type === 'MULTIPLE') return 'bg-green-100 border-green-300 text-green-800';
-    return 'bg-gray-100 border-gray-300 text-gray-800';
-  };
-
-  const getModifierTypeIcon = (type) => {
-    return type === 'MULTIPLE' ? '☑' : '○';
-  };
 
   if (!productId) {
     return (
@@ -397,395 +271,51 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
             </div>
           </div>
         ) : (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="modifier-groups">
-              {(provided) => (
-                <div
-                  {...provided.droppableProps}
-                  ref={provided.innerRef}
-                  className="space-y-3"
-                >
-                  {modifierGroups.map((group, index) => {
-                    // Handle different possible field names for the modifier set ID
-                    const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
-                    
-                    if (!modifierSetId) {
-                      console.warn('Modifier group missing ID:', group);
-                      return null;
-                    }
-                    
-                    return (
-                      <Draggable
-                        key={modifierSetId}
-                        draggableId={modifierSetId.toString()}
-                        index={index}
-                      >
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          className={`border rounded-lg bg-white transition-shadow ${
-                            snapshot.isDragging ? 'shadow-lg border-blue-300' : 'shadow-sm hover:shadow-md'
-                          }`}
-                        >
-                          <Collapsible>
-                            <div className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div
-                                  {...provided.dragHandleProps}
-                                  className="cursor-grab hover:bg-gray-100 p-1 rounded"
-                                >
-                                  <GripVertical className="h-4 w-4 text-gray-400" />
-                                </div>
-
-                                <CollapsibleTrigger
-                                  onClick={() => toggleGroupExpansion(modifierSetId)}
-                                  className="flex items-center gap-2 flex-1 text-left"
-                                >
-                                  {expandedGroups.has(modifierSetId) ? (
-                                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                                  )}
-                                  
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">{group.name}</span>
-                                      <Badge 
-                                        variant="outline"
-                                        className={getModifierTypeColor(
-                                          group.selection_type,
-                                          group.min_selections > 0
-                                        )}
-                                      >
-                                        {getModifierTypeIcon(group.selection_type)} {' '}
-                                        {group.selection_type === 'MULTIPLE' ? 'Multi' : 'Single'}
-                                        {group.min_selections > 0 && ' • Required'}
-                                      </Badge>
-                                      {group.triggered_by_option && (
-                                        <Badge variant="outline" className="bg-orange-100 border-orange-300 text-orange-800">
-                                          <Zap className="mr-1 h-3 w-3" />
-                                          Conditional
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-sm text-gray-500">
-                                      {group.options?.length || 0} options
-                                      {(() => {
-                                        const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
-                                        const optimisticHiddenIds = optimisticHiddenOptions.get(modifierSetId);
-                                        const hiddenCount = optimisticHiddenIds ? optimisticHiddenIds.size : 
-                                          (group.options?.filter(opt => opt.is_hidden).length || 0);
-                                        return hiddenCount > 0 ? ` • ${hiddenCount} hidden` : '';
-                                      })()}
-                                    </p>
-                                  </div>
-                                </CollapsibleTrigger>
-
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm">
-                                      <Settings className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={() => {/* Handle duplicate */}}
-                                    >
-                                      <Copy className="mr-2 h-4 w-4" />
-                                      Duplicate
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => handleRemoveModifierSet(modifierSetId)}
-                                      className="text-red-600"
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Remove from Product
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </div>
-
-                            <CollapsibleContent>
-                              <div className="px-4 pb-4 pt-0">
-                                <div className="bg-gray-50 rounded-lg p-3">
-                                  <div className="space-y-2">
-                                    {group.options?.map((option) => {
-                                      const isHidden = isOptionHidden(modifierSetId, option.id);
-                                      return (
-                                        <div
-                                          key={option.id}
-                                          className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-200 ${
-                                            isHidden 
-                                              ? 'bg-gray-100 border-gray-300 opacity-60' 
-                                              : 'bg-white border-gray-200 hover:border-gray-300'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2 flex-1">
-                                            <div className="flex items-center gap-1">
-                                              {isHidden ? (
-                                                <EyeOff className="h-4 w-4 text-gray-400" />
-                                              ) : (
-                                                <Eye className="h-4 w-4 text-green-500" />
-                                              )}
-                                            </div>
-                                            <span className={`font-medium transition-colors ${
-                                              isHidden ? 'text-gray-500 line-through' : 'text-gray-900'
-                                            }`}>
-                                              {option.name}
-                                            </span>
-                                            {option.price_delta !== 0 && (
-                                              <Badge 
-                                                variant="outline" 
-                                                className={`text-xs ${
-                                                  isHidden ? 'bg-gray-200 text-gray-500 border-gray-400' : ''
-                                                }`}
-                                              >
-                                                {option.price_delta > 0 ? '+' : ''}${option.price_delta}
-                                              </Badge>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center gap-2">
-                                            <Label className={`text-sm font-medium ${
-                                              isHidden ? 'text-gray-400' : 'text-gray-600'
-                                            }`}>
-                                              {isHidden ? 'Hidden' : 'Visible'}
-                                            </Label>
-                                            <Switch
-                                              checked={!isHidden}
-                                              onCheckedChange={(checked) => {
-                                                handleOptionToggle(modifierSetId, option.id, !checked);
-                                              }}
-                                              size="sm"
-                                            />
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {(!group.options || group.options.length === 0) && (
-                                      <div className="text-center text-gray-500 text-sm py-4">
-                                        No options available
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        </div>
-                      )}
-                      </Draggable>
-                    );
-                  })}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+          <DraggableList
+            items={modifierGroups}
+            onReorder={handleReorder}
+            getItemId={(item) => item.modifier_set_id || item.modifier_set || item.id}
+            renderItem={({ item: group, dragHandle }) => {
+              const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
+              
+              if (!modifierSetId) {
+                console.warn('Modifier group missing ID:', group);
+                return null;
+              }
+              
+              return (
+                <ModifierGroupCard
+                  group={group}
+                  dragHandle={dragHandle}
+                  isExpanded={expandedGroups.has(modifierSetId)}
+                  onToggleExpansion={toggleGroupExpansion}
+                  onRemove={handleRemoveModifierSet}
+                  onDuplicate={() => {/* Handle duplicate */}}
+                  onOptionToggle={handleOptionToggle}
+                  hiddenOptionIds={Array.from(optimisticHiddenOptions.get(modifierSetId) || [])}
+                />
+              );
+            }}
+          />
         )}
       </div>
 
       {/* Library Dialog */}
-      <Dialog open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Modifier Library</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder="Search modifier sets..."
-              onChange={(e) => fetchAvailableModifierSets(e.target.value)}
-            />
-            <div className="grid gap-2 max-h-96 overflow-y-auto">
-              {availableModifierSets.map((set) => (
-                <div
-                  key={set.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                >
-                  <div>
-                    <h4 className="font-medium">{set.name}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-sm text-gray-500">
-                        {set.selection_type === 'SINGLE' ? 'Single Choice' : 'Multiple Choice'} • {set.options?.length || 0} options
-                      </p>
-                      <Badge 
-                        variant="outline"
-                        className={`text-xs ${
-                          set.min_selections > 0 
-                            ? 'bg-blue-100 border-blue-300 text-blue-800' 
-                            : 'bg-gray-100 border-gray-300 text-gray-600'
-                        }`}
-                      >
-                        {set.min_selections > 0 ? 'Required' : 'Optional'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleAddModifierSet(set.id)}
-                    disabled={modifierGroups.some(g => (g.modifier_set_id || g.modifier_set || g.id) === set.id)}
-                  >
-                    {modifierGroups.some(g => (g.modifier_set_id || g.modifier_set || g.id) === set.id) ? 'Added' : 'Add'}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ModifierLibraryDrawer
+        open={isLibraryOpen}
+        onOpenChange={setIsLibraryOpen}
+        onModifierSetSelected={handleLibraryModifierSelected}
+        excludeModifierSetIds={modifierGroups.map(g => g.modifier_set_id || g.modifier_set || g.id)}
+      />
 
       {/* Quick Create Dialog */}
-      <Dialog open={isQuickCreateOpen} onOpenChange={setIsQuickCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Quick Create Modifier Group</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="name">Group Name</Label>
-              <Input
-                id="name"
-                value={quickCreateForm.name}
-                onChange={(e) => setQuickCreateForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g., Size Options"
-              />
-            </div>
-            <div>
-              <Label htmlFor="type">Selection Type</Label>
-              <Select
-                value={quickCreateForm.type}
-                onValueChange={(value) => setQuickCreateForm(prev => ({
-                  ...prev, 
-                  type: value,
-                  max_selections: value === 'SINGLE' ? 1 : prev.max_selections
-                }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SINGLE">Single Choice (○)</SelectItem>
-                  <SelectItem value="MULTIPLE">Multiple Choice (☑)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Required/Optional Toggle */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <Label className="text-sm font-medium">Customer Selection</Label>
-                <p className="text-xs text-gray-500 mt-1">
-                  {quickCreateForm.min_selections > 0 
-                    ? "Customers must make a selection" 
-                    : "Customers can skip this modifier group"
-                  }
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Label className="text-sm">Optional</Label>
-                <Switch
-                  checked={quickCreateForm.min_selections > 0}
-                  onCheckedChange={(checked) => {
-                    const newMinSelections = checked ? 1 : 0;
-                    setQuickCreateForm(prev => ({ ...prev, min_selections: newMinSelections }));
-                  }}
-                />
-                <Label className="text-sm">Required</Label>
-              </div>
-            </div>
-            <div>
-              <Label>Options</Label>
-              {quickCreateForm.options.map((option, index) => (
-                <div key={index} className="space-y-2 mt-3 p-3 border rounded-lg bg-gray-50">
-                  <div className="flex gap-2">
-                    <Input
-                      value={option.name}
-                      onChange={(e) => {
-                        const newOptions = [...quickCreateForm.options];
-                        newOptions[index] = { ...newOptions[index], name: e.target.value };
-                        setQuickCreateForm(prev => ({ ...prev, options: newOptions }));
-                      }}
-                      placeholder={`Option ${index + 1}`}
-                      className="flex-1"
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={option.price_delta}
-                      onChange={(e) => {
-                        const newOptions = [...quickCreateForm.options];
-                        newOptions[index] = { ...newOptions[index], price_delta: parseFloat(e.target.value) || 0.00 };
-                        setQuickCreateForm(prev => ({ ...prev, options: newOptions }));
-                      }}
-                      placeholder="$0.00"
-                      className="w-24"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const newOptions = quickCreateForm.options.filter((_, i) => i !== index);
-                        setQuickCreateForm(prev => ({ ...prev, options: newOptions }));
-                      }}
-                      disabled={quickCreateForm.options.length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id={`option-${index}-product-specific`}
-                      checked={option.isProductSpecific}
-                      onCheckedChange={(checked) => {
-                        const newOptions = [...quickCreateForm.options];
-                        newOptions[index] = { ...newOptions[index], isProductSpecific: checked };
-                        setQuickCreateForm(prev => ({ ...prev, options: newOptions }));
-                      }}
-                    />
-                    <Label htmlFor={`option-${index}-product-specific`} className="text-sm">
-                      Product-specific option
-                    </Label>
-                    <div className="text-xs text-gray-500">
-                      {option.isProductSpecific 
-                        ? "Only for this product" 
-                        : "Available for all products"
-                      }
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={() => {
-                  setQuickCreateForm(prev => ({ ...prev, options: [...prev.options, { name: '', price_delta: 0.00, isProductSpecific: false }] }));
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Option
-              </Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsQuickCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              type="button"
-              onClick={handleQuickCreate}
-              disabled={!quickCreateForm.name || quickCreateForm.options.filter(o => o.name.trim()).length === 0}
-            >
-              Create & Add
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ModifierQuickCreate
+        open={isQuickCreateOpen}
+        onOpenChange={setIsQuickCreateOpen}
+        onSuccess={handleQuickCreateSuccess}
+        productId={productId}
+        autoAddToProduct={true}
+      />
 
     </div>
   );

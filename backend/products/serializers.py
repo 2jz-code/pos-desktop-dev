@@ -147,9 +147,10 @@ class ProductSerializer(serializers.ModelSerializer):
         options_map = {}
         triggered_map = defaultdict(list)
 
-        # Check for visible_only parameter from request
+        # Check for visible_only and include_all_modifiers parameters from request
         request = self.context.get('request')
         visible_only = request and request.query_params.get('visible_only', '').lower() == 'true'
+        include_all_modifiers = request and request.query_params.get('include_all_modifiers', '').lower() == 'true'
         
         for pms in product_modifier_sets:
             ms = pms.modifier_set
@@ -193,11 +194,16 @@ class ProductSerializer(serializers.ModelSerializer):
         context['options_for_set'] = options_map
         context['triggered_sets_for_option'] = triggered_map
 
-        # Find sets that are not triggered by any option (root-level sets)
-        triggered_set_ids = {s['id'] for sets_list in triggered_map.values() for s in sets_list}
-        root_sets = [data for data in all_sets_data.values() if data['id'] not in triggered_set_ids]
+        # Determine which sets to return based on include_all_modifiers parameter
+        if include_all_modifiers:
+            # Return all modifier sets associated with the product (for management UI)
+            sets_to_return = list(all_sets_data.values())
+        else:
+            # Find sets that are not triggered by any option (root-level sets only)
+            triggered_set_ids = {s['id'] for sets_list in triggered_map.values() for s in sets_list}
+            sets_to_return = [data for data in all_sets_data.values() if data['id'] not in triggered_set_ids]
         
-        return FinalProductModifierSetSerializer(root_sets, many=True, context=context).data
+        return FinalProductModifierSetSerializer(sets_to_return, many=True, context=context).data
 
 
 class ProductSyncSerializer(serializers.ModelSerializer):

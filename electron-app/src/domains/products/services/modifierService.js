@@ -16,8 +16,11 @@ import apiClient from "@/shared/lib/apiClient";
 /**
  * Get all modifiers for a specific product with full relationship data
  */
-export const getProductModifiers = async (productId) => {
-  const response = await apiClient.get(`/products/${productId}/`);
+export const getProductModifiers = async (productId, includeAll = false) => {
+  const url = includeAll 
+    ? `/products/${productId}/?include_all_modifiers=true`
+    : `/products/${productId}/`;
+  const response = await apiClient.get(url);
   return response.data.modifier_groups || [];
 };
 
@@ -38,6 +41,22 @@ export const getProductModifierRelationships = async (productId) => {
  * Add a modifier set to a product
  */
 export const addModifierSetToProduct = async (productId, modifierSetId) => {
+  // First check if the modifier set is already added to this product
+  try {
+    const existingRelationships = await getProductModifierRelationships(productId);
+    const alreadyExists = existingRelationships.some(rel => 
+      (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+    );
+    
+    if (alreadyExists) {
+      console.log(`Modifier set ${modifierSetId} is already added to product ${productId}`);
+      // Return a success-like response since the desired state is already achieved
+      return { data: { message: 'Modifier set already added to product' } };
+    }
+  } catch (error) {
+    console.warn('Could not check existing relationships, proceeding with add:', error);
+  }
+
   // Try different URL patterns
   const urlPatterns = [
     `/products/${productId}/modifier-sets/`,
@@ -58,6 +77,15 @@ export const addModifierSetToProduct = async (productId, modifierSetId) => {
         console.log(`URL pattern failed: ${urlPattern}`);
         continue; // Try next pattern
       }
+      
+      // Handle the specific duplicate error more gracefully
+      if (error.response?.status === 400 && 
+          error.response?.data?.non_field_errors?.[0]?.includes('must make a unique set')) {
+        console.log(`Modifier set ${modifierSetId} is already added to product ${productId}`);
+        // Return a success-like response since the desired state is already achieved
+        return { data: { message: 'Modifier set already added to product' } };
+      }
+      
       throw error; // Other errors should be thrown
     }
   }
