@@ -371,22 +371,50 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_PERSISTENT": True,
 }
 
-# Cache configuration
+# Multi-tier Redis cache configuration
 CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
         },
-        "KEY_PREFIX": "ajeen_pos",
-        "TIMEOUT": 300,  # 5 minutes default
+        'KEY_PREFIX': 'ajeen_pos',
+        'VERSION': 1,  # Cache versioning for deployments
+        'TIMEOUT': 300,
+    },
+    'static_data': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/2'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 30},
+        },
+        'KEY_PREFIX': 'ajeen_static',
+        'VERSION': 1,
+        'TIMEOUT': 3600,  # 1 hour default for static data
+    },
+    'session_data': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/3'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 20},
+        },
+        'KEY_PREFIX': 'ajeen_session',
+        'VERSION': 1,
+        'TIMEOUT': 900,  # 15 minutes for session data
     }
 }
 
-# Session backend using cache for better performance
+# Advanced session configuration
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
+SESSION_CACHE_ALIAS = "session_data"
+SESSION_COOKIE_AGE = 3600 * 8  # 8 hours
+
+# Cache versioning for deployments
+CACHE_VERSION = os.getenv('CACHE_VERSION', 1)
 
 # ASGI configuration
 ASGI_APPLICATION = "core_backend.asgi.application"
@@ -612,5 +640,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "inventory.tasks.reset_low_stock_notifications",
         "schedule": crontab(hour=5, minute=0, day_of_week=0),  # Every Sunday at 2:00 AM
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
+    },
+    # Cache warming tasks
+    "warm-critical-caches": {
+        "task": "core_backend.tasks.warm_critical_caches",
+        "schedule": crontab(hour=7, minute=0),  # 7 AM daily
+        "options": {"expires": 3600},
+    },
+    # Cache health monitoring
+    "cache-health-check": {
+        "task": "core_backend.tasks.cache_health_check",
+        "schedule": 300.0,  # Every 5 minutes
+        "options": {"expires": 240},
+    },
+    # Clear expired cache locks
+    "clear-expired-locks": {
+        "task": "core_backend.tasks.clear_expired_cache_locks",
+        "schedule": 3600.0,  # Every hour
+        "options": {"expires": 1800},
     },
 }

@@ -1,7 +1,7 @@
 from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
-from core_backend.cache_utils import simple_cache
+from core_backend.cache_utils import cache_static_data, cache_dynamic_data
 
 
 class ProductService:
@@ -68,9 +68,9 @@ class ProductService:
         return product
 
     @staticmethod
-    @simple_cache(timeout=3600, key_prefix='products_all')  # 1 hour
+    @cache_static_data(timeout=3600*2)  # 2 hours in static cache
     def get_cached_products_list():
-        """Cache the most common product query"""
+        """Cache the most common product query in static data cache"""
         return list(Product.objects.select_related(
             "category", "product_type"
         ).prefetch_related(
@@ -82,7 +82,7 @@ class ProductService:
         ).filter(is_active=True))
     
     @staticmethod
-    @simple_cache(timeout=3600, key_prefix='products_active')  # 1 hour
+    @cache_static_data(timeout=3600*2)  # 2 hours in static cache
     def get_cached_active_products_list():
         """Cache specifically for is_active=true POS requests"""
         return list(Product.objects.select_related(
@@ -96,31 +96,129 @@ class ProductService:
         ).filter(is_active=True))
     
     @staticmethod
-    @simple_cache(timeout=3600*6, key_prefix='categories_tree')  # 6 hours
+    @cache_static_data(timeout=3600*8)  # 8 hours - categories change rarely
     def get_cached_category_tree():
         """Cache category hierarchy - changes infrequently"""
         return Category.objects.select_related("parent").prefetch_related("children").get_cached_trees()
     
     @staticmethod
-    @simple_cache(timeout=3600*12, key_prefix='product_types')  # 12 hours
+    @cache_static_data(timeout=3600*24)  # 24 hours - very static
     def get_cached_product_types():
         """Cache product types - very static"""
         return list(ProductType.objects.all())
     
     @staticmethod
-    @simple_cache(timeout=3600*8, key_prefix='taxes')  # 8 hours
+    @cache_static_data(timeout=3600*12)  # 12 hours - taxes change infrequently
     def get_cached_taxes():
         """Cache taxes - relatively static"""
         return list(Tax.objects.all())
     
     @staticmethod
-    @simple_cache(timeout=3600*4, key_prefix='modifier_sets')  # 4 hours
+    @cache_static_data(timeout=3600*6)  # 6 hours - moderate changes
     def get_cached_modifier_sets():
         """Cache modifier sets with options"""
         return list(ModifierSet.objects.prefetch_related(
             'options',
             'product_modifier_sets__product'
         ))
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*4)  # 4 hours - complete POS layout
+    def get_pos_menu_layout():
+        """Cache complete POS menu structure for fast startup"""
+        try:
+            # Get all the cached components
+            categories = ProductService.get_cached_category_tree()
+            products = ProductService.get_cached_active_products_list()
+            modifiers = ProductService.get_cached_modifier_sets()
+            taxes = ProductService.get_cached_taxes()
+            product_types = ProductService.get_cached_product_types()
+            
+            # Get inventory status
+            from inventory.services import InventoryService
+            availability = InventoryService.get_inventory_availability_status()
+            
+            # Build comprehensive menu layout
+            layout = {
+                'categories': [
+                    {
+                        'id': cat.id if hasattr(cat, 'id') else cat['id'],
+                        'name': cat.name if hasattr(cat, 'name') else cat['name'],
+                        'order': getattr(cat, 'order', 0),
+                        'parent_id': cat.parent_id if hasattr(cat, 'parent_id') else cat.get('parent_id'),
+                        'level': getattr(cat, 'level', 0)
+                    }
+                    for cat in categories
+                ],
+                'products': [
+                    {
+                        'id': prod.id if hasattr(prod, 'id') else prod['id'],
+                        'name': prod.name if hasattr(prod, 'name') else prod['name'],
+                        'price': float(prod.price if hasattr(prod, 'price') else prod['price']),
+                        'category_id': prod.category_id if hasattr(prod, 'category_id') else prod.get('category_id'),
+                        'product_type_id': prod.product_type_id if hasattr(prod, 'product_type_id') else prod.get('product_type_id'),
+                        'is_active': prod.is_active if hasattr(prod, 'is_active') else prod.get('is_active', True),
+                        'track_inventory': prod.track_inventory if hasattr(prod, 'track_inventory') else prod.get('track_inventory', False),
+                        'availability': availability.get(prod.id if hasattr(prod, 'id') else prod['id'], {
+                            'status': 'unknown',
+                            'stock_level': 0,
+                            'can_make': False
+                        })
+                    }
+                    for prod in products
+                ],
+                'modifier_sets': [
+                    {
+                        'id': mod.id if hasattr(mod, 'id') else mod['id'],
+                        'name': mod.name if hasattr(mod, 'name') else mod['name'],
+                        'selection_type': mod.selection_type if hasattr(mod, 'selection_type') else mod.get('selection_type'),
+                        'min_selections': mod.min_selections if hasattr(mod, 'min_selections') else mod.get('min_selections', 0),
+                        'max_selections': mod.max_selections if hasattr(mod, 'max_selections') else mod.get('max_selections')
+                    }
+                    for mod in modifiers
+                ],
+                'taxes': [
+                    {
+                        'id': tax.id if hasattr(tax, 'id') else tax['id'],
+                        'name': tax.name if hasattr(tax, 'name') else tax['name'],
+                        'rate': float(tax.rate if hasattr(tax, 'rate') else tax['rate'])
+                    }
+                    for tax in taxes
+                ],
+                'product_types': [
+                    {
+                        'id': pt.id if hasattr(pt, 'id') else pt['id'],
+                        'name': pt.name if hasattr(pt, 'name') else pt['name']
+                    }
+                    for pt in product_types
+                ],
+                'metadata': {
+                    'total_categories': len(categories),
+                    'total_products': len(products),
+                    'total_modifiers': len(modifiers),
+                    'total_taxes': len(taxes),
+                    'cache_generated_at': 'cached'
+                }
+            }
+            
+            return layout
+            
+        except Exception as e:
+            # Return minimal layout on error
+            return {
+                'categories': [],
+                'products': [],
+                'modifier_sets': [],
+                'taxes': [],
+                'product_types': [],
+                'metadata': {
+                    'error': f'Failed to generate menu layout: {str(e)}',
+                    'total_categories': 0,
+                    'total_products': 0,
+                    'total_modifiers': 0,
+                    'total_taxes': 0
+                }
+            }
 
 
 class BaseSelectionStrategy:

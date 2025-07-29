@@ -7,4 +7,4 @@ class DiscountsConfig(AppConfig):
 
     def ready(self):
         # Import signals when the app is ready.
-        pass  # No signals in discounts app for now
+        import discounts.signals

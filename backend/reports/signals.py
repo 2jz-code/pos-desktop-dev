@@ -11,6 +11,7 @@ from payments.models import PaymentTransaction
 from inventory.models import InventoryStock
 from users.models import User
 from .models import ReportCache
+from core_backend.cache_utils import invalidate_cache_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -247,3 +248,46 @@ def invalidate_all_report_caches():
 
     except Exception as e:
         logger.error(f"Error manually invalidating all caches: {e}")
+
+
+# Phase 3C: Advanced cache invalidation handlers
+
+@receiver(post_save, sender=Order)
+def invalidate_phase3c_order_caches(sender, instance, created, **kwargs):
+    """Invalidate Phase 3C advanced caches when orders change"""
+    try:
+        # Invalidate business KPIs if order is completed
+        if instance.status == Order.OrderStatus.COMPLETED:
+            invalidate_cache_pattern('get_cached_business_kpis')
+            invalidate_cache_pattern('get_real_time_sales_summary')
+            invalidate_cache_pattern('get_historical_trends_data')
+        
+        logger.debug(f"Phase 3C: Invalidated advanced report caches for order {instance.id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate Phase 3C order caches: {e}")
+
+@receiver(post_save, sender=PaymentTransaction)
+def invalidate_phase3c_payment_caches(sender, instance, created, **kwargs):
+    """Invalidate Phase 3C payment analytics caches when payments change"""
+    try:
+        # Invalidate payment analytics and real-time summaries
+        invalidate_cache_pattern('get_payment_analytics')
+        invalidate_cache_pattern('get_real_time_sales_summary')
+        
+        logger.debug(f"Phase 3C: Invalidated payment analytics caches for transaction {instance.id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate Phase 3C payment caches: {e}")
+
+# Periodic cache cleanup for Phase 3C (would be called by Celery)
+def cleanup_phase3c_caches():
+    """Clean up expired Phase 3C caches"""
+    try:
+        # Performance monitoring cache refreshes frequently, so we can clear it more aggressively
+        invalidate_cache_pattern('get_performance_monitoring_cache')
+        
+        logger.info("Phase 3C: Cleaned up performance monitoring caches")
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup Phase 3C caches: {e}")

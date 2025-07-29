@@ -2,9 +2,102 @@ from django.db import transaction
 from .models import InventoryStock, Location, Recipe
 from products.models import Product
 from decimal import Decimal
+from core_backend.cache_utils import cache_dynamic_data, cache_static_data
 
 
 class InventoryService:
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
+    def get_stock_levels_by_location(location_id):
+        """Cache stock levels for POS availability checks"""
+        return dict(InventoryStock.objects.filter(
+            location_id=location_id
+        ).values_list('product_id', 'quantity'))
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
+    def get_recipe_ingredients_map():
+        """Cache recipe-to-ingredients mapping for menu items"""
+        recipes = {}
+        for recipe in Recipe.objects.prefetch_related('recipeitem_set__product'):
+            recipes[recipe.product_id] = [
+                {
+                    'product_id': item.product_id, 
+                    'quantity': float(item.quantity),
+                    'product_name': item.product.name,
+                    'product_type': item.product.product_type.name if item.product.product_type else 'unknown'
+                }
+                for item in recipe.recipeitem_set.all()
+            ]
+        return recipes
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
+    def get_inventory_availability_status(location_id=None):
+        """Cache product availability status for POS display"""
+        from settings.config import app_settings
+        
+        if not location_id:
+            location_id = app_settings.get_default_location().id
+        
+        # Get current stock levels
+        stock_levels = InventoryService.get_stock_levels_by_location(location_id)
+        recipe_map = InventoryService.get_recipe_ingredients_map()
+        
+        availability = {}
+        
+        # Check all products from products service
+        from products.services import ProductService
+        products = ProductService.get_cached_active_products_list()
+        
+        for product in products:
+            product_id = product.id if hasattr(product, 'id') else product['id']
+            product_type = product.product_type.name.lower() if hasattr(product, 'product_type') else product.get('product_type', 'unknown').lower()
+            
+            if product_type == 'menu':
+                # Menu item - check if can be made (recipe availability)
+                if product_id in recipe_map:
+                    can_make = True  # Assume can cook to order for restaurant
+                    missing_ingredients = []
+                    
+                    for ingredient in recipe_map[product_id]:
+                        ingredient_stock = stock_levels.get(ingredient['product_id'], 0)
+                        if ingredient_stock < ingredient['quantity']:
+                            missing_ingredients.append(ingredient['product_name'])
+                    
+                    availability[product_id] = {
+                        'status': 'available' if can_make else 'out_of_stock',
+                        'stock_level': 'menu_item',
+                        'can_make': can_make,
+                        'missing_ingredients': missing_ingredients
+                    }
+                else:
+                    # Menu item without recipe - assume available
+                    availability[product_id] = {
+                        'status': 'available',
+                        'stock_level': 'menu_item',
+                        'can_make': True,
+                        'missing_ingredients': []
+                    }
+            else:
+                # Regular product - check direct stock
+                stock_level = stock_levels.get(product_id, 0)
+                if stock_level > 10:
+                    status = 'in_stock'
+                elif stock_level > 0:
+                    status = 'low_stock'
+                else:
+                    status = 'out_of_stock'
+                
+                availability[product_id] = {
+                    'status': status,
+                    'stock_level': float(stock_level),
+                    'can_make': False,
+                    'missing_ingredients': []
+                }
+        
+        return availability
 
     @staticmethod
     @transaction.atomic

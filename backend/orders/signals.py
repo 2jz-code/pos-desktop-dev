@@ -1,7 +1,8 @@
 from django.dispatch import Signal
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import Order
+from .models import Order, OrderItem, OrderDiscount
+from core_backend.cache_utils import invalidate_cache_pattern
 
 # from .serializers import OrderSerializer  # Import the serializer
 import logging
@@ -108,3 +109,30 @@ def handle_web_order_notifications(sender, instance, created, **kwargs):
     logger.info(
         f"Web order notification event broadcasted for order {instance.order_number}"
     )
+
+# Cache invalidation signal handlers for Phase 3B
+@receiver([post_save, post_delete], sender=OrderItem)
+def handle_order_item_changes(sender, instance=None, **kwargs):
+    """Invalidate order calculation caches when order items change"""
+    try:
+        # Invalidate session-level calculation caches
+        invalidate_cache_pattern('get_cached_order_totals')
+        
+        # Note: We don't invalidate tax matrix as it's static data
+        
+        logger.debug(f"Invalidated order calculation caches after item change")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate order calculation caches: {e}")
+
+@receiver([post_save, post_delete], sender=OrderDiscount)
+def handle_order_discount_changes(sender, instance=None, **kwargs):
+    """Invalidate order calculation caches when discounts are applied/removed"""
+    try:
+        # Invalidate session-level calculation caches
+        invalidate_cache_pattern('get_cached_order_totals')
+        
+        logger.debug(f"Invalidated order calculation caches after discount change")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate order discount caches: {e}")

@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from django.db import transaction
+from django.utils import timezone
 
 # --- FIX: Corrected Imports ---
 from .models import Discount
@@ -10,6 +11,7 @@ from orders.models import Order, OrderDiscount
 # --- END FIX ---
 
 from .factories import DiscountStrategyFactory
+from core_backend.cache_utils import cache_static_data, cache_dynamic_data
 
 
 class DiscountService:
@@ -17,6 +19,45 @@ class DiscountService:
     A service for applying, removing, and calculating discounts.
     This is the central point of control for all discount logic.
     """
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*2)  # 2 hours - discounts change moderately
+    def get_active_discounts():
+        """Cache active discounts for quick order calculations"""
+        now = timezone.now()
+        return list(Discount.objects.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).prefetch_related(
+            'applicable_products',
+            'applicable_categories'
+        ).select_related())
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=1800)  # 30 minutes - order-specific calculations
+    def get_discount_eligibility_for_order_type(order_total, item_count, has_categories=None):
+        """Cache discount eligibility for common order patterns"""
+        active_discounts = DiscountService.get_active_discounts()
+        eligible_discounts = []
+        
+        for discount in active_discounts:
+            # Basic eligibility checks that don't require full order context
+            if discount.minimum_purchase_amount and order_total < discount.minimum_purchase_amount:
+                continue
+                
+            # Check if discount type could apply to this order pattern
+            if discount.type in ['PERCENTAGE', 'FIXED_AMOUNT']:
+                eligible_discounts.append({
+                    'id': discount.id,
+                    'name': discount.name,
+                    'type': discount.type,
+                    'value': discount.value,
+                    'scope': discount.scope,
+                    'minimum_purchase_amount': discount.minimum_purchase_amount
+                })
+                
+        return eligible_discounts
 
     @staticmethod
     @transaction.atomic
@@ -29,9 +70,9 @@ class DiscountService:
         it creates or updates the OrderDiscount link.
         """
         # --- START: Discount Stacking Logic ---
-        # Fetch the setting directly from the database to ensure it's always fresh.
-        from settings.models import GlobalSettings
-        allow_stacking = GlobalSettings.objects.get(pk=1).allow_discount_stacking
+        # Use cached settings for better performance
+        from settings.config import app_settings
+        allow_stacking = app_settings.allow_discount_stacking
 
         # If stacking is disabled, remove all other discounts before applying a new one.
         if not allow_stacking:

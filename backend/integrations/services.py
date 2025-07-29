@@ -2,6 +2,7 @@ import logging
 from django.conf import settings
 from django.core.cache import cache
 import requests
+from core_backend.cache_utils import cache_static_data
 
 # Set up a logger for this service
 logger = logging.getLogger(__name__)
@@ -10,11 +11,12 @@ logger = logging.getLogger(__name__)
 class GooglePlacesService:
     """
     A service to interact with the Google Places API, specifically for fetching reviews.
+    Enhanced with advanced caching for better performance.
     """
 
     BASE_URL = "https://maps.googleapis.com/maps/api/place/details/json"
     CACHE_KEY_PREFIX = "google_reviews_"
-    CACHE_TIMEOUT = 3600  # 1 hour in seconds
+    CACHE_TIMEOUT = 3600 * 6  # 6 hours - reviews don't change frequently
 
     @staticmethod
     def get_reviews(force_refresh=False):
@@ -80,3 +82,83 @@ class GooglePlacesService:
                 f"An unexpected error occurred while fetching Google reviews: {e}"
             )
             return {"error": f"An unexpected error occurred: {e}"}
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*8)  # 8 hours - summary data changes even less frequently
+    def get_business_rating_summary():
+        """
+        Get cached business rating summary for quick dashboard display.
+        Extracts key metrics from full review data.
+        """
+        try:
+            full_reviews = GooglePlacesService.get_reviews()
+            
+            if 'error' in full_reviews:
+                return full_reviews
+            
+            # Extract summary metrics
+            summary = {
+                'average_rating': full_reviews.get('rating', 0),
+                'total_reviews': full_reviews.get('user_ratings_total', 0),
+                'business_name': full_reviews.get('name', 'Unknown Business'),
+                'recent_reviews_count': len(full_reviews.get('reviews', [])),
+                'rating_distribution': GooglePlacesService._calculate_rating_distribution(
+                    full_reviews.get('reviews', [])
+                )
+            }
+            
+            logger.info(f"Generated business rating summary: {summary['average_rating']} stars, {summary['total_reviews']} total reviews")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to generate business rating summary: {e}")
+            return {"error": f"Failed to generate summary: {e}"}
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*12)  # 12 hours - processed reviews change rarely
+    def get_recent_reviews_highlights():
+        """
+        Get cached highlights from recent reviews for marketing display.
+        """
+        try:
+            full_reviews = GooglePlacesService.get_reviews()
+            
+            if 'error' in full_reviews:
+                return full_reviews
+            
+            reviews = full_reviews.get('reviews', [])
+            if not reviews:
+                return {'highlights': [], 'count': 0}
+            
+            # Process recent high-rated reviews for highlights
+            highlights = []
+            for review in reviews[:5]:  # Top 5 recent reviews
+                if review.get('rating', 0) >= 4:  # 4+ star reviews only
+                    highlights.append({
+                        'author_name': review.get('author_name', 'Anonymous'),
+                        'rating': review.get('rating', 0),
+                        'text': review.get('text', '')[:200] + '...' if len(review.get('text', '')) > 200 else review.get('text', ''),
+                        'time': review.get('time', 0)
+                    })
+            
+            return {
+                'highlights': highlights,
+                'count': len(highlights),
+                'last_updated': full_reviews.get('last_updated', 'Unknown')
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate review highlights: {e}")
+            return {"error": f"Failed to generate highlights: {e}"}
+    
+    @staticmethod
+    def _calculate_rating_distribution(reviews):
+        """Calculate distribution of ratings from reviews list"""
+        distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        
+        for review in reviews:
+            rating = review.get('rating', 0)
+            if 1 <= rating <= 5:
+                distribution[rating] += 1
+        
+        return distribution

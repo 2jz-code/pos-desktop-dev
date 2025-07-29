@@ -6,8 +6,78 @@ from users.models import User
 from discounts.services import DiscountService
 from discounts.models import Discount
 from products.services import ModifierValidationService
+from core_backend.cache_utils import cache_session_data, cache_static_data
+import hashlib
 
 class OrderService:
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*4)  # 4 hours - tax calculations don't change often
+    def get_tax_calculation_matrix():
+        """Cache tax calculations for common price ranges"""
+        from settings.config import app_settings
+        
+        # Pre-calculate tax amounts for common price ranges
+        tax_rate = app_settings.tax_rate
+        price_ranges = [1, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
+        
+        tax_matrix = {}
+        for price in price_ranges:
+            price_decimal = Decimal(str(price))
+            tax_amount = price_decimal * Decimal(str(tax_rate))
+            tax_matrix[price] = {
+                'tax_amount': float(tax_amount.quantize(Decimal("0.01"))),
+                'total_with_tax': float((price_decimal + tax_amount).quantize(Decimal("0.01")))
+            }
+        
+        return {
+            'tax_rate': float(tax_rate),
+            'matrix': tax_matrix,
+            'last_updated': str(app_settings.tax_rate)  # Use as cache key
+        }
+    
+    @staticmethod
+    @cache_session_data(timeout=300)  # 5 minutes for active order calculations
+    def get_cached_order_totals(order_items_hash, discounts_hash, tax_rate_hash):
+        """
+        Cache order calculation patterns during active editing.
+        This caches the calculation logic, not specific order data.
+        """
+        # This would be called with a hash of order composition
+        # to cache calculations for similar order patterns
+        cache_key = f"order_calc_{order_items_hash}_{discounts_hash}_{tax_rate_hash}"
+        
+        # Return calculation patterns that can be reused
+        return {
+            'calculation_cached': True,
+            'cache_key': cache_key,
+            'patterns': {
+                'tax_calculation_available': True,
+                'discount_calculation_available': True
+            }
+        }
+    
+    @staticmethod
+    def calculate_order_hash(order):
+        """Generate a hash for order composition to enable calculation caching"""
+        try:
+            # Create a hash based on order composition, not specific values
+            order_composition = []
+            
+            for item in order.items.all():
+                item_data = f"{item.product_id}:{item.quantity}:{len(item.modifiers.all())}"
+                order_composition.append(item_data)
+            
+            # Add discount info
+            discount_data = "|".join([str(d.discount_id) for d in order.applied_discounts.all()])
+            
+            # Create hash
+            composition_string = "|".join(sorted(order_composition)) + f"|{discount_data}"
+            return hashlib.md5(composition_string.encode()).hexdigest()[:12]
+            
+        except Exception:
+            # If hashing fails, return a default
+            return "no_cache"
 
     VALID_STATUS_TRANSITIONS = {
         Order.OrderStatus.PENDING: [

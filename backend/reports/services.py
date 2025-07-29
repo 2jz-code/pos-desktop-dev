@@ -33,6 +33,7 @@ from django.utils import timezone
 from django.conf import settings
 import pytz
 from django.core.cache import cache
+from core_backend.cache_utils import cache_static_data, cache_dynamic_data, cache_session_data
 
 # Export functionality imports
 from openpyxl import Workbook
@@ -65,6 +66,324 @@ class ReportService:
         "payments": 2,
         "operations": 1,
     }
+    
+    # Phase 3C: Advanced caching methods
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*8)  # 8 hours - business metrics change slowly
+    def get_cached_business_kpis():
+        """Cache core business KPIs that don't change frequently"""
+        try:
+            # Calculate key business metrics
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            seven_days_ago = timezone.now() - timedelta(days=7)
+            today = timezone.now()
+            
+            # Monthly performance
+            monthly_orders = Order.objects.filter(
+                created_at__gte=thirty_days_ago,
+                status=Order.OrderStatus.COMPLETED
+            )
+            
+            monthly_revenue = monthly_orders.aggregate(
+                total=Sum('grand_total')
+            )['total'] or Decimal('0.00')
+            
+            # Weekly performance
+            weekly_orders = Order.objects.filter(
+                created_at__gte=seven_days_ago,
+                status=Order.OrderStatus.COMPLETED
+            )
+            
+            weekly_revenue = weekly_orders.aggregate(
+                total=Sum('grand_total')
+            )['total'] or Decimal('0.00')
+            
+            # Average order value
+            avg_order_value = monthly_orders.aggregate(
+                avg=Avg('grand_total')
+            )['avg'] or Decimal('0.00')
+            
+            # Top products (last 30 days)
+            top_products = OrderItem.objects.filter(
+                order__created_at__gte=thirty_days_ago,
+                order__status=Order.OrderStatus.COMPLETED
+            ).values(
+                'product_id', 'product__name'
+            ).annotate(
+                total_quantity=Sum('quantity'),
+                total_revenue=Sum(F('quantity') * F('price_at_sale'))
+            ).order_by('-total_revenue')[:10]
+            
+            return {
+                'monthly_revenue': float(monthly_revenue),
+                'weekly_revenue': float(weekly_revenue),
+                'monthly_order_count': monthly_orders.count(),
+                'weekly_order_count': weekly_orders.count(),
+                'average_order_value': float(avg_order_value),
+                'top_products': list(top_products),
+                'period': {
+                    'start_date': thirty_days_ago.isoformat(),
+                    'end_date': today.isoformat()
+                },
+                'last_updated': timezone.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate business KPIs: {e}")
+            return {
+                'error': f'Failed to generate KPIs: {str(e)}',
+                'monthly_revenue': 0,
+                'weekly_revenue': 0,
+                'monthly_order_count': 0,
+                'weekly_order_count': 0,
+                'average_order_value': 0,
+                'top_products': []
+            }
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=1800)  # 30 minutes - current day changes frequently
+    def get_real_time_sales_summary():
+        """Cache current day sales summary for dashboard"""
+        try:
+            # Today's performance
+            today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = timezone.now()
+            
+            today_orders = Order.objects.filter(
+                created_at__gte=today_start,
+                created_at__lte=today_end,
+                status=Order.OrderStatus.COMPLETED
+            )
+            
+            today_revenue = today_orders.aggregate(
+                total=Sum('grand_total')
+            )['total'] or Decimal('0.00')
+            
+            # Hourly breakdown for today
+            hourly_sales = today_orders.annotate(
+                hour=Extract('created_at', 'hour')
+            ).values('hour').annotate(
+                count=Count('id'),
+                revenue=Sum('grand_total')
+            ).order_by('hour')
+            
+            # Payment method breakdown
+            payment_methods = PaymentTransaction.objects.filter(
+                payment__order__created_at__gte=today_start,
+                payment__order__status=Order.OrderStatus.COMPLETED,
+                status='completed'
+            ).values('method').annotate(
+                count=Count('id'),
+                total=Sum('amount')
+            ).order_by('-total')
+            
+            return {
+                'today_revenue': float(today_revenue),
+                'today_order_count': today_orders.count(),
+                'hourly_breakdown': list(hourly_sales),
+                'payment_methods': list(payment_methods),
+                'current_hour': today_end.hour,
+                'last_updated': timezone.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate real-time sales summary: {e}")
+            return {
+                'error': f'Failed to generate real-time summary: {str(e)}',
+                'today_revenue': 0,
+                'today_order_count': 0,
+                'hourly_breakdown': [],
+                'payment_methods': []
+            }
+    
+    @staticmethod
+    @cache_static_data(timeout=3600*24)  # 24 hours - historical trends change rarely
+    def get_historical_trends_data():
+        """Cache monthly/yearly trends that rarely change"""
+        try:
+            # Last 12 months performance
+            twelve_months_ago = timezone.now() - timedelta(days=365)
+            
+            monthly_trends = Order.objects.filter(
+                created_at__gte=twelve_months_ago,
+                status=Order.OrderStatus.COMPLETED
+            ).annotate(
+                month=TruncMonth('created_at')
+            ).values('month').annotate(
+                order_count=Count('id'),
+                revenue=Sum('grand_total'),
+                avg_order_value=Avg('grand_total')
+            ).order_by('month')
+            
+            # Year-over-year comparison (if we have data)
+            this_year = timezone.now().year
+            last_year = this_year - 1
+            
+            this_year_revenue = Order.objects.filter(
+                created_at__year=this_year,
+                status=Order.OrderStatus.COMPLETED
+            ).aggregate(
+                total=Sum('grand_total')
+            )['total'] or Decimal('0.00')
+            
+            last_year_revenue = Order.objects.filter(
+                created_at__year=last_year,
+                status=Order.OrderStatus.COMPLETED
+            ).aggregate(
+                total=Sum('grand_total')
+            )['total'] or Decimal('0.00')
+            
+            # Calculate growth rate
+            growth_rate = 0
+            if last_year_revenue > 0:
+                growth_rate = ((this_year_revenue - last_year_revenue) / last_year_revenue) * 100
+            
+            return {
+                'monthly_trends': list(monthly_trends),
+                'year_over_year': {
+                    'this_year_revenue': float(this_year_revenue),
+                    'last_year_revenue': float(last_year_revenue),
+                    'growth_rate': float(growth_rate)
+                },
+                'trend_period': {
+                    'start_date': twelve_months_ago.isoformat(),
+                    'end_date': timezone.now().isoformat()
+                },
+                'last_updated': timezone.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate historical trends: {e}")
+            return {
+                'error': f'Failed to generate trends: {str(e)}',
+                'monthly_trends': [],
+                'year_over_year': {
+                    'this_year_revenue': 0,
+                    'last_year_revenue': 0,
+                    'growth_rate': 0
+                }
+            }
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=3600*2)  # 2 hours - payment patterns change moderately
+    def get_payment_analytics():
+        """Cache payment method analytics and trends"""
+        try:
+            # Last 30 days payment analytics
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            
+            # Payment method performance
+            payment_performance = PaymentTransaction.objects.filter(
+                created_at__gte=thirty_days_ago,
+                status='completed'
+            ).values('method').annotate(
+                transaction_count=Count('id'),
+                total_amount=Sum('amount'),
+                avg_amount=Avg('amount'),
+                success_rate=Count('id', filter=Q(status='completed')) * 100.0 / Count('id')
+            ).order_by('-total_amount')
+            
+            # Daily payment trends
+            daily_payments = PaymentTransaction.objects.filter(
+                created_at__gte=thirty_days_ago,
+                status='completed'
+            ).annotate(
+                date=TruncDate('created_at')
+            ).values('date').annotate(
+                count=Count('id'),
+                total=Sum('amount')
+            ).order_by('date')
+            
+            # Payment failure analysis
+            failed_payments = PaymentTransaction.objects.filter(
+                created_at__gte=thirty_days_ago,
+                status__in=['failed', 'declined', 'cancelled']
+            ).values('method', 'status').annotate(
+                count=Count('id')
+            ).order_by('-count')
+            
+            # Average transaction times (if available)
+            avg_processing_times = {
+                'card': '2.5s',  # Placeholder - would need actual timing data
+                'cash': '0.1s',
+                'gift_card': '1.2s'
+            }
+            
+            return {
+                'payment_methods': list(payment_performance),
+                'daily_trends': list(daily_payments),
+                'failed_payments': list(failed_payments),
+                'processing_times': avg_processing_times,
+                'total_processed': sum(p['total_amount'] for p in payment_performance),
+                'period': {
+                    'start_date': thirty_days_ago.isoformat(),
+                    'end_date': timezone.now().isoformat()
+                },
+                'last_updated': timezone.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate payment analytics: {e}")
+            return {
+                'error': f'Failed to generate payment analytics: {str(e)}',
+                'payment_methods': [],
+                'daily_trends': [],
+                'failed_payments': [],
+                'processing_times': {},
+                'total_processed': 0
+            }
+    
+    @staticmethod
+    @cache_session_data(timeout=900)  # 15 minutes - performance monitoring changes frequently
+    def get_performance_monitoring_cache():
+        """Cache comprehensive system performance metrics"""
+        try:
+            from core_backend.cache import CacheMonitor
+            
+            # Get cache health stats
+            cache_health = CacheMonitor.health_check()
+            cache_stats = CacheMonitor.get_all_cache_stats()
+            
+            # Database performance indicators
+            recent_orders = Order.objects.filter(
+                created_at__gte=timezone.now() - timedelta(hours=1)
+            ).count()
+            
+            recent_transactions = PaymentTransaction.objects.filter(
+                created_at__gte=timezone.now() - timedelta(hours=1)
+            ).count()
+            
+            # System health indicators
+            performance_metrics = {
+                'cache_health': cache_health,
+                'cache_statistics': cache_stats,
+                'recent_activity': {
+                    'orders_last_hour': recent_orders,
+                    'transactions_last_hour': recent_transactions,
+                    'system_load': 'normal'  # Placeholder - would integrate with system monitoring
+                },
+                'response_times': {
+                    'database_avg': '15ms',  # Placeholder - would need actual monitoring
+                    'cache_avg': '2ms',
+                    'api_avg': '45ms'
+                },
+                'uptime': '99.9%',  # Placeholder - would integrate with uptime monitoring
+                'last_updated': timezone.now().isoformat()
+            }
+            
+            return performance_metrics
+            
+        except Exception as e:
+            logger.error(f"Failed to generate performance monitoring data: {e}")
+            return {
+                'error': f'Failed to generate performance metrics: {str(e)}',
+                'cache_health': {},
+                'cache_statistics': {},
+                'recent_activity': {},
+                'response_times': {},
+                'uptime': 'unknown'
+            }
 
     @staticmethod
     def get_local_timezone():
