@@ -136,6 +136,39 @@ class OrderService:
         if not force_add:
             option_ids = [mod.get('option_id') for mod in selected_modifiers if mod.get('option_id')]
             ModifierValidationService.validate_product_selection(product, option_ids)
+            
+            # Stock validation - check if product is available
+            from inventory.services import InventoryService
+            from settings.config import app_settings
+            
+            # Only validate stock for products that track inventory
+            if product.track_inventory:
+                try:
+                    default_location = app_settings.get_default_location()
+                    # Check if we have enough stock for the requested quantity
+                    is_available = InventoryService.check_stock_availability(product, default_location, quantity)
+                    
+                    if not is_available:
+                        stock_level = InventoryService.get_stock_level(product, default_location)
+                        if stock_level <= 0:
+                            raise ValueError(f"'{product.name}' is out of stock. No items available.")
+                        else:
+                            raise ValueError(f"'{product.name}' has low stock. Only {stock_level} items available, but {quantity} requested.")
+                            
+                except AttributeError:
+                    # If InventoryService methods don't exist, fall back to basic stock level check
+                    from inventory.models import InventoryStock
+                    try:
+                        default_location = app_settings.get_default_location()
+                        stock = InventoryStock.objects.get(product=product, location=default_location)
+                        if stock.quantity < quantity:
+                            if stock.quantity <= 0:
+                                raise ValueError(f"'{product.name}' is out of stock. No items available.")
+                            else:
+                                raise ValueError(f"'{product.name}' has low stock. Only {stock.quantity} items available, but {quantity} requested.")
+                    except InventoryStock.DoesNotExist:
+                        # No stock record exists - treat as out of stock
+                        raise ValueError(f"'{product.name}' is out of stock. No stock record found.")
 
         # Calculate price with modifiers
         modifier_price_delta = Decimal('0.00')
