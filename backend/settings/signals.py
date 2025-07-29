@@ -5,9 +5,10 @@ Automatically updates the configuration cache when GlobalSettings are modified.
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import GlobalSettings
+from .models import GlobalSettings, StoreLocation, PrinterConfiguration, WebOrderSettings
 from django.utils import timezone
 from django.db import transaction
+from core_backend.cache_utils import invalidate_cache_pattern
 
 
 @receiver(post_save, sender=GlobalSettings)
@@ -25,6 +26,9 @@ def reload_app_settings(sender, instance, **kwargs):
 
     app_settings.reload()
     print(f"Configuration cache updated: {app_settings}")
+    
+    # Invalidate settings cache
+    invalidate_cache_pattern('global_settings')
 
     # Recalculate all in-progress orders to apply new rates immediately
     try:
@@ -121,3 +125,38 @@ def _notify_frontend_of_config_changes():
 
     except Exception as e:
         print(f"Warning: Failed to send WebSocket notifications: {e}")
+
+
+@receiver(post_save, sender=StoreLocation)
+def handle_store_location_change(sender, instance, created, **kwargs):
+    """Handle store location create/update events"""
+    print(f"Store location {'created' if created else 'updated'}: {instance.name}")
+    
+    # Invalidate store locations cache
+    invalidate_cache_pattern('store_locations')
+
+
+@receiver(post_save, sender=PrinterConfiguration)
+def handle_printer_config_change(sender, instance, **kwargs):
+    """Handle printer configuration updates"""
+    print("Printer configuration updated")
+    
+    # Reload app settings to refresh printer config
+    from .config import app_settings
+    app_settings.reload()
+    
+    # Invalidate global settings cache
+    invalidate_cache_pattern('global_settings')
+
+
+@receiver(post_save, sender=WebOrderSettings)
+def handle_web_order_settings_change(sender, instance, **kwargs):
+    """Handle web order settings updates"""
+    print("Web order settings updated")
+    
+    # Reload app settings to refresh web order config
+    from .config import app_settings
+    app_settings.reload()
+    
+    # Invalidate global settings cache
+    invalidate_cache_pattern('global_settings')

@@ -20,6 +20,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from .cache_monitor import cache_stats, clear_cache_pattern
 
 
 def health_check(request):
@@ -30,6 +31,9 @@ def health_check(request):
 urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("admin/", admin.site.urls),
+    # Cache monitoring endpoints (staff only)
+    path("cache-stats/", cache_stats, name="cache_stats"),
+    path("clear-cache/<str:pattern>/", clear_cache_pattern, name="clear_cache"),
     path("api/users/", include("users.urls")),
     path(
         "api/auth/customer/", include("users.customer_urls")

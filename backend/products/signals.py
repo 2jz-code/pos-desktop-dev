@@ -6,8 +6,9 @@ import logging
 from django.utils import timezone  # Add this import
 from django.conf import settings
 
-from .models import Product, Category, ProductType
+from .models import Product, Category, ProductType, Tax, ModifierSet
 from .image_service import ImageService  # Import ImageService
+from core_backend.cache_utils import invalidate_cache_pattern
 import os  # Import os
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,10 @@ def process_product_image(sender, instance, created, **kwargs):
     # Also broadcast the change for real-time updates
     action = "created" if created else "updated"
     broadcast_entity_change("products", instance.id, action)
+    
+    # Invalidate product caches
+    invalidate_cache_pattern('products_all')
+    invalidate_cache_pattern('products_active')
 
 
 @receiver(post_delete, sender=Product)
@@ -142,17 +147,14 @@ def handle_product_delete(sender, instance, **kwargs):
     # Delete the image file when the product is deleted
     ImageService.delete_image_file(instance.image)
     broadcast_entity_change("products", instance.id, "deleted")
+    
+    # Invalidate product caches
+    invalidate_cache_pattern('products_all')
+    invalidate_cache_pattern('products_active')
 
 
-# Existing signal handlers (ensure these are still present)
-@receiver(post_save, sender=Product)
-def handle_product_change(sender, instance, created, **kwargs):
-    """Handle product create/update events"""
-    # This signal is now redundant for image processing, handled by process_product_image
-    # but still useful for broadcasting other product changes if needed
-    if not instance.image or instance.image.name == instance.original_filename:
-        action = "created" if created else "updated"
-        broadcast_entity_change("products", instance.id, action)
+# Note: Product save/delete signals are handled by process_product_image and handle_product_delete above
+# No additional product signal handlers needed - they would cause duplicate cache invalidation
 
 
 # === CATEGORY SIGNALS ===
@@ -163,12 +165,22 @@ def handle_category_change(sender, instance, created, **kwargs):
     """Handle category create/update events"""
     action = "created" if created else "updated"
     broadcast_entity_change("categories", instance.id, action)
+    
+    # Invalidate category and product caches
+    invalidate_cache_pattern('categories_tree')
+    invalidate_cache_pattern('products_all')  # Products include category data
+    invalidate_cache_pattern('products_active')  # POS products include category data
 
 
 @receiver(post_delete, sender=Category)
 def handle_category_delete(sender, instance, **kwargs):
     """Handle category delete events"""
     broadcast_entity_change("categories", instance.id, "deleted")
+    
+    # Invalidate category and product caches
+    invalidate_cache_pattern('categories_tree')
+    invalidate_cache_pattern('products_all')  # Products include category data
+    invalidate_cache_pattern('products_active')  # POS products include category data
 
 
 # === PRODUCT TYPE SIGNALS ===
@@ -179,9 +191,57 @@ def handle_product_type_change(sender, instance, created, **kwargs):
     """Handle product type create/update events"""
     action = "created" if created else "updated"
     broadcast_entity_change("product_types", instance.id, action)
+    
+    # Invalidate product type cache
+    invalidate_cache_pattern('product_types')
 
 
 @receiver(post_delete, sender=ProductType)
 def handle_product_type_delete(sender, instance, **kwargs):
     """Handle product type delete events"""
     broadcast_entity_change("product_types", instance.id, "deleted")
+    
+    # Invalidate product type cache
+    invalidate_cache_pattern('product_types')
+
+
+# === TAX SIGNALS ===
+
+@receiver(post_save, sender=Tax)
+def handle_tax_change(sender, instance, created, **kwargs):
+    """Handle tax create/update events"""
+    action = "created" if created else "updated"
+    broadcast_entity_change("taxes", instance.id, action)
+    
+    # Invalidate tax cache
+    invalidate_cache_pattern('taxes')
+
+
+@receiver(post_delete, sender=Tax)
+def handle_tax_delete(sender, instance, **kwargs):
+    """Handle tax delete events"""
+    broadcast_entity_change("taxes", instance.id, "deleted")
+    
+    # Invalidate tax cache
+    invalidate_cache_pattern('taxes')
+
+
+# === MODIFIER SET SIGNALS ===
+
+@receiver(post_save, sender=ModifierSet)
+def handle_modifier_set_change(sender, instance, created, **kwargs):
+    """Handle modifier set create/update events"""
+    action = "created" if created else "updated"
+    broadcast_entity_change("modifier_sets", instance.id, action)
+    
+    # Invalidate modifier set cache
+    invalidate_cache_pattern('modifier_sets')
+
+
+@receiver(post_delete, sender=ModifierSet)
+def handle_modifier_set_delete(sender, instance, **kwargs):
+    """Handle modifier set delete events"""
+    broadcast_entity_change("modifier_sets", instance.id, "deleted")
+    
+    # Invalidate modifier set cache
+    invalidate_cache_pattern('modifier_sets')

@@ -19,6 +19,7 @@ from .serializers import (
     ProductModifierSetSerializer,
     BasicProductSerializer
 )
+from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -302,9 +303,15 @@ class ModifierOptionViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.select_related("category").order_by(
-        "category__order", "category__name", "name"
-    )  # Order by category order, then category name, then product name
+    queryset = Product.objects.select_related(
+        "category", "product_type"
+    ).prefetch_related(
+        "taxes",
+        "modifier_sets",
+        "product_modifier_sets__modifier_set__options",
+        "product_modifier_sets__hidden_options",
+        "product_modifier_sets__extra_options"
+    ).order_by("category__order", "category__name", "name")
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -348,6 +355,25 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        # Cache for common POS queries
+        query_params = dict(request.GET.items())
+        
+        # Cache unfiltered requests
+        if not query_params:
+            products = ProductService.get_cached_products_list()
+            serializer = self.get_serializer(products, many=True)
+            return Response(serializer.data)
+        
+        # Cache the most common POS query: ?is_active=true
+        if query_params == {'is_active': 'true'}:
+            products = ProductService.get_cached_active_products_list()
+            serializer = self.get_serializer(products, many=True)
+            return Response(serializer.data)
+        
+        # Fall back to optimized queryset for other filtered requests
+        return super().list(request, *args, **kwargs)
+
     def get_serializer_class(self):
         # Use sync serializer if sync=true parameter is present
         is_sync_request = self.request.query_params.get("sync") == "true"
@@ -377,7 +403,17 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             decoded_name = unquote(name)
 
-            product = get_object_or_404(Product, name=decoded_name, is_active=True)
+            product = get_object_or_404(
+                Product.objects.select_related("category", "product_type").prefetch_related(
+                    "taxes",
+                    "modifier_sets", 
+                    "product_modifier_sets__modifier_set__options",
+                    "product_modifier_sets__hidden_options",
+                    "product_modifier_sets__extra_options"
+                ),
+                name=decoded_name,
+                is_active=True
+            )
             serializer = self.get_serializer(product)
             return Response(serializer.data)
         except Product.DoesNotExist:
@@ -394,7 +430,17 @@ def barcode_lookup(request, barcode):
     Returns product details if found.
     """
     try:
-        product = get_object_or_404(Product, barcode=barcode, is_active=True)
+        product = get_object_or_404(
+            Product.objects.select_related("category", "product_type").prefetch_related(
+                "taxes",
+                "modifier_sets",
+                "product_modifier_sets__modifier_set__options",
+                "product_modifier_sets__hidden_options",
+                "product_modifier_sets__extra_options"
+            ),
+            barcode=barcode,
+            is_active=True
+        )
         serializer = ProductSerializer(product)
         return Response({"success": True, "product": serializer.data})
     except Product.DoesNotExist:
@@ -417,7 +463,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ]  # Allow public access for customer website
 
     def get_queryset(self):
-        queryset = Category.objects.all()
+        queryset = Category.objects.select_related("parent").prefetch_related("children")
 
         # Check if the request is for the customer-facing website
         is_for_website = self.request.query_params.get("for_website") == "true"
@@ -449,6 +495,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(parent_id=parent_id)
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        # Use cache for simple requests without complex filtering
+        if not request.query_params.get("parent") and not request.query_params.get("modified_since"):
+            categories = ProductService.get_cached_category_tree()
+            serializer = self.get_serializer(categories, many=True)
+            return Response(serializer.data)
+        
+        # Fall back to normal queryset for filtered requests
+        return super().list(request, *args, **kwargs)
 
 
 class TaxListCreateView(generics.ListCreateAPIView):

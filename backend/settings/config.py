@@ -7,6 +7,7 @@ eliminating the need for direct database queries from business logic.
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from django.core.exceptions import ImproperlyConfigured
+from core_backend.cache_utils import simple_cache
 
 
 class AppSettings:
@@ -223,6 +224,19 @@ class AppSettings:
         Returns the default inventory location.
         """
         return self.get_default_inventory_location()
+
+    @simple_cache(timeout=3600*24, key_prefix='global_settings')  # 24 hours
+    def get_cached_global_settings(self):
+        """Cache global settings - very stable"""
+        if not self._initialized:
+            self._setup()
+        return self
+    
+    @simple_cache(timeout=3600*6, key_prefix='store_locations')  # 6 hours  
+    def get_store_locations(self):
+        """Cache store locations"""
+        from .models import StoreLocation
+        return list(StoreLocation.objects.all())
 
     def get_store_info(self) -> dict:
         """

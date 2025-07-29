@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "django_redis",
     # My Apps
     "products",
     "inventory",
@@ -279,7 +280,6 @@ CSRF_TRUSTED_ORIGINS = (
 )
 
 # Session Configuration for Guest Users
-SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_HTTPONLY = True
@@ -370,6 +370,23 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "Lax",
     "AUTH_COOKIE_PERSISTENT": True,
 }
+
+# Cache configuration
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "ajeen_pos",
+        "TIMEOUT": 300,  # 5 minutes default
+    }
+}
+
+# Session backend using cache for better performance
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
 
 # ASGI configuration
 ASGI_APPLICATION = "core_backend.asgi.application"

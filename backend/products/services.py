@@ -1,7 +1,7 @@
-from .models import Product, Category, Tax
+from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
-from .models import Product, ModifierSet, ModifierOption, ProductModifierSet
+from core_backend.cache_utils import simple_cache
 
 
 class ProductService:
@@ -66,6 +66,61 @@ class ProductService:
             )
 
         return product
+
+    @staticmethod
+    @simple_cache(timeout=3600, key_prefix='products_all')  # 1 hour
+    def get_cached_products_list():
+        """Cache the most common product query"""
+        return list(Product.objects.select_related(
+            "category", "product_type"
+        ).prefetch_related(
+            "taxes",
+            "modifier_sets",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options", 
+            "product_modifier_sets__extra_options"
+        ).filter(is_active=True))
+    
+    @staticmethod
+    @simple_cache(timeout=3600, key_prefix='products_active')  # 1 hour
+    def get_cached_active_products_list():
+        """Cache specifically for is_active=true POS requests"""
+        return list(Product.objects.select_related(
+            "category", "product_type"
+        ).prefetch_related(
+            "taxes",
+            "modifier_sets",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options", 
+            "product_modifier_sets__extra_options"
+        ).filter(is_active=True))
+    
+    @staticmethod
+    @simple_cache(timeout=3600*6, key_prefix='categories_tree')  # 6 hours
+    def get_cached_category_tree():
+        """Cache category hierarchy - changes infrequently"""
+        return Category.objects.select_related("parent").prefetch_related("children").get_cached_trees()
+    
+    @staticmethod
+    @simple_cache(timeout=3600*12, key_prefix='product_types')  # 12 hours
+    def get_cached_product_types():
+        """Cache product types - very static"""
+        return list(ProductType.objects.all())
+    
+    @staticmethod
+    @simple_cache(timeout=3600*8, key_prefix='taxes')  # 8 hours
+    def get_cached_taxes():
+        """Cache taxes - relatively static"""
+        return list(Tax.objects.all())
+    
+    @staticmethod
+    @simple_cache(timeout=3600*4, key_prefix='modifier_sets')  # 4 hours
+    def get_cached_modifier_sets():
+        """Cache modifier sets with options"""
+        return list(ModifierSet.objects.prefetch_related(
+            'options',
+            'product_modifier_sets__product'
+        ))
 
 
 class BaseSelectionStrategy:
