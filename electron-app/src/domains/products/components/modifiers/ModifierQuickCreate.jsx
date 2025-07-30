@@ -221,7 +221,7 @@ const ModifierQuickCreate = ({
               onUpdateOption={updateOption}
               onDragEnd={handleDragEnd}
               showHeaders={true}
-              showProductSpecific={true}
+              showProductSpecific={!!productId}
               showEmptyState={true}
               emptyStateMessage="Click 'Add Option' to get started"
             />

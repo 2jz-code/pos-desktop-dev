@@ -2,10 +2,29 @@
 
 import { usePosStore } from "@/domains/pos/store/posStore";
 import CartItem from "./CartItem";
+import GroupedCartItem from "./GroupedCartItem";
 import { ShoppingCart } from "lucide-react";
 
 const CartItemList = () => {
 	const items = usePosStore((state) => state.items);
+
+	// Helper function to group items by product
+	const groupItemsByProduct = (items) => {
+		const grouped = {};
+		
+		items.forEach(item => {
+			const productId = item.product.id;
+			if (!grouped[productId]) {
+				grouped[productId] = {
+					baseProduct: item.product,
+					items: []
+				};
+			}
+			grouped[productId].items.push(item);
+		});
+		
+		return Object.values(grouped);
+	};
 
 	if (items.length === 0) {
 		return (
@@ -23,14 +42,17 @@ const CartItemList = () => {
 		);
 	}
 
+	const groupedItems = groupItemsByProduct(items);
+
 	return (
 		<div className="flex-grow overflow-y-auto">
-			<div className="p-4">
-				<ul className="space-y-2">
-					{items.map((item) => (
-						<CartItem
-							key={item.id}
-							item={item}
+			<div className="p-3">
+				<ul className="space-y-1">
+					{groupedItems.map((group) => (
+						<GroupedCartItem
+							key={group.baseProduct.id}
+							baseProduct={group.baseProduct}
+							items={group.items}
 						/>
 					))}
 				</ul>

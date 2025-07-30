@@ -109,6 +109,26 @@ export async function formatReceipt(order, storeSettings = null) {
 		const price = parseFloat(item.price_at_sale) * item.quantity;
 		const itemText = `${item.quantity}x ${item.product.name}`;
 		printLine(printer, itemText, `$${price.toFixed(2)}`);
+		
+		// Print modifiers if they exist
+		if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
+			for (const modifier of item.selected_modifiers_snapshot) {
+				const modPrice = parseFloat(modifier.price_at_sale) * modifier.quantity * item.quantity;
+				let modText = `   - ${modifier.option_name}`;
+				
+				// Add quantity if > 1
+				if (modifier.quantity > 1) {
+					modText += ` (${modifier.quantity}x)`;
+				}
+				
+				// Only show price if not zero
+				if (parseFloat(modifier.price_at_sale) !== 0) {
+					printLine(printer, modText, `$${modPrice.toFixed(2)}`);
+				} else {
+					printer.println(modText);
+				}
+			}
+		}
 	}
 	printer.drawLine();
 
@@ -329,9 +349,34 @@ export function formatKitchenTicket(
 			printer.setTextNormal();
 			printer.bold(false);
 
+			// Print modifiers in compact format for kitchen
+			if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
+				// Group modifiers by modifier set name
+				const modifiersBySet = item.selected_modifiers_snapshot.reduce((acc, modifier) => {
+					const setName = modifier.modifier_set_name || 'Other';
+					if (!acc[setName]) acc[setName] = [];
+					acc[setName].push(modifier);
+					return acc;
+				}, {});
+
+				// Print each modifier set in compact format
+				for (const [setName, modifiers] of Object.entries(modifiersBySet)) {
+					// Format all options from this set on one line
+					const optionsList = modifiers.map(modifier => {
+						let optionText = modifier.option_name;
+						if (modifier.quantity > 1) {
+							optionText += ` (${modifier.quantity}x)`;
+						}
+						return optionText;
+					}).join(', ');
+					
+					printer.println(`   ${setName} - ${optionsList}`);
+				}
+			}
+
 			// Add special instructions or notes if available
 			if (item.notes && item.notes.trim()) {
-				printer.println(`   Notes: ${item.notes.trim()}`);
+				printer.println(`   NOTES: ${item.notes.trim()}`);
 			}
 		}
 		printer.println(""); // Add space after each category

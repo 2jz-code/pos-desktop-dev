@@ -184,32 +184,79 @@ class OrderService:
 
         final_price_at_sale = Decimal(str(product.price)) + modifier_price_delta
 
-        # Try to find existing item with same product, notes, and modifiers
-        existing_item = None
-        if not selected_modifiers:  # Only merge items without modifiers
+        # Enhanced item creation logic for individual variations
+        variation_group = product.name.lower().replace(' ', '_').replace('-', '_')
+        
+        # For items with modifiers, create individual entries for each quantity
+        if selected_modifiers and len(selected_modifiers) > 0:
+            # Find the next sequence number for this product in this order
+            existing_count = OrderItem.objects.filter(
+                order=order, 
+                product=product
+            ).count()
+            
+            # Create individual items for each quantity requested
+            created_items = []
+            for i in range(quantity):
+                individual_item = OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=1,  # Always 1 for modified items
+                    price_at_sale=final_price_at_sale,
+                    notes=notes,
+                    item_sequence=existing_count + i + 1,
+                    variation_group=variation_group,
+                )
+                created_items.append(individual_item)
+            
+            # Return the first created item for backwards compatibility
+            order_item = created_items[0] if created_items else None
+        else:
+            # For items without modifiers, check if we can merge with existing
             existing_item = OrderItem.objects.filter(
                 order=order, 
                 product=product, 
                 notes=notes,
                 selected_modifiers_snapshot__isnull=True
             ).first()
-        
-        if existing_item:
-            # Update existing item quantity
-            existing_item.quantity += quantity
-            existing_item.save()
-            order_item = existing_item
-        else:
-            # Create new order item
-            order_item = OrderItem.objects.create(
-                order=order,
-                product=product,
-                quantity=quantity,
-                price_at_sale=final_price_at_sale,
-                notes=notes,
-            )
+            
+            if existing_item:
+                # Update existing item quantity
+                existing_item.quantity += quantity
+                existing_item.save()
+                order_item = existing_item
+            else:
+                # Create new item without modifiers
+                existing_count = OrderItem.objects.filter(
+                    order=order, 
+                    product=product
+                ).count()
+                
+                order_item = OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=quantity,
+                    price_at_sale=final_price_at_sale,
+                    notes=notes,
+                    item_sequence=existing_count + 1,
+                    variation_group=variation_group,
+                )
 
-            # Create snapshot records for the selected modifiers
+        # Create snapshot records for the selected modifiers
+        # Handle both individual items (with modifiers) and regular items
+        items_to_add_modifiers = []
+        if selected_modifiers and len(selected_modifiers) > 0:
+            # For items with modifiers, add to all created individual items
+            if 'created_items' in locals():
+                items_to_add_modifiers = created_items
+            else:
+                items_to_add_modifiers = [order_item] if order_item else []
+        else:
+            # For items without modifiers, just add to the single item
+            items_to_add_modifiers = [order_item] if order_item else []
+        
+        # Create modifiers for each item that needs them
+        for item in items_to_add_modifiers:
             for modifier_data in selected_modifiers:
                 option_id = modifier_data.get('option_id')
                 mod_quantity = modifier_data.get('quantity', 1)
@@ -217,7 +264,7 @@ class OrderService:
                     try:
                         modifier_option = ModifierOption.objects.select_related('modifier_set').get(id=option_id)
                         OrderItemModifier.objects.create(
-                            order_item=order_item,
+                            order_item=item,
                             modifier_set_name=modifier_option.modifier_set.name,
                             option_name=modifier_option.name,
                             price_at_sale=modifier_option.price_delta,
@@ -228,6 +275,85 @@ class OrderService:
 
         OrderService.recalculate_order_totals(order)
         return order_item
+
+    @staticmethod
+    def group_items_for_kitchen(order_items):
+        """
+        Group order items by variation_group for kitchen display
+        Returns dict with group_name -> list of items
+        """
+        grouped = {}
+        for item in order_items:
+            group_key = item.variation_group or item.product.name.lower().replace(' ', '_')
+            if group_key not in grouped:
+                grouped[group_key] = []
+            grouped[group_key].append(item)
+        
+        # Sort items within each group by sequence
+        for group_items in grouped.values():
+            group_items.sort(key=lambda x: x.item_sequence)
+        
+        return grouped
+
+    @staticmethod
+    def format_kitchen_receipt(order):
+        """
+        Generate kitchen-optimized receipt format
+        """
+        grouped_items = OrderService.group_items_for_kitchen(order.items.all())
+        
+        receipt_lines = []
+        receipt_lines.append(f"ORDER #{order.order_number}")
+        if hasattr(order, 'table_number') and order.table_number:
+            receipt_lines.append(f"Table {order.table_number}")
+        receipt_lines.append("=" * 32)
+        receipt_lines.append("")
+        
+        for group_name, items in grouped_items.items():
+            product_name = items[0].product.name.upper()
+            
+            if len(items) > 1:
+                # Multiple variations
+                receipt_lines.append(f"{len(items)}x {product_name}")
+                for item in items:
+                    modifiers_text = OrderService._format_modifiers_for_kitchen(item)
+                    price_text = f"${item.price_at_sale:.2f}" if len(items) > 1 else ""
+                    receipt_lines.append(f"├─ #{item.item_sequence}: {modifiers_text} {price_text}".strip())
+                    
+                    if item.kitchen_notes:
+                        receipt_lines.append(f"   Note: {item.kitchen_notes}")
+            else:
+                # Single item
+                item = items[0]
+                modifiers_text = OrderService._format_modifiers_for_kitchen(item)
+                if modifiers_text != "Standard":
+                    receipt_lines.append(f"1x {product_name}")
+                    receipt_lines.append(f"└─ {modifiers_text}")
+                else:
+                    receipt_lines.append(f"1x {product_name}")
+                
+                if item.kitchen_notes:
+                    receipt_lines.append(f"   Note: {item.kitchen_notes}")
+            
+            receipt_lines.append("")  # Blank line between groups
+        
+        receipt_lines.append("=" * 32)
+        return '\n'.join(receipt_lines)
+
+    @staticmethod
+    def _format_modifiers_for_kitchen(item):
+        """Format modifiers in kitchen-friendly way"""
+        if not hasattr(item, 'selected_modifiers_snapshot') or not item.selected_modifiers_snapshot.exists():
+            return "Standard"
+        
+        modifiers = []
+        for mod in item.selected_modifiers_snapshot.all():
+            mod_text = mod.option_name
+            if mod.quantity > 1:
+                mod_text += f" ({mod.quantity}x)"
+            modifiers.append(mod_text)
+        
+        return ", ".join(modifiers) if modifiers else "Standard"
 
     @staticmethod
     @transaction.atomic

@@ -275,6 +275,14 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
             items={modifierGroups}
             onReorder={handleReorder}
             getItemId={(item) => item.modifier_set_id || item.modifier_set || item.id}
+            tableStyle={true}
+            showHeaders={true}
+            headers={[
+              { label: "Modifier Group", className: "flex-1" },
+              { label: "Required", className: "w-20 text-center" },
+              { label: "Actions", className: "w-24 text-center" }
+            ]}
+            emptyStateMessage="No modifier groups yet"
             renderItem={({ item: group, dragHandle }) => {
               const modifierSetId = group.modifier_set_id || group.modifier_set || group.id;
               
@@ -284,16 +292,20 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
               }
               
               return (
-                <ModifierGroupCard
-                  group={group}
-                  dragHandle={dragHandle}
-                  isExpanded={expandedGroups.has(modifierSetId)}
-                  onToggleExpansion={toggleGroupExpansion}
-                  onRemove={handleRemoveModifierSet}
-                  onDuplicate={() => {/* Handle duplicate */}}
-                  onOptionToggle={handleOptionToggle}
-                  hiddenOptionIds={Array.from(optimisticHiddenOptions.get(modifierSetId) || [])}
-                />
+                <div className="flex items-center gap-3 p-3">
+                  {dragHandle}
+                  <ModifierGroupCard
+                    group={group}
+                    dragHandle={null} // We're using the table drag handle
+                    isExpanded={expandedGroups.has(modifierSetId)}
+                    onToggleExpansion={toggleGroupExpansion}
+                    onRemove={handleRemoveModifierSet}
+                    onDuplicate={() => {/* Handle duplicate */}}
+                    onOptionToggle={handleOptionToggle}
+                    hiddenOptionIds={Array.from(optimisticHiddenOptions.get(modifierSetId) || [])}
+                    className="flex-1 border-0 shadow-none bg-transparent"
+                  />
+                </div>
               );
             }}
           />

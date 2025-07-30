@@ -27,6 +27,13 @@ const ProductModifierSelectorContent = ({
   const [validationErrors, setValidationErrors] = useState({});
   const { toast } = useToast();
 
+  // Check if any modifiers are selected
+  const hasModifiersSelected = useMemo(() => {
+    return Object.values(selectedModifiers).some(selections => 
+      selections && selections.length > 0
+    );
+  }, [selectedModifiers]);
+
   // Get modifier sets for this product (they should already be in the correct order)
   const modifierSets = product?.modifier_groups || [];
 
@@ -71,13 +78,15 @@ const ProductModifierSelectorContent = ({
   const visibleModifierSets = useMemo(() => {
     if (!open || !modifierSets.length) return [];
     
-    // Start with base modifier sets (those that are always shown initially)
-    // A modifier set is "base" if it's not triggered by any option
+    // Build a map of which sets are triggered by which options
+    const triggerMap = new Map(); // optionId -> triggeredSets[]
     const allTriggeredSetIds = new Set();
+    
     modifierSets.forEach(modifierSet => {
       if (modifierSet.options) {
         modifierSet.options.forEach(option => {
-          if (option.triggered_sets) {
+          if (option.triggered_sets && option.triggered_sets.length > 0) {
+            triggerMap.set(option.id, option.triggered_sets);
             option.triggered_sets.forEach(triggeredSet => {
               allTriggeredSetIds.add(triggeredSet.id);
             });
@@ -86,35 +95,43 @@ const ProductModifierSelectorContent = ({
       }
     });
     
-    // Base sets are those not triggered by any option
-    const baseModifierSets = modifierSets.filter(set => !allTriggeredSetIds.has(set.id));
+    // Build the visible list in order
+    const visibleSets = [];
+    const addedSetIds = new Set();
     
-    // Safety check: If no base sets exist but we have modifier sets, treat the first as base
-    // This handles edge cases where all sets appear to be conditional
-    if (baseModifierSets.length === 0 && modifierSets.length > 0) {
-      console.warn('No base modifier sets found, treating first set as base:', modifierSets[0]);
-      baseModifierSets.push(modifierSets[0]);
-    }
-    
-    // Find triggered sets based on current selections
-    const triggeredSets = [];
-    const triggeredSetIds = new Set();
-    
-    Object.values(selectedModifiers).forEach(selections => {
-      selections.forEach(selection => {
-        const triggeringOption = findOptionInSets(selection.option_id);
-        if (triggeringOption && triggeringOption.triggered_sets) {
-          triggeringOption.triggered_sets.forEach(triggeredSet => {
-            if (!triggeredSetIds.has(triggeredSet.id)) {
-              triggeredSets.push(triggeredSet);
-              triggeredSetIds.add(triggeredSet.id);
-            }
-          });
-        }
-      });
+    // Process modifier sets in their original order
+    modifierSets.forEach(modifierSet => {
+      // Skip if already added (might have been added as a triggered set)
+      if (addedSetIds.has(modifierSet.id)) return;
+      
+      // Add base sets (not conditional/triggered sets)
+      if (!allTriggeredSetIds.has(modifierSet.id)) {
+        visibleSets.push(modifierSet);
+        addedSetIds.add(modifierSet.id);
+        
+        // After adding a base set, check if any of its selected options trigger conditional sets
+        const selections = selectedModifiers[modifierSet.id] || [];
+        selections.forEach(selection => {
+          const triggeredSets = triggerMap.get(selection.option_id);
+          if (triggeredSets) {
+            triggeredSets.forEach(triggeredSet => {
+              if (!addedSetIds.has(triggeredSet.id)) {
+                visibleSets.push(triggeredSet);
+                addedSetIds.add(triggeredSet.id);
+              }
+            });
+          }
+        });
+      }
     });
     
-    return [...baseModifierSets, ...triggeredSets];
+    // Safety check: ensure we have at least one visible set
+    if (visibleSets.length === 0 && modifierSets.length > 0) {
+      console.warn('No visible modifier sets found, showing first set as fallback:', modifierSets[0]);
+      visibleSets.push(modifierSets[0]);
+    }
+    
+    return visibleSets;
   }, [open, modifierSets, selectedModifiers]);
 
   // Track validation errors when selections change (only when dialog is open)
@@ -388,275 +405,169 @@ const ProductModifierSelectorContent = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            Customize {product?.name || 'Item'}
-            {visibleModifierSets.length > 0 && (
-              <Badge variant="outline" className="text-xs">
-                {visibleModifierSets.length} option{visibleModifierSets.length !== 1 ? 's' : ''}
-              </Badge>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {editMode ? 'Update your item with modifier options' : 'Select modifier options for this item'}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col p-6">
+        {/* Simple Header */}
+        <div className="flex-shrink-0 pb-4 border-b">
+          <h2 className="text-xl font-semibold">{product?.name || 'Item'}</h2>
+          <p className="text-sm text-slate-600 mt-1">Select your options</p>
+        </div>
         
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-4">
-            {/* If no modifier sets, show simple quantity selector */}
-            {!visibleModifierSets.length ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Quantity</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="w-8 text-center">{quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setQuantity(quantity + 1)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+        {/* Main Content - Horizontal Layout */}
+        <div className="flex-1 overflow-y-auto py-6">
+          <div className="space-y-6">
+            {visibleModifierSets.map((modifierSet) => {
+              const status = getModifierSetStatus(modifierSet);
+              const selections = selectedModifiers[modifierSet.id] || [];
+              const selectionCount = selections.reduce((sum, sel) => sum + sel.quantity, 0);
+              
+              return (
+                <div key={modifierSet.id} className="space-y-3">
+                  {/* Section Title */}
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-medium">{modifierSet.name}</h3>
+                    {status.status === 'error' && (
+                      <span className="text-red-600 text-sm font-medium">Required</span>
+                    )}
+                    {modifierSet.min_selections > 0 && status.status !== 'error' && (
+                      <span className="text-slate-500 text-sm">
+                        {selectionCount}/{modifierSet.min_selections} selected
+                      </span>
+                    )}
                   </div>
-                </div>
-                
-                <div>
-                  <Label htmlFor="notes">Notes (optional)</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Special instructions..."
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-            ) : (
-              /* Accordion-style modifier sections */
-              visibleModifierSets.map((modifierSet, index) => {
-                const status = getModifierSetStatus(modifierSet);
-                const isOpen = Boolean(openSections[modifierSet.id]);
-                const selections = selectedModifiers[modifierSet.id] || [];
-                const selectionCount = selections.reduce((sum, sel) => sum + sel.quantity, 0);
-                
-                // Check if this is a triggered set
-                const isTriggeredSet = !modifierSets.some(baseSet => baseSet.id === modifierSet.id);
-                
-                return (
-                  <Card key={modifierSet.id} className={`transition-all duration-300 ${
-                    status.status === 'error' ? 'border-red-300 bg-red-50/50' : 
-                    status.status === 'complete' ? 'border-green-300 bg-green-50/50' : ''
-                  } ${isTriggeredSet ? 'animate-in slide-in-from-top-2' : ''}`}>
-                    <Collapsible open={isOpen} onOpenChange={() => toggleSection(modifierSet.id)}>
-                      <CollapsibleTrigger asChild>
-                        <CardHeader className="cursor-pointer hover:bg-slate-50/50 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                              <div>
-                                <CardTitle className="text-base">{modifierSet.name}</CardTitle>
-                                <div className="flex gap-2 mt-1">
-                                  {isTriggeredSet && (
-                                    <Badge variant="default" className="text-xs bg-blue-600">
-                                      Conditional
-                                    </Badge>
-                                  )}
-                                  {status.status === 'error' && (
-                                    <Badge variant="destructive" className="text-xs">
-                                      <AlertCircle className="h-3 w-3 mr-1" />
-                                      {status.message}
-                                    </Badge>
-                                  )}
-                                  {status.status === 'complete' && (
-                                    <Badge variant="default" className="text-xs bg-green-600">
-                                      <Check className="h-3 w-3 mr-1" />
-                                      Complete
-                                    </Badge>
-                                  )}
-                                  {status.status === 'required' && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      Required ({selectionCount}/{modifierSet.min_selections})
-                                    </Badge>
-                                  )}
-                                  {status.status === 'optional' && (
-                                    <Badge variant="outline" className="text-xs">
-                                      Optional
-                                    </Badge>
-                                  )}
-                                  {modifierSet.max_selections && (
-                                    <Badge variant="outline" className="text-xs">
-                                      Max: {modifierSet.max_selections}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                  
+                  {/* Options - Horizontal Grid */}
+                  <div className="grid grid-cols-8 gap-3">
+                    {(modifierSet.options || [])
+                      .filter(option => option && !option.is_hidden)
+                      .map(option => {
+                        const isSelected = isOptionSelected(modifierSet.id, option.id);
+                        const optionQuantity = getOptionQuantity(modifierSet.id, option.id);
+                        const priceText = option.price_delta !== "0.00" 
+                          ? `${parseFloat(option.price_delta) >= 0 ? '+' : ''}$${parseFloat(option.price_delta).toFixed(2)}`
+                          : '';
+                        
+                        return (
+                          <button
+                            key={option.id}
+                            className={`p-4 rounded-lg border-2 transition-all text-center ${
+                              isSelected 
+                                ? 'border-blue-500 bg-blue-50 text-blue-900' 
+                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                            onClick={() => {
+                              handleModifierSelection(modifierSet.id, option, !isSelected);
+                            }}
+                          >
+                            <div className="font-medium">{option.name}</div>
+                            {priceText && (
+                              <div className="text-sm text-slate-600 mt-1">{priceText}</div>
+                            )}
+                            {isSelected && modifierSet.selection_type === 'MULTIPLE' && optionQuantity > 1 && (
+                              <div className="text-xs mt-2 font-medium">×{optionQuantity}</div>
+                            )}
                             
-                            {/* Show selection summary when collapsed */}
-                            {!isOpen && selectionCount > 0 && (
-                              <div className="text-sm text-slate-600">
-                                {selectionCount} selected
+                            {/* Quantity controls for multiple selection */}
+                            {isSelected && modifierSet.selection_type === 'MULTIPLE' && (
+                              <div 
+                                className="flex items-center justify-center gap-2 mt-3" 
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                                  onClick={() => handleModifierQuantityChange(
+                                    modifierSet.id, 
+                                    option.id, 
+                                    optionQuantity - 1
+                                  )}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="w-6 text-center font-medium">{optionQuantity}</span>
+                                <button
+                                  className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                                  onClick={() => handleModifierQuantityChange(
+                                    modifierSet.id, 
+                                    option.id, 
+                                    optionQuantity + 1
+                                  )}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </button>
                               </div>
                             )}
-                          </div>
-                        </CardHeader>
-                      </CollapsibleTrigger>
-                      
-                      <CollapsibleContent>
-                        <CardContent className="pt-0">
-                          <div className="grid gap-2">
-                            {(modifierSet.options || [])
-                              .filter(option => option && !option.is_hidden)
-                              .map(option => {
-                                const isSelected = isOptionSelected(modifierSet.id, option.id);
-                                const optionQuantity = getOptionQuantity(modifierSet.id, option.id);
-                                const priceText = option.price_delta !== "0.00" 
-                                  ? ` (${parseFloat(option.price_delta) >= 0 ? '+' : ''}$${parseFloat(option.price_delta).toFixed(2)})`
-                                  : '';
-                                
-                                return (
-                                  <div
-                                    key={option.id}
-                                    className={`p-3 border rounded-lg cursor-pointer transition-all duration-200 ${
-                                      isSelected 
-                                        ? 'border-primary bg-primary/10 shadow-sm' 
-                                        : 'border-border hover:border-primary/50 hover:bg-slate-50/50'
-                                    }`}
-                                    onClick={() => {
-                                      handleModifierSelection(modifierSet.id, option, !isSelected);
-                                    }}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        {isSelected && <Check className="h-4 w-4 text-primary" />}
-                                        <div>
-                                          <div className="font-medium">{option.name}</div>
-                                          {priceText && (
-                                            <div className="text-sm text-slate-600">{priceText}</div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      {isSelected && modifierSet.selection_type === 'MULTIPLE' && (
-                                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-6 w-6 p-0"
-                                            onClick={() => handleModifierQuantityChange(
-                                              modifierSet.id, 
-                                              option.id, 
-                                              optionQuantity - 1
-                                            )}
-                                          >
-                                            <Minus className="h-3 w-3" />
-                                          </Button>
-                                          <span className="w-6 text-center text-sm font-medium">{optionQuantity}</span>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-6 w-6 p-0"
-                                            onClick={() => handleModifierQuantityChange(
-                                              modifierSet.id, 
-                                              option.id, 
-                                              optionQuantity + 1
-                                            )}
-                                          >
-                                            <Plus className="h-3 w-3" />
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </CardContent>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </Card>
-                );
-              })
-            )}
-            
-            {/* Quantity and Notes Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Order Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label>Quantity</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="w-8 text-center font-medium">{quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setQuantity(quantity + 1)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
-                
-                <div>
-                  <Label htmlFor="notes">Notes (optional)</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Special instructions..."
-                    className="mt-1 resize-none"
-                    rows={2}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              );
+            })}
           </div>
-        </ScrollArea>
+        </div>
         
-        <DialogFooter className="flex-shrink-0 border-t pt-4">
-          <div className="flex items-center justify-between w-full">
+        {/* Bottom Section - Quantity, Notes, Actions */}
+        <div className="flex-shrink-0 border-t pt-4 space-y-4">
+          {/* Quantity and Notes Row */}
+          <div className="flex gap-6">
+            <div className="flex items-center gap-3">
+              <span className="font-medium">Quantity:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="w-8 text-center font-semibold text-lg">{quantity}</span>
+                <button
+                  className="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                  onClick={() => setQuantity(quantity + 1)}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1">
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Special instructions or notes..."
+                className="resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div className="text-right">
-                <div className="text-lg font-bold">
+                <div className="text-2xl font-bold">
                   ${totalPrice.toFixed(2)}
                 </div>
                 {quantity > 1 && (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-sm text-slate-500">
                     ${(totalPrice / quantity).toFixed(2)} each
                   </div>
                 )}
               </div>
-              <Button onClick={handleAddToCart} size="lg">
+              <Button onClick={handleAddToCart} size="lg" className="px-8">
                 <ShoppingCart className="h-4 w-4 mr-2" />
-                {editMode ? 'Update Item' : 'Add to Cart'}
+                {editMode 
+                  ? 'Update Item' 
+                  : quantity > 1 
+                    ? `Add ${quantity} Items`
+                    : 'Add to Cart'
+                }
               </Button>
             </div>
           </div>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

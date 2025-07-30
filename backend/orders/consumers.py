@@ -176,6 +176,112 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 item = await sync_to_async(OrderItem.objects.get)(id=item_id)
                 current_quantity = item.quantity
 
+                # Smart conversion: If increasing quantity on an item with modifiers,
+                # create new individual items instead of just incrementing quantity
+                if new_quantity > current_quantity:
+                    has_modifiers = await sync_to_async(
+                        lambda: item.selected_modifiers_snapshot.exists()
+                    )()
+                    
+                    if has_modifiers:
+                        # Create new individual items for the additional quantity
+                        additional_quantity = new_quantity - current_quantity
+                        product = await sync_to_async(lambda: item.product)()
+                        order = await sync_to_async(lambda: item.order)()
+                        
+                        # Check stock for the additional items
+                        if not force_update:
+                            from inventory.services import InventoryService
+                            from settings.config import app_settings
+
+                            default_location = await sync_to_async(
+                                app_settings.get_default_location
+                            )()
+
+                            stock_available = await sync_to_async(
+                                InventoryService.check_stock_availability
+                            )(product, default_location, additional_quantity)
+
+                            if not stock_available:
+                                # Same stock validation logic as before
+                                product_with_type = await sync_to_async(
+                                    lambda: Product.objects.select_related("product_type").get(
+                                        id=product.id
+                                    )
+                                )()
+                                product_type_name = product_with_type.product_type.name.lower()
+
+                                if product_type_name != "menu":
+                                    await self.send(
+                                        text_data=json.dumps(
+                                            {
+                                                "type": "stock_error",
+                                                "message": f"Not enough stock to add {additional_quantity} more {product.name}",
+                                                "error_type": "stock_validation",
+                                                "item_id": item_id,
+                                                "current_quantity": current_quantity,
+                                                "requested_quantity": new_quantity,
+                                                "can_override": True,
+                                                "action_type": "quantity_update",
+                                            }
+                                        )
+                                    )
+                                    return
+                        
+                        # Get the original item's modifiers to clone them
+                        # We need to reconstruct the modifier format by finding option_ids from the snapshot
+                        original_modifiers = []
+                        
+                        # Get the product's modifier sets to find option_ids
+                        product_with_modifiers = await sync_to_async(
+                            lambda: Product.objects.prefetch_related(
+                                'product_modifier_sets__modifier_set__options'
+                            ).get(id=product.id)
+                        )()
+                        
+                        # Get the saved modifier snapshots
+                        modifier_snapshots = await sync_to_async(
+                            lambda: list(item.selected_modifiers_snapshot.all())
+                        )()
+                        
+                        # Convert snapshots back to option_id format
+                        for snapshot in modifier_snapshots:
+                            # Find the matching option by name in the product's modifier sets
+                            for product_modifier_set in product_with_modifiers.product_modifier_sets.all():
+                                modifier_set = product_modifier_set.modifier_set
+                                if modifier_set.name == snapshot.modifier_set_name:
+                                    for option in modifier_set.options.all():
+                                        if option.name == snapshot.option_name:
+                                            original_modifiers.append({
+                                                'option_id': option.id,
+                                                'quantity': snapshot.quantity
+                                            })
+                                            break
+                                    break
+                        
+                        # Create new individual items (cloning the original modifiers)
+                        for i in range(additional_quantity):
+                            await sync_to_async(OrderService.add_item_to_order)(
+                                order=order,
+                                product=product,
+                                quantity=1,
+                                selected_modifiers=original_modifiers,  # Clone original modifiers
+                                notes=item.notes  # Also clone the notes
+                            )
+                        
+                        # Recalculate totals
+                        await sync_to_async(OrderService.recalculate_order_totals)(order)
+                        
+                        product_name = await sync_to_async(lambda: product.name)()
+                        logging.info(
+                            f"OrderConsumer: Smart conversion - Added {additional_quantity} new {product_name} items for customization"
+                        )
+                        
+                        # Send updated order state and return
+                        await self.send_full_order_state()
+                        return
+
+                # Regular quantity update logic for items without modifiers
                 # If increasing quantity, check stock for the additional amount
                 if new_quantity > current_quantity and not force_update:
                     additional_quantity = new_quantity - current_quantity
@@ -244,6 +350,9 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     logging.info(
                         f"OrderConsumer: Updated {product_name} quantity from {current_quantity} to {new_quantity}"
                     )
+                
+                # Send updated order state
+                await self.send_full_order_state()
 
             except Exception as e:
                 logging.error(

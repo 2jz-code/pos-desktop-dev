@@ -383,15 +383,32 @@ class OrderItem(models.Model):
         blank=True,
         help_text=_("Timestamp when this item was first sent to kitchen. Prevents duplicate printing.")
     )
+    
+    # Item variation tracking for better kitchen organization
+    item_sequence = models.PositiveIntegerField(
+        default=1,
+        help_text=_("Sequential number for items of the same product (#1, #2, #3, etc.)")
+    )
+    variation_group = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text=_("Groups related items together (e.g., 'hummus', 'burger')")
+    )
+    kitchen_notes = models.TextField(
+        blank=True,
+        help_text=_("Special preparation instructions for kitchen staff")
+    )
 
     class Meta:
         verbose_name = _("Order Item")
         verbose_name_plural = _("Order Items")
+        ordering = ['variation_group', 'item_sequence']
 
     def __str__(self):
-        return (
-            f"{self.quantity} of {self.product.name} in Order {self.order.order_number}"
-        )
+        base_str = f"{self.quantity} of {self.product.name}"
+        if self.item_sequence > 1:
+            base_str += f" (#{self.item_sequence})"
+        return f"{base_str} in Order {self.order.order_number}"
 
     @property
     def total_price(self):

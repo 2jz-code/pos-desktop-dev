@@ -594,7 +594,7 @@ const ModifierSetEditor = ({ modifierSet, open, onOpenChange, onSuccess }) => {
 										onUpdateOption={updateOption}
 										onDragEnd={handleDragEnd}
 										showHeaders={true}
-										showProductSpecific={true}
+										showProductSpecific={false}
 										showEmptyState={true}
 										emptyStateMessage="Click 'Add Option' to get started"
 									/>
