@@ -53,6 +53,7 @@ import LocationManagementDialog from "@/components/LocationManagementDialog";
 // @ts-expect-error - No types for JS file
 import StockTransferDialog from "@/components/StockTransferDialog";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useConfirmation } from "@/components/ui/confirmation-dialog";
 
 interface Product {
 	id: number;
@@ -114,6 +115,7 @@ export const InventoryPage = () => {
 		"create" | "edit"
 	>("create");
 	const [activeTab, setActiveTab] = useState("overview");
+	const confirmation = useConfirmation();
 
 	// Dialog states
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] =
@@ -203,14 +205,18 @@ export const InventoryPage = () => {
 	};
 
 	const handleDeleteLocation = async (locationId: number) => {
-		if (
-			!confirm(
-				"Are you sure you want to delete this location? This action cannot be undone."
-			)
-		) {
-			return;
-		}
-		deleteLocationMutation.mutate(locationId);
+		const locationToDelete = locations?.find(loc => loc.id === locationId);
+		if (!locationToDelete) return;
+
+		confirmation.show({
+			title: "Delete Location",
+			description: `Are you sure you want to delete "${locationToDelete.name}"? This action cannot be undone and will affect all inventory records for this location.`,
+			variant: "destructive",
+			confirmText: "Delete",
+			onConfirm: () => {
+				deleteLocationMutation.mutate(locationId);
+			}
+		});
 	};
 
 	const handleDialogSuccess = () => {
@@ -817,6 +823,8 @@ export const InventoryPage = () => {
 					onSuccess={handleDialogSuccess}
 				/>
 			)}
+
+			{confirmation.dialog}
 		</div>
 	);
 };

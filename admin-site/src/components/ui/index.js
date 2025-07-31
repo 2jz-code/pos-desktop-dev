@@ -21,6 +21,7 @@ export * from "./switch";
 export * from "./textarea";
 export * from "./tabs";
 export * from "./use-toast";
+export * from "./draggable-list";
 
 // Re-export commonly used components for convenience
 export { Button } from "./button";
@@ -65,3 +66,4 @@ export {
 	DialogTrigger,
 } from "./dialog";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+export { default as DraggableList } from "./draggable-list";

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { useConfirmation } from "@/components/ui/confirmation-dialog";
 import {
 	MoreHorizontal,
 	UserPlus,
@@ -73,6 +74,7 @@ export function UsersPage() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const confirmation = useConfirmation();
 
 	// State for dialogs and forms
 	const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
@@ -239,9 +241,16 @@ export function UsersPage() {
 	});
 
 	// Event handlers
-	const handleDelete = async (userId) => {
-		if (!window.confirm("Are you sure you want to delete this user?")) return;
-		deleteUserMutation.mutate(userId);
+	const handleDelete = async (userId, userToDelete) => {
+		confirmation.show({
+			title: "Delete User",
+			description: `Are you sure you want to delete "${userToDelete.first_name} ${userToDelete.last_name}"? This action cannot be undone.`,
+			variant: "destructive",
+			confirmText: "Delete",
+			onConfirm: () => {
+				deleteUserMutation.mutate(userId);
+			}
+		});
 	};
 
 	const handleSearchChange = (e) => {
@@ -383,7 +392,7 @@ export function UsersPage() {
 						)}
 						{canDeleteUser(targetUser) && (
 							<DropdownMenuItem
-								onClick={() => handleDelete(targetUser.id)}
+								onClick={() => handleDelete(targetUser.id, targetUser)}
 								className="text-destructive"
 							>
 								<Trash2 className="mr-2 h-4 w-4" />
@@ -635,6 +644,8 @@ export function UsersPage() {
 					</form>
 				</DialogContent>
 			</Dialog>
+
+			{confirmation.dialog}
 		</>
 	);
 }

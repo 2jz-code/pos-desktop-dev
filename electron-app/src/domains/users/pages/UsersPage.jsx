@@ -27,7 +27,8 @@ import {
 } from "@/shared/components/ui/select";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
-import { MoreHorizontal, UserPlus, KeyRound, Trash2, Edit, Users } from "lucide-react";
+import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
+import { MoreHorizontal, UserPlus, KeyRound, Trash2, Edit, Users, AlertTriangle } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -85,6 +86,7 @@ export function UsersPage() {
 	});
 	const [pinData, setPinData] = useState({ pin: "" });
 	const { toast } = useToast();
+	const confirmation = useConfirmation();
 
 	const canCreateUsers = isOwner || isManager;
 
@@ -168,24 +170,32 @@ export function UsersPage() {
 		}
 	};
 
-	const handleDelete = async (userId) => {
-		if (!window.confirm("Are you sure you want to delete this user?")) return;
-
-		try {
-			await deleteUser(userId);
-			fetchUsers();
-			toast({
-				title: "Success",
-				description: "User deleted successfully.",
-			});
-		} catch (error) {
-			console.error("Failed to delete user:", error);
-			toast({
-				title: "Error",
-				description: "Failed to delete user.",
-				variant: "destructive",
-			});
-		}
+	const handleDelete = async (userToDelete) => {
+		confirmation.show({
+			title: "Delete User",
+			description: `Are you sure you want to delete "${userToDelete.first_name} ${userToDelete.last_name}"? This action cannot be undone.`,
+			confirmText: "Delete",
+			cancelText: "Cancel",
+			variant: "destructive",
+			icon: AlertTriangle,
+			onConfirm: async () => {
+				try {
+					await deleteUser(userToDelete.id);
+					fetchUsers();
+					toast({
+						title: "Success",
+						description: "User deleted successfully.",
+					});
+				} catch (error) {
+					console.error("Failed to delete user:", error);
+					toast({
+						title: "Error",
+						description: "Failed to delete user.",
+						variant: "destructive",
+					});
+				}
+			},
+		});
 	};
 
 	const handleSearchChange = (e) => {
@@ -358,7 +368,7 @@ export function UsersPage() {
 						)}
 						{canDeleteUser(targetUser) && (
 							<DropdownMenuItem
-								onClick={() => handleDelete(targetUser.id)}
+								onClick={() => handleDelete(targetUser)}
 								className="text-destructive"
 							>
 								<Trash2 className="mr-2 h-4 w-4" />
@@ -604,6 +614,9 @@ export function UsersPage() {
 					</form>
 				</DialogContent>
 			</Dialog>
+
+			{/* Confirmation Dialog */}
+			{confirmation.dialog}
 		</>
 	);
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
 	getProducts,
 	archiveProduct,
@@ -68,12 +68,25 @@ export const ProductsPage = () => {
 
 	const navigate = useNavigate();
 	const { toast } = useToast();
+	const [searchParams, setSearchParams] = useSearchParams();
+	
+	// Modifier context from URL params
+	const [modifierContext, setModifierContext] = useState<{
+		id: string | null;
+		name: string | null;
+	} | null>(null);
 
 	const fetchProducts = async (includeArchived = false) => {
 		try {
 			setLoading(true);
 			// Pass is_active parameter based on what products we want to show
 			const params = { is_active: !includeArchived };
+			
+			// If we have a modifier context, we need to include all modifiers to see conditional ones
+			if (modifierContext) {
+				params.include_all_modifiers = true;
+			}
+			
 			const response = await getProducts(params);
 			const fetchedProducts = response.data || [];
 			setAllProducts(fetchedProducts); // Store complete list
@@ -108,12 +121,24 @@ export const ProductsPage = () => {
 	useEffect(() => {
 		fetchProducts(showArchivedProducts);
 		fetchParentCategories();
-	}, []);
+	}, [modifierContext, showArchivedProducts]);
 
-	// Re-fetch products when switching between active and archived
+	// Handle URL parameters for modifier filtering
 	useEffect(() => {
-		fetchProducts(showArchivedProducts);
-	}, [showArchivedProducts]);
+		const modifierId = searchParams.get('modifier');
+		const modifierName = searchParams.get('modifierName');
+		const from = searchParams.get('from');
+		
+		if (modifierId && modifierName && from === 'modifiers') {
+			setModifierContext({
+				id: modifierId,
+				name: decodeURIComponent(modifierName),
+			});
+		} else {
+			setModifierContext(null);
+		}
+	}, [searchParams]);
+
 
 	useEffect(() => {
 		if (selectedParentCategory && selectedParentCategory !== "all") {
@@ -172,12 +197,21 @@ export const ProductsPage = () => {
 			});
 		}
 
+		// Modifier filtering logic - filter by products that use this modifier set
+		if (modifierContext && modifierContext.id) {
+			filtered = filtered.filter((product: any) => {
+				return product.modifier_groups && product.modifier_groups.some((group: any) => 
+					group.id == modifierContext.id
+				);
+			});
+		}
+
 		setProducts(filtered);
 	};
 
 	useEffect(() => {
 		applyFilters(allProducts);
-	}, [selectedParentCategory, selectedChildCategory, allProducts]);
+	}, [selectedParentCategory, selectedChildCategory, allProducts, modifierContext]);
 
 	useEffect(() => {
 		const timeoutId = setTimeout(() => {
@@ -189,6 +223,16 @@ export const ProductsPage = () => {
 	const handleSearchChange = (e: any) => {
 		const value = e.target.value;
 		setFilters((prev) => ({ ...prev, search: value }));
+	};
+
+	const handleClearModifierFilter = () => {
+		// Clear URL params to show all products
+		setSearchParams({});
+	};
+
+	const handleBackToModifiers = () => {
+		// Clear URL params and navigate back to modifier management
+		navigate("/products/modifiers");
 	};
 
 	const handleArchiveToggle = async (productId: any, isActive: any) => {
@@ -366,15 +410,39 @@ export const ProductsPage = () => {
 						</SelectContent>
 					</Select>
 				)}
+			{modifierContext && (
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleClearModifierFilter}
+					className="mr-2"
+				>
+					<Tags className="mr-2 h-4 w-4" />
+					Show All Products
+				</Button>
+			)}
 		</>
 	);
 
 	const headerActions = (
 		<>
+			{modifierContext && (
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleBackToModifiers}
+					className="mr-4"
+				>
+					<FolderOpen className="mr-2 h-4 w-4" />
+					Back to Modifier Management
+				</Button>
+			)}
+
 			<Button
 				variant={showArchivedProducts ? "default" : "outline"}
 				size="sm"
 				onClick={() => setShowArchivedProducts(!showArchivedProducts)}
+				className="mr-4"
 			>
 				{showArchivedProducts ? (
 					<ArchiveRestore className="mr-2 h-4 w-4" />
@@ -386,7 +454,7 @@ export const ProductsPage = () => {
 
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<Button>
+					<Button size="sm">
 						<Settings className="mr-2 h-4 w-4" />
 						Actions
 					</Button>
@@ -406,6 +474,11 @@ export const ProductsPage = () => {
 						<FolderOpen className="mr-2 h-4 w-4" />
 						Manage Categories
 					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => navigate("/products/modifiers")}>
+						<Settings className="mr-2 h-4 w-4" />
+						Manage Modifiers
+					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</>
@@ -415,9 +488,17 @@ export const ProductsPage = () => {
 		<>
 			<DomainPageLayout
 				pageTitle={
-					showArchivedProducts ? "Archived Products" : "Active Products"
+					modifierContext
+						? `Products Using "${modifierContext.name}"`
+						: showArchivedProducts
+						? "Archived Products"
+						: "Active Products"
 				}
-				pageDescription="Manage your product catalog"
+				pageDescription={
+					modifierContext
+						? `Showing ${products.length} products that use the "${modifierContext.name}" modifier set`
+						: "Manage your product catalog"
+				}
 				pageIcon={Tags}
 				pageActions={headerActions}
 				title="Filters & Search"

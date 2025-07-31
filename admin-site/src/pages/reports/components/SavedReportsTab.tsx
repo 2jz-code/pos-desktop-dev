@@ -51,6 +51,7 @@ import {
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { AddEditSavedReportDialog } from "./AddEditSavedReportDialog";
+import { useConfirmation } from "@/components/ui/confirmation-dialog";
 
 interface SavedReport {
 	id: number;
@@ -80,6 +81,7 @@ export function SavedReportsTab() {
 	const [editingReport, setEditingReport] = useState<SavedReport | null>(null);
 	const [showDownloadDialog, setShowDownloadDialog] = useState(false);
 	const [pendingDownloadId, setPendingDownloadId] = useState<number | null>(null);
+	const confirmation = useConfirmation();
 
 	const fetchSavedReports = async () => {
 		setLoading(true);
@@ -163,14 +165,23 @@ export function SavedReportsTab() {
 	};
 
 	const handleDeleteReport = async (reportId: number) => {
-		if (confirm("Are you sure you want to delete this report?")) {
-			try {
-				await reportsService.deleteSavedReport(reportId.toString());
-				fetchSavedReports();
-			} catch (err) {
-				console.error("Failed to delete report:", err);
+		const reportToDelete = reports.find(r => r.id === reportId);
+		if (!reportToDelete) return;
+
+		confirmation.show({
+			title: "Delete Report",
+			description: `Are you sure you want to delete "${reportToDelete.name}"? This action cannot be undone.`,
+			variant: "destructive",
+			confirmText: "Delete",
+			onConfirm: async () => {
+				try {
+					await reportsService.deleteSavedReport(reportId.toString());
+					fetchSavedReports();
+				} catch (err) {
+					console.error("Failed to delete report:", err);
+				}
 			}
-		}
+		});
 	};
 
 
@@ -504,6 +515,8 @@ export function SavedReportsTab() {
 					</CardContent>
 				</Card>
 			)}
+
+			{confirmation.dialog}
 		</div>
 	);
 }

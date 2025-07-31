@@ -61,6 +61,7 @@ import {
 	deleteLocation,
 } from "@/domains/inventory/services/inventoryService";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 
 const stockTableHeaders = [
 	{ key: "product", label: "Product" },
@@ -73,6 +74,7 @@ const stockTableHeaders = [
 
 const InventoryPage = () => {
 	const { toast } = useToast();
+	const confirmation = useConfirmation();
 	const navigate = useNavigate();
 	const [highlightedProductId, setHighlightedProductId] = useState(null);
 	const [scannedProductId, setScannedProductId] = useState(null);
@@ -255,15 +257,18 @@ const InventoryPage = () => {
 		setCurrentEditingProduct(product || null);
 	};
 
-	const handleDeleteLocation = async (locationId) => {
-		if (
-			!confirm(
-				"Are you sure you want to delete this location? This action cannot be undone."
-			)
-		) {
-			return;
-		}
-		deleteLocationMutation.mutate(locationId);
+	const handleDeleteLocation = async (location) => {
+		confirmation.show({
+			title: "Delete Location",
+			description: `Are you sure you want to delete "${location.name}"? This action cannot be undone and will affect all inventory records for this location.`,
+			confirmText: "Delete",
+			cancelText: "Cancel",
+			variant: "destructive",
+			icon: AlertTriangle,
+			onConfirm: () => {
+				deleteLocationMutation.mutate(location.id);
+			},
+		});
 	};
 
 	const handleDialogSuccess = () => {
@@ -773,7 +778,7 @@ const InventoryPage = () => {
 														Edit
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														onClick={() => handleDeleteLocation(loc.id)}
+														onClick={() => handleDeleteLocation(loc)}
 														className="text-red-600"
 														disabled={deleteLocationMutation.isPending}
 													>
@@ -817,6 +822,9 @@ const InventoryPage = () => {
 					onSuccess={handleDialogSuccess}
 				/>
 			)}
+
+			{/* Confirmation Dialog */}
+			{confirmation.dialog}
 		</div>
 	);
 };

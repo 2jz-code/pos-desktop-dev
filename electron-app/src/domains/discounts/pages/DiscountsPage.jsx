@@ -3,7 +3,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { TableCell } from "@/shared/components/ui/table";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, Percent } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, Percent, AlertTriangle } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -13,6 +13,7 @@ import {
 import { format } from "date-fns";
 import AddEditDiscountDialog from "@/domains/discounts/components/AddEditDiscountDialog";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { shallow } from "zustand/shallow";
 
@@ -38,6 +39,7 @@ export default function DiscountsPage() {
 		shallow
 	);
 	const { toast } = useToast();
+	const confirmation = useConfirmation();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [selectedDiscount, setSelectedDiscount] = useState(null);
 	const [filteredDiscounts, setFilteredDiscounts] = useState([]);
@@ -102,23 +104,31 @@ export default function DiscountsPage() {
 		}
 	};
 
-	const handleDelete = async (id) => {
-		if (window.confirm("Are you sure you want to delete this discount?")) {
-			try {
-				await deleteDiscount(id);
-				toast({
-					title: "Success",
-					description: "Discount deleted successfully.",
-				});
-			} catch (err) {
-				console.error("Failed to delete discount:", err);
-				toast({
-					title: "Error",
-					description: "Failed to delete discount.",
-					variant: "destructive",
-				});
-			}
-		}
+	const handleDelete = async (discountToDelete) => {
+		confirmation.show({
+			title: "Delete Discount",
+			description: `Are you sure you want to delete "${discountToDelete.name}"? This action cannot be undone.`,
+			confirmText: "Delete",
+			cancelText: "Cancel",
+			variant: "destructive",
+			icon: AlertTriangle,
+			onConfirm: async () => {
+				try {
+					await deleteDiscount(discountToDelete.id);
+					toast({
+						title: "Success",
+						description: "Discount deleted successfully.",
+					});
+				} catch (err) {
+					console.error("Failed to delete discount:", err);
+					toast({
+						title: "Error",
+						description: "Failed to delete discount.",
+						variant: "destructive",
+					});
+				}
+			},
+		});
 	};
 
 	const openAddDialog = () => {
@@ -237,7 +247,7 @@ export default function DiscountsPage() {
 							Edit
 						</DropdownMenuItem>
 						<DropdownMenuItem
-							onClick={() => handleDelete(discount.id)}
+							onClick={() => handleDelete(discount)}
 							className="text-destructive"
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
@@ -298,6 +308,9 @@ export default function DiscountsPage() {
 				discount={selectedDiscount}
 				onSave={handleSave}
 			/>
+			
+			{/* Confirmation Dialog */}
+			{confirmation.dialog}
 		</>
 	);
 }

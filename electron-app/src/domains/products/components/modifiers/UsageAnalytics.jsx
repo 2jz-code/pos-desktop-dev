@@ -177,6 +177,38 @@ const UsageAnalytics = ({ modifierSets }) => {
         </Card>
       </div>
 
+      {/* Unused Modifier Sets Alert */}
+      {unusedSets > 0 && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-orange-800 text-base">
+              <AlertTriangle className="h-4 w-4" />
+              Unused Modifier Sets
+            </CardTitle>
+            <CardDescription className="text-orange-700 text-sm">
+              {unusedSets} modifier set{unusedSets !== 1 ? 's' : ''} not being used by any products.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-1">
+              {analytics
+                .filter(item => item.product_count === 0)
+                .slice(0, 3)
+                .map((item) => (
+                  <Badge key={item.id} variant="outline" className="text-orange-700 border-orange-300 text-xs">
+                    {item.name}
+                  </Badge>
+                ))}
+              {unusedSets > 3 && (
+                <Badge variant="outline" className="text-orange-700 border-orange-300 text-xs">
+                  +{unusedSets - 3} more
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search and Analytics Table */}
       <Card>
         <CardHeader>
@@ -199,144 +231,111 @@ const UsageAnalytics = ({ modifierSets }) => {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
               <p className="text-sm text-gray-500">Loading analytics...</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Modifier Set</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Options</TableHead>
-                  <TableHead>Products Using</TableHead>
-                  <TableHead>Usage Level</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAnalytics.length === 0 ? (
+            <div className="max-h-[600px] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-white z-10 border-b">
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                      {searchTerm ? 'No modifier sets match your search' : 'No modifier sets available'}
-                    </TableCell>
+                    <TableHead>Modifier Set</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Options</TableHead>
+                    <TableHead>Products Using</TableHead>
+                    <TableHead>Usage Level</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ) : (
-                  filteredAnalytics.map((item) => {
-                    const { color, icon: Icon } = getUsageLevel(item.product_count);
-                    
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{item.name}</div>
-                            <div className="text-sm text-gray-500">{item.internal_name}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {item.selection_type === 'SINGLE' ? '○ Single' : '☑ Multiple'}
-                            {item.min_selections > 0 && ' • Required'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <span>{item.options?.length || 0}</span>
-                            {item.options && item.options.length > 0 && (
-                              <div className="flex gap-1 ml-2">
-                                {item.options.slice(0, 2).map((option, idx) => (
-                                  <Badge key={idx} variant="secondary" className="text-xs">
-                                    {option.name}
-                                  </Badge>
-                                ))}
-                                {item.options.length > 2 && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    +{item.options.length - 2}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Icon className={`h-4 w-4 ${color}`} />
-                            <span className="font-medium">{item.product_count}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getUsageBadge(item.product_count)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (item.products && item.products.length > 0) {
-                                  // Navigate to products page with modifier filter
-                                  navigate(`/products?modifier=${item.id}&modifierName=${encodeURIComponent(item.name)}&from=modifiers`);
-                                } else {
-                                  toast({
-                                    title: "No Products Found",
-                                    description: `No products are currently using "${item.name}".`,
-                                    variant: "destructive"
-                                  });
-                                }
-                              }}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View Products
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredAnalytics.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                        {searchTerm ? 'No modifier sets match your search' : 'No modifier sets available'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAnalytics.map((item) => {
+                      const { color, icon: Icon } = getUsageLevel(item.product_count);
+                      
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{item.name}</div>
+                              <div className="text-sm text-gray-500">{item.internal_name}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {item.selection_type === 'SINGLE' ? '○ Single' : '☑ Multiple'}
+                              {item.min_selections > 0 && ' • Required'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <span>{item.options?.length || 0}</span>
+                              {item.options && item.options.length > 0 && (
+                                <div className="flex gap-1 ml-2">
+                                  {item.options.slice(0, 2).map((option, idx) => (
+                                    <Badge key={idx} variant="secondary" className="text-xs">
+                                      {option.name}
+                                    </Badge>
+                                  ))}
+                                  {item.options.length > 2 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      +{item.options.length - 2}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Icon className={`h-4 w-4 ${color}`} />
+                              <span className="font-medium">{item.product_count}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getUsageBadge(item.product_count)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (item.products && item.products.length > 0) {
+                                    // Navigate to products page with modifier filter
+                                    navigate(`/products?modifier=${item.id}&modifierName=${encodeURIComponent(item.name)}&from=modifiers`);
+                                  } else {
+                                    toast({
+                                      title: "No Products Found",
+                                      description: `No products are currently using "${item.name}".`,
+                                      variant: "destructive"
+                                    });
+                                  }
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View Products
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Unused Modifier Sets Alert */}
-      {unusedSets > 0 && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-800">
-              <AlertTriangle className="h-5 w-5" />
-              Unused Modifier Sets
-            </CardTitle>
-            <CardDescription className="text-orange-700">
-              You have {unusedSets} modifier set{unusedSets !== 1 ? 's' : ''} that aren't being used by any products.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {analytics
-                .filter(item => item.product_count === 0)
-                .slice(0, 5)
-                .map((item) => (
-                  <Badge key={item.id} variant="outline" className="text-orange-700 border-orange-300">
-                    {item.name}
-                  </Badge>
-                ))}
-              {unusedSets > 5 && (
-                <Badge variant="outline" className="text-orange-700 border-orange-300">
-                  +{unusedSets - 5} more
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-orange-600 mt-2">
-              Consider deleting unused modifier sets or applying them to relevant products.
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

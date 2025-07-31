@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import discountService from "../../services/api/discountService";
 import AddEditDiscountDialog from "../../components/AddEditDiscountDialog";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useConfirmation } from "../../components/ui/confirmation-dialog";
 
 interface Product {
 	id: number;
@@ -70,6 +71,7 @@ export const DiscountsPage = () => {
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
 	const queryClient = useQueryClient();
+	const confirmation = useConfirmation();
 
 	const {
 		data: discounts,
@@ -141,9 +143,18 @@ export const DiscountsPage = () => {
 	};
 
 	const handleDelete = (id: number) => {
-		if (window.confirm("Are you sure you want to delete this discount?")) {
-			deleteDiscountMutation.mutate(id);
-		}
+		const discountToDelete = discounts?.data.find(d => d.id === id);
+		if (!discountToDelete) return;
+
+		confirmation.show({
+			title: "Delete Discount",
+			description: `Are you sure you want to delete "${discountToDelete.name}"? This action cannot be undone.`,
+			variant: "destructive",
+			confirmText: "Delete",
+			onConfirm: () => {
+				deleteDiscountMutation.mutate(id);
+			}
+		});
 	};
 
 	const openAddDialog = () => {
@@ -347,6 +358,8 @@ export const DiscountsPage = () => {
 					createDiscountMutation.isPending || updateDiscountMutation.isPending
 				}
 			/>
+
+			{confirmation.dialog}
 		</div>
 	);
 };

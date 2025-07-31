@@ -11,7 +11,8 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { MoreVertical, Trash2, PauseCircle, DollarSign } from "lucide-react";
+import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle } from "lucide-react";
+import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
@@ -27,17 +28,34 @@ const CartActionsDropdown = () => {
 	const { isOwner, isManager } = useRolePermissions();
 	const printers = useSettingsStore((state) => state.printers);
 	const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
+	const confirmation = useConfirmation();
 
 	const handleClearCart = () => {
-		if (window.confirm("Are you sure you want to clear the cart?")) {
-			clearCart();
-		}
+		confirmation.show({
+			title: "Clear Cart",
+			description: `Are you sure you want to clear all ${items.length} item${items.length !== 1 ? 's' : ''} from the cart?`,
+			confirmText: "Clear Cart",
+			cancelText: "Cancel",
+			variant: "destructive",
+			icon: AlertTriangle,
+			onConfirm: () => {
+				clearCart();
+			},
+		});
 	};
 
 	const handleHoldOrder = () => {
-		if (window.confirm("Are you sure you want to put this order on hold?")) {
-			holdOrder();
-		}
+		confirmation.show({
+			title: "Hold Order",
+			description: "Are you sure you want to put this order on hold? You can resume it later from the held orders list.",
+			confirmText: "Hold Order",
+			cancelText: "Cancel",
+			variant: "warning",
+			icon: PauseCircle,
+			onConfirm: () => {
+				holdOrder();
+			},
+		});
 	};
 
 	const handleOpenCashDrawer = async () => {
@@ -65,7 +83,7 @@ const CartActionsDropdown = () => {
 	const isCartEmpty = items.length === 0;
 	const canOpenCashDrawer = isOwner || isManager;
 
-	return (
+	return (<>
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button
@@ -107,7 +125,8 @@ const CartActionsDropdown = () => {
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
-	);
+		{confirmation.dialog}
+	</>);
 };
 
 export default CartActionsDropdown;
