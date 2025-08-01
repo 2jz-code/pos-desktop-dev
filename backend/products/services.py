@@ -99,7 +99,7 @@ class ProductService:
     @cache_static_data(timeout=3600*8)  # 8 hours - categories change rarely
     def get_cached_category_tree():
         """Cache category hierarchy - changes infrequently"""
-        return Category.objects.select_related("parent").prefetch_related("children").get_cached_trees()
+        return Category.objects.select_related("parent").prefetch_related("children").all()
     
     @staticmethod
     @cache_static_data(timeout=3600*24)  # 24 hours - very static

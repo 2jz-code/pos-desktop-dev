@@ -109,7 +109,7 @@ class TaxSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
-    subcategory = CategorySerializer(source="category.parent", read_only=True)
+    parent_category = CategorySerializer(source="category.parent", read_only=True)
     taxes = TaxSerializer(many=True, read_only=True)
     product_type = ProductTypeSerializer(read_only=True)
     image = ImageField(read_only=True)
@@ -120,7 +120,7 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            "id", "name", "description", "price", "category", "subcategory", "taxes",
+            "id", "name", "description", "price", "category", "parent_category", "taxes",
             "is_active", "is_public", "track_inventory", "product_type", "barcode",
             "created_at", "updated_at", "image", "image_url", "original_filename",
             "modifier_groups",
