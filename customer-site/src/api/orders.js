@@ -158,11 +158,12 @@ export const ordersAPI = {
 export const cartAPI = {
 	// Add item to current cart using the new single-action endpoint
 	// The backend will handle getting or creating the order.
-	addToCart: async (productId, quantity = 1, notes = "") => {
+	addToCart: async (productId, quantity = 1, notes = "", selectedModifiers = []) => {
 		const response = await apiClient.post("/orders/add-item/", {
 			product_id: productId,
 			quantity,
 			notes,
+			selected_modifiers: selectedModifiers,
 		});
 		return response.data;
 	},

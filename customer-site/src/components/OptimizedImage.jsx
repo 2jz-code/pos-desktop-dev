@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useInView } from "react-intersection-observer";
 import { cn } from "@/lib/utils";
 
@@ -24,10 +24,10 @@ const OptimizedImage = ({
 		skip: priority || imageHasLoaded,
 	});
 
-	const setRefs = (node) => {
+	const setRefs = useCallback((node) => {
 		imgRef.current = node;
 		inViewRef(node);
-	};
+	}, [inViewRef]);
 
 	useEffect(() => {
 		if (inView && !imageHasLoaded) {

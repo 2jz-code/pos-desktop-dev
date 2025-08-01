@@ -45,18 +45,18 @@ export const useCartMutations = () => {
 	};
 
 	const addToCartMutation = useMutation({
-		mutationFn: async ({ productId, quantity, notes }) => {
+		mutationFn: async ({ productId, quantity, notes, selectedModifiers }) => {
 			// Initialize guest session for unauthenticated users (only if needed)
 			if (!isAuthenticated) {
 				try {
 					// Try adding to cart first - if it fails due to session, then initialize
-					return await cartAPI.addToCart(productId, quantity, notes);
+					return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 				} catch (error) {
 					// If it's a permission/session error, initialize guest session and retry
 					if (error.response?.status === 403 || error.response?.status === 401) {
 						try {
 							await ordersAPI.initGuestSession();
-							return await cartAPI.addToCart(productId, quantity, notes);
+							return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 						} catch (sessionError) {
 							console.warn('Guest session initialization failed:', sessionError);
 							throw error; // Re-throw original error
@@ -66,7 +66,7 @@ export const useCartMutations = () => {
 					}
 				}
 			}
-			return cartAPI.addToCart(productId, quantity, notes);
+			return cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 		},
 		// Optimistic update for adding items
 		onMutate: async ({ product, quantity }) => {
@@ -293,7 +293,7 @@ export const useCart = () => {
 		error: cartQuery.error || cartStore.error,
 
 		// Actions - these now return the mutation objects for better control
-		addToCart: (product, quantity = 1, notes = "") => {
+		addToCart: (product, quantity = 1, notes = "", selectedModifiers = []) => {
 			// Reset checkout completed flag when starting to add items again
 			if (cartStore.checkoutCompleted) {
 				cartStore.setCheckoutCompleted(false);
@@ -304,6 +304,7 @@ export const useCart = () => {
 				product, // Pass the full product object for optimistic update
 				quantity,
 				notes,
+				selectedModifiers,
 			});
 		},
 

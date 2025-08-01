@@ -13,6 +13,8 @@ import { useCart } from "@/hooks/useCart";
 import { productsAPI } from "../../../api";
 import { getProductImageUrl, createImageErrorHandler } from "@/lib/imageUtils"; // Updated import
 import OptimizedImage from "@/components/OptimizedImage";
+import InlineModifierSelector from "@/components/modifiers/InlineModifierSelector";
+import { calculateProductTotalWithModifiers } from "@/utils/modifierCalculations";
 
 const ProductDetailsPage = () => {
 	const { productName } = useParams();
@@ -23,6 +25,8 @@ const ProductDetailsPage = () => {
 	const [isFavorite, setIsFavorite] = useState(false);
 	const [addingToCart, setAddingToCart] = useState(false);
 	const [relatedProducts, setRelatedProducts] = useState([]);
+	const [selectedModifiers, setSelectedModifiers] = useState([]);
+	const [modifiersValid, setModifiersValid] = useState(true);
 	const navigate = useNavigate();
 	const { addToCart } = useCart();
 
@@ -85,6 +89,17 @@ const ProductDetailsPage = () => {
 		return isNaN(numericPrice) ? "0.00" : numericPrice.toFixed(2);
 	};
 
+	// Calculate total price including modifiers
+	const totalPrice = product 
+		? calculateProductTotalWithModifiers(product.price, selectedModifiers, quantity)
+		: 0;
+
+	// Handle modifier changes
+	const handleModifiersChange = (modifiers, isValid) => {
+		setSelectedModifiers(modifiers);
+		setModifiersValid(isValid);
+	};
+
 	const handleQuantityChange = (newQuantity) => {
 		if (newQuantity >= 1 && newQuantity <= 10) {
 			setQuantity(newQuantity);
@@ -93,12 +108,20 @@ const ProductDetailsPage = () => {
 
 	const handleAddToCart = async () => {
 		if (!product) return;
+		
+		// Check if modifiers are valid
+		if (!modifiersValid) {
+			toast.error("Please complete required selections before adding to cart.");
+			return;
+		}
+		
 		setAddingToCart(true);
 		try {
-			const result = await addToCart(product, quantity);
+			const result = await addToCart(product, quantity, "", selectedModifiers);
 			if (result && result.success) {
 				toast.success(`${quantity} ${product.name}(s) added to your cart!`);
 				setQuantity(1);
+				setSelectedModifiers([]);
 			} else {
 				toast.error(
 					result?.error || "Failed to add item to cart. Please try again."
@@ -226,10 +249,10 @@ const ProductDetailsPage = () => {
 			</nav>
 
 			{/* Product details section */}
-			<div className="bg-primary-beige rounded-xl shadow-lg overflow-hidden border border-accent-subtle-gray/20">
-				<div className="md:flex">
-					{/* Product image */}
-					<div className="md:w-1/2 relative group bg-accent-subtle-gray/30 h-96 md:h-auto">
+			<div className="md:flex md:gap-8">
+				{/* Product image - Sticky */}
+				<div className="md:w-1/2 md:sticky md:top-8 md:self-start">
+					<div className="bg-primary-beige rounded-xl shadow-lg overflow-hidden border border-accent-subtle-gray/20 relative group bg-accent-subtle-gray/30 h-96 md:h-[500px]">
 						<OptimizedImage
 							src={imageUrl}
 							alt={product.name || "Product Image"}
@@ -253,120 +276,141 @@ const ProductDetailsPage = () => {
 							/>
 						</button>
 					</div>
+				</div>
 
-					{/* Product info */}
-					<div className="md:w-1/2 p-6 md:p-8 flex flex-col justify-between">
-						<div>
-							{/* Category tag */}
-							{categoryName !== "Products" && (
-								<span className="text-sm text-primary-green font-medium tracking-wide uppercase mb-2 block">
-									{categoryName}
-								</span>
-							)}
-							{/* Product name */}
-							<h1 className="text-3xl md:text-4xl font-bold text-accent-dark-green mb-2">
-								{product.name}
-							</h1>
-							{/* Price */}
-							<p className="text-3xl font-bold text-primary-green mb-4">
-								${formatPrice(product.price)}
-							</p>
-							{/* Product description */}
-							<div className="prose prose-sm text-accent-dark-brown mb-6 max-w-none">
-								<p>{product.description || "No description available."}</p>
-							</div>
-						</div>
-
-						<div className="mt-auto">
-							{/* Quantity selector */}
-							<div className="mb-6">
-								<label
-									htmlFor="quantity"
-									className="block text-sm font-medium text-accent-dark-green mb-2"
-								>
-									Quantity
-								</label>
-								<div className="flex items-center">
-									<div className="inline-flex items-center bg-white border border-accent-subtle-gray rounded-full p-1 shadow-sm">
-										<button
-											onClick={() => handleQuantityChange(quantity - 1)}
-											disabled={quantity <= 1}
-											className={`p-2.5 rounded-full transition-colors focus:outline-none ${
-												quantity <= 1
-													? "text-accent-subtle-gray cursor-not-allowed"
-													: "text-accent-dark-brown hover:bg-primary-beige/50 active:bg-primary-beige/70"
-											}`}
-											aria-label="Decrease quantity"
-										>
-											<FaMinus size={12} />
-										</button>
-										<span className="px-5 font-medium text-accent-dark-green text-lg">
-											{quantity}
-										</span>
-										<button
-											onClick={() => handleQuantityChange(quantity + 1)}
-											disabled={quantity >= 10}
-											className={`p-2.5 rounded-full transition-colors focus:outline-none ${
-												quantity >= 10
-													? "text-accent-subtle-gray cursor-not-allowed"
-													: "text-accent-dark-brown hover:bg-primary-beige/50 active:bg-primary-beige/70"
-											}`}
-											aria-label="Increase quantity"
-										>
-											<FaPlus size={12} />
-										</button>
-									</div>
-									{quantity >= 10 && (
-										<span className="ml-4 text-xs text-red-600">
-											Max quantity: 10
-										</span>
-									)}
+				{/* Product info - Expandable */}
+				<div className="md:w-1/2 mt-6 md:mt-0">
+					<div className="bg-primary-beige rounded-xl shadow-lg border border-accent-subtle-gray/20 p-6 md:p-8">
+						{/* Category tag */}
+						{categoryName !== "Products" && (
+							<span className="text-sm text-primary-green font-medium tracking-wide uppercase mb-2 block">
+								{categoryName}
+							</span>
+						)}
+						{/* Product name */}
+						<h1 className="text-3xl md:text-4xl font-bold text-accent-dark-green mb-2">
+							{product.name}
+						</h1>
+						{/* Price */}
+						<div className="mb-4">
+							{selectedModifiers.length > 0 && totalPrice !== parseFloat(product.price) * quantity ? (
+								<div>
+									<p className="text-lg text-accent-subtle-gray line-through">
+										${formatPrice(parseFloat(product.price) * quantity)}
+									</p>
+									<p className="text-3xl font-bold text-primary-green">
+										${formatPrice(totalPrice)}
+									</p>
 								</div>
-							</div>
-
-							{/* Add to cart button */}
-							<motion.button
-								onClick={handleAddToCart}
-								disabled={addingToCart}
-								className={`w-full flex items-center justify-center px-6 py-3.5 rounded-lg text-accent-light-beige font-semibold ${
-									addingToCart
-										? "bg-accent-subtle-gray cursor-not-allowed"
-										: "bg-primary-green hover:bg-accent-dark-green"
-								} transition-colors shadow-md`}
-								whileTap={{ scale: 0.98 }}
-							>
-								{addingToCart ? (
-									<>
-										<svg
-											className="animate-spin -ml-1 mr-3 h-5 w-5"
-											xmlns="http://www.w3.org/2000/svg"
-											fill="none"
-											viewBox="0 0 24 24"
-										>
-											<circle
-												className="opacity-25"
-												cx="12"
-												cy="12"
-												r="10"
-												stroke="currentColor"
-												strokeWidth="4"
-											></circle>
-											<path
-												className="opacity-75"
-												fill="currentColor"
-												d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-											></path>
-										</svg>
-										Adding...
-									</>
-								) : (
-									<>
-										<FaShoppingCart className="mr-2" />
-										Add to Cart
-									</>
-								)}
-							</motion.button>
+							) : (
+								<p className="text-3xl font-bold text-primary-green">
+									${formatPrice(parseFloat(product.price) * quantity)}
+								</p>
+							)}
 						</div>
+						{/* Product description */}
+						<div className="prose prose-sm text-accent-dark-brown mb-6 max-w-none">
+							<p>{product.description || "No description available."}</p>
+						</div>
+
+						{/* Modifier Selection */}
+						{product.modifier_groups && product.modifier_groups.length > 0 && (
+							<div className="mb-8">
+								<InlineModifierSelector
+									product={product}
+									onModifiersChange={handleModifiersChange}
+								/>
+							</div>
+						)}
+
+						{/* Quantity selector */}
+						<div className="mb-6">
+							<label
+								htmlFor="quantity"
+								className="block text-sm font-medium text-accent-dark-green mb-2"
+							>
+								Quantity
+							</label>
+							<div className="flex items-center">
+								<div className="inline-flex items-center bg-white border border-accent-subtle-gray rounded-full p-1 shadow-sm">
+									<button
+										onClick={() => handleQuantityChange(quantity - 1)}
+										disabled={quantity <= 1}
+										className={`p-2.5 rounded-full transition-colors focus:outline-none ${
+											quantity <= 1
+												? "text-accent-subtle-gray cursor-not-allowed"
+												: "text-accent-dark-brown hover:bg-primary-beige/50 active:bg-primary-beige/70"
+										}`}
+										aria-label="Decrease quantity"
+									>
+										<FaMinus size={12} />
+									</button>
+									<span className="px-5 font-medium text-accent-dark-green text-lg">
+										{quantity}
+									</span>
+									<button
+										onClick={() => handleQuantityChange(quantity + 1)}
+										disabled={quantity >= 10}
+										className={`p-2.5 rounded-full transition-colors focus:outline-none ${
+											quantity >= 10
+												? "text-accent-subtle-gray cursor-not-allowed"
+												: "text-accent-dark-brown hover:bg-primary-beige/50 active:bg-primary-beige/70"
+										}`}
+										aria-label="Increase quantity"
+									>
+										<FaPlus size={12} />
+									</button>
+								</div>
+								{quantity >= 10 && (
+									<span className="ml-4 text-xs text-red-600">
+										Max quantity: 10
+									</span>
+								)}
+							</div>
+						</div>
+
+						{/* Add to cart button */}
+						<motion.button
+							onClick={handleAddToCart}
+							disabled={addingToCart || !modifiersValid}
+							className={`w-full flex items-center justify-center px-6 py-3.5 rounded-lg text-accent-light-beige font-semibold ${
+								addingToCart || !modifiersValid
+									? "bg-accent-subtle-gray cursor-not-allowed"
+									: "bg-primary-green hover:bg-accent-dark-green"
+							} transition-colors shadow-md`}
+							whileTap={{ scale: 0.98 }}
+						>
+							{addingToCart ? (
+								<>
+									<svg
+										className="animate-spin -ml-1 mr-3 h-5 w-5"
+										xmlns="http://www.w3.org/2000/svg"
+										fill="none"
+										viewBox="0 0 24 24"
+									>
+										<circle
+											className="opacity-25"
+											cx="12"
+											cy="12"
+											r="10"
+											stroke="currentColor"
+											strokeWidth="4"
+										></circle>
+										<path
+											className="opacity-75"
+											fill="currentColor"
+											d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+										></path>
+									</svg>
+									Adding...
+								</>
+							) : (
+								<>
+									<FaShoppingCart className="mr-2" />
+									Add to Cart
+								</>
+							)}
+						</motion.button>
 					</div>
 				</div>
 			</div>
