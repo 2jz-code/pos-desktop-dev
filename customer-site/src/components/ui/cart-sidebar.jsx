@@ -8,6 +8,7 @@ import {
 	createImageErrorHandler,
 } from "../../lib/imageUtils"; // Adjust path as needed
 import OptimizedImage from "@/components/OptimizedImage";
+import ModifierDisplay from "@/components/ui/ModifierDisplay";
 
 const CartSidebar = ({ isOpen, onClose }) => {
 	const [isRestaurantOpen, setIsRestaurantOpen] = useState(true);
@@ -173,7 +174,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 												x: -20,
 												transition: { duration: 0.2 },
 											}}
-											className="py-4 flex items-center"
+											className="py-4 flex items-start"
 										>
 											{/* Product Image */}
 											<div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-accent-subtle-gray/30 bg-accent-subtle-gray/20 mr-4">
@@ -191,8 +192,15 @@ const CartSidebar = ({ isOpen, onClose }) => {
 													{item.product?.name || "Unknown Product"}
 												</h4>
 												<p className="text-sm text-accent-dark-brown">
-													${formatPrice(item.product?.price)} × {item.quantity}
+													${formatPrice(item.price_at_sale)} × {item.quantity}
 												</p>
+												
+												{/* Display modifiers */}
+												<ModifierDisplay 
+													modifiers={item.selected_modifiers_snapshot} 
+													compact={true} 
+												/>
+												
 												{item.notes && (
 													<p className="text-xs text-accent-subtle-gray italic mt-1">
 														{item.notes}
@@ -201,11 +209,11 @@ const CartSidebar = ({ isOpen, onClose }) => {
 											</div>
 
 											{/* Item Actions */}
-											<div className="flex items-center space-x-2 ml-2">
+											<div className="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
 												<span className="text-sm font-medium text-accent-dark-green">
 													$
 													{formatPrice(
-														(item.product?.price || 0) * item.quantity
+														(item.price_at_sale || 0) * item.quantity
 													)}
 												</span>
 												<button

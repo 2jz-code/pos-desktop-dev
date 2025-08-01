@@ -235,13 +235,34 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-	const getParentCategories = () => {
-		return categories.filter((cat) => !cat.parent);
+	const renderCategoryOptions = (parentId = null, level = 0) => {
+		return categories
+			.filter((c) => (c.parent?.id || null) === parentId)
+			.filter((c) => !editingCategory || c.id !== editingCategory.id) // Don't allow setting self as parent
+			.flatMap((c) => [
+				<SelectItem
+					key={c.id}
+					value={c.id.toString()}
+				>
+					{"\u00A0".repeat(level * 4)}
+					{c.name}
+				</SelectItem>,
+				...renderCategoryOptions(c.id, level + 1),
+			]);
 	};
 
 	const getCategoryHierarchy = (category) => {
 		if (!category.parent) return category.name;
 		return `${category.parent.name} > ${category.name}`;
+	};
+
+	const flattenedCategories = (parentId = null, level = 0) => {
+		return categories
+			.filter((c) => (c.parent?.id || null) === parentId)
+			.flatMap((c) => [
+				{ ...c, level },
+				...flattenedCategories(c.id, level + 1),
+			]);
 	};
 
 	const resetForm = () => {
@@ -323,9 +344,12 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												</TableCell>
 											</TableRow>
 										) : (
-											categories.map((category) => (
+											flattenedCategories().map((category) => (
 												<TableRow key={category.id}>
-													<TableCell className="font-medium">
+													<TableCell 
+														className="font-medium"
+														style={{ paddingLeft: `${category.level * 20 + 12}px` }}
+													>
 														{category.name}
 													</TableCell>
 													<TableCell>
@@ -492,19 +516,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="none">None (Parent Category)</SelectItem>
-										{getParentCategories()
-											.filter(
-												(cat) =>
-													!editingCategory || cat.id !== editingCategory.id
-											)
-											.map((category) => (
-												<SelectItem
-													key={category.id}
-													value={category.id.toString()}
-												>
-													{category.name}
-												</SelectItem>
-											))}
+										{renderCategoryOptions()}
 									</SelectContent>
 								</Select>
 								{errors.parent && (

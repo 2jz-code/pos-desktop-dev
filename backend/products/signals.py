@@ -134,9 +134,10 @@ def process_product_image(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("products", instance.id, action)
     
-    # Invalidate product caches
-    invalidate_cache_pattern('products_all')
-    invalidate_cache_pattern('products_active')
+    # Invalidate product caches using broader patterns
+    invalidate_cache_pattern('*get_cached_products_list*')
+    invalidate_cache_pattern('*get_cached_active_products_list*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 @receiver(post_delete, sender=Product)
@@ -148,9 +149,10 @@ def handle_product_delete(sender, instance, **kwargs):
     ImageService.delete_image_file(instance.image)
     broadcast_entity_change("products", instance.id, "deleted")
     
-    # Invalidate product caches
-    invalidate_cache_pattern('products_all')
-    invalidate_cache_pattern('products_active')
+    # Invalidate product caches using broader patterns
+    invalidate_cache_pattern('*get_cached_products_list*')
+    invalidate_cache_pattern('*get_cached_active_products_list*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 # Note: Product save/delete signals are handled by process_product_image and handle_product_delete above
@@ -166,10 +168,11 @@ def handle_category_change(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("categories", instance.id, action)
     
-    # Invalidate category and product caches
-    invalidate_cache_pattern('categories_tree')
-    invalidate_cache_pattern('products_all')  # Products include category data
-    invalidate_cache_pattern('products_active')  # POS products include category data
+    # Invalidate category and product caches using broader patterns
+    invalidate_cache_pattern('*get_cached_category_tree*')
+    invalidate_cache_pattern('*get_cached_products_list*')
+    invalidate_cache_pattern('*get_cached_active_products_list*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 @receiver(post_delete, sender=Category)
@@ -177,10 +180,11 @@ def handle_category_delete(sender, instance, **kwargs):
     """Handle category delete events"""
     broadcast_entity_change("categories", instance.id, "deleted")
     
-    # Invalidate category and product caches
-    invalidate_cache_pattern('categories_tree')
-    invalidate_cache_pattern('products_all')  # Products include category data
-    invalidate_cache_pattern('products_active')  # POS products include category data
+    # Invalidate category and product caches using broader patterns
+    invalidate_cache_pattern('*get_cached_category_tree*')
+    invalidate_cache_pattern('*get_cached_products_list*')
+    invalidate_cache_pattern('*get_cached_active_products_list*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 # === PRODUCT TYPE SIGNALS ===
@@ -192,8 +196,9 @@ def handle_product_type_change(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("product_types", instance.id, action)
     
-    # Invalidate product type cache
-    invalidate_cache_pattern('product_types')
+    # Invalidate product type cache using broader patterns
+    invalidate_cache_pattern('*get_cached_product_types*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 @receiver(post_delete, sender=ProductType)
@@ -201,8 +206,9 @@ def handle_product_type_delete(sender, instance, **kwargs):
     """Handle product type delete events"""
     broadcast_entity_change("product_types", instance.id, "deleted")
     
-    # Invalidate product type cache
-    invalidate_cache_pattern('product_types')
+    # Invalidate product type cache using broader patterns
+    invalidate_cache_pattern('*get_cached_product_types*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 # === TAX SIGNALS ===
@@ -213,8 +219,9 @@ def handle_tax_change(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("taxes", instance.id, action)
     
-    # Invalidate tax cache
-    invalidate_cache_pattern('taxes')
+    # Invalidate tax cache using broader patterns
+    invalidate_cache_pattern('*get_cached_taxes*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 @receiver(post_delete, sender=Tax)
@@ -222,8 +229,9 @@ def handle_tax_delete(sender, instance, **kwargs):
     """Handle tax delete events"""
     broadcast_entity_change("taxes", instance.id, "deleted")
     
-    # Invalidate tax cache
-    invalidate_cache_pattern('taxes')
+    # Invalidate tax cache using broader patterns
+    invalidate_cache_pattern('*get_cached_taxes*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 # === MODIFIER SET SIGNALS ===
@@ -234,8 +242,9 @@ def handle_modifier_set_change(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("modifier_sets", instance.id, action)
     
-    # Invalidate modifier set cache
-    invalidate_cache_pattern('modifier_sets')
+    # Invalidate modifier set cache using broader patterns
+    invalidate_cache_pattern('*get_cached_modifier_sets*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
 
 
 @receiver(post_delete, sender=ModifierSet)
@@ -243,5 +252,6 @@ def handle_modifier_set_delete(sender, instance, **kwargs):
     """Handle modifier set delete events"""
     broadcast_entity_change("modifier_sets", instance.id, "deleted")
     
-    # Invalidate modifier set cache
-    invalidate_cache_pattern('modifier_sets')
+    # Invalidate modifier set cache using broader patterns
+    invalidate_cache_pattern('*get_cached_modifier_sets*')
+    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache

@@ -222,6 +222,7 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
                 order=order,
                 product=product,
                 quantity=item_serializer.validated_data.get("quantity", 1),
+                selected_modifiers=item_serializer.validated_data.get("selected_modifiers", []),
                 notes=item_serializer.validated_data.get("notes", ""),
             )
         except ValueError as e:
@@ -585,7 +586,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
             order=order,
             product=product,
             quantity=serializer.validated_data.get("quantity", 1),
-            selected_option_ids=serializer.validated_data.get("selected_options", []),
+            selected_modifiers=serializer.validated_data.get("selected_modifiers", []),
             notes=serializer.validated_data.get("notes", ""),
         )
 

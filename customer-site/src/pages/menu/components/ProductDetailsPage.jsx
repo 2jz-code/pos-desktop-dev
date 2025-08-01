@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion"; // eslint-disable-line
 import {
@@ -95,10 +95,10 @@ const ProductDetailsPage = () => {
 		: 0;
 
 	// Handle modifier changes
-	const handleModifiersChange = (modifiers, isValid) => {
+	const handleModifiersChange = useCallback((modifiers, isValid) => {
 		setSelectedModifiers(modifiers);
 		setModifiersValid(isValid);
-	};
+	}, []);
 
 	const handleQuantityChange = (newQuantity) => {
 		if (newQuantity >= 1 && newQuantity <= 10) {

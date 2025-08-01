@@ -131,6 +131,7 @@ class OrderService:
             )
 
         selected_modifiers = selected_modifiers or []
+        print(f"DEBUG: add_item_to_order called with product: {product.name}, selected_modifiers: {selected_modifiers}")
         
         # Skip validation if force_add is True
         if not force_add:
@@ -260,17 +261,21 @@ class OrderService:
             for modifier_data in selected_modifiers:
                 option_id = modifier_data.get('option_id')
                 mod_quantity = modifier_data.get('quantity', 1)
+                print(f"DEBUG: Processing modifier - option_id: {option_id}, quantity: {mod_quantity}")
                 if option_id:
                     try:
                         modifier_option = ModifierOption.objects.select_related('modifier_set').get(id=option_id)
-                        OrderItemModifier.objects.create(
+                        print(f"DEBUG: Found modifier option: {modifier_option.name}")
+                        created_modifier = OrderItemModifier.objects.create(
                             order_item=item,
                             modifier_set_name=modifier_option.modifier_set.name,
                             option_name=modifier_option.name,
                             price_at_sale=modifier_option.price_delta,
                             quantity=mod_quantity
                         )
+                        print(f"DEBUG: Created OrderItemModifier: {created_modifier}")
                     except ModifierOption.DoesNotExist:
+                        print(f"DEBUG: ModifierOption with id {option_id} not found")
                         continue
 
         OrderService.recalculate_order_totals(order)
