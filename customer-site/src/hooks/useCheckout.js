@@ -240,6 +240,33 @@ export const useCheckout = () => {
 			const totals = calculateOrderTotals(cart);
 			if (!totals) throw new Error("Unable to calculate order totals");
 
+			// Check if we already have a cart with items - if so, use that instead of creating new
+			if (cart && cart.id && cart.items && cart.items.length > 0) {
+				console.log("Using existing cart for guest checkout:", cart.id);
+				console.log("Cart has", cart.items.length, "items");
+				
+				// Update guest contact information on existing cart
+				if (formData.firstName || formData.lastName || formData.email || formData.phone) {
+					try {
+						const updateData = {};
+						if (formData.firstName) updateData.guest_first_name = formData.firstName;
+						if (formData.lastName) updateData.guest_last_name = formData.lastName;
+						if (formData.email) updateData.guest_email = formData.email;
+						if (formData.phone) updateData.guest_phone = formData.phone.replace(/[^\d]/g, "");
+
+						await ordersAPI.updateCustomerInfo(cart.id, updateData);
+						console.log("Updated guest info on existing cart");
+					} catch (updateError) {
+						console.warn("Failed to update guest info on existing cart:", updateError);
+					}
+				}
+				
+				return cart; // Return the existing cart instead of creating new
+			}
+
+			// Only create new guest order if no cart exists
+			console.log("No existing cart found, creating new guest order");
+			
 			// First, ensure guest session is initialized
 			try {
 				await ordersAPI.initGuestSession();

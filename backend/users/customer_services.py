@@ -117,14 +117,15 @@ class CustomerAuthService:
         access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
         refresh_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
 
-        # Determine secure/samesite settings
-        is_secure = not settings.DEBUG  # Secure in production
-        samesite_policy = "Lax"  # More permissive for customer site
+        # Use same secure/samesite settings as admin to ensure consistency
+        is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+        samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
 
         response.set_cookie(
             key=access_cookie_name,
             value=access_token,
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,
@@ -135,6 +136,7 @@ class CustomerAuthService:
             key=refresh_cookie_name,
             value=refresh_token,
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,  # Allow cookies to be sent from any origin
             path="/",
             httponly=True,
             secure=is_secure,

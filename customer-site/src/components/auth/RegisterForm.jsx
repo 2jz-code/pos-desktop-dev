@@ -20,8 +20,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import TermsOfService from "@/pages/TermsOfService";
-import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import ComingSoonWrapper from "../utility/ComingSoonWrapper";
+// import TermsOfService from "@/pages/TermsOfService";
+// import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
 const RegisterForm = () => {
 	const [formData, setFormData] = useState({
@@ -487,7 +488,7 @@ const RegisterForm = () => {
 										htmlFor="terms"
 										className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-accent-dark-brown"
 									>
-										I agree to the <TermsOfService /> and <PrivacyPolicy />
+										I agree to the TermsOfService and PrivacyPolicy
 									</label>
 									{errors.terms && (
 										<p className="text-red-500 text-xs mt-1">{errors.terms}</p>
