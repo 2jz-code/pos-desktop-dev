@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from django.contrib.auth import get_user_model
 from mptt.models import MPTTModel, TreeForeignKey
 from core_backend.archiving import SoftDeleteMixin
 
@@ -29,6 +31,33 @@ class Category(MPTTModel):
             "Whether this category and its products are publicly visible on the website."
         ),
     )
+    
+    # Archiving fields (manually added since we can't inherit from SoftDeleteMixin due to MPTT)
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Designates whether this record is active. "
+                  "Inactive records are considered archived/soft-deleted."
+    )
+    
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when this record was archived."
+    )
+    
+    archived_by = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products_category_archived",
+        help_text="User who archived this record."
+    )
+
+    # Use custom manager that combines MPTT with archiving
+    from .managers import CategoryManager
+    objects = CategoryManager()
 
     class MPTTMeta:
         order_insertion_by = ["order", "name"]
@@ -40,6 +69,48 @@ class Category(MPTTModel):
 
     def __str__(self):
         return self.name
+    
+    def archive(self, archived_by=None):
+        """
+        Archive (soft delete) this category.
+        
+        Args:
+            archived_by: User instance who performed the archiving
+        """
+        self.is_active = False
+        self.archived_at = timezone.now()
+        if archived_by:
+            self.archived_by = archived_by
+        self.save(update_fields=['is_active', 'archived_at', 'archived_by'])
+    
+    def unarchive(self):
+        """
+        Unarchive (restore) this category.
+        """
+        self.is_active = True
+        self.archived_at = None
+        self.archived_by = None
+        self.save(update_fields=['is_active', 'archived_at', 'archived_by'])
+    
+    @property
+    def is_archived(self):
+        """Return True if this category is archived."""
+        return not self.is_active
+    
+    def delete(self, using=None, keep_parents=False):
+        """
+        Override delete to perform soft delete instead.
+        
+        To perform a hard delete, use force_delete() method.
+        """
+        self.archive()
+    
+    def force_delete(self, using=None, keep_parents=False):
+        """
+        Perform actual hard delete of the category.
+        Use with caution - this permanently removes data.
+        """
+        super().delete(using=using, keep_parents=keep_parents)
 
 
 class Tax(models.Model):
@@ -62,7 +133,7 @@ class Tax(models.Model):
         return f"{self.name} ({self.rate}%)"
 
 
-class ProductType(models.Model):
+class ProductType(SoftDeleteMixin):
     name = models.CharField(
         max_length=100, unique=True, help_text=_("Name of the product type.")
     )

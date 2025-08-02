@@ -456,20 +456,36 @@ def barcode_lookup(request, barcode):
         )
 
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CategoryViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     """
     A viewset for viewing categories.
     Can be filtered by parent_id to get child categories, or with `?parent=null` to get top-level categories.
     Supports delta sync with modified_since parameter.
+    Supports archiving with include_archived parameter.
     """
-
+    
+    queryset = Category.objects.select_related("parent").prefetch_related("children")
     serializer_class = CategorySerializer
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
 
     def get_queryset(self):
-        queryset = Category.objects.select_related("parent").prefetch_related("children")
+        # Handle archiving logic first
+        include_archived = self.request.query_params.get('include_archived', '').lower()
+        
+        if include_archived in ['true', '1', 'yes']:
+            # Include archived records - get all categories
+            queryset = Category.objects.with_archived()
+        elif include_archived == 'only':
+            # Show only archived records
+            queryset = Category.objects.archived_only()
+        else:
+            # Default: show only active records
+            queryset = Category.objects.all()
+        
+        # Apply optimizations
+        queryset = queryset.select_related("parent").prefetch_related("children")
 
         # Check if the request is for the customer-facing website
         is_for_website = self.request.query_params.get("for_website") == "true"
@@ -504,13 +520,62 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         # Use cache for simple requests without complex filtering
-        if not request.query_params.get("parent") and not request.query_params.get("modified_since"):
+        if (not request.query_params.get("parent") and 
+            not request.query_params.get("modified_since") and
+            not request.query_params.get("include_archived")):
             categories = ProductService.get_cached_category_tree()
             serializer = self.get_serializer(categories, many=True)
             return Response(serializer.data)
         
         # Fall back to normal queryset for filtered requests
         return super().list(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def archive(self, request, pk=None):
+        """
+        Archive a category. Requires admin permissions.
+        """
+        category = self.get_object()
+        
+        if not category.is_active:
+            return Response(
+                {'error': 'Category is already archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        category.archive(archived_by=request.user if request.user.is_authenticated else None)
+        
+        return Response(
+            {'message': 'Category archived successfully.'},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def unarchive(self, request, pk=None):
+        """
+        Unarchive a category. Requires admin permissions.
+        """
+        # Get the category including archived ones
+        try:
+            category = Category.objects.with_archived().get(pk=pk)
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Category not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if category.is_active:
+            return Response(
+                {'error': 'Category is not archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        category.unarchive()
+        
+        return Response(
+            {'message': 'Category unarchived successfully.'},
+            status=status.HTTP_200_OK
+        )
 
 
 class TaxListCreateView(generics.ListCreateAPIView):
@@ -525,13 +590,70 @@ class TaxDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAdminUser]
 
 
-class ProductTypeListView(generics.ListCreateAPIView):
+class ProductTypeViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]
+    
+    def get_queryset(self):
+        # Handle archiving logic directly to avoid mixin conflicts
+        include_archived = self.request.query_params.get('include_archived', '').lower()
+        
+        if include_archived in ['true', '1', 'yes']:
+            # Include archived records - get all product types
+            queryset = ProductType.objects.with_archived()
+        elif include_archived == 'only':
+            # Show only archived records
+            queryset = ProductType.objects.archived_only()
+        else:
+            # Default: show only active records
+            queryset = ProductType.objects.all()
+        
+        return queryset
 
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def archive(self, request, pk=None):
+        """
+        Archive a product type. Requires admin permissions.
+        """
+        product_type = self.get_object()
+        
+        if not product_type.is_active:
+            return Response(
+                {'error': 'Product type is already archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        product_type.archive(archived_by=request.user if request.user.is_authenticated else None)
+        
+        return Response(
+            {'message': 'Product type archived successfully.'},
+            status=status.HTTP_200_OK
+        )
 
-class ProductTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = ProductType.objects.all()
-    serializer_class = ProductTypeSerializer
-    permission_classes = [ReadOnlyForCashiers]
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def unarchive(self, request, pk=None):
+        """
+        Unarchive a product type. Requires admin permissions.
+        """
+        # Get the product type including archived ones
+        try:
+            product_type = ProductType.objects.with_archived().get(pk=pk)
+        except ProductType.DoesNotExist:
+            return Response(
+                {'error': 'Product type not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if product_type.is_active:
+            return Response(
+                {'error': 'Product type is not archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        product_type.unarchive()
+        
+        return Response(
+            {'message': 'Product type unarchived successfully.'},
+            status=status.HTTP_200_OK
+        )

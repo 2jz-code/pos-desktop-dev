@@ -382,17 +382,21 @@ const ProductsPage = () => {
 		setIsCategoryDialogOpen(true);
 	};
 
-	const handleCategoryDialogClose = () => {
+	const handleCategoryDialogClose = (dataChanged = false) => {
 		setIsCategoryDialogOpen(false);
-		// Refresh categories and products after category management
-		fetchParentCategories();
-		fetchProducts(showArchivedProducts);
+		// Only refresh if data was actually modified
+		if (dataChanged) {
+			fetchParentCategories();
+			fetchProducts(showArchivedProducts);
+		}
 	};
 
-	const handleProductTypeDialogClose = () => {
+	const handleProductTypeDialogClose = (dataChanged = false) => {
 		setIsProductTypeDialogOpen(false);
-		// Refresh products after product type management
-		fetchProducts(showArchivedProducts);
+		// Only refresh if data was actually modified
+		if (dataChanged) {
+			fetchProducts(showArchivedProducts);
+		}
 	};
 
 	const headers = [

@@ -5,7 +5,8 @@ import {
 	getCategories,
 	createCategory,
 	updateCategory,
-	deleteCategory,
+	archiveCategory,
+	unarchiveCategory,
 } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -36,7 +37,7 @@ import {
 import { Switch } from "@/shared/components/ui/switch";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 // Inline Order Editor Component
 function InlineOrderEditor({ category, onOrderChange }) {
@@ -123,10 +124,9 @@ function InlineOrderEditor({ category, onOrderChange }) {
 
 export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [categories, setCategories] = useState([]);
+	const [showArchivedCategories, setShowArchivedCategories] = useState(false);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState(null);
-	const [categoryToDelete, setCategoryToDelete] = useState(null);
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
@@ -134,15 +134,24 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		order: 0,
 		is_public: true,
 	});
+	const [dataChanged, setDataChanged] = useState(false);
 	const { toast } = useToast();
 
 	useEffect(() => {
 		fetchCategories();
-	}, []);
+	}, [showArchivedCategories]);
 
 	const fetchCategories = async () => {
 		try {
-			const response = await getCategories();
+			const params = {};
+			if (showArchivedCategories) {
+				params.include_archived = 'only';
+			} else {
+				// When showing active categories, don't send any parameter to get only active records
+				// The backend defaults to showing only active records when no include_archived parameter is provided
+			}
+			
+			const response = await getCategories(params);
 			const sorted = [...response.data].sort((a, b) => a.order - b.order);
 			setCategories(sorted);
 		} catch (error) {
@@ -163,6 +172,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			// Re-sort categories by order
 			return updated.sort((a, b) => a.order - b.order);
 		});
+		// Mark that data has changed
+		setDataChanged(true);
 	};
 
 	const handleFormChange = (e) => {
@@ -202,15 +213,17 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		setEditingCategory(null);
 	};
 
-	const openDeleteDialog = (category) => {
-		setCategoryToDelete(category);
-		setIsDeleteDialogOpen(true);
+	const handleDialogClose = (isOpen) => {
+		if (!isOpen) {
+			// Dialog is closing, notify parent if data changed
+			onOpenChange(dataChanged);
+			// Reset the dataChanged flag for next time
+			setDataChanged(false);
+		} else {
+			onOpenChange(isOpen);
+		}
 	};
 
-	const closeDeleteDialog = () => {
-		setIsDeleteDialogOpen(false);
-		setCategoryToDelete(null);
-	};
 
 	const handleFormSubmit = async (e) => {
 		e.preventDefault();
@@ -222,6 +235,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				await createCategory(formData);
 				toast({ title: "Success", description: "Category created." });
 			}
+			setDataChanged(true);
 			fetchCategories();
 			closeFormDialog();
 		} catch (error) {
@@ -234,18 +248,44 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-	const handleDelete = async () => {
-		if (!categoryToDelete) return;
+
+	const handleArchiveToggle = async (category) => {
 		try {
-			await deleteCategory(categoryToDelete.id);
-			toast({ title: "Success", description: "Category deleted." });
+			if (category.is_active) {
+				const response = await archiveCategory(category.id);
+				console.log("Archive response:", response);
+				toast({
+					title: "Success",
+					description: "Category archived successfully.",
+				});
+			} else {
+				const response = await unarchiveCategory(category.id);
+				console.log("Unarchive response:", response);
+				toast({
+					title: "Success",
+					description: "Category restored successfully.",
+				});
+			}
+			setDataChanged(true);
 			fetchCategories();
-			closeDeleteDialog();
 		} catch (error) {
-			console.error("Failed to delete category:", error);
+			console.error("Archive/restore error:", error);
+			
+			// Better error handling - check for specific error messages
+			let errorMessage = "Failed to update category status.";
+			if (error.response?.status === 403) {
+				errorMessage = "You don't have permission to archive categories.";
+			} else if (error.response?.status === 401) {
+				errorMessage = "You need to be logged in to archive categories.";
+			} else if (error.response?.data?.error) {
+				errorMessage = error.response.data.error;
+			} else if (error.message) {
+				errorMessage = error.message;
+			}
+			
 			toast({
 				title: "Error",
-				description: "Failed to delete category.",
+				description: errorMessage,
 				variant: "destructive",
 			});
 		}
@@ -278,14 +318,28 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	return (
 		<Dialog
 			open={open}
-			onOpenChange={onOpenChange}
+			onOpenChange={handleDialogClose}
 		>
 			<DialogContent className="!max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
 				<DialogHeader>
-					<DialogTitle>Manage Categories</DialogTitle>
+					<DialogTitle>
+						{showArchivedCategories ? "Archived Categories" : "Manage Categories"}
+					</DialogTitle>
 				</DialogHeader>
 				<div className="flex-1 overflow-hidden">
-					<div className="flex justify-end mb-4">
+					<div className="flex justify-between items-center mb-4">
+						<Button
+							variant={showArchivedCategories ? "default" : "outline"}
+							size="sm"
+							onClick={() => setShowArchivedCategories(!showArchivedCategories)}
+						>
+							{showArchivedCategories ? (
+								<ArchiveRestore className="mr-2 h-4 w-4" />
+							) : (
+								<Archive className="mr-2 h-4 w-4" />
+							)}
+							{showArchivedCategories ? "Show Active" : "Show Archived"}
+						</Button>
 						<Button onClick={() => openFormDialog()}>Add Category</Button>
 					</div>
 					<div className="border rounded-lg">
@@ -304,12 +358,22 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 							</TableHeader>
 							<TableBody>
 								{flattenedCategories().map((category) => (
-									<TableRow key={category.id}>
+									<TableRow 
+										key={category.id}
+										className={category.is_active ? "" : "opacity-60"}
+									>
 										<TableCell
-											className="font-medium"
+											className={`font-medium ${
+												category.is_active ? "" : "line-through text-gray-500"
+											}`}
 											style={{ paddingLeft: `${category.level * 20 + 12}px` }}
 										>
 											{category.name}
+											{!category.is_active && (
+												<span className="ml-2 text-xs text-orange-600 font-normal">
+													(Archived)
+												</span>
+											)}
 										</TableCell>
 										<TableCell className="text-slate-600 dark:text-slate-400 truncate max-w-[150px]">
 											{category.description || "—"}
@@ -360,11 +424,21 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												<Button
 													variant="ghost"
 													size="sm"
-													onClick={() => openDeleteDialog(category)}
-													className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+													onClick={() => handleArchiveToggle(category)}
+													className={`h-8 w-8 p-0 ${
+														category.is_active 
+															? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
+															: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+													}`}
 												>
-													<Trash2 className="h-4 w-4" />
-													<span className="sr-only">Delete category</span>
+													{category.is_active ? (
+														<Archive className="h-4 w-4" />
+													) : (
+														<ArchiveRestore className="h-4 w-4" />
+													)}
+													<span className="sr-only">
+														{category.is_active ? "Archive category" : "Restore category"}
+													</span>
 												</Button>
 											</div>
 										</TableCell>
@@ -479,36 +553,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				</DialogContent>
 			</Dialog>
 
-			{/* Delete Confirmation Dialog */}
-			<Dialog
-				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Are you sure?</DialogTitle>
-						<DialogDescription>
-							This action cannot be undone. This will permanently delete the
-							category: <strong>{categoryToDelete?.name}</strong> and all its
-							sub-categories.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={closeDeleteDialog}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleDelete}
-						>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</Dialog>
 	);
 }

@@ -24,22 +24,45 @@ class ProductModifierSetInline(admin.TabularInline):
     autocomplete_fields = ['modifier_set']
 
 @admin.register(ProductType)
-class ProductTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "description")
+class ProductTypeAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "description", "is_active")
+    list_filter = ("is_active",)
     search_fields = ("name",)
+    
+    def get_queryset(self, request):
+        """
+        Override to ensure archived product types are included in admin.
+        This fixes the issue where archived records don't appear when filtering by is_active=False.
+        """
+        # Explicitly include archived records using the ProductType manager
+        return ProductType.objects.with_archived()
 
 
 @admin.register(Category)
-class CategoryAdmin(DraggableMPTTAdmin):
+class CategoryAdmin(ArchivingAdminMixin, DraggableMPTTAdmin):
     list_display = (
         "tree_actions",
         "indented_title",
         "order",
+        "is_active",
     )
     list_display_links = ("indented_title",)
     search_fields = ("name",)
-    list_filter = ("parent",)
+    list_filter = ("is_active", "parent")
     raw_id_fields = ("parent",)
+    
+    def get_queryset(self, request):
+        """
+        Override to ensure archived categories are included in admin.
+        This fixes MRO issues between ArchivingAdminMixin and DraggableMPTTAdmin.
+        """
+        # Get the MPTT queryset first to preserve tree functionality
+        queryset = super(DraggableMPTTAdmin, self).get_queryset(request)
+        
+        # Explicitly include archived records using the Category manager
+        queryset = Category.objects.with_archived().select_related('parent')
+        
+        return queryset
 
 
 @admin.register(Tax)

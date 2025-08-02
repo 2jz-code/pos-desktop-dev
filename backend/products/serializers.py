@@ -90,7 +90,7 @@ class BasicProductSerializer(serializers.ModelSerializer):
 class ProductTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductType
-        fields = ["id", "name", "description"]
+        fields = ["id", "name", "description", "is_active"]
 
 class CategorySerializer(serializers.ModelSerializer):
     parent = BasicCategorySerializer(read_only=True)
@@ -100,7 +100,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "name", "description", "parent", "parent_id", "order", "is_public"]
+        fields = ["id", "name", "description", "parent", "parent_id", "order", "is_public", "is_active"]
 
 class TaxSerializer(serializers.ModelSerializer):
     class Meta:

@@ -3,7 +3,8 @@ import {
 	getProductTypes,
 	createProductType,
 	updateProductType,
-	deleteProductType,
+	archiveProductType,
+	unarchiveProductType,
 } from "@/domains/products/services/productTypeService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -25,24 +26,31 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 export function ProductTypeManagementDialog({ open, onOpenChange }) {
 	const [productTypes, setProductTypes] = useState([]);
+	const [showArchivedProductTypes, setShowArchivedProductTypes] = useState(false);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [editingType, setEditingType] = useState(null);
-	const [typeToDelete, setTypeToDelete] = useState(null);
 	const [formData, setFormData] = useState({ name: "", description: "" });
+	const [dataChanged, setDataChanged] = useState(false);
 	const { toast } = useToast();
 
 	useEffect(() => {
 		fetchProductTypes();
-	}, []);
+	}, [showArchivedProductTypes]);
 
 	const fetchProductTypes = async () => {
 		try {
-			const response = await getProductTypes();
+			const params = {};
+			if (showArchivedProductTypes) {
+				params.include_archived = 'only';
+			}
+			
+			const response = await getProductTypes(params);
 			setProductTypes(response.data);
 		} catch (error) {
 			console.error("Failed to fetch product types:", error);
@@ -74,14 +82,58 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		setEditingType(null);
 	};
 
-	const openDeleteDialog = (type) => {
-		setTypeToDelete(type);
-		setIsDeleteDialogOpen(true);
+	const handleDialogClose = (isOpen) => {
+		if (!isOpen) {
+			// Dialog is closing, notify parent if data changed
+			onOpenChange(dataChanged);
+			// Reset the dataChanged flag for next time
+			setDataChanged(false);
+		} else {
+			onOpenChange(isOpen);
+		}
 	};
 
-	const closeDeleteDialog = () => {
-		setIsDeleteDialogOpen(false);
-		setTypeToDelete(null);
+
+	const handleArchiveToggle = async (productType) => {
+		try {
+			if (productType.is_active) {
+				const response = await archiveProductType(productType.id);
+				console.log("Archive response:", response);
+				toast({
+					title: "Success",
+					description: "Product type archived successfully.",
+				});
+			} else {
+				const response = await unarchiveProductType(productType.id);
+				console.log("Unarchive response:", response);
+				toast({
+					title: "Success",
+					description: "Product type restored successfully.",
+				});
+			}
+			setDataChanged(true);
+			fetchProductTypes();
+		} catch (error) {
+			console.error("Archive/restore error:", error);
+			
+			// Better error handling - check for specific error messages
+			let errorMessage = "Failed to update product type status.";
+			if (error.response?.status === 403) {
+				errorMessage = "You don't have permission to archive product types.";
+			} else if (error.response?.status === 401) {
+				errorMessage = "You need to be logged in to archive product types.";
+			} else if (error.response?.data?.error) {
+				errorMessage = error.response.data.error;
+			} else if (error.message) {
+				errorMessage = error.message;
+			}
+			
+			toast({
+				title: "Error",
+				description: errorMessage,
+				variant: "destructive",
+			});
+		}
 	};
 
 	const handleFormSubmit = async (e) => {
@@ -94,6 +146,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 				await createProductType(formData);
 				toast({ title: "Success", description: "Product type created." });
 			}
+			setDataChanged(true);
 			fetchProductTypes();
 			closeFormDialog();
 		} catch (error) {
@@ -106,70 +159,120 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-	const handleDelete = async () => {
-		if (!typeToDelete) return;
-		try {
-			await deleteProductType(typeToDelete.id);
-			toast({ title: "Success", description: "Product type deleted." });
-			fetchProductTypes();
-			closeDeleteDialog();
-		} catch (error) {
-			console.error("Failed to delete product type:", error);
-			toast({
-				title: "Error",
-				description: "Failed to delete product type.",
-				variant: "destructive",
-			});
-		}
-	};
 
 	return (
 		<Dialog
 			open={open}
-			onOpenChange={onOpenChange}
+			onOpenChange={handleDialogClose}
 		>
-			<DialogContent className="max-w-3xl">
+			<DialogContent className="!max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
 				<DialogHeader>
-					<DialogTitle>Manage Product Types</DialogTitle>
+					<DialogTitle>
+						{showArchivedProductTypes ? "Archived Product Types" : "Manage Product Types"}
+					</DialogTitle>
 				</DialogHeader>
-				<div className="py-4">
-					<div className="flex justify-end mb-4">
+				<div className="flex-1 overflow-hidden">
+					<div className="flex justify-between items-center mb-4">
+						<Button
+							variant={showArchivedProductTypes ? "default" : "outline"}
+							size="sm"
+							onClick={() => setShowArchivedProductTypes(!showArchivedProductTypes)}
+						>
+							{showArchivedProductTypes ? (
+								<ArchiveRestore className="mr-2 h-4 w-4" />
+							) : (
+								<Archive className="mr-2 h-4 w-4" />
+							)}
+							{showArchivedProductTypes ? "Show Active" : "Show Archived"}
+						</Button>
 						<Button onClick={() => openFormDialog()}>Add Product Type</Button>
 					</div>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Name</TableHead>
-								<TableHead>Description</TableHead>
-								<TableHead>Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{productTypes.map((type) => (
-								<TableRow key={type.id}>
-									<TableCell>{type.name}</TableCell>
-									<TableCell>{type.description}</TableCell>
-									<TableCell>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => openFormDialog(type)}
+					<div className="border rounded-lg overflow-hidden">
+						<div className="max-h-[60vh] overflow-y-auto">
+							<Table>
+								<TableHeader className="sticky top-0 bg-background">
+									<TableRow>
+										<TableHead className="w-[250px]">Name</TableHead>
+										<TableHead className="w-[300px]">Description</TableHead>
+										<TableHead className="w-[100px] text-center">Status</TableHead>
+										<TableHead className="w-[120px] text-center">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{productTypes.map((type) => (
+										<TableRow 
+											key={type.id}
+											className={type.is_active ? "" : "opacity-60"}
 										>
-											Edit
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											className="text-red-500"
-											onClick={() => openDeleteDialog(type)}
-										>
-											Delete
-										</Button>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+											<TableCell 
+												className={`font-medium ${
+													type.is_active ? "" : "line-through text-gray-500"
+												}`}
+											>
+												<div className="truncate max-w-[230px]" title={type.name}>
+													{type.name}
+													{!type.is_active && (
+														<span className="ml-2 text-xs text-orange-600 font-normal">
+															(Archived)
+														</span>
+													)}
+												</div>
+											</TableCell>
+											<TableCell className="text-slate-600 dark:text-slate-400">
+												<div className="truncate max-w-[280px]" title={type.description || ""}>
+													{type.description || "—"}
+												</div>
+											</TableCell>
+											<TableCell className="text-center">
+												<Badge
+													variant={type.is_active ? "default" : "secondary"}
+													className={`text-xs whitespace-nowrap ${
+														type.is_active
+															? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+															: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+													}`}
+												>
+													{type.is_active ? "Active" : "Archived"}
+												</Badge>
+											</TableCell>
+											<TableCell>
+												<div className="flex items-center justify-center gap-1">
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => openFormDialog(type)}
+														className="h-8 w-8 p-0"
+													>
+														<Edit className="h-4 w-4" />
+														<span className="sr-only">Edit product type</span>
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleArchiveToggle(type)}
+														className={`h-8 w-8 p-0 ${
+															type.is_active 
+																? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
+																: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+														}`}
+													>
+														{type.is_active ? (
+															<Archive className="h-4 w-4" />
+														) : (
+															<ArchiveRestore className="h-4 w-4" />
+														)}
+														<span className="sr-only">
+															{type.is_active ? "Archive product type" : "Restore product type"}
+														</span>
+													</Button>
+												</div>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</div>
+					</div>
 				</div>
 			</DialogContent>
 
@@ -232,35 +335,6 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 				</DialogContent>
 			</Dialog>
 
-			{/* Delete Confirmation Dialog */}
-			<Dialog
-				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Are you sure?</DialogTitle>
-						<DialogDescription>
-							This action cannot be undone. This will permanently delete the
-							product type: <strong>{typeToDelete?.name}</strong>.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={closeDeleteDialog}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleDelete}
-						>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</Dialog>
 	);
 }

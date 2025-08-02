@@ -4,8 +4,7 @@ from rest_framework_nested import routers as nested_routers
 from .views import (
     TaxListCreateView,
     TaxDetailView,
-    ProductTypeListView,
-    ProductTypeDetailView,
+    ProductTypeViewSet,
     CategoryViewSet,
     ProductViewSet,
     ModifierSetViewSet,
@@ -17,6 +16,7 @@ from .views import (
 # Create main router
 router = DefaultRouter()
 router.register(r"categories", CategoryViewSet, basename="category")
+router.register(r"product-types", ProductTypeViewSet, basename="product-type")
 router.register(r"modifier-sets", ModifierSetViewSet, basename="modifier-set")
 router.register(r"modifier-options", ModifierOptionViewSet, basename="modifier-option")
 
@@ -31,12 +31,6 @@ products_nested_router.register(r"modifier-sets", ProductModifierSetViewSet, bas
 urlpatterns = [
     path("taxes/", TaxListCreateView.as_view(), name="tax-list"),
     path("taxes/<int:pk>/", TaxDetailView.as_view(), name="tax-detail"),
-    path("product-types/", ProductTypeListView.as_view(), name="product-type-list"),
-    path(
-        "product-types/<int:pk>/",
-        ProductTypeDetailView.as_view(),
-        name="product-type-detail",
-    ),
     path("barcode/<str:barcode>/", barcode_lookup, name="barcode-lookup"),
     # Products ViewSet actions - explicit mapping FIRST to avoid API root conflicts
     path("", ProductViewSet.as_view({'get': 'list', 'post': 'create'}), name="product-list"),
