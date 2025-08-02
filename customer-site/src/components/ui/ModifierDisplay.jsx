@@ -45,13 +45,14 @@ const ModifierDisplay = ({ modifiers, compact = false, showTotal = false }) => {
 
 	// Full display for product details/checkout
 	return (
-		<div className="space-y-1">
+		<div className="space-y-1 ml-2">
 			{modifiers.map((modifier, index) => (
 				<div
 					key={index}
-					className="flex justify-between items-center text-sm"
+					className="flex justify-between items-center text-xs"
 				>
-					<span className="text-accent-dark-brown">
+					<span className="text-accent-dark-brown flex items-center">
+						<span className="text-accent-dark-brown/50 mr-2">-</span>
 						{modifier.modifier_set_name}: {modifier.option_name}
 						{modifier.quantity > 1 && ` x${modifier.quantity}`}
 					</span>

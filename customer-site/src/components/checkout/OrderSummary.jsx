@@ -1,6 +1,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import ModifierDisplay from "@/components/ui/ModifierDisplay";
 import {
 	useFinancialSettings,
 	formatTaxRate,
@@ -73,6 +74,13 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 								<h4 className="text-sm font-medium text-accent-dark-brown">
 									{item.product.name}
 								</h4>
+								
+								{/* Display modifiers */}
+								<ModifierDisplay 
+									modifiers={item.selected_modifiers_snapshot} 
+									compact={false} 
+								/>
+								
 								{item.notes && (
 									<p className="text-xs text-accent-dark-brown/60 mt-1">
 										Note: {item.notes}

@@ -149,9 +149,9 @@ const CheckoutFlow = () => {
 	}
 
 	return (
-		<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+		<div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
 			{/* Main Checkout Flow */}
-			<div className="lg:col-span-2 space-y-6">
+			<div className="lg:col-span-3 space-y-6">
 				{/* Progress Indicator - Centered */}
 				<div className="flex justify-center">
 					<div className="w-full max-w-md">
@@ -181,7 +181,7 @@ const CheckoutFlow = () => {
 			</div>
 
 			{/* Order Summary Sidebar */}
-			<div className="lg:col-span-1">
+			<div className="lg:col-span-2">
 				<div className="sticky top-8">
 					<OrderSummary
 						cart={cart}
