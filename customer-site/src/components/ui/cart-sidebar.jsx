@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Edit } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import {
 	getProductImageUrl,
@@ -13,6 +14,7 @@ import ModifierDisplay from "@/components/ui/ModifierDisplay";
 const CartSidebar = ({ isOpen, onClose }) => {
 	const [isRestaurantOpen, setIsRestaurantOpen] = useState(true);
 	const checkoutPreloaded = useRef(false);
+	const navigate = useNavigate();
 
 	// Use the new cart hook
 	const { cart, cartItemCount, subtotal, isLoading, removeFromCart } =
@@ -87,6 +89,12 @@ const CartSidebar = ({ isOpen, onClose }) => {
 		} catch (error) {
 			console.error("Failed to remove item:", error);
 		}
+	};
+
+	const handleEditItem = (item) => {
+		// Navigate to product details page in edit mode
+		navigate(`/product/${encodeURIComponent(item.product.name)}/edit/${item.id}`);
+		onClose(); // Close the cart sidebar
 	};
 
 	const handlePreloadCheckout = () => {
@@ -174,56 +182,71 @@ const CartSidebar = ({ isOpen, onClose }) => {
 												x: -20,
 												transition: { duration: 0.2 },
 											}}
-											className="py-4 flex items-start"
+											className="py-4 pb-6 relative"
 										>
-											{/* Product Image */}
-											<div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-accent-subtle-gray/30 bg-accent-subtle-gray/20 mr-4">
-												<OptimizedImage
-													src={getProductImageUrl(item.product?.image)}
-													alt={item.product?.name || "Product"}
-													className="h-full w-full object-cover object-center"
-													onError={createImageErrorHandler("Cart Item")}
-												/>
-											</div>
+											<div className="flex items-start">
+												{/* Product Image */}
+												<div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-accent-subtle-gray/30 bg-accent-subtle-gray/20 mr-4">
+													<OptimizedImage
+														src={getProductImageUrl(item.product?.image)}
+														alt={item.product?.name || "Product"}
+														className="h-full w-full object-cover object-center"
+														onError={createImageErrorHandler("Cart Item")}
+													/>
+												</div>
 
-											{/* Product Info */}
-											<div className="flex-grow min-w-0">
-												<h4 className="text-sm font-medium text-accent-dark-green truncate">
-													{item.product?.name || "Unknown Product"}
-												</h4>
-												<p className="text-sm text-accent-dark-brown">
-													${formatPrice(item.price_at_sale)} × {item.quantity}
-												</p>
-												
-												{/* Display modifiers */}
-												<ModifierDisplay 
-													modifiers={item.selected_modifiers_snapshot} 
-													compact={true} 
-												/>
-												
-												{item.notes && (
-													<p className="text-xs text-accent-subtle-gray italic mt-1">
-														{item.notes}
+												{/* Product Info */}
+												<div className="flex-grow min-w-0">
+													<h4 className="text-sm font-medium text-accent-dark-green truncate">
+														{item.product?.name || "Unknown Product"}
+													</h4>
+													<p className="text-sm text-accent-dark-brown">
+														${formatPrice(item.price_at_sale)} × {item.quantity}
 													</p>
-												)}
+													
+													{/* Display modifiers */}
+													<ModifierDisplay 
+														modifiers={item.selected_modifiers_snapshot} 
+														compact={true} 
+													/>
+													
+													{item.notes && (
+														<p className="text-xs text-accent-subtle-gray italic mt-1">
+															{item.notes}
+														</p>
+													)}
+												</div>
+
+												{/* Item Actions */}
+												<div className="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
+													<span className="text-sm font-medium text-accent-dark-green">
+														$
+														{formatPrice(
+															(item.price_at_sale || 0) * item.quantity
+														)}
+													</span>
+													<button
+														onClick={() => handleRemoveItem(item.id)}
+														className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-red-500"
+														aria-label="Remove item"
+													>
+														<FaTrash size={12} />
+													</button>
+												</div>
 											</div>
 
-											{/* Item Actions */}
-											<div className="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
-												<span className="text-sm font-medium text-accent-dark-green">
-													$
-													{formatPrice(
-														(item.price_at_sale || 0) * item.quantity
-													)}
-												</span>
+											{/* Edit button - positioned in bottom right with proper spacing */}
+											{item.selected_modifiers_snapshot && 
+											 item.selected_modifiers_snapshot.length > 0 && (
 												<button
-													onClick={() => handleRemoveItem(item.id)}
-													className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-red-500"
-													aria-label="Remove item"
+													onClick={() => handleEditItem(item)}
+													className="absolute bottom-1 right-0 text-xs text-accent-dark-green hover:text-primary-green underline transition-colors focus:outline-none px-1 py-1"
+													aria-label="Edit item"
+													title="Edit customizations"
 												>
-													<FaTrash size={12} />
+													Edit
 												</button>
-											</div>
+											)}
 										</motion.li>
 									))}
 								</ul>

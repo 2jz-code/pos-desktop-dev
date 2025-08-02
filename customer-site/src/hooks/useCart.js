@@ -326,6 +326,33 @@ export const useCart = () => {
 			mutations.removeFromCart.mutate({ orderId, itemId });
 		},
 
+		updateCartItemWithModifiers: async (itemId, product, quantity, notes = "", selectedModifiers = []) => {
+			// For modifier updates, we remove the old item and add a new one
+			// This ensures all calculations and snapshots are handled correctly
+			const orderId = cartQuery.data?.id;
+			if (!orderId) {
+				toast.error("Cannot update item: cart not found.");
+				return;
+			}
+			
+			try {
+				// Remove the old item
+				await mutations.removeFromCart.mutateAsync({ orderId, itemId });
+				
+				// Add the updated item
+				return mutations.addToCart.mutateAsync({
+					productId: product.id,
+					product,
+					quantity,
+					notes,
+					selectedModifiers,
+				});
+			} catch (error) {
+				console.error("Failed to update cart item:", error);
+				throw error;
+			}
+		},
+
 		clearCart: () => {
 			const orderId = cartQuery.data?.id;
 			if (!orderId) {

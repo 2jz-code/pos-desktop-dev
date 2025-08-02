@@ -17,7 +17,7 @@ import InlineModifierSelector from "@/components/modifiers/InlineModifierSelecto
 import { calculateProductTotalWithModifiers } from "@/utils/modifierCalculations";
 
 const ProductDetailsPage = () => {
-	const { productName } = useParams();
+	const { productName, cartItemId } = useParams();
 	const [product, setProduct] = useState(null);
 	const [quantity, setQuantity] = useState(1);
 	const [isLoading, setIsLoading] = useState(true);
@@ -27,8 +27,13 @@ const ProductDetailsPage = () => {
 	const [relatedProducts, setRelatedProducts] = useState([]);
 	const [selectedModifiers, setSelectedModifiers] = useState([]);
 	const [modifiersValid, setModifiersValid] = useState(true);
+	const [cartItem, setCartItem] = useState(null);
+	const [isUpdating, setIsUpdating] = useState(false);
 	const navigate = useNavigate();
-	const { addToCart } = useCart();
+	const { addToCart, cart, removeFromCart, updateCartItemWithModifiers } = useCart();
+	
+	// Determine if we're in edit mode
+	const isEditMode = Boolean(cartItemId);
 
 	useEffect(() => {
 		const fetchProduct = async () => {
@@ -83,6 +88,23 @@ const ProductDetailsPage = () => {
 		fetchProduct();
 	}, [productName]);
 
+	// Effect to populate form data when in edit mode
+	useEffect(() => {
+		if (isEditMode && cart && cartItemId && !cartItem && !isUpdating) {
+			// Only try to find the item if we haven't already found it and aren't updating
+			const item = cart.items?.find(item => item.id.toString() === cartItemId);
+			if (item) {
+				setCartItem(item);
+				setQuantity(item.quantity);
+				setSelectedModifiers(item.selected_modifiers_snapshot || []);
+			} else if (cart.items && cart.items.length > 0) {
+				// Cart item not found and cart has items, redirect back to menu
+				toast.error("Item not found in cart");
+				navigate("/menu");
+			}
+		}
+	}, [isEditMode, cart, cartItemId, navigate, cartItem, isUpdating]);
+
 	const formatPrice = (price) => {
 		if (price === null || price === undefined) return "0.00";
 		const numericPrice = typeof price === "string" ? parseFloat(price) : price;
@@ -116,22 +138,43 @@ const ProductDetailsPage = () => {
 		}
 		
 		setAddingToCart(true);
+		if (isEditMode) {
+			setIsUpdating(true);
+		}
+		
 		try {
-			const result = await addToCart(product, quantity, "", selectedModifiers);
-			if (result && result.success) {
-				toast.success(`${quantity} ${product.name}(s) added to your cart!`);
-				setQuantity(1);
-				setSelectedModifiers([]);
-			} else {
-				toast.error(
-					result?.error || "Failed to add item to cart. Please try again."
+			if (isEditMode && cartItem) {
+				// Edit mode: Update cart item with new modifiers
+				const result = await updateCartItemWithModifiers(
+					cartItem.id, 
+					product, 
+					quantity, 
+					cartItem.notes || "", 
+					selectedModifiers
 				);
+				if (result) {
+					toast.success(`${product.name} updated in your cart!`);
+					navigate("/menu");
+				}
+			} else {
+				// Add mode: Normal add to cart
+				const result = await addToCart(product, quantity, "", selectedModifiers);
+				if (result && result.success) {
+					toast.success(`${quantity} ${product.name}(s) added to your cart!`);
+					setQuantity(1);
+					setSelectedModifiers([]);
+				} else {
+					toast.error(
+						result?.error || "Failed to add item to cart. Please try again."
+					);
+				}
 			}
 		} catch (err) {
-			console.error("Failed to add to cart:", err);
-			toast.error("Failed to add item to cart. Please try again.");
+			console.error("Failed to add/update cart:", err);
+			toast.error(isEditMode ? "Failed to update item. Please try again." : "Failed to add item to cart. Please try again.");
 		} finally {
 			setAddingToCart(false);
+			setIsUpdating(false);
 		}
 	};
 
@@ -244,7 +287,7 @@ const ProductDetailsPage = () => {
 				<span className="text-primary-green">{categoryName}</span>
 				<span className="mx-2 text-accent-subtle-gray">/</span>
 				<span className="font-medium text-accent-dark-green">
-					{product.name}
+					{isEditMode ? `Editing: ${product.name}` : product.name}
 				</span>
 			</nav>
 
@@ -407,7 +450,7 @@ const ProductDetailsPage = () => {
 							) : (
 								<>
 									<FaShoppingCart className="mr-2" />
-									Add to Cart
+									{isEditMode ? "Update Item" : "Add to Cart"}
 								</>
 							)}
 						</motion.button>

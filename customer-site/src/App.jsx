@@ -91,6 +91,10 @@ function App() {
 												element={<ProductDetailsPage />}
 											/>
 											<Route
+												path="/product/:productName/edit/:cartItemId"
+												element={<ProductDetailsPage />}
+											/>
+											<Route
 												path="/checkout"
 												element={<CheckoutPage />}
 											/>
