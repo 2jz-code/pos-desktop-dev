@@ -21,7 +21,7 @@ export const userAPI = {
 
 	getOrderHistory: async () => {
 		try {
-			const { data } = await apiClient.get("/orders/");
+			const { data } = await apiClient.get("/auth/customer/orders/");
 			// Check if data is paginated (has results property) or is a direct array
 			return data.results || data;
 		} catch (error) {

@@ -49,8 +49,8 @@ export const ordersAPI = {
 	},
 
 	// Get current user's orders (works for both auth and guest)
-	getCurrentUserOrders: async (url = "/orders/") => {
-        // Let axios handle the full URL if provided, otherwise it will use the base URL
+	getCurrentUserOrders: async (url = "/auth/customer/orders/") => {
+        // Use customer-specific endpoint to avoid conflicts with admin authentication
 		const response = await apiClient.get(url);
 		return response.data;
 	},

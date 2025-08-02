@@ -89,9 +89,10 @@ class UserService:
         }
 
     @staticmethod
-    def set_auth_cookies(response, access_token, refresh_token):
+    def set_auth_cookies(response, access_token, refresh_token, cookie_path="/api"):
         """
         Set authentication cookies for staff/admin users.
+        Uses /api path by default to separate from customer cookies.
         """
         # Use settings from environment/settings.py instead of hardcoded values
         is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
@@ -102,7 +103,7 @@ class UserService:
             value=access_token,
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/",
+            path=cookie_path,  # Use specific path to avoid conflicts with customer cookies
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,
@@ -112,7 +113,7 @@ class UserService:
             value=refresh_token,
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/",
+            path=cookie_path,  # Use specific path to avoid conflicts with customer cookies
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,

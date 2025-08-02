@@ -1,4 +1,5 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .customer_views import (
     CustomerRegisterView,
     CustomerLoginView,
@@ -8,6 +9,11 @@ from .customer_views import (
     CustomerChangePasswordView,
     CustomerCurrentUserView,
 )
+from .customer_order_views import CustomerOrderViewSet
+
+# Create router for customer order endpoints
+router = DefaultRouter()
+router.register(r'orders', CustomerOrderViewSet, basename='customer-orders')
 
 app_name = "customer_auth"
 
@@ -22,4 +28,7 @@ urlpatterns = [
     path("profile/", CustomerProfileView.as_view(), name="profile"),
     path("current-user/", CustomerCurrentUserView.as_view(), name="current_user"),
     path("change-password/", CustomerChangePasswordView.as_view(), name="change_password"),
+    
+    # Customer order endpoints
+    path("", include(router.urls)),
 ] 

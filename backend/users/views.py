@@ -177,36 +177,16 @@ class WebTokenRefreshView(TokenRefreshView):
         except (TokenError, InvalidToken) as e:
             # If the refresh token is invalid, clear the cookies
             response = Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
-            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE"], path="/")
-            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"], path="/")
+            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE"], path="/api")
+            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"], path="/api")
             return response
 
         if response.status_code == 200:
             access_token = response.data.pop("access")
             new_refresh_token = response.data.pop("refresh", None) or refresh_token
 
-            # Use settings from environment/settings.py instead of hardcoded values
-            is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
-            samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
-
-            response.set_cookie(
-                key=settings.SIMPLE_JWT["AUTH_COOKIE"],
-                value=access_token,
-                # ...
-                path="/",
-                httponly=True,
-                secure=is_secure,
-                samesite=samesite_policy,
-            )
-            response.set_cookie(
-                key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
-                value=new_refresh_token,
-                # ...
-                path="/",
-                httponly=True,
-                secure=is_secure,
-                samesite=samesite_policy,
-            )
+            # Use the UserService method with admin path
+            UserService.set_auth_cookies(response, access_token, new_refresh_token, cookie_path="/api")
         return response
 
 
@@ -232,24 +212,43 @@ class LogoutView(APIView):
         )
 
         # Forcefully expire the cookies by setting their max_age to 0.
-        # This is a more robust method than delete_cookie.
+        # Clear cookies for both admin (/api) and customer (/api/auth/customer) paths
+        cookie_settings = {
+            'samesite': getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+            'secure': getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
+            'httponly': True,
+        }
+        
+        # Clear admin cookies (path /api)
         response.set_cookie(
             key=settings.SIMPLE_JWT["AUTH_COOKIE"],
             value="",
             max_age=0,
-            path="/",
-            samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
-            secure=getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
-            httponly=True,
+            path="/api",
+            **cookie_settings
         )
         response.set_cookie(
             key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
             value="",
             max_age=0,
-            path="/",
-            samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
-            secure=getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
-            httponly=True,
+            path="/api",
+            **cookie_settings
+        )
+        
+        # Clear customer cookies (path /api/auth/customer)
+        response.set_cookie(
+            key=f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer",
+            value="",
+            max_age=0,
+            path="/api/auth/customer",
+            **cookie_settings
+        )
+        response.set_cookie(
+            key=f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",
+            value="",
+            max_age=0,
+            path="/api/auth/customer",
+            **cookie_settings
         )
 
         # Also call Django's logout to be safe and clear any residual session data.

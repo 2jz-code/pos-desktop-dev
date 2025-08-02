@@ -81,14 +81,14 @@ class GetPendingOrderView(generics.RetrieveAPIView):
 
 class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
-    A comprehensive ViewSet for handling orders and their items.
+    A comprehensive ViewSet for handling orders and their items - Admin/Staff only.
     Provides CRUD for orders and cart management functionalities.
-    Supports both authenticated users and guest users.
+    For customer orders, use /api/auth/customer/orders/ endpoints.
     (Now with automated query optimization)
     """
 
     queryset = Order.objects.all()
-    authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
+    authentication_classes = [CookieJWTAuthentication]  # Admin/staff authentication only
     permission_classes = [IsAuthenticatedOrGuestOrder]
     pagination_class = StandardPagination  # Add pagination for orders
     ordering = ['-created_at']  # Explicitly set ordering for pagination

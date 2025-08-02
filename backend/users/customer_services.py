@@ -126,7 +126,7 @@ class CustomerAuthService:
             value=access_token,
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/",
+            path="/api/auth/customer",  # Use customer-specific path to avoid conflicts
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,
@@ -137,7 +137,7 @@ class CustomerAuthService:
             value=refresh_token,
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/",
+            path="/api/auth/customer",  # Use customer-specific path to avoid conflicts
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,
@@ -151,8 +151,8 @@ class CustomerAuthService:
         access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
         refresh_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
         
-        response.delete_cookie(access_cookie_name, path="/")
-        response.delete_cookie(refresh_cookie_name, path="/")
+        response.delete_cookie(access_cookie_name, path="/api/auth/customer")
+        response.delete_cookie(refresh_cookie_name, path="/api/auth/customer")
 
     @staticmethod
     def get_customer_profile(user):

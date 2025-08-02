@@ -174,14 +174,16 @@ class CustomerTokenRefreshView(APIView):
                 # Set new access token cookie (keep same refresh token)
                 access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
                 
-                is_secure = not settings.DEBUG
-                samesite_policy = "Lax"
+                # Use same settings as other customer authentication
+                is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+                samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
                 
                 response.set_cookie(
                     key=access_cookie_name,
                     value=str(new_access),
                     max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
-                    path="/",
+                    domain=None,
+                    path="/api/auth/customer",  # Use customer-specific path
                     httponly=True,
                     secure=is_secure,
                     samesite=samesite_policy,

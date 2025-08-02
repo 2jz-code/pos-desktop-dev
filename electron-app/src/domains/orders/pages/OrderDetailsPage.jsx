@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/shared/components/ui/badge";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { formatCurrency } from "@/shared/lib/utils";
+import ModifierDisplay from "@/shared/components/ui/ModifierDisplay";
 import {
 	ArrowLeft,
 	CreditCard,
@@ -313,19 +314,28 @@ const OrderDetailsPage = () => {
 											{items.map((item) => (
 												<div
 													key={item.id}
-													className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700"
+													className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700"
 												>
-													<div>
-														<span className="font-medium text-slate-900 dark:text-slate-100">
-															{item.product.name}
-														</span>
-														<span className="text-slate-500 dark:text-slate-400 ml-2">
-															(x{item.quantity})
+													<div className="flex justify-between items-center">
+														<div>
+															<span className="font-medium text-slate-900 dark:text-slate-100">
+																{item.product.name}
+															</span>
+															<span className="text-slate-500 dark:text-slate-400 ml-2">
+																(x{item.quantity})
+															</span>
+														</div>
+														<span className="font-semibold text-slate-900 dark:text-slate-100">
+															{formatCurrency(item.price_at_sale * item.quantity)}
 														</span>
 													</div>
-													<span className="font-semibold text-slate-900 dark:text-slate-100">
-														{formatCurrency(item.price_at_sale * item.quantity)}
-													</span>
+													{item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0 && (
+														<ModifierDisplay 
+															modifiers={item.selected_modifiers_snapshot}
+															compact={false}
+															showTotal={false}
+														/>
+													)}
 												</div>
 											))}
 										</div>
