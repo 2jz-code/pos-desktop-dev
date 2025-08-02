@@ -1,9 +1,10 @@
 from django.contrib import admin
 from .models import Location, InventoryStock, Recipe, RecipeItem
+from core_backend.admin_mixins import ArchivingAdminMixin
 
 
 @admin.register(Location)
-class LocationAdmin(admin.ModelAdmin):
+class LocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "description", "low_stock_threshold", "expiration_threshold")
     search_fields = ("name",)
     fieldsets = (
@@ -18,7 +19,7 @@ class LocationAdmin(admin.ModelAdmin):
 
 
 @admin.register(InventoryStock)
-class InventoryStockAdmin(admin.ModelAdmin):
+class InventoryStockAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("product", "location", "quantity")
     list_filter = ("location", "product")
     search_fields = ("product__name", "location__name")
@@ -38,7 +39,7 @@ class RecipeItemInline(admin.TabularInline):
 
 
 @admin.register(Recipe)
-class RecipeAdmin(admin.ModelAdmin):
+class RecipeAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "menu_item")
     search_fields = ("name", "menu_item__name")
     autocomplete_fields = ("menu_item",)

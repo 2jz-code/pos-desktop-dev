@@ -20,12 +20,36 @@ export const deleteProduct = (id) => {
 	return apiClient.delete(`/products/${id}/`);
 };
 
-// Archive product (soft delete by setting is_active to false)
+// Archive product using new REST endpoint
 export const archiveProduct = (id) => {
-	return apiClient.patch(`/products/${id}/`, { is_active: false });
+	return apiClient.post(`/products/${id}/archive/`);
 };
 
-// Unarchive product (restore by setting is_active to true)
+// Unarchive product using new REST endpoint
 export const unarchiveProduct = (id) => {
-	return apiClient.patch(`/products/${id}/`, { is_active: true });
+	return apiClient.post(`/products/${id}/unarchive/`);
+};
+
+// Get products with archived records included
+export const getProductsWithArchived = (params = {}) => {
+	return apiClient.get("/products/", { 
+		params: { ...params, include_archived: true } 
+	});
+};
+
+// Get only archived products
+export const getArchivedProducts = (params = {}) => {
+	return apiClient.get("/products/", { 
+		params: { ...params, include_archived: 'only' } 
+	});
+};
+
+// Bulk archive multiple products
+export const bulkArchiveProducts = (productIds) => {
+	return apiClient.post('/products/bulk_archive/', { ids: productIds });
+};
+
+// Bulk unarchive multiple products  
+export const bulkUnarchiveProducts = (productIds) => {
+	return apiClient.post('/products/bulk_unarchive/', { ids: productIds });
 };

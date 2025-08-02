@@ -1,5 +1,6 @@
 from django.contrib import admin
 from mptt.admin import DraggableMPTTAdmin
+from core_backend.admin_mixins import ArchivingAdminMixin
 from .models import (
     Category, Tax, Product, ProductType, 
     ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption
@@ -48,14 +49,21 @@ class TaxAdmin(admin.ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "product_type", "price", "category", "is_active", "is_public")
     list_filter = ("is_active", "is_public", "category", "product_type")
     search_fields = ("name", "description")
-    list_editable = ("price", "is_active", "is_public")
+    list_editable = ("price", "is_public")  # Removed is_active from editable fields
     autocomplete_fields = ("category", "taxes")
-    actions = ["make_public", "make_private"]
     inlines = [ProductModifierSetInline]
+    
+    def get_actions(self, request):
+        """Combine archiving actions with custom product actions."""
+        actions = super().get_actions(request)
+        # Add our custom actions
+        actions['make_public'] = (ProductAdmin.make_public, 'make_public', ProductAdmin.make_public.short_description)
+        actions['make_private'] = (ProductAdmin.make_private, 'make_private', ProductAdmin.make_private.short_description)
+        return actions
 
     def make_public(self, request, queryset):
         queryset.update(is_public=True)

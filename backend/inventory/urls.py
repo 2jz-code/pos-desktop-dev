@@ -1,9 +1,9 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
-    LocationListCreateView,
-    LocationDetailView,
-    RecipeListCreateView,
-    RecipeDetailView,
+    LocationViewSet,
+    RecipeViewSet,
+    InventoryStockViewSet,
     InventoryStockListView,
     ProductStockListView,
     AdjustStockView,
@@ -17,15 +17,17 @@ from .views import (
     barcode_stock_adjustment,
 )
 
+# Create router and register viewsets
+router = DefaultRouter()
+router.register(r'locations', LocationViewSet)
+router.register(r'recipes', RecipeViewSet)
+router.register(r'stock-management', InventoryStockViewSet)
+
 app_name = "inventory"
 
 urlpatterns = [
-    # Locations
-    path("locations/", LocationListCreateView.as_view(), name="location-list-create"),
-    path("locations/<int:pk>/", LocationDetailView.as_view(), name="location-detail"),
-    # Recipes
-    path("recipes/", RecipeListCreateView.as_view(), name="recipe-list-create"),
-    path("recipes/<int:pk>/", RecipeDetailView.as_view(), name="recipe-detail"),
+    # Include router URLs (provides CRUD + archiving endpoints)
+    path('', include(router.urls)),
     # Stock Levels (Read-only view)
     path("stock/", InventoryStockListView.as_view(), name="stock-list"),
     path(

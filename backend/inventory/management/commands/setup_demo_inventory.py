@@ -26,7 +26,11 @@ class Command(BaseCommand):
         with transaction.atomic():
             if options['reset']:
                 self.stdout.write('Resetting existing inventory data...')
-                InventoryStock.objects.all().delete()
+                # Archive all existing stock instead of hard delete
+                if hasattr(InventoryStock.objects, 'archive'):
+                    InventoryStock.objects.all().archive()
+                else:
+                    InventoryStock.objects.all().delete()
                 # Keep locations but clear their stock
 
             # Get or create default location

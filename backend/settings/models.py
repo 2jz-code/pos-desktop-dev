@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from decimal import Decimal
+from core_backend.archiving import SoftDeleteMixin
 
 
 # === CHOICES ===
@@ -14,7 +15,7 @@ class TerminalProvider(models.TextChoices):
 # === CORE BUSINESS MODELS ===
 
 
-class StoreLocation(models.Model):
+class StoreLocation(SoftDeleteMixin):
     """
     Represents a primary physical store location, independent of any payment provider.
     This is the definitive source of truth for business locations.
@@ -319,7 +320,7 @@ class TerminalRegistration(models.Model):
         verbose_name_plural = "Terminal Registrations"
 
 
-class TerminalLocation(models.Model):
+class TerminalLocation(SoftDeleteMixin):
     """
     Represents a Stripe-specific configuration linked to a primary StoreLocation.
     This model acts as a bridge, scoping Stripe API actions (like discovering readers)
@@ -328,7 +329,7 @@ class TerminalLocation(models.Model):
 
     store_location = models.OneToOneField(
         StoreLocation,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         null=True,  # Temporarily allow null for migration
         help_text="The primary store this Stripe configuration is for.",
     )

@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
+from core_backend.archiving import SoftDeleteMixin
 
 User = get_user_model()
 
@@ -65,11 +66,11 @@ class ReportCache(models.Model):
         return cls.objects.filter(expires_at__lt=timezone.now()).delete()
 
 
-class SavedReport(models.Model):
+class SavedReport(SoftDeleteMixin):
     """Extended saved reports with file management"""
 
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="saved_reports"
+        User, on_delete=models.PROTECT, related_name="saved_reports"
     )
     name = models.CharField(max_length=200)
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
@@ -159,7 +160,7 @@ class SavedReport(models.Model):
         self.save()
 
 
-class ReportTemplate(models.Model):
+class ReportTemplate(SoftDeleteMixin):
     """Pre-configured report templates"""
 
     name = models.CharField(max_length=200)

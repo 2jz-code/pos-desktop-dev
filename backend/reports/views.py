@@ -8,7 +8,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.http import Http404
 
-from core_backend.mixins import OptimizedQuerysetMixin
+from core_backend.mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
 from core_backend.pagination import StandardPagination
 from users.permissions import IsManagerOrHigher
 
@@ -323,7 +323,7 @@ class ReportViewSet(viewsets.ViewSet):
             )
 
 
-class SavedReportViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class SavedReportViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
     Saved reports management following existing patterns
     """
@@ -457,7 +457,7 @@ class SavedReportViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
             )
 
 
-class ReportTemplateViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class ReportTemplateViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
     Report templates management
     """

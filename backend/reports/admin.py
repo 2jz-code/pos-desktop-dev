@@ -3,6 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 from .models import ReportCache, SavedReport, ReportTemplate, ReportExecution
+from core_backend.admin_mixins import ArchivingAdminMixin
 
 
 @admin.register(ReportCache)
@@ -46,7 +47,7 @@ class ReportCacheAdmin(admin.ModelAdmin):
 
 
 @admin.register(SavedReport)
-class SavedReportAdmin(admin.ModelAdmin):
+class SavedReportAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "user",
@@ -124,7 +125,7 @@ class SavedReportAdmin(admin.ModelAdmin):
 
 
 @admin.register(ReportTemplate)
-class ReportTemplateAdmin(admin.ModelAdmin):
+class ReportTemplateAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "report_type",

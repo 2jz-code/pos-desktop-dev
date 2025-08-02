@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
@@ -18,33 +18,28 @@ from .serializers import (
 from .services import InventoryService
 from products.models import Product
 from settings.config import app_settings
+from core_backend.mixins import ArchivingViewSetMixin
 
 # Create your views here.
 
 # --- Model-based Views ---
 
 
-class LocationListCreateView(generics.ListCreateAPIView):
+class LocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
-class LocationDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Location.objects.all()
-    serializer_class = LocationSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
-class RecipeListCreateView(generics.ListCreateAPIView):
+class RecipeViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
-class RecipeDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Recipe.objects.all()
-    serializer_class = RecipeSerializer
+class InventoryStockViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+    queryset = InventoryStock.objects.all()
+    serializer_class = InventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
 
 

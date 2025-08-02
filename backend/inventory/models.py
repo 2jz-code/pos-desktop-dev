@@ -3,9 +3,10 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from datetime import timedelta
 from products.models import Product
+from core_backend.archiving import SoftDeleteMixin
 
 
-class Location(models.Model):
+class Location(SoftDeleteMixin):
     """
     Represents a physical location where inventory is stored.
     e.g., 'Back Storeroom', 'Front Customer Cooler', 'Main Walk-in Freezer'.
@@ -58,16 +59,16 @@ class Location(models.Model):
         return app_settings.default_expiration_threshold
 
 
-class InventoryStock(models.Model):
+class InventoryStock(SoftDeleteMixin):
     """
     Tracks the quantity of a specific product at a specific location.
     """
 
     product = models.ForeignKey(
-        Product, on_delete=models.CASCADE, related_name="stock_levels"
+        Product, on_delete=models.PROTECT, related_name="stock_levels"
     )
     location = models.ForeignKey(
-        Location, on_delete=models.CASCADE, related_name="stock_levels"
+        Location, on_delete=models.PROTECT, related_name="stock_levels"
     )
     quantity = models.DecimalField(
         max_digits=10,
@@ -161,14 +162,14 @@ class InventoryStock(models.Model):
         return f"{self.product.name} at {self.location.name}: {self.quantity}"
 
 
-class Recipe(models.Model):
+class Recipe(SoftDeleteMixin):
     """
     Defines the recipe for a MenuItem.
     """
 
     menu_item = models.OneToOneField(
         Product,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="recipe",
         help_text=_("The menu item this recipe is for."),
         limit_choices_to={"product_type": "menu"},
@@ -189,15 +190,15 @@ class Recipe(models.Model):
         return self.name
 
 
-class RecipeItem(models.Model):
+class RecipeItem(SoftDeleteMixin):
     """
     A through model representing an ingredient in a recipe.
     """
 
-    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
+    recipe = models.ForeignKey(Recipe, on_delete=models.PROTECT)
     product = models.ForeignKey(
         Product,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         help_text=_("The product used as an ingredient."),
     )
     quantity = models.DecimalField(

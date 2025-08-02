@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from mptt.models import MPTTModel, TreeForeignKey
+from core_backend.archiving import SoftDeleteMixin
 
 
 class Category(MPTTModel):
@@ -77,7 +78,7 @@ class ProductType(models.Model):
         return self.name
 
 
-class Product(models.Model):
+class Product(SoftDeleteMixin):
     product_type = models.ForeignKey(
         ProductType,
         on_delete=models.PROTECT,
@@ -109,9 +110,7 @@ class Product(models.Model):
     modifier_sets = models.ManyToManyField(
         'ModifierSet', through="ProductModifierSet", related_name="products", blank=True
     )
-    is_active = models.BooleanField(
-        default=True, help_text=_("Is this product available for sale?")
-    )
+    # is_active is now provided by SoftDeleteMixin
     is_public = models.BooleanField(
         default=True,
         help_text=_(
@@ -137,6 +136,10 @@ class Product(models.Model):
         null=True,
         unique=True,
         help_text=_("Product barcode for scanning"),
+    )
+    has_modifiers = models.BooleanField(
+        default=False,
+        help_text=_("Whether this product has modifier sets configured."),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

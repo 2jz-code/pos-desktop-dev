@@ -110,11 +110,17 @@ const ProductsPage = () => {
 		}, 100);
 	});
 
-	const fetchProducts = async (includeArchived = false) => {
+	const fetchProducts = async (showArchivedOnly = false) => {
 		try {
 			setLoading(true);
-			// Pass is_active parameter based on what products we want to show
-			const params = { is_active: !includeArchived };
+			// Use new query parameter format for archiving
+			const params = {};
+			
+			if (showArchivedOnly) {
+				// When showing archived, use include_archived=only to get only archived products
+				params.include_archived = 'only';
+			}
+			// Default behavior: only active products (handled by backend SoftDeleteManager)
 			
 			// If we have a modifier context, we need to include all modifiers to see conditional ones
 			if (modifierContext) {
@@ -123,7 +129,9 @@ const ProductsPage = () => {
 			
 			const response = await getProducts(params);
 			const fetchedProducts = response.data || [];
-			setAllProducts(fetchedProducts); // Store complete list
+			
+			// No need for client-side filtering since backend handles it properly now
+			setAllProducts(fetchedProducts);
 			applyFilters(fetchedProducts);
 			setError(null);
 		} catch (err) {

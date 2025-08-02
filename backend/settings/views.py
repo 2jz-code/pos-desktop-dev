@@ -21,6 +21,7 @@ from .serializers import (
 )
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from payments.strategies import StripeTerminalStrategy
+from core_backend.mixins import ArchivingViewSetMixin
 
 # Create your views here.
 
@@ -411,7 +412,7 @@ class TerminalRegistrationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class StoreLocationViewSet(viewsets.ModelViewSet):
+class StoreLocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     """
     API endpoint for managing primary Store Locations.
     """

@@ -9,6 +9,7 @@ from .models import (
     PrinterConfiguration,
     WebOrderSettings,
 )
+from core_backend.admin_mixins import ArchivingAdminMixin
 
 
 @admin.register(GlobalSettings)
@@ -103,7 +104,7 @@ class TerminalLocationInline(admin.StackedInline):
 
 
 @admin.register(StoreLocation)
-class StoreLocationAdmin(admin.ModelAdmin):
+class StoreLocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     """
     Admin view for the primary StoreLocation model.
     Includes an inline for the Stripe configuration.

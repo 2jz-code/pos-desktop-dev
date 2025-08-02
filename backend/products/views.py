@@ -22,6 +22,7 @@ from .serializers import (
 from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
+from core_backend.mixins import ArchivingViewSetMixin
 
 class ProductModifierSetViewSet(viewsets.ModelViewSet):
     queryset = ProductModifierSet.objects.all()
@@ -302,8 +303,8 @@ class ModifierOptionViewSet(viewsets.ModelViewSet):
 # Create your views here.
 
 
-class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.select_related(
+class ProductViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+    queryset = Product.objects.with_archived().select_related(
         "category", "product_type"
     ).prefetch_related(
         "taxes",
@@ -320,23 +321,28 @@ class ProductViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "description", "barcode"]
 
     def get_queryset(self):
+        # First, let the ArchivingViewSetMixin handle archiving parameters
         queryset = super().get_queryset()
 
         # Check if the request is for the customer-facing website
         is_for_website = self.request.query_params.get("for_website") == "true"
 
-        # For update operations (PATCH, PUT, DELETE), include all products
+        # For update operations (PATCH, PUT, DELETE), include archived products for archiving endpoints
         # This allows unarchiving archived products
-        if self.action in ["update", "partial_update", "destroy", "retrieve"]:
-            # Don't filter by is_active for individual product operations
-            pass
+        if self.action in ["update", "partial_update", "destroy", "retrieve", "archive", "unarchive"]:
+            # Include all products (active and archived) for individual operations
+            if hasattr(queryset, 'with_archived'):
+                queryset = queryset.with_archived()
         else:
-            # Default to active products only if no is_active filter is specified
-            # This maintains backward compatibility for existing API consumers
+            # For list operations, only apply additional filters if no archiving params are used
+            include_archived = self.request.query_params.get('include_archived')
             is_active_param = self.request.query_params.get("is_active")
-            if is_active_param is None:
-                # Default behavior: only show active products for list operations
-                queryset = queryset.filter(is_active=True)
+            
+            # Only apply additional filtering if no archiving parameters are present
+            if not include_archived and is_active_param is not None:
+                # Explicit is_active parameter (backward compatibility)
+                is_active = is_active_param.lower() == "true"
+                queryset = queryset.filter(is_active=is_active)
 
             # Filter for website visibility: both product and category must be public
             if is_for_website:
