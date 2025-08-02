@@ -163,6 +163,60 @@ export const sortModifiersForDisplay = (selectedModifiers = []) => {
 	});
 };
 
+/**
+ * Check if a product has any modifier groups
+ * @param {import('@/types/modifiers').ProductWithModifiers} product - Product to check
+ * @returns {boolean}
+ */
+export const productHasModifiers = (product) => {
+	return product?.modifier_groups && product.modifier_groups.length > 0;
+};
+
+/**
+ * Check if a product has any required modifier groups
+ * @param {import('@/types/modifiers').ProductWithModifiers} product - Product to check
+ * @returns {boolean}
+ */
+export const productHasRequiredModifiers = (product) => {
+	return product?.modifier_groups?.some(set => set.min_selections > 0) || false;
+};
+
+/**
+ * Check if a product can be quick-added (no required modifiers)
+ * @param {import('@/types/modifiers').ProductWithModifiers} product - Product to check
+ * @returns {boolean}
+ */
+export const canQuickAddProduct = (product) => {
+	return !productHasRequiredModifiers(product);
+};
+
+/**
+ * Get appropriate button text based on product modifier requirements
+ * @param {import('@/types/modifiers').ProductWithModifiers} product - Product to check
+ * @returns {string}
+ */
+export const getProductButtonText = (product) => {
+	if (productHasRequiredModifiers(product)) {
+		return "View Details";
+	}
+	return "Quick Add";
+};
+
+/**
+ * Get tooltip text explaining why some products need detail view
+ * @param {import('@/types/modifiers').ProductWithModifiers} product - Product to check
+ * @returns {string}
+ */
+export const getProductButtonTooltip = (product) => {
+	if (productHasRequiredModifiers(product)) {
+		return "This item requires customization - click to see options";
+	}
+	if (productHasModifiers(product)) {
+		return "Click to customize or quick add with defaults";
+	}
+	return "Add this item to your cart";
+};
+
 export default {
 	calculateProductTotalWithModifiers,
 	calculateModifierPriceBreakdown,
@@ -172,5 +226,10 @@ export default {
 	validatePriceCalculation,
 	createModifiersSummaryText,
 	shouldHighlightModifiers,
-	sortModifiersForDisplay
+	sortModifiersForDisplay,
+	productHasModifiers,
+	productHasRequiredModifiers,
+	canQuickAddProduct,
+	getProductButtonText,
+	getProductButtonTooltip
 };

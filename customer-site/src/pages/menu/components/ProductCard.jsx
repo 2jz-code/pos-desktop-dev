@@ -1,13 +1,20 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
-import { Plus, Minus, ShoppingCart, X } from "lucide-react";
+import { Plus, Minus, ShoppingCart, X, Eye, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import OptimizedImage from "@/components/OptimizedImage";
 import {
 	getProductImageUrl,
 	createImageErrorHandler,
 } from "../../../../src/lib/imageUtils"; // Adjust path as needed
+import {
+	canQuickAddProduct,
+	getProductButtonText,
+	getProductButtonTooltip,
+	productHasRequiredModifiers,
+	productHasModifiers
+} from "@/utils/modifierCalculations";
 
 const ProductCard = ({
 	product,
@@ -19,6 +26,8 @@ const ProductCard = ({
 	onToggleQuickAdd,
 	viewMode = "grid",
 }) => {
+	const navigate = useNavigate();
+
 	const formatPrice = (price) => {
 		if (price === null || price === undefined) return "0.00";
 		const numericPrice = typeof price === "string" ? parseFloat(price) : price;
@@ -49,6 +58,18 @@ const ProductCard = ({
 	const handleToggleQuickAdd = (e) => {
 		stopPropagation(e);
 		onToggleQuickAdd();
+	};
+
+	const handleProductAction = (e) => {
+		stopPropagation(e);
+		
+		// If product has required modifiers, navigate to details page
+		if (productHasRequiredModifiers(product)) {
+			navigate(`/product/${encodeURIComponent(product.name)}`);
+		} else {
+			// Otherwise, toggle quick add for products without required modifiers
+			onToggleQuickAdd();
+		}
 	};
 
 	const renderQuickAddPanel = () => (
@@ -119,6 +140,12 @@ const ProductCard = ({
 						className="w-full h-48 object-cover"
 						onError={createImageErrorHandler("Product")}
 					/>
+					{productHasModifiers(product) && (
+						<div className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs px-2 py-1 rounded-full flex items-center shadow-sm">
+							<Settings className="h-3 w-3 mr-1" />
+							{productHasRequiredModifiers(product) ? "Required" : "Options"}
+						</div>
+					)}
 				</div>
 
 				<div className="p-4 flex-grow flex flex-col justify-between">
@@ -138,14 +165,27 @@ const ProductCard = ({
 			<div className="p-4 pt-0 mt-auto">
 				<Button
 					variant="outline"
-					onClick={handleToggleQuickAdd}
+					onClick={handleProductAction}
 					className="w-full"
+					title={getProductButtonTooltip(product)}
 				>
-					<ShoppingCart className="mr-2 h-4 w-4" /> Quick Add
+					{productHasRequiredModifiers(product) ? (
+						<>
+							<Settings className="mr-2 h-4 w-4" />
+							{getProductButtonText(product)}
+						</>
+					) : (
+						<>
+							<ShoppingCart className="mr-2 h-4 w-4" />
+							{getProductButtonText(product)}
+						</>
+					)}
 				</Button>
 			</div>
 
-			<AnimatePresence>{showQuickAdd && renderQuickAddPanel()}</AnimatePresence>
+			<AnimatePresence>
+				{showQuickAdd && !productHasRequiredModifiers(product) && renderQuickAddPanel()}
+			</AnimatePresence>
 		</motion.div>
 	);
 
@@ -165,6 +205,11 @@ const ProductCard = ({
 					className="w-full h-full object-cover"
 					onError={createImageErrorHandler("Product")}
 				/>
+				{productHasModifiers(product) && (
+					<div className="absolute top-1 right-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full flex items-center shadow-sm">
+						<Settings className="h-2.5 w-2.5" />
+					</div>
+				)}
 			</div>
 
 			<div className="flex-grow p-4 flex flex-col justify-between">
@@ -186,12 +231,21 @@ const ProductCard = ({
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={handleToggleQuickAdd}
-						aria-label={showQuickAdd ? "Close quick add" : "Open quick add"}
+						onClick={productHasRequiredModifiers(product) && !showQuickAdd ? handleProductAction : handleToggleQuickAdd}
+						aria-label={
+							productHasRequiredModifiers(product) && !showQuickAdd 
+								? "View product details" 
+								: showQuickAdd ? "Close quick add" : "Open quick add"
+						}
+						title={showQuickAdd ? "" : getProductButtonTooltip(product)}
 					>
 						{showQuickAdd ? (
 							<>
 								<X className="mr-1.5 h-4 w-4" /> Close
+							</>
+						) : productHasRequiredModifiers(product) ? (
+							<>
+								<Settings className="mr-1.5 h-4 w-4" /> Customize
 							</>
 						) : (
 							<>
@@ -203,7 +257,7 @@ const ProductCard = ({
 			</div>
 
 			<AnimatePresence>
-				{showQuickAdd && (
+				{showQuickAdd && !productHasRequiredModifiers(product) && (
 					<motion.div
 						initial={{ opacity: 0, scale: 0.95, x: 10 }}
 						animate={{ opacity: 1, scale: 1, x: 0 }}
