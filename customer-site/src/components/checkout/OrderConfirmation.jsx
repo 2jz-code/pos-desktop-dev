@@ -4,6 +4,7 @@ import { CheckCircle, Mail, Clock, MapPin, Coffee, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStoreInfo } from "@/hooks/useSettings";
 import { Link } from "react-router-dom";
+import ModifierDisplay from "@/components/ui/ModifierDisplay";
 
 const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 	const navigate = useNavigate();
@@ -198,8 +199,15 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 											<p className="font-semibold text-accent-dark-brown">
 												{getItemName(item)}
 											</p>
+											
+											{/* Display modifiers */}
+											<ModifierDisplay 
+												modifiers={item.selected_modifiers_snapshot} 
+												compact={false} 
+											/>
+											
 											{item.notes && (
-												<p className="text-accent-dark-brown/60 text-sm mt-1">
+												<p className="text-accent-dark-brown/60 text-sm mt-2">
 													<span className="font-medium">Note:</span>{" "}
 													{item.notes}
 												</p>
