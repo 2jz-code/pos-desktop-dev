@@ -6,6 +6,16 @@ echo "Waiting for database..."
 python ${APP_HOME}/wait_for_db.py
 echo "Database is ready!"
 
+# Collect static files (moved from build-time to runtime)
+echo "Collecting static files..."
+python manage.py collectstatic --noinput --clear
+echo "Static files collected!"
+
+# Create Nginx health check file
+mkdir -p ${APP_HOME}/staticfiles/healthcheck
+echo "Nginx_Static_OK" > ${APP_HOME}/staticfiles/healthcheck/nginx_health.txt
+chmod -R 755 ${APP_HOME}/staticfiles/healthcheck
+
 # Apply database migrations
 if [ "$SKIP_MIGRATIONS" != "true" ]; then
   echo "Applying database migrations..."

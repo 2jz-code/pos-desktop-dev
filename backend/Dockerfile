@@ -84,17 +84,10 @@ COPY --chown=app_user:app_group . ${APP_HOME}/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Switch to app_user to run collectstatic
-USER app_user
-RUN python manage.py collectstatic --noinput --clear
-
-# Create a simple static file for Nginx health check
-RUN mkdir -p ${APP_HOME}/staticfiles/healthcheck && \
-    echo "Nginx_Static_OK" > ${APP_HOME}/staticfiles/healthcheck/nginx_health.txt && \
-    chmod -R 755 ${APP_HOME}/staticfiles/healthcheck
-
-# Switch back to root for CMD/ENTRYPOINT
-USER root
+# Create staticfiles directory and set permissions (collectstatic will run at runtime)
+RUN mkdir -p ${APP_HOME}/staticfiles && \
+    chown -R app_user:app_group ${APP_HOME}/staticfiles && \
+    chmod -R 755 ${APP_HOME}/staticfiles
 
 EXPOSE ${PORT} 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
