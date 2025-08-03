@@ -10,6 +10,8 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
 
 from .models import User
 from .services import UserService
@@ -105,6 +107,7 @@ class SetPinView(generics.GenericAPIView):
         )
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -148,6 +151,7 @@ class POSLoginView(APIView):
         return response
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class WebLoginView(TokenObtainPairView):
     serializer_class = WebLoginSerializer
 

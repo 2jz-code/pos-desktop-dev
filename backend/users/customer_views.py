@@ -6,6 +6,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.conf import settings
 from django.http import JsonResponse
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
 
 from .customer_services import CustomerAuthService
 from .authentication import CustomerCookieJWTAuthentication
@@ -18,6 +20,7 @@ from .customer_serializers import (
 )
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class CustomerRegisterView(APIView):
     """
     Register a new customer account.
@@ -60,6 +63,7 @@ class CustomerRegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class CustomerLoginView(APIView):
     """
     Login for customer accounts.

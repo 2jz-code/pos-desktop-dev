@@ -4,6 +4,10 @@ from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 from django.contrib.auth import get_user_model
 import secrets
+from django.core.cache import cache
+from django.contrib.auth.hashers import check_password
+import hashlib
+import time
 
 User = get_user_model()
 
@@ -51,11 +55,37 @@ class APIKeyAuthentication(BaseAuthentication):
         api_key = request.META.get("HTTP_X_API_KEY")
         if not api_key:
             return None
-
+        
+        # Create cache key for rate limiting
+        client_ip = self.get_client_ip(request)
+        cache_key = f"api_auth_attempts:{client_ip}"
+        
+        # Check rate limiting (5 attempts per minute)
+        attempts = cache.get(cache_key, 0)
+        if attempts >= 5:
+            raise AuthenticationFailed("Too many authentication attempts. Try again later.")
+        
+        # Hash the API key for lookup (we'll need to update storage later)
+        api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        
         try:
-            # For now, we'll use a simple approach - find the user by their API key
-            # In production, you might want a separate APIKey model
-            user = User.objects.get(api_key=api_key, is_active=True)
+            # For now, still use plain text lookup (we'll migrate in Phase 4)
+            user = User.objects.select_related().get(api_key=api_key, is_active=True)
+            
+            # Reset rate limiting on successful auth
+            cache.delete(cache_key)
             return (user, None)
+            
         except User.DoesNotExist:
+            # Increment failed attempts
+            cache.set(cache_key, attempts + 1, timeout=60)  # 1 minute timeout
             raise AuthenticationFailed("Invalid API key")
+
+    def get_client_ip(self, request):
+        """Get client IP address"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip

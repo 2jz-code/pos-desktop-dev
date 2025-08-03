@@ -48,6 +48,7 @@ ALLOWED_HOSTS = (
 INSTALLED_APPS = [
     "jazzmin",
     "channels",
+    "django_ratelimit",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -77,11 +78,12 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_ratelimit.middleware.RatelimitMiddleware",
     "core_backend.middleware.BusinessHoursMiddleware",  # Business hours enforcement
     "core_backend.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -122,6 +124,10 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+
+# Rate Limiting Configuration
+RATELIMIT_ENABLE = True
+RATELIMIT_USE_CACHE = 'default'
 
 
 # Password validation
