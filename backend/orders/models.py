@@ -151,6 +151,16 @@ class Order(models.Model):
         ordering = ["order_number", "created_at"]
         verbose_name = _("Order")
         verbose_name_plural = _("Orders")
+        indexes = [
+            models.Index(fields=['status'], name='order_status_idx'),
+            models.Index(fields=['order_type'], name='order_type_idx'),
+            models.Index(fields=['payment_status'], name='order_payment_status_idx'),
+            models.Index(fields=['created_at'], name='order_created_at_idx'),
+            models.Index(fields=['customer', 'status'], name='order_customer_status_idx'),
+            models.Index(fields=['guest_id', 'status'], name='order_guest_status_idx'),
+            models.Index(fields=['cashier'], name='order_cashier_idx'),
+            models.Index(fields=['order_number'], name='order_number_idx'),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["guest_id"],

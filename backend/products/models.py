@@ -228,6 +228,12 @@ class Product(SoftDeleteMixin):
         verbose_name = _("Product")
         verbose_name_plural = _("Products")
         ordering = ["name"]
+        indexes = [
+            models.Index(fields=['is_public'], name='product_is_public_idx'),
+            models.Index(fields=['track_inventory'], name='product_track_inventory_idx'),
+            models.Index(fields=['category'], name='product_category_idx'),
+            models.Index(fields=['barcode'], name='product_barcode_idx'),
+        ]
 
     def __str__(self):
         return self.name

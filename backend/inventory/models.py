@@ -157,6 +157,12 @@ class InventoryStock(SoftDeleteMixin):
         verbose_name = _("Inventory Stock")
         verbose_name_plural = _("Inventory Stocks")
         unique_together = ("product", "location")
+        indexes = [
+            models.Index(fields=['product', 'location'], name='inventory_product_location_idx'),
+            models.Index(fields=['quantity'], name='inventory_quantity_idx'),
+            models.Index(fields=['expiration_date'], name='inventory_expiration_idx'),
+            models.Index(fields=['location'], name='inventory_location_idx'),
+        ]
 
     def __str__(self):
         return f"{self.product.name} at {self.location.name}: {self.quantity}"

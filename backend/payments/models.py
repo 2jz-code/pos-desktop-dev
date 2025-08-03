@@ -86,6 +86,13 @@ class Payment(models.Model):
         ordering = ["-created_at"]
         verbose_name = _("Payment")
         verbose_name_plural = _("Payments")
+        indexes = [
+            models.Index(fields=['status'], name='payment_status_idx'),
+            models.Index(fields=['order', 'status'], name='payment_order_status_idx'),
+            models.Index(fields=['created_at'], name='payment_created_at_idx'),
+            models.Index(fields=['order'], name='payment_order_idx'),
+            models.Index(fields=['payment_number'], name='payment_number_idx'),
+        ]
 
     def __str__(self):
         return f"Payment {self.payment_number or self.id} for Order {self.order.order_number or self.order.id} - {self.status}"
