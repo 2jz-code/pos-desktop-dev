@@ -112,7 +112,7 @@ class ProductSerializer(serializers.ModelSerializer):
     parent_category = CategorySerializer(source="category.parent", read_only=True)
     taxes = TaxSerializer(many=True, read_only=True)
     product_type = ProductTypeSerializer(read_only=True)
-    image = ImageField(read_only=True)
+    image = ImageField(required=False)
     image_url = serializers.SerializerMethodField()
     original_filename = serializers.CharField(read_only=True)
     modifier_groups = serializers.SerializerMethodField()
@@ -293,4 +293,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        return ProductService.create_product(**validated_data)
+        image = validated_data.pop('image', None)
+        product = ProductService.create_product(**validated_data)
+        
+        if image:
+            # Process image asynchronously
+            from .image_service import ImageService
+            ImageService.process_image_async(product.id, image)
+        
+        return product
