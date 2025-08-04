@@ -9,146 +9,118 @@ from rest_framework.decorators import api_view, permission_classes
 from .models import Location, InventoryStock, Recipe, RecipeItem
 from .serializers import (
     LocationSerializer,
-    InventoryStockSerializer,
+    FullInventoryStockSerializer,
     OptimizedInventoryStockSerializer,
     RecipeSerializer,
-    RecipeItemSerializer,
     StockAdjustmentSerializer,
     StockTransferSerializer,
 )
 from .services import InventoryService
 from products.models import Product
 from settings.config import app_settings
-from core_backend.base.mixins import ArchivingViewSetMixin
+from core_backend.base.viewsets import BaseViewSet
+from core_backend.base import SerializerOptimizedMixin
 
 # Create your views here.
 
 # --- Model-based Views ---
 
 
-class LocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+class LocationViewSet(BaseViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
     permission_classes = [permissions.IsAdminUser]
 
-    def get_queryset(self):
-        return Location.objects.prefetch_related(
-            'stock_levels__product'
-        )
 
-
-class RecipeViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+class RecipeViewSet(BaseViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
     permission_classes = [permissions.IsAdminUser]
 
-    def get_queryset(self):
-        return Recipe.objects.select_related('menu_item').prefetch_related(
-            'ingredients__product'
-        )
 
-
-class InventoryStockViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+class InventoryStockViewSet(BaseViewSet):
     queryset = InventoryStock.objects.all()
     permission_classes = [permissions.IsAdminUser]
 
     def get_serializer_class(self):
         """Use optimized serializer for list view to reduce N+1 queries"""
-        if self.action == 'list':
+        if self.action == "list":
             return OptimizedInventoryStockSerializer
-        return InventoryStockSerializer
-
-    def get_queryset(self):
-        """Optimized queryset based on action"""
-        if self.action == 'list':
-            # Optimized queryset for list view - only what we need
-            return InventoryStock.objects.select_related(
-                'product__category',
-                'product__product_type', 
-                'location'
-            ).filter(archived_at__isnull=True)
-        else:
-            # Full queryset for detail views and modifications
-            return InventoryStock.objects.select_related(
-                'product__category', 
-                'location'
-            ).prefetch_related(
-                'product__taxes'
-            )
+        return FullInventoryStockSerializer
 
 
-class InventoryStockListView(generics.ListAPIView):
+class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
+    serializer_class = OptimizedInventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
 
-    def get_serializer_class(self):
-        """Use optimized serializer to reduce N+1 queries"""
-        return OptimizedInventoryStockSerializer
-
     def get_queryset(self):
-        queryset = InventoryStock.objects.select_related(
-            "product__category", 
-            "product__product_type",
-            "location"
-        ).filter(archived_at__isnull=True)
-        
-        location_id = self.request.query_params.get('location', None)
-        search_query = self.request.query_params.get('search', None)
-        is_low_stock = self.request.query_params.get('is_low_stock', None)
-        is_expiring_soon = self.request.query_params.get('is_expiring_soon', None)
-        
+        # Override base queryset to add archiving filter first
+        # Then let the mixin apply serializer optimizations
+        self.queryset = InventoryStock.objects.filter(archived_at__isnull=True)
+        queryset = super().get_queryset()
+
+        location_id = self.request.query_params.get("location", None)
+        search_query = self.request.query_params.get("search", None)
+        is_low_stock = self.request.query_params.get("is_low_stock", None)
+        is_expiring_soon = self.request.query_params.get("is_expiring_soon", None)
+
         if location_id:
             queryset = queryset.filter(location_id=location_id)
-            
+
         if search_query:
             queryset = queryset.filter(
-                Q(product__name__icontains=search_query) |
-                Q(product__barcode__icontains=search_query)
+                Q(product__name__icontains=search_query)
+                | Q(product__barcode__icontains=search_query)
             )
-        
+
         # Filter by low stock (using effective thresholds)
-        if is_low_stock and is_low_stock.lower() == 'true':
+        if is_low_stock and is_low_stock.lower() == "true":
             from django.db.models import F, Case, When, Value
             from settings.config import app_settings
-            
+
             # Use item-specific threshold if set, otherwise use global default
             queryset = queryset.filter(
                 quantity__lte=Case(
-                    When(low_stock_threshold__isnull=False, then=F('low_stock_threshold')),
+                    When(
+                        low_stock_threshold__isnull=False, then=F("low_stock_threshold")
+                    ),
                     default=Value(app_settings.default_low_stock_threshold),
                 )
             )
-        
+
         # Filter by expiring soon
-        if is_expiring_soon and is_expiring_soon.lower() == 'true':
+        if is_expiring_soon and is_expiring_soon.lower() == "true":
             from django.db.models import Case, When, DateField
             from django.db.models.functions import Cast
-            
+
             today = timezone.now().date()
             # We need to use raw SQL or handle this differently since F() + timedelta is complex
             # For simplicity, let's use a subquery approach
             expiring_stock_ids = []
             for stock in queryset.filter(expiration_date__isnull=False):
-                threshold_date = today + timedelta(days=stock.effective_expiration_threshold)
+                threshold_date = today + timedelta(
+                    days=stock.effective_expiration_threshold
+                )
                 if stock.expiration_date <= threshold_date:
                     expiring_stock_ids.append(stock.id)
-            
+
             if expiring_stock_ids:
                 queryset = queryset.filter(id__in=expiring_stock_ids)
             else:
                 queryset = queryset.none()
-            
+
         return queryset
 
 
-class ProductStockListView(generics.ListAPIView):
-    serializer_class = InventoryStockSerializer
+class ProductStockListView(SerializerOptimizedMixin, generics.ListAPIView):
+    serializer_class = FullInventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
         product_id = self.kwargs.get("product_id")
-        return InventoryStock.objects.filter(product_id=product_id).select_related(
-            "product", "location"
-        )
+        # Set base queryset, then let mixin apply optimizations
+        self.queryset = InventoryStock.objects.filter(product_id=product_id)
+        return super().get_queryset()
 
 
 # --- Barcode-based Views ---
@@ -428,71 +400,80 @@ class InventoryDashboardView(APIView):
     def get(self, request):
         try:
             from django.db.models import Sum, F, Case, When, Value, Q
-            
+
             # Get all stock records across all locations
             all_stock_records = InventoryStock.objects.select_related(
-                'product', 'location'
+                "product", "location"
             ).filter(archived_at__isnull=True)
 
             # Aggregate total quantities per product across all locations
-            product_totals = all_stock_records.values('product').annotate(
-                total_quantity=Sum('quantity'),
-                product_name=F('product__name'),
-                product_price=F('product__price'),
-                product_id=F('product__id'),
+            product_totals = all_stock_records.values("product").annotate(
+                total_quantity=Sum("quantity"),
+                product_name=F("product__name"),
+                product_price=F("product__price"),
+                product_id=F("product__id"),
             )
 
             total_products = product_totals.count()
-            
+
             # Calculate low stock count based on aggregated quantities
             low_stock_count = 0
             out_of_stock_count = 0
             low_stock_products = []
-            
+
             for product_data in product_totals:
-                total_qty = product_data['total_quantity'] or 0
-                
+                total_qty = product_data["total_quantity"] or 0
+
                 # Get the most restrictive low stock threshold for this product
-                product_stocks = all_stock_records.filter(product_id=product_data['product_id'])
+                product_stocks = all_stock_records.filter(
+                    product_id=product_data["product_id"]
+                )
                 min_threshold = min(
                     stock.effective_low_stock_threshold for stock in product_stocks
                 )
-                
+
                 if total_qty == 0:
                     out_of_stock_count += 1
                 elif total_qty <= min_threshold:
                     low_stock_count += 1
-                    low_stock_products.append({
-                        "product_id": product_data['product_id'],
-                        "product_name": product_data['product_name'],
-                        "quantity": total_qty,
-                        "price": product_data['product_price'],
-                        "low_stock_threshold": min_threshold,
-                    })
-            
+                    low_stock_products.append(
+                        {
+                            "product_id": product_data["product_id"],
+                            "product_name": product_data["product_name"],
+                            "quantity": total_qty,
+                            "price": product_data["product_price"],
+                            "low_stock_threshold": min_threshold,
+                        }
+                    )
+
             # Calculate expiring soon items across all locations
             today = timezone.now().date()
             expiring_soon_items = []
             expiring_soon_count = 0
-            
+
             for stock in all_stock_records.filter(expiration_date__isnull=False):
-                threshold_date = today + timedelta(days=stock.effective_expiration_threshold)
+                threshold_date = today + timedelta(
+                    days=stock.effective_expiration_threshold
+                )
                 if stock.expiration_date <= threshold_date:
-                    expiring_soon_items.append({
-                        "product_id": stock.product.id,
-                        "product_name": stock.product.name,
-                        "quantity": stock.quantity,
-                        "price": stock.product.price,
-                        "expiration_date": stock.expiration_date,
-                        "expiration_threshold": stock.effective_expiration_threshold,
-                        "location": stock.location.name,
-                    })
-            
+                    expiring_soon_items.append(
+                        {
+                            "product_id": stock.product.id,
+                            "product_name": stock.product.name,
+                            "quantity": stock.quantity,
+                            "price": stock.product.price,
+                            "expiration_date": stock.expiration_date,
+                            "expiration_threshold": stock.effective_expiration_threshold,
+                            "location": stock.location.name,
+                        }
+                    )
+
             expiring_soon_count = len(expiring_soon_items)
 
             # Calculate total inventory value across all locations
             total_value = sum(
-                (product_data['total_quantity'] or 0) * (product_data['product_price'] or 0) 
+                (product_data["total_quantity"] or 0)
+                * (product_data["product_price"] or 0)
                 for product_data in product_totals
             )
 
@@ -590,7 +571,9 @@ class InventoryDefaultsView(APIView):
         try:
             return Response(
                 {
-                    "default_low_stock_threshold": float(app_settings.default_low_stock_threshold),
+                    "default_low_stock_threshold": float(
+                        app_settings.default_low_stock_threshold
+                    ),
                     "default_expiration_threshold": app_settings.default_expiration_threshold,
                 }
             )

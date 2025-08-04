@@ -12,7 +12,7 @@ from .serializers import (
     BasicCategorySerializer,
     TimestampedSerializer
 )
-from .mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
+from .mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin, SerializerOptimizedMixin
 from .filters import BaseFilterSet, ArchivingFilterSet
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     # Mixins
     'OptimizedQuerysetMixin',
     'ArchivingViewSetMixin',
+    'SerializerOptimizedMixin',
     
     # Filters
     'BaseFilterSet',

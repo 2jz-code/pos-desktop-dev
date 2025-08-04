@@ -158,6 +158,7 @@ export const InventoryPage = () => {
 		{
 			queryKey: ["inventory-locations"],
 			queryFn: inventoryService.getLocations,
+			select: (data) => data.results,
 		}
 	);
 

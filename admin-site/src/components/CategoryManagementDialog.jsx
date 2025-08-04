@@ -82,7 +82,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		try {
 			setLoading(true);
 			const response = await getCategories();
-			setCategories(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setCategories(data);
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
 			toast({

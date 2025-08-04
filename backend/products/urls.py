@@ -2,8 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_nested import routers as nested_routers
 from .views import (
-    TaxListCreateView,
-    TaxDetailView,
+    TaxViewSet,
     ProductTypeViewSet,
     CategoryViewSet,
     ProductViewSet,
@@ -16,6 +15,7 @@ from .views import (
 # Create main router
 router = DefaultRouter()
 router.register(r"categories", CategoryViewSet, basename="category")
+router.register(r"taxes", TaxViewSet, basename="tax")
 router.register(r"product-types", ProductTypeViewSet, basename="product-type")
 router.register(r"modifier-sets", ModifierSetViewSet, basename="modifier-set")
 router.register(r"modifier-options", ModifierOptionViewSet, basename="modifier-option")
@@ -29,8 +29,6 @@ products_nested_router.register(r"modifier-sets", ProductModifierSetViewSet, bas
 
 # The API URLs are now determined automatically by the router.
 urlpatterns = [
-    path("taxes/", TaxListCreateView.as_view(), name="tax-list"),
-    path("taxes/<int:pk>/", TaxDetailView.as_view(), name="tax-detail"),
     path("barcode/<str:barcode>/", barcode_lookup, name="barcode-lookup"),
     # Products ViewSet actions - explicit mapping FIRST to avoid API root conflicts
     path("", ProductViewSet.as_view({'get': 'list', 'post': 'create'}), name="product-list"),

@@ -2,6 +2,7 @@ from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOp
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
+from collections import defaultdict
 
 
 class ProductService:
@@ -219,6 +220,126 @@ class ProductService:
                     'total_taxes': 0
                 }
             }
+
+    @staticmethod
+    def get_structured_modifier_groups_for_product(product, context=None):
+        """
+        Get structured modifier groups for a product.
+        Moved from ProductSerializer to service layer for better architecture.
+        
+        Args:
+            product: Product instance (must have prefetched modifier data)
+            context: Serializer context (for request parameters)
+            
+        Returns:
+            Dict with structured modifier group data ready for serialization
+        """
+        # Validate that we have prefetched data
+        if not hasattr(product, "product_modifier_sets"):
+            return {'sets_to_return': [], 'options_map': {}, 'triggered_map': {}}
+
+        product_modifier_sets = product.product_modifier_sets.all()
+
+        # If there are no modifier sets, return empty structure
+        if not product_modifier_sets:
+            return {'sets_to_return': [], 'options_map': {}, 'triggered_map': {}}
+
+        # Build data structures
+        all_sets_data = {}
+        options_map = {}
+        triggered_map = defaultdict(list)
+
+        # Extract parameters from context
+        request = context.get('request') if context else None
+        visible_only = request and request.query_params.get('visible_only', '').lower() == 'true'
+        include_all_modifiers = request and request.query_params.get('include_all_modifiers', '').lower() == 'true'
+        
+        # For cart/order contexts, always include all modifiers if the product has any
+        if not include_all_modifiers and product_modifier_sets:
+            include_all_modifiers = True
+        
+        for pms in product_modifier_sets:
+            ms = pms.modifier_set
+            all_sets_data[ms.id] = {
+                "id": ms.id,
+                "name": ms.name,
+                "internal_name": ms.internal_name,
+                "selection_type": ms.selection_type,
+                "min_selections": 1 if pms.is_required_override else ms.min_selections,
+                "max_selections": ms.max_selections,
+                "triggered_by_option_id": ms.triggered_by_option_id,
+            }
+
+            # Get all options (global + product-specific)
+            global_options = {
+                opt.id: opt for opt in ms.options.filter(is_product_specific=False)
+            }
+            extra_options = {opt.id: opt for opt in pms.extra_options.all()}
+            all_options = {**global_options, **extra_options}
+            
+            # Get hidden option IDs
+            hidden_ids = {opt.id for opt in pms.hidden_options.all()}
+            
+            if visible_only:
+                # Filter out hidden options for customer-facing endpoints
+                final_options = [
+                    opt for opt in all_options.values() if opt.id not in hidden_ids
+                ]
+            else:
+                # Include all options with is_hidden field for admin/management
+                final_options = list(all_options.values())
+                # Mark which options are hidden
+                for opt in final_options:
+                    opt.is_hidden_for_product = opt.id in hidden_ids
+            
+            final_options = sorted(final_options, key=lambda o: o.display_order)
+            options_map[ms.id] = final_options
+
+        # Process triggered sets
+        for set_id, set_data in all_sets_data.items():
+            trigger_id = set_data.pop("triggered_by_option_id")
+            if trigger_id:
+                triggered_map[trigger_id].append(set_data)
+
+        # Determine which sets to return based on include_all_modifiers parameter
+        if include_all_modifiers:
+            # Return all modifier sets associated with the product (for management UI)
+            sets_to_return = list(all_sets_data.values())
+        else:
+            # Find sets that are not triggered by any option (root-level sets only)
+            triggered_set_ids = {
+                s["id"] for sets_list in triggered_map.values() for s in sets_list
+            }
+            root_level_sets = [
+                data
+                for data in all_sets_data.values()
+                if data["id"] not in triggered_set_ids
+            ]
+            
+            # Also include conditional sets that are being used as standalone base modifiers
+            standalone_conditional_sets = []
+            for set_data in all_sets_data.values():
+                trigger_option_id = set_data.get("triggered_by_option_id")
+                if trigger_option_id and set_data["id"] not in [
+                    s["id"] for s in root_level_sets
+                ]:
+                    # This is a triggered set, check if its trigger option is available in this product
+                    trigger_option_in_product = any(
+                        trigger_option_id
+                        in [opt.id for opt in options_map.get(ms_id, [])]
+                        for ms_id in all_sets_data.keys()
+                    )
+                    if not trigger_option_in_product:
+                        # Trigger option not available in this product, treat as standalone
+                        standalone_conditional_sets.append(set_data)
+            
+            sets_to_return = root_level_sets + standalone_conditional_sets
+        
+        return {
+            'sets_to_return': sets_to_return,
+            'options_map': options_map,
+            'triggered_map': dict(triggered_map)
+        }
 
 
 class BaseSelectionStrategy:

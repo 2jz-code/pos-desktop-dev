@@ -128,7 +128,7 @@ const ProductsPage = () => {
 			}
 			
 			const response = await getProducts(params);
-			const fetchedProducts = response.data || [];
+			const fetchedProducts = response.data?.results || response.data || [];
 			
 			// No need for client-side filtering since backend handles it properly now
 			setAllProducts(fetchedProducts);
@@ -145,7 +145,8 @@ const ProductsPage = () => {
 	const fetchParentCategories = async () => {
 		try {
 			const response = await getCategories({ parent: "null" });
-			setParentCategories(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setParentCategories(Array.isArray(data) ? data : []);
 		} catch (err) {
 			console.error("Failed to fetch parent categories:", err);
 		}
@@ -502,7 +503,7 @@ const ProductsPage = () => {
 				</SelectTrigger>
 				<SelectContent>
 					<SelectItem value="all">All Categories</SelectItem>
-					{parentCategories.map((category) => (
+					{(Array.isArray(parentCategories) ? parentCategories : []).map((category) => (
 						<SelectItem
 							key={category.id}
 							value={category.id.toString()}

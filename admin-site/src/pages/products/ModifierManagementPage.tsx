@@ -91,7 +91,8 @@ const ModifierManagementPage: React.FC = () => {
 			if (selectedType !== "all") params.selection_type = selectedType;
 
 			const response = await modifierService.getModifierSets(params);
-			setModifierSets(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setModifierSets(Array.isArray(data) ? data : []);
 		} catch (error) {
 			console.error("Error fetching modifier sets:", error);
 			toast({
@@ -176,7 +177,7 @@ const ModifierManagementPage: React.FC = () => {
 		}
 	};
 
-	const filteredModifierSets = modifierSets.filter((set) => {
+	const filteredModifierSets = (Array.isArray(modifierSets) ? modifierSets : []).filter((set) => {
 		if (
 			searchTerm &&
 			!set.name.toLowerCase().includes(searchTerm.toLowerCase())

@@ -71,7 +71,8 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		try {
 			setLoading(true);
 			const response = await getProductTypes();
-			setProductTypes(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setProductTypes(Array.isArray(data) ? data : []);
 		} catch (error) {
 			console.error("Failed to fetch product types:", error);
 			toast({
@@ -280,7 +281,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 												</TableCell>
 											</TableRow>
 										) : (
-											productTypes.map((type) => (
+											(Array.isArray(productTypes) ? productTypes : []).map((type) => (
 												<TableRow key={type.id}>
 													<TableCell className="font-medium">
 														{type.name}

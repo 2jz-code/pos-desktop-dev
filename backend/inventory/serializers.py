@@ -3,54 +3,73 @@ from .models import Location, InventoryStock, Recipe, RecipeItem
 from products.models import Product
 from products.serializers import ProductSerializer
 from .services import InventoryService
+from core_backend.base import BaseModelSerializer
 
 
-class LocationSerializer(serializers.ModelSerializer):
+class LocationSerializer(BaseModelSerializer):
     effective_low_stock_threshold = serializers.ReadOnlyField()
     effective_expiration_threshold = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Location
         fields = [
-            "id", 
-            "name", 
+            "id",
+            "name",
             "description",
             "low_stock_threshold",
-            "expiration_threshold", 
+            "expiration_threshold",
             "effective_low_stock_threshold",
-            "effective_expiration_threshold"
+            "effective_expiration_threshold",
         ]
+        prefetch_related_fields = ["stock_levels__product"]
 
 
 # Optimized serializers for stock management to avoid N+1 queries
-class OptimizedProductSerializer(serializers.ModelSerializer):
+class OptimizedProductSerializer(BaseModelSerializer):
     """Lightweight product serializer for inventory management"""
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    product_type_name = serializers.CharField(source='product_type.name', read_only=True)
-    
+
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    product_type_name = serializers.CharField(
+        source="product_type.name", read_only=True
+    )
+
     class Meta:
         model = Product
         fields = [
-            "id", "name", "description", "price", "barcode", 
-            "is_active", "is_public", "track_inventory",
-            "category_name", "product_type_name"
+            "id",
+            "name",
+            "description",
+            "price",
+            "barcode",
+            "is_active",
+            "is_public",
+            "track_inventory",
+            "category_name",
+            "product_type_name",
         ]
+        select_related_fields = ["category", "product_type"]
 
-class OptimizedLocationSerializer(serializers.ModelSerializer):
+
+class OptimizedLocationSerializer(BaseModelSerializer):
     """Lightweight location serializer for inventory management"""
+
     effective_low_stock_threshold = serializers.ReadOnlyField()
     effective_expiration_threshold = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Location
         fields = [
-            "id", "name", "description",
+            "id",
+            "name",
+            "description",
             "effective_low_stock_threshold",
-            "effective_expiration_threshold"
+            "effective_expiration_threshold",
         ]
 
-class OptimizedInventoryStockSerializer(serializers.ModelSerializer):
+
+class OptimizedInventoryStockSerializer(BaseModelSerializer):
     """Optimized serializer for stock management endpoint"""
+
     product = OptimizedProductSerializer(read_only=True)
     location = OptimizedLocationSerializer(read_only=True)
     is_low_stock = serializers.ReadOnlyField()
@@ -61,21 +80,25 @@ class OptimizedInventoryStockSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryStock
         fields = [
-            "id", 
-            "product", 
-            "location", 
-            "quantity", 
-            "expiration_date", 
-            "low_stock_threshold", 
+            "id",
+            "product",
+            "location",
+            "quantity",
+            "expiration_date",
+            "low_stock_threshold",
             "expiration_threshold",
             "effective_low_stock_threshold",
             "effective_expiration_threshold",
             "is_low_stock",
-            "is_expiring_soon"
+            "is_expiring_soon",
         ]
+        # Optimized for list view - minimal relationships
+        select_related_fields = ["product__category", "product__product_type", "location"]
 
-class InventoryStockSerializer(serializers.ModelSerializer):
+
+class FullInventoryStockSerializer(BaseModelSerializer):
     """Full serializer for detailed inventory operations"""
+
     product = ProductSerializer(read_only=True)
     location = LocationSerializer(read_only=True)
     is_low_stock = serializers.ReadOnlyField()
@@ -86,22 +109,24 @@ class InventoryStockSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryStock
         fields = [
-            "id", 
-            "product", 
-            "location", 
-            "quantity", 
-            "expiration_date", 
-            "low_stock_threshold", 
+            "id",
+            "product",
+            "location",
+            "quantity",
+            "expiration_date",
+            "low_stock_threshold",
             "expiration_threshold",
             "effective_low_stock_threshold",
             "effective_expiration_threshold",
             "is_low_stock",
-            "is_expiring_soon"
+            "is_expiring_soon",
         ]
+        select_related_fields = ["product__category", "location"]
+        prefetch_related_fields = ["product__taxes"]
 
 
-class RecipeItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(read_only=True)
+class RecipeItemSerializer(BaseModelSerializer):
+    product = OptimizedProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product", write_only=True
     )
@@ -109,10 +134,11 @@ class RecipeItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = RecipeItem
         fields = ["id", "product_id", "product", "quantity", "unit"]
+        select_related_fields = ["product__category", "product__product_type"]
 
 
-class RecipeSerializer(serializers.ModelSerializer):
-    menu_item = ProductSerializer(read_only=True)
+class RecipeSerializer(BaseModelSerializer):
+    menu_item = OptimizedProductSerializer(read_only=True)
     menu_item_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(product_type__name="menu"),
         source="menu_item",
@@ -123,14 +149,18 @@ class RecipeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = ["id", "name", "menu_item_id", "menu_item", "ingredients"]
+        select_related_fields = ["menu_item__category", "menu_item__product_type"]
+        prefetch_related_fields = ["ingredients__product__category", "ingredients__product__product_type"]
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        
+
         # Manually serialize the prefetched ingredients
-        if hasattr(instance, 'ingredients'):
-            representation['ingredients'] = RecipeItemSerializer(instance.ingredients.all(), many=True).data
-        
+        if hasattr(instance, "ingredients"):
+            representation["ingredients"] = RecipeItemSerializer(
+                instance.ingredients.all(), many=True
+            ).data
+
         return representation
 
     def create(self, validated_data):
@@ -149,7 +179,9 @@ class StockAdjustmentSerializer(serializers.Serializer):
     location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
     expiration_date = serializers.DateField(required=False, allow_null=True)
-    low_stock_threshold = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    low_stock_threshold = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False
+    )
     expiration_threshold = serializers.IntegerField(required=False)
 
     def save(self):
@@ -165,7 +197,7 @@ class StockAdjustmentSerializer(serializers.Serializer):
             stock = InventoryService.add_stock(product, location, quantity)
         else:
             stock = InventoryService.decrement_stock(product, location, abs(quantity))
-        
+
         # Update additional fields if provided
         if expiration_date is not None:
             stock.expiration_date = expiration_date
@@ -173,10 +205,16 @@ class StockAdjustmentSerializer(serializers.Serializer):
             stock.low_stock_threshold = low_stock_threshold
         if expiration_threshold is not None:
             stock.expiration_threshold = expiration_threshold
-        
-        if any([expiration_date is not None, low_stock_threshold is not None, expiration_threshold is not None]):
+
+        if any(
+            [
+                expiration_date is not None,
+                low_stock_threshold is not None,
+                expiration_threshold is not None,
+            ]
+        ):
             stock.save()
-        
+
         return stock
 
 

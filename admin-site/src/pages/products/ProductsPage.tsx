@@ -103,7 +103,8 @@ export const ProductsPage = () => {
 	const fetchParentCategories = async () => {
 		try {
 			const response = await getCategories({ parent: "null" });
-			setParentCategories(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setParentCategories(Array.isArray(data) ? data : []);
 		} catch (err) {
 			console.error("Failed to fetch parent categories:", err);
 		}
@@ -376,7 +377,7 @@ export const ProductsPage = () => {
 				</SelectTrigger>
 				<SelectContent>
 					<SelectItem value="all">All Categories</SelectItem>
-					{parentCategories.map((category) => (
+					{parentCategories && Array.isArray(parentCategories) && parentCategories.map((category) => (
 						<SelectItem
 							key={category.id}
 							value={category.id.toString()}

@@ -216,6 +216,7 @@ const InventoryPage = () => {
 	const { data: locations, isLoading: locationsLoading } = useQuery({
 		queryKey: ["inventory-locations"],
 		queryFn: getLocations,
+		select: (data) => data.results,
 	});
 
 	// Delete location mutation

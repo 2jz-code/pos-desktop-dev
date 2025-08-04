@@ -50,8 +50,13 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 				params.include_archived = 'only';
 			}
 			
+			console.log('Fetching product types with params:', params);
 			const response = await getProductTypes(params);
-			setProductTypes(response.data);
+			console.log('Product types response:', response);
+			
+			const data = response.data?.results || response.data || [];
+			console.log('Processed data:', data);
+			setProductTypes(Array.isArray(data) ? data : []);
 		} catch (error) {
 			console.error("Failed to fetch product types:", error);
 			toast({
@@ -96,7 +101,9 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 
 	const handleArchiveToggle = async (productType) => {
 		try {
+			console.log('Archive toggle called for product type:', productType);
 			if (productType.is_active) {
+				console.log('Archiving product type with ID:', productType.id);
 				const response = await archiveProductType(productType.id);
 				console.log("Archive response:", response);
 				toast({
@@ -104,6 +111,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 					description: "Product type archived successfully.",
 				});
 			} else {
+				console.log('Unarchiving product type with ID:', productType.id);
 				const response = await unarchiveProductType(productType.id);
 				console.log("Unarchive response:", response);
 				toast({
@@ -199,7 +207,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{productTypes.map((type) => (
+									{(Array.isArray(productTypes) ? productTypes : []).map((type) => (
 										<TableRow 
 											key={type.id}
 											className={type.is_active ? "" : "opacity-60"}

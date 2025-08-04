@@ -151,8 +151,12 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				// The backend defaults to showing only active records when no include_archived parameter is provided
 			}
 			
+			console.log('Fetching categories with params:', params);
 			const response = await getCategories(params);
-			const sorted = [...response.data].sort((a, b) => a.order - b.order);
+			console.log('Categories response:', response);
+			const data = response.data?.results || response.data || [];
+			console.log('Processed categories data:', data);
+			const sorted = [...data].sort((a, b) => a.order - b.order);
 			setCategories(sorted);
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);

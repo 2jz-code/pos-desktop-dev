@@ -11,24 +11,60 @@ class OptimizedQuerysetMixin(ViewSetMixin):
     A ViewSet mixin that automatically optimizes the queryset by inspecting
     the associated serializer for `select_related_fields` and
     `prefetch_related_fields` attributes in its Meta class.
+    
+    This mixin is action-aware and will use the appropriate serializer
+    for the current action when determining optimizations.
     """
 
     def get_queryset(self):
         """
-        Overrides the default get_queryset to apply optimizations.
+        Overrides the default get_queryset to apply optimizations based on
+        the current action's serializer.
         """
         queryset = super().get_queryset()
 
+        # Get the serializer class for the current action
+        # This handles ViewSets that use different serializers for different actions
+        try:
+            serializer_class = self.get_serializer_class()
+        except (AttributeError, AssertionError):
+            # If we can't get serializer class (e.g., in admin or tests), skip optimization
+            return queryset
+
+        if hasattr(serializer_class, "Meta"):
+            meta = getattr(serializer_class, "Meta")
+
+            # Apply select_related for foreign key relationships
+            if hasattr(meta, "select_related_fields") and meta.select_related_fields:
+                queryset = queryset.select_related(*meta.select_related_fields)
+
+            # Apply prefetch_related for many-to-many or reverse foreign key
+            if hasattr(meta, "prefetch_related_fields") and meta.prefetch_related_fields:
+                queryset = queryset.prefetch_related(*meta.prefetch_related_fields)
+
+        return queryset
+
+
+class SerializerOptimizedMixin:
+    """
+    Mixin for APIView/GenericAPIView that applies serializer optimization fields.
+    Useful for views that don't inherit from ViewSetMixin but still want optimization.
+    """
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Get serializer class and apply optimizations
         serializer_class = self.get_serializer_class()
         if hasattr(serializer_class, "Meta"):
             meta = getattr(serializer_class, "Meta")
 
             # Apply select_related for foreign key relationships
-            if hasattr(meta, "select_related_fields"):
+            if hasattr(meta, "select_related_fields") and meta.select_related_fields:
                 queryset = queryset.select_related(*meta.select_related_fields)
 
             # Apply prefetch_related for many-to-many or reverse foreign key
-            if hasattr(meta, "prefetch_related_fields"):
+            if hasattr(meta, "prefetch_related_fields") and meta.prefetch_related_fields:
                 queryset = queryset.prefetch_related(*meta.prefetch_related_fields)
 
         return queryset
@@ -62,9 +98,11 @@ class ArchivingViewSetMixin(ViewSetMixin):
                     queryset = queryset.with_archived()
                 # If no custom manager, don't filter (assumes default queryset includes all)
             elif include_archived == 'only':
-                # Show only archived records
-                if hasattr(queryset, 'archived_only'):
-                    queryset = queryset.archived_only()
+                # Show only archived records - need to start fresh to avoid SoftDeleteManager filtering
+                if hasattr(queryset.model, '_default_manager'):
+                    # Get a fresh queryset that includes all records
+                    base_queryset = queryset.model._default_manager.with_archived() if hasattr(queryset.model._default_manager, 'with_archived') else queryset.model._default_manager.all()
+                    queryset = base_queryset.filter(is_active=False)
                 else:
                     queryset = queryset.filter(is_active=False)
             # Default: show only active records (handled by SoftDeleteManager)
@@ -102,10 +140,13 @@ class ArchivingViewSetMixin(ViewSetMixin):
         """
         Unarchive a single record.
         """
-        # Need to get object from queryset that includes archived records
-        queryset = self.get_queryset()
-        if hasattr(queryset, 'with_archived'):
-            queryset = queryset.with_archived()
+        # Use base queryset to avoid custom filtering that might exclude archived records
+        model = self.get_queryset().model
+        if hasattr(model, '_default_manager') and hasattr(model._default_manager, 'with_archived'):
+            queryset = model._default_manager.with_archived()
+        else:
+            # Fallback: use base queryset without filtering
+            queryset = model._default_manager.all()
         
         try:
             obj = queryset.get(pk=pk)

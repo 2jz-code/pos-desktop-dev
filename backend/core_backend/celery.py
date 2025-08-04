@@ -14,6 +14,9 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 # Load task modules from all registered Django app configs.
 app.autodiscover_tasks()
 
+# Explicitly import infrastructure tasks since they're not in a Django app
+app.autodiscover_tasks(['core_backend.infrastructure'])
+
 # Optional: Add basic configuration
 app.conf.update(
     task_serializer="json",
