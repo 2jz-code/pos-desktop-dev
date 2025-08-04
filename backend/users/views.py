@@ -56,8 +56,8 @@ class UserListView(generics.ListAPIView):
             try:
                 modified_since_dt = parse_datetime(modified_since)
                 if modified_since_dt:
-                    # User model has date_joined, we can use that for sync
-                    queryset = queryset.filter(date_joined__gte=modified_since_dt)
+                    # Use updated_at for more accurate delta synchronization
+                    queryset = queryset.filter(updated_at__gte=modified_since_dt)
             except (ValueError, TypeError):
                 # If parsing fails, ignore the parameter
                 pass

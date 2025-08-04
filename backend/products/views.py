@@ -22,7 +22,7 @@ from .serializers import (
 from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from core_backend.mixins import ArchivingViewSetMixin
+from core_backend.mixins import ArchivingViewSetMixin, OptimizedQuerysetMixin
 
 class ProductModifierSetViewSet(viewsets.ModelViewSet):
     queryset = ProductModifierSet.objects.all()
@@ -303,16 +303,8 @@ class ModifierOptionViewSet(viewsets.ModelViewSet):
 # Create your views here.
 
 
-class ProductViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
-    queryset = Product.objects.with_archived().select_related(
-        "category", "product_type"
-    ).prefetch_related(
-        "taxes",
-        "modifier_sets",
-        "product_modifier_sets__modifier_set__options",
-        "product_modifier_sets__hidden_options",
-        "product_modifier_sets__extra_options"
-    ).order_by("category__order", "category__name", "name")
+class ProductViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
+    queryset = Product.objects.with_archived().order_by("category__order", "category__name", "name")
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -464,7 +456,7 @@ def barcode_lookup(request, barcode):
         )
 
 
-class CategoryViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+class CategoryViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
     A viewset for viewing categories.
     Can be filtered by parent_id to get child categories, or with `?parent=null` to get top-level categories.
@@ -472,7 +464,7 @@ class CategoryViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     Supports archiving with include_archived parameter.
     """
     
-    queryset = Category.objects.select_related("parent").prefetch_related("children")
+    queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [
         permissions.AllowAny
@@ -490,11 +482,8 @@ class CategoryViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
             queryset = Category.objects.archived_only()
         else:
             # Default: show only active records
-            queryset = Category.objects.all()
+            queryset = super().get_queryset()
         
-        # Apply optimizations
-        queryset = queryset.select_related("parent").prefetch_related("children")
-
         # Check if the request is for the customer-facing website
         is_for_website = self.request.query_params.get("for_website") == "true"
 

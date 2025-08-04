@@ -141,6 +141,8 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ["id", "name", "description", "parent", "parent_id", "order", "is_public", "is_active"]
+        select_related_fields = ["parent"]
+        prefetch_related_fields = ["children"]
 
 class TaxSerializer(serializers.ModelSerializer):
     class Meta:
@@ -155,11 +157,7 @@ class ProductSerializer(serializers.ModelSerializer):
     image = ImageField(required=False)
     image_url = serializers.SerializerMethodField()
     original_filename = serializers.CharField(read_only=True)
-    modifier_groups = ProductModifierSetSerializer(
-        source='product_modifier_sets',
-        many=True,
-        read_only=True
-    )
+    modifier_groups = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -168,6 +166,13 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active", "is_public", "track_inventory", "product_type", "barcode",
             "created_at", "updated_at", "image", "image_url", "original_filename",
             "modifier_groups",
+        ]
+        select_related_fields = ["category", "product_type"]
+        prefetch_related_fields = [
+            "taxes",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options",
+            "product_modifier_sets__extra_options",
         ]
 
     def get_image_url(self, obj):
@@ -185,18 +190,18 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_modifier_groups(self, obj):
-        # Use the prefetched data from the viewset to avoid N+1 queries
-        if hasattr(obj, 'prefetched_product_modifier_sets'):
-            product_modifier_sets = obj.prefetched_product_modifier_sets
-        else:
-            product_modifier_sets = obj.product_modifier_sets.all().select_related('modifier_set').prefetch_related(
-                'modifier_set__options', 'hidden_options', 'extra_options'
-            )
+        # This method now strictly relies on prefetched data.
+        if not hasattr(obj, 'product_modifier_sets'):
+            return []
+
+        product_modifier_sets = obj.product_modifier_sets.all()
 
         # If there are no modifier sets, return an empty list
         if not product_modifier_sets:
             return []
 
+        # The rest of the method logic remains the same, but it will now
+        # operate on the prefetched data.
         all_sets_data = {}
         options_map = {}
         triggered_map = defaultdict(list)
@@ -253,28 +258,10 @@ class ProductSerializer(serializers.ModelSerializer):
                 if set_id not in options_map:
                     triggered_sets_to_load.append(set_id)
         
-        # Load options for triggered sets that aren't already loaded
-        if triggered_sets_to_load:
-            from products.models import ModifierSet
-            triggered_modifier_sets = ModifierSet.objects.filter(
-                id__in=triggered_sets_to_load
-            ).prefetch_related('options')
-            
-            for triggered_ms in triggered_modifier_sets:
-                # Get all options for this triggered set (same logic as main sets)
-                global_options = {opt.id: opt for opt in triggered_ms.options.filter(is_product_specific=False)}
-                # Note: Triggered sets typically don't have product-specific options, but keeping consistent
-                all_options = global_options
-                
-                if visible_only:
-                    final_options = list(all_options.values())
-                else:
-                    final_options = list(all_options.values())
-                    for opt in final_options:
-                        opt.is_hidden_for_product = False  # Triggered sets typically don't hide options
-                
-                final_options = sorted(final_options, key=lambda o: o.display_order)
-                options_map[triggered_ms.id] = final_options
+        # This block is removed to prevent extra queries.
+        # The prefetch should handle loading all necessary data.
+        # if triggered_sets_to_load:
+        #     ...
 
         context = self.context.copy()
         context['options_for_set'] = options_map

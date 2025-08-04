@@ -13,17 +13,9 @@ from .serializers import (
 from .services import DiscountService
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import DiscountFilter
+from core_backend.mixins import OptimizedQuerysetMixin
 
 # Create your views here.
-
-
-class DiscountListView(generics.ListAPIView):
-    """
-    API view to list all available, active discounts.
-    """
-
-    queryset = Discount.objects.filter(is_active=True)
-    serializer_class = DiscountSerializer
 
 
 class ApplyDiscountView(APIView):
@@ -61,7 +53,7 @@ class ApplyDiscountView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class DiscountViewSet(viewsets.ModelViewSet):
+class DiscountViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     """
     A ViewSet for viewing and editing discounts.
     Provides list, create, retrieve, update, and destroy actions.
@@ -85,11 +77,7 @@ class DiscountViewSet(viewsets.ModelViewSet):
         return DiscountSerializer
 
     def get_queryset(self):
-        queryset = Discount.objects.prefetch_related(
-            'applicable_products',
-            'applicable_categories',
-            'applicable_products__categories'
-        )
+        queryset = super().get_queryset()
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")
@@ -110,16 +98,12 @@ class DiscountViewSet(viewsets.ModelViewSet):
 class AvailableDiscountListView(generics.ListAPIView):
     """
     Provides a read-only list of all currently active discounts.
+    This view is optimized to prefetch related fields to avoid N+1 queries.
     """
-
+    queryset = Discount.objects.filter(is_active=True).prefetch_related(
+        "applicable_products", "applicable_categories"
+    )
     serializer_class = DiscountSerializer
-
-    def get_queryset(self):
-        """
-        This view should return a list of all discounts
-        that are currently active for the cashier to select from.
-        """
-        return Discount.objects.filter(is_active=True)
 
 
 from rest_framework.decorators import api_view
