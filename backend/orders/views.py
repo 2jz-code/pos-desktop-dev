@@ -1,3 +1,4 @@
+from django.db import models
 from rest_framework import viewsets, permissions, status, filters, generics
 from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
@@ -66,7 +67,13 @@ class GetPendingOrderView(generics.RetrieveAPIView):
             # Explicitly check for an authenticated user's pending order
             if self.request.user and self.request.user.is_authenticated:
                 order = (
-                    Order.objects.filter(
+                    Order.objects.select_related('customer', 'cashier')
+                    .prefetch_related(
+                        'items__product',
+                        'items__product__category',
+                        'applied_discounts__discount'
+                    )
+                    .filter(
                         customer=self.request.user, status=Order.OrderStatus.PENDING
                     )
                     .order_by("-created_at")
@@ -106,25 +113,32 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     ordering = ["-created_at"]  # Newest orders first (descending)
 
     def get_queryset(self):
-        """Filter orders based on user type (authenticated or guest)."""
-        queryset = super().get_queryset()
-
-        # If user is POS staff (cashier, manager, owner, admin), return all orders
-        if self.request.user and self.request.user.is_authenticated and self.request.user.is_pos_staff:
-            return queryset
-
-        # If user is authenticated, return their orders
+        """Optimized queryset to prevent N+1 queries"""
+        return Order.objects.select_related(
+            'customer',
+            'cashier',
+        ).prefetch_related(
+            'items__product',  # Only basic product info needed now
+            'applied_discounts__discount',
+            'items__selected_modifiers_snapshot',
+            models.Prefetch('payment_details', queryset=Payment.objects.select_related().prefetch_related('transactions'))
+        ).filter(
+            # Add appropriate filters based on user type
+            **self._get_base_filters()
+        )
+    
+    def _get_base_filters(self):
+        """Get base filters for current user context"""
         if self.request.user and self.request.user.is_authenticated:
-            return queryset.filter(customer=self.request.user)
-
-        # For guest users, return orders with their session guest_id
-        if hasattr(self.request, "session") and self.request.session.session_key:
-            guest_id = self.request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+            if self.request.user.is_pos_staff:
+                return {}
+            return {'customer': self.request.user}
+        else:
+            # Handle guest orders
+            guest_id = self.request.session.get('guest_id')
             if guest_id:
-                return queryset.filter(guest_id=guest_id)
-
-        # Return empty queryset if no valid session
-        return queryset.none()
+                return {'guest_id': guest_id}
+            return {'pk__in': []}  # No orders for invalid sessions
 
     def get_serializer_class(self):
         """

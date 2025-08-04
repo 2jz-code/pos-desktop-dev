@@ -80,6 +80,15 @@ class ProductAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     autocomplete_fields = ("category", "taxes")
     inlines = [ProductModifierSetInline]
     
+    def get_queryset(self, request):
+        """Optimize admin queryset"""
+        return super().get_queryset(request).select_related(
+            'category',
+            'product_type'
+        ).prefetch_related(
+            'modifier_sets__options'
+        )
+
     def get_actions(self, request):
         """Combine archiving actions with custom product actions."""
         actions = super().get_actions(request)

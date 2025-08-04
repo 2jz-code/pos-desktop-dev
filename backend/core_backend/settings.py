@@ -56,8 +56,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party apps
+    "debug_toolbar",
     "django_extensions",
     "rest_framework",
+    "django_filters",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
@@ -88,7 +90,18 @@ MIDDLEWARE = [
     "core_backend.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
 ]
+
+INTERNAL_IPS = [
+    "127.0.0.1",
+]
+
+DEBUG_TOOLBAR_CONFIG = {
+    'SHOW_TOOLBAR_CALLBACK': lambda request: DEBUG,
+}
+
+INTERNAL_IPS = ["192.168.5.144", "192.168.2.27"]
 
 ROOT_URLCONF = "core_backend.urls"
 
@@ -127,7 +140,7 @@ DATABASES = {
 
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
-RATELIMIT_USE_CACHE = 'default'
+RATELIMIT_USE_CACHE = "default"
 
 
 # Password validation
@@ -333,6 +346,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_FILTER_BACKENDS": (["django_filters.rest_framework.DjangoFilterBackend"]),
     # Removed global pagination - only applied to specific ViewSets
 }
 
@@ -382,39 +396,39 @@ SIMPLE_JWT = {
 
 # Multi-tier Redis cache configuration
 CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/1"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 50},
         },
-        'KEY_PREFIX': 'ajeen_pos',
-        'VERSION': 1,  # Cache versioning for deployments
-        'TIMEOUT': 300,
+        "KEY_PREFIX": "ajeen_pos",
+        "VERSION": 1,  # Cache versioning for deployments
+        "TIMEOUT": 300,
     },
-    'static_data': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/2'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {'max_connections': 30},
+    "static_data": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/2"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 30},
         },
-        'KEY_PREFIX': 'ajeen_static',
-        'VERSION': 1,
-        'TIMEOUT': 3600,  # 1 hour default for static data
+        "KEY_PREFIX": "ajeen_static",
+        "VERSION": 1,
+        "TIMEOUT": 3600,  # 1 hour default for static data
     },
-    'session_data': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/3'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {'max_connections': 20},
+    "session_data": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://localhost:6379/3"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 20},
         },
-        'KEY_PREFIX': 'ajeen_session',
-        'VERSION': 1,
-        'TIMEOUT': 900,  # 15 minutes for session data
-    }
+        "KEY_PREFIX": "ajeen_session",
+        "VERSION": 1,
+        "TIMEOUT": 900,  # 15 minutes for session data
+    },
 }
 
 # Advanced session configuration
@@ -423,7 +437,7 @@ SESSION_CACHE_ALIAS = "session_data"
 SESSION_COOKIE_AGE = 3600 * 8  # 8 hours
 
 # Cache versioning for deployments
-CACHE_VERSION = os.getenv('CACHE_VERSION', 1)
+CACHE_VERSION = os.getenv("CACHE_VERSION", 1)
 
 # ASGI configuration
 ASGI_APPLICATION = "core_backend.asgi.application"

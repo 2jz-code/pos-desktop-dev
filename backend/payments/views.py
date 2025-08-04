@@ -554,7 +554,7 @@ class StripeWebhookView(APIView):
         """
         pi_id = payment_intent.id
         # First, try to find an existing transaction
-        txn = PaymentTransaction.objects.filter(transaction_id=pi_id).first()
+        txn = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(transaction_id=pi_id).first()
         if txn:
             return txn
 

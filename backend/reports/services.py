@@ -169,7 +169,7 @@ class ReportService:
             ).order_by('hour')
             
             # Payment method breakdown
-            payment_methods = PaymentTransaction.objects.filter(
+            payment_methods = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 payment__order__created_at__gte=today_start,
                 payment__order__status=Order.OrderStatus.COMPLETED,
                 status='completed'
@@ -274,7 +274,7 @@ class ReportService:
             thirty_days_ago = timezone.now() - timedelta(days=30)
             
             # Payment method performance
-            payment_performance = PaymentTransaction.objects.filter(
+            payment_performance = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 created_at__gte=thirty_days_ago,
                 status='completed'
             ).values('method').annotate(
@@ -285,7 +285,7 @@ class ReportService:
             ).order_by('-total_amount')
             
             # Daily payment trends
-            daily_payments = PaymentTransaction.objects.filter(
+            daily_payments = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 created_at__gte=thirty_days_ago,
                 status='completed'
             ).annotate(
@@ -296,7 +296,7 @@ class ReportService:
             ).order_by('date')
             
             # Payment failure analysis
-            failed_payments = PaymentTransaction.objects.filter(
+            failed_payments = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 created_at__gte=thirty_days_ago,
                 status__in=['failed', 'declined', 'cancelled']
             ).values('method', 'status').annotate(
@@ -350,7 +350,7 @@ class ReportService:
                 created_at__gte=timezone.now() - timedelta(hours=1)
             ).count()
             
-            recent_transactions = PaymentTransaction.objects.filter(
+            recent_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 created_at__gte=timezone.now() - timedelta(hours=1)
             ).count()
             
@@ -649,7 +649,7 @@ class ReportService:
         )
 
         # Calculate total refunds separately
-        total_refunds = PaymentTransaction.objects.filter(
+        total_refunds = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
             payment__order__in=orders_queryset,
             status=PaymentTransaction.TransactionStatus.REFUNDED,
         ).aggregate(
@@ -748,7 +748,7 @@ class ReportService:
                 end_dt = start_dt + timedelta(days=1)
 
             # Get transactions for this period using the precise datetime range
-            period_transactions = PaymentTransaction.objects.filter(
+            period_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
                 payment__order__in=orders_queryset,
                 payment__created_at__gte=start_dt,
                 payment__created_at__lt=end_dt,
@@ -1097,7 +1097,7 @@ class ReportService:
         start_time = time.time()
 
         # Base queryset for successful transactions only
-        successful_transactions = PaymentTransaction.objects.filter(
+        successful_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
             payment__order__subtotal__gt=0,
@@ -1105,7 +1105,7 @@ class ReportService:
         ).select_related("payment", "payment__order")
 
         # Base queryset for refunded transactions (tracked separately)
-        refunded_transactions = PaymentTransaction.objects.filter(
+        refunded_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
             payment__order__subtotal__gt=0,
@@ -1169,7 +1169,7 @@ class ReportService:
         previous_start = start_date - timedelta(days=previous_period_days)
         previous_end = start_date
 
-        previous_successful_transactions = PaymentTransaction.objects.filter(
+        previous_successful_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(previous_start, previous_end),
             payment__order__subtotal__gt=0,
@@ -1324,7 +1324,7 @@ class ReportService:
         }
 
         # Processing statistics (use all transactions for complete picture)
-        all_transactions_for_stats = PaymentTransaction.objects.filter(
+        all_transactions_for_stats = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
             payment__order__subtotal__gt=0,

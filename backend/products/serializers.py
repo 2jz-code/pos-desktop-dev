@@ -115,7 +115,11 @@ class ProductSerializer(serializers.ModelSerializer):
     image = ImageField(required=False)
     image_url = serializers.SerializerMethodField()
     original_filename = serializers.CharField(read_only=True)
-    modifier_groups = serializers.SerializerMethodField()
+    modifier_groups = ProductModifierSetSerializer(
+        source='product_modifier_sets',
+        many=True,
+        read_only=True
+    )
 
     class Meta:
         model = Product
@@ -141,10 +145,17 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_modifier_groups(self, obj):
-        product_modifier_sets = obj.product_modifier_sets.all().select_related('modifier_set').prefetch_related(
-            'modifier_set__options', 'hidden_options', 'extra_options'
-        )
-        
+        # Use the prefetched data from the viewset to avoid N+1 queries
+        if hasattr(obj, 'prefetched_product_modifier_sets'):
+            product_modifier_sets = obj.prefetched_product_modifier_sets
+        else:
+            product_modifier_sets = obj.product_modifier_sets.all().select_related('modifier_set').prefetch_related(
+                'modifier_set__options', 'hidden_options', 'extra_options'
+            )
+
+        # If there are no modifier sets, return an empty list
+        if not product_modifier_sets:
+            return []
 
         all_sets_data = {}
         options_map = {}
@@ -156,7 +167,7 @@ class ProductSerializer(serializers.ModelSerializer):
         include_all_modifiers = request and request.query_params.get('include_all_modifiers', '').lower() == 'true'
         
         # For cart/order contexts, always include all modifiers if the product has any
-        if not include_all_modifiers and product_modifier_sets.exists():
+        if not include_all_modifiers and product_modifier_sets:
             include_all_modifiers = True
         
         for pms in product_modifier_sets:

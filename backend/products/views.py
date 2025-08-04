@@ -359,7 +359,15 @@ class ProductViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
                 # If parsing fails, ignore the parameter
                 pass
 
-        return queryset
+        return queryset.prefetch_related(
+            models.Prefetch(
+                'product_modifier_sets',
+                queryset=ProductModifierSet.objects.select_related('modifier_set').prefetch_related(
+                    'modifier_set__options', 'hidden_options', 'extra_options'
+                ),
+                to_attr='prefetched_product_modifier_sets'
+            )
+        )
 
     def list(self, request, *args, **kwargs):
         # Cache for common POS queries

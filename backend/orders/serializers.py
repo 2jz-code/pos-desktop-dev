@@ -8,6 +8,16 @@ from django.db import transaction
 from discounts.serializers import DiscountSerializer
 
 
+class OrderItemProductSerializer(serializers.ModelSerializer):
+    """Lightweight product serializer for use within OrderItemSerializer"""
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'price', 'description', 'is_active', 
+            'barcode', 'track_inventory'
+        ]
+
+
 class OrderItemModifierSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItemModifier
@@ -15,7 +25,7 @@ class OrderItemModifierSerializer(serializers.ModelSerializer):
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(read_only=True)
+    product = OrderItemProductSerializer(read_only=True)
     selected_modifiers_snapshot = OrderItemModifierSerializer(many=True, read_only=True)
     total_modifier_price = serializers.SerializerMethodField()
 
@@ -24,11 +34,19 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = "__all__"
     
     def get_total_modifier_price(self, obj):
-        """Calculate total price impact from modifiers"""
-        return sum(
-            modifier.price_at_sale * modifier.quantity 
-            for modifier in obj.selected_modifiers_snapshot.all()
-        )
+        """Calculate total price impact from modifiers using prefetched data"""
+        # Use prefetched data to avoid N+1 queries
+        if hasattr(obj, '_prefetched_objects_cache') and 'selected_modifiers_snapshot' in obj._prefetched_objects_cache:
+            # Use the prefetched data
+            modifiers = obj._prefetched_objects_cache['selected_modifiers_snapshot']
+            return sum(modifier.price_at_sale * modifier.quantity for modifier in modifiers)
+        elif hasattr(obj, 'selected_modifiers_snapshot'):
+            # Fallback to direct query if prefetch not available
+            return sum(
+                modifier.price_at_sale * modifier.quantity 
+                for modifier in obj.selected_modifiers_snapshot.all()
+            )
+        return 0
 
 
 class OrderDiscountSerializer(serializers.ModelSerializer):
@@ -65,6 +83,7 @@ class OrderSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
     payment_details = serializers.SerializerMethodField()
+    # Essential payment fields for frontend compatibility
     total_with_tip = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
     total_tips = serializers.SerializerMethodField()
@@ -105,52 +124,36 @@ class OrderSerializer(serializers.ModelSerializer):
         """
         from payments.serializers import PaymentSerializer
 
-        if hasattr(obj, "payment_details"):
+        if hasattr(obj, "payment_details") and obj.payment_details:
             return PaymentSerializer(obj.payment_details).data
         return None
 
     def get_total_with_tip(self, obj):
-        """
-        Calculate the grand total including the tip from the associated payment.
-        """
-        total = obj.grand_total
-        # Check if the payment_details object exists and has total_tips
-        if (
-            hasattr(obj, "payment_details")
-            and obj.payment_details
-            and obj.payment_details.total_tips
-        ):
-            total += obj.payment_details.total_tips
-        return total
+        """Get total with tip from prefetched payment details"""
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_amount_due + obj.payment_details.total_tips
+        return obj.grand_total
 
     def get_amount_paid(self, obj):
-        """
-        Returns the amount paid (excluding tips and surcharges) from the Payment model.
-        """
+        """Get amount paid from prefetched payment details"""
         if hasattr(obj, "payment_details") and obj.payment_details:
             return obj.payment_details.amount_paid
         return 0.00
 
     def get_total_tips(self, obj):
-        """
-        Returns the cumulative tip total from the Payment model.
-        """
+        """Get total tips from prefetched payment details"""
         if hasattr(obj, "payment_details") and obj.payment_details:
             return obj.payment_details.total_tips
         return 0.00
 
     def get_total_surcharges(self, obj):
-        """
-        Returns the total surcharges collected from the Payment model.
-        """
+        """Get total surcharges from prefetched payment details"""
         if hasattr(obj, "payment_details") and obj.payment_details:
             return obj.payment_details.total_surcharges
         return 0.00
 
     def get_total_collected(self, obj):
-        """
-        Returns the total amount collected from the Payment model (amount + tips + surcharges).
-        """
+        """Get total collected from prefetched payment details"""
         if hasattr(obj, "payment_details") and obj.payment_details:
             return obj.payment_details.total_collected
         return 0.00
@@ -167,7 +170,19 @@ class OrderListSerializer(serializers.ModelSerializer):
     customer_display_name = serializers.ReadOnlyField()
     total_with_tip = serializers.SerializerMethodField()
     total_collected = serializers.SerializerMethodField()
-    payment_in_progress = serializers.SerializerMethodField()
+    payment_in_progress = serializers.ReadOnlyField(source='payment_in_progress_derived')
+
+    def get_total_with_tip(self, obj):
+        """Get total with tip, fallback to grand_total if no payment details"""
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_amount_due + obj.payment_details.total_tips
+        return obj.grand_total
+
+    def get_total_collected(self, obj):
+        """Get total collected, fallback to 0.00 if no payment details"""
+        if hasattr(obj, "payment_details") and obj.payment_details:
+            return obj.payment_details.total_collected
+        return 0.00
 
     class Meta:
         model = Order
@@ -187,34 +202,6 @@ class OrderListSerializer(serializers.ModelSerializer):
             "payment_in_progress",
         ]
         select_related_fields = ["customer", "cashier", "payment_details"]
-
-    def get_total_with_tip(self, obj):
-        """
-        Calculate the grand total including the tip from the associated payment.
-        """
-        total = obj.grand_total
-        if (
-            hasattr(obj, "payment_details")
-            and obj.payment_details
-            and obj.payment_details.total_tips
-        ):
-            total += obj.payment_details.total_tips
-        return total
-
-    def get_total_collected(self, obj):
-        """
-        Returns the total amount collected from the Payment model (amount + tips + surcharges).
-        """
-        if hasattr(obj, "payment_details") and obj.payment_details:
-            return obj.payment_details.total_collected
-        return 0.00
-
-    def get_payment_in_progress(self, obj):
-        """
-        NEW: Uses derived property based on Payment.status instead of deprecated field.
-        Returns True if a payment exists and is in PENDING status.
-        """
-        return obj.payment_in_progress_derived
 
 
 class OrderCustomerInfoSerializer(serializers.ModelSerializer):

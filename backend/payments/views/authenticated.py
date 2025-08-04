@@ -155,13 +155,21 @@ class PaymentViewSet(
     ordering = ["-created_at"]  # Default ordering
 
     def get_queryset(self):
-        """Filter payments based on user permissions."""
-        # The base queryset is now optimized by the mixin
-        queryset = super().get_queryset()
+        """Optimized queryset for payment operations"""
         user = self.request.user
+        queryset = Payment.objects.select_related(
+            'order',
+            'order__customer',
+            'order__cashier'
+        ).prefetch_related(
+            'transactions',
+            'order__items__product'
+        )
+
         if user.is_pos_staff:
-            return queryset.order_by("-created_at")
-        return queryset.filter(order__customer=user).order_by("-created_at")
+            return queryset
+
+        return queryset.filter(order__customer=user)
 
     @action(detail=False, methods=["post"], url_path="cancel-intent")
     def cancel_intent(self, request):
