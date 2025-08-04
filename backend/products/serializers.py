@@ -38,9 +38,49 @@ class ModifierSetSerializer(serializers.ModelSerializer):
         return BasicProductSerializer(products, many=True).data
 
 class ProductModifierSetSerializer(serializers.ModelSerializer):
+    # Include the full modifier set data instead of just the ID
+    id = serializers.IntegerField(source='modifier_set.id', read_only=True)
+    name = serializers.CharField(source='modifier_set.name', read_only=True)
+    internal_name = serializers.CharField(source='modifier_set.internal_name', read_only=True)
+    selection_type = serializers.CharField(source='modifier_set.selection_type', read_only=True)
+    min_selections = serializers.IntegerField(source='modifier_set.min_selections', read_only=True)
+    max_selections = serializers.IntegerField(source='modifier_set.max_selections', read_only=True)
+    options = serializers.SerializerMethodField()
+    
     class Meta:
         model = ProductModifierSet
-        fields = '__all__'
+        fields = ['id', 'name', 'internal_name', 'selection_type', 'min_selections', 'max_selections', 'display_order', 'options']
+    
+    def get_options(self, obj):
+        # Get all options from the modifier set (already prefetched)
+        all_options = list(obj.modifier_set.options.all())
+        
+        # Get hidden option IDs for this product
+        hidden_ids = {opt.id for opt in obj.hidden_options.all()}
+        
+        # Get extra product-specific options
+        extra_options = list(obj.extra_options.all())
+        
+        # Combine global options (non-product-specific) with product-specific options
+        global_options = [opt for opt in all_options if not opt.is_product_specific]
+        final_options = global_options + extra_options
+        
+        # Filter out hidden options and mark visibility
+        visible_options = []
+        for option in final_options:
+            if option.id not in hidden_ids:
+                option_data = {
+                    'id': option.id,
+                    'name': option.name,
+                    'price_delta': str(option.price_delta),
+                    'display_order': option.display_order,
+                    'is_hidden': False
+                }
+                visible_options.append(option_data)
+        
+        # Sort by display order
+        visible_options.sort(key=lambda x: x['display_order'])
+        return visible_options
 
 
 # --- Optimized Read-Only Serializers for Product Detail View ---
