@@ -191,6 +191,9 @@ class Recipe(SoftDeleteMixin):
     class Meta:
         verbose_name = _("Recipe")
         verbose_name_plural = _("Recipes")
+        indexes = [
+            models.Index(fields=['menu_item']),  # For recipe lookups
+        ]
 
     def __str__(self):
         return self.name
@@ -221,6 +224,9 @@ class RecipeItem(SoftDeleteMixin):
         verbose_name = _("Recipe Item")
         verbose_name_plural = _("Recipe Items")
         unique_together = ("recipe", "product")
+        indexes = [
+            models.Index(fields=['recipe', 'product']),  # For ingredient lookups
+        ]
 
     def __str__(self):
         return (

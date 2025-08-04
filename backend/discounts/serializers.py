@@ -55,6 +55,10 @@ class DiscountSerializer(serializers.ModelSerializer):
             "buy_quantity",
             "get_quantity",
         ]
+        prefetch_related_fields = [
+            'applicable_products',
+            'applicable_categories'
+        ]
 
     def validate(self, data):
         scope = data.get("scope")

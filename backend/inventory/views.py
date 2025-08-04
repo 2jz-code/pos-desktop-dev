@@ -10,6 +10,7 @@ from .models import Location, InventoryStock, Recipe, RecipeItem
 from .serializers import (
     LocationSerializer,
     InventoryStockSerializer,
+    OptimizedInventoryStockSerializer,
     RecipeSerializer,
     RecipeItemSerializer,
     StockAdjustmentSerializer,
@@ -30,25 +31,65 @@ class LocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     serializer_class = LocationSerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def get_queryset(self):
+        return Location.objects.prefetch_related(
+            'stock_levels__product'
+        )
+
 
 class RecipeViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def get_queryset(self):
+        return Recipe.objects.select_related('menu_item').prefetch_related(
+            'ingredients__product'
+        )
+
 
 class InventoryStockViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
     queryset = InventoryStock.objects.all()
-    serializer_class = InventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    def get_serializer_class(self):
+        """Use optimized serializer for list view to reduce N+1 queries"""
+        if self.action == 'list':
+            return OptimizedInventoryStockSerializer
+        return InventoryStockSerializer
+
+    def get_queryset(self):
+        """Optimized queryset based on action"""
+        if self.action == 'list':
+            # Optimized queryset for list view - only what we need
+            return InventoryStock.objects.select_related(
+                'product__category',
+                'product__product_type', 
+                'location'
+            ).filter(archived_at__isnull=True)
+        else:
+            # Full queryset for detail views and modifications
+            return InventoryStock.objects.select_related(
+                'product__category', 
+                'location'
+            ).prefetch_related(
+                'product__taxes'
+            )
 
 
 class InventoryStockListView(generics.ListAPIView):
-    serializer_class = InventoryStockSerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def get_serializer_class(self):
+        """Use optimized serializer to reduce N+1 queries"""
+        return OptimizedInventoryStockSerializer
+
     def get_queryset(self):
-        queryset = InventoryStock.objects.select_related("product", "location").all()
+        queryset = InventoryStock.objects.select_related(
+            "product__category", 
+            "product__product_type",
+            "location"
+        ).filter(archived_at__isnull=True)
         
         location_id = self.request.query_params.get('location', None)
         search_query = self.request.query_params.get('search', None)
@@ -390,8 +431,8 @@ class InventoryDashboardView(APIView):
             
             # Get all stock records across all locations
             all_stock_records = InventoryStock.objects.select_related(
-                "product", "location"
-            ).all()
+                'product', 'location'
+            ).filter(archived_at__isnull=True)
 
             # Aggregate total quantities per product across all locations
             product_totals = all_stock_records.values('product').annotate(

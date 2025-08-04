@@ -22,7 +22,60 @@ class LocationSerializer(serializers.ModelSerializer):
         ]
 
 
+# Optimized serializers for stock management to avoid N+1 queries
+class OptimizedProductSerializer(serializers.ModelSerializer):
+    """Lightweight product serializer for inventory management"""
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    product_type_name = serializers.CharField(source='product_type.name', read_only=True)
+    
+    class Meta:
+        model = Product
+        fields = [
+            "id", "name", "description", "price", "barcode", 
+            "is_active", "is_public", "track_inventory",
+            "category_name", "product_type_name"
+        ]
+
+class OptimizedLocationSerializer(serializers.ModelSerializer):
+    """Lightweight location serializer for inventory management"""
+    effective_low_stock_threshold = serializers.ReadOnlyField()
+    effective_expiration_threshold = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Location
+        fields = [
+            "id", "name", "description",
+            "effective_low_stock_threshold",
+            "effective_expiration_threshold"
+        ]
+
+class OptimizedInventoryStockSerializer(serializers.ModelSerializer):
+    """Optimized serializer for stock management endpoint"""
+    product = OptimizedProductSerializer(read_only=True)
+    location = OptimizedLocationSerializer(read_only=True)
+    is_low_stock = serializers.ReadOnlyField()
+    is_expiring_soon = serializers.ReadOnlyField()
+    effective_low_stock_threshold = serializers.ReadOnlyField()
+    effective_expiration_threshold = serializers.ReadOnlyField()
+
+    class Meta:
+        model = InventoryStock
+        fields = [
+            "id", 
+            "product", 
+            "location", 
+            "quantity", 
+            "expiration_date", 
+            "low_stock_threshold", 
+            "expiration_threshold",
+            "effective_low_stock_threshold",
+            "effective_expiration_threshold",
+            "is_low_stock",
+            "is_expiring_soon"
+        ]
+
 class InventoryStockSerializer(serializers.ModelSerializer):
+    """Full serializer for detailed inventory operations"""
     product = ProductSerializer(read_only=True)
     location = LocationSerializer(read_only=True)
     is_low_stock = serializers.ReadOnlyField()
@@ -70,6 +123,15 @@ class RecipeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = ["id", "name", "menu_item_id", "menu_item", "ingredients"]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        
+        # Manually serialize the prefetched ingredients
+        if hasattr(instance, 'ingredients'):
+            representation['ingredients'] = RecipeItemSerializer(instance.ingredients.all(), many=True).data
+        
+        return representation
 
     def create(self, validated_data):
         ingredients_data = validated_data.pop("ingredients")

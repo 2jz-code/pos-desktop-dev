@@ -85,7 +85,11 @@ class DiscountViewSet(viewsets.ModelViewSet):
         return DiscountSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = Discount.objects.prefetch_related(
+            'applicable_products',
+            'applicable_categories',
+            'applicable_products__categories'
+        )
 
         # Support for delta sync - filter by modified_since parameter
         modified_since = self.request.query_params.get("modified_since")

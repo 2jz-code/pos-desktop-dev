@@ -84,3 +84,9 @@ class Discount(models.Model):
 
     class Meta:
         ordering = ["name"]
+        indexes = [
+            models.Index(fields=['is_active', 'start_date', 'end_date']),  # For active discount queries
+            models.Index(fields=['type', 'scope']),  # For discount strategy queries
+            models.Index(fields=['code']),  # For discount code lookups
+            models.Index(fields=['is_active', 'type']),  # Composite for common filtering
+        ]

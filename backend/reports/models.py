@@ -210,6 +210,11 @@ class ReportExecution(models.Model):
         ordering = ["-started_at"]
         verbose_name = "Report Execution"
         verbose_name_plural = "Report Executions"
+        indexes = [
+            models.Index(fields=['status', 'started_at']),  # For execution monitoring
+            models.Index(fields=['saved_report', 'status']),  # For report tracking
+            models.Index(fields=['started_at']),  # For time-based queries
+        ]
 
     def __str__(self):
         return (

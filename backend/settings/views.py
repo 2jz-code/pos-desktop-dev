@@ -314,7 +314,9 @@ class WebOrderSettingsViewSet(viewsets.ModelViewSet):
         """
         Always returns the single WebOrderSettings instance.
         """
-        obj, created = WebOrderSettings.objects.get_or_create(pk=1)
+        obj, created = WebOrderSettings.objects.prefetch_related(
+            'web_receipt_terminals__store_location'
+        ).get_or_create(pk=1)
         return obj
 
     def list(self, request, *args, **kwargs):
@@ -360,6 +362,9 @@ class TerminalRegistrationViewSet(viewsets.ModelViewSet):
     queryset = TerminalRegistration.objects.all()
     serializer_class = TerminalRegistrationSerializer
     lookup_field = "device_id"
+
+    def get_queryset(self):
+        return TerminalRegistration.objects.select_related('store_location')
 
     def perform_create(self, serializer):
         """

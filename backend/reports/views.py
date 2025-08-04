@@ -342,6 +342,10 @@ class SavedReportViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets
     ordering_fields = ["created_at", "last_run", "name"]
     ordering = ["-created_at"]
 
+    class Meta:
+        select_related_fields = ['user']
+        prefetch_related_fields = []
+
     def get_queryset(self):
         """Filter by user - users can only see their own reports"""
         queryset = super().get_queryset()
@@ -572,7 +576,9 @@ class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewS
 
     def get_queryset(self):
         """Filter by user - users can only see their own execution history"""
-        queryset = super().get_queryset()
+        queryset = ReportExecution.objects.select_related(
+            'saved_report__user'
+        )
 
         # Staff can see all executions, regular users only their own
         if self.request.user.is_staff:

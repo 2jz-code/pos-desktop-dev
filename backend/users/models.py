@@ -122,6 +122,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['role', 'is_pos_staff']),  # For POS staff filtering
+            models.Index(fields=['is_active', 'role']),     # For active user queries
+            models.Index(fields=['email']),  # For email lookups (if not already indexed)
+        ]
+
     def __str__(self):
         return self.email
 
