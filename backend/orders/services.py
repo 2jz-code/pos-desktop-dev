@@ -6,7 +6,7 @@ from users.models import User
 from discounts.services import DiscountService
 from discounts.models import Discount
 from products.services import ModifierValidationService
-from core_backend.cache_utils import cache_session_data, cache_static_data
+from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
 import hashlib
 
 class OrderService:

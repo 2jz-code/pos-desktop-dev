@@ -33,7 +33,7 @@ from django.utils import timezone
 from django.conf import settings
 import pytz
 from django.core.cache import cache
-from core_backend.cache_utils import cache_static_data, cache_dynamic_data, cache_session_data
+from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data, cache_session_data
 
 # Export functionality imports
 from openpyxl import Workbook
@@ -339,7 +339,7 @@ class ReportService:
     def get_performance_monitoring_cache():
         """Cache comprehensive system performance metrics"""
         try:
-            from core_backend.cache import CacheMonitor
+            from core_backend.infrastructure.cache import CacheMonitor
             
             # Get cache health stats
             cache_health = CacheMonitor.health_check()

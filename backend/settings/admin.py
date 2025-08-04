@@ -9,7 +9,7 @@ from .models import (
     PrinterConfiguration,
     WebOrderSettings,
 )
-from core_backend.admin_mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin
 
 
 @admin.register(GlobalSettings)

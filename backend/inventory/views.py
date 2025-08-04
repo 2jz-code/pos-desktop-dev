@@ -19,7 +19,7 @@ from .serializers import (
 from .services import InventoryService
 from products.models import Product
 from settings.config import app_settings
-from core_backend.mixins import ArchivingViewSetMixin
+from core_backend.base.mixins import ArchivingViewSetMixin
 
 # Create your views here.
 

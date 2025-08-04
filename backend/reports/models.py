@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
-from core_backend.archiving import SoftDeleteMixin
+from core_backend.utils.archiving import SoftDeleteMixin
 
 User = get_user_model()
 

@@ -13,7 +13,7 @@ from .serializers import (
 from .services import DiscountService
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import DiscountFilter
-from core_backend.mixins import OptimizedQuerysetMixin
+from core_backend.base.mixins import OptimizedQuerysetMixin
 
 # Create your views here.
 

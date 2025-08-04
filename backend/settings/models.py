@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from decimal import Decimal
-from core_backend.archiving import SoftDeleteMixin
+from core_backend.utils.archiving import SoftDeleteMixin
 
 
 # === CHOICES ===

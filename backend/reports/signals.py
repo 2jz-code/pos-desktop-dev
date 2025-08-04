@@ -11,7 +11,7 @@ from payments.models import PaymentTransaction
 from inventory.models import InventoryStock
 from users.models import User
 from .models import ReportCache
-from core_backend.cache_utils import invalidate_cache_pattern
+from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
 
 logger = logging.getLogger(__name__)
 

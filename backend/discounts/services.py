@@ -11,7 +11,7 @@ from orders.models import Order, OrderDiscount
 # --- END FIX ---
 
 from .factories import DiscountStrategyFactory
-from core_backend.cache_utils import cache_static_data, cache_dynamic_data
+from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 
 
 class DiscountService:

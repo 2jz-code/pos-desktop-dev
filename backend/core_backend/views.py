@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
-from .cache import CacheMonitor, AdvancedCacheManager, CacheWarmingManager
+from .infrastructure.cache import CacheMonitor, AdvancedCacheManager, CacheWarmingManager
 import logging
 
 logger = logging.getLogger(__name__)

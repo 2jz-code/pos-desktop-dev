@@ -1,7 +1,7 @@
 from .models import Product, Category, Tax, ProductType, ModifierSet, ModifierOption, ProductModifierSet
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
-from core_backend.cache_utils import cache_static_data, cache_dynamic_data
+from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 
 
 class ProductService:

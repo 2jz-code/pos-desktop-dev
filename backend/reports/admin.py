@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 from .models import ReportCache, SavedReport, ReportTemplate, ReportExecution
-from core_backend.admin_mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin
 
 
 @admin.register(ReportCache)

@@ -1,7 +1,7 @@
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User
-from core_backend.cache_utils import cache_session_data, cache_static_data
+from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
 
 
 class UserService:

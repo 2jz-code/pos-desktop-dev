@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from datetime import timedelta
 from products.models import Product
-from core_backend.archiving import SoftDeleteMixin
+from core_backend.utils.archiving import SoftDeleteMixin
 
 
 class Location(SoftDeleteMixin):

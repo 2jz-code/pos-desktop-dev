@@ -22,7 +22,7 @@ from .serializers import (
 from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from core_backend.mixins import ArchivingViewSetMixin, OptimizedQuerysetMixin
+from core_backend.base.mixins import ArchivingViewSetMixin, OptimizedQuerysetMixin
 
 class ProductModifierSetViewSet(viewsets.ModelViewSet):
     queryset = ProductModifierSet.objects.all()

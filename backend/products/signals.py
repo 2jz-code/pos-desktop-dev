@@ -8,7 +8,7 @@ from django.conf import settings
 
 from .models import Product, Category, ProductType, Tax, ModifierSet
 from .image_service import ImageService  # Import ImageService
-from core_backend.cache_utils import invalidate_cache_pattern
+from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
 import os  # Import os
 
 logger = logging.getLogger(__name__)

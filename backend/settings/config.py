@@ -7,7 +7,7 @@ eliminating the need for direct database queries from business logic.
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from django.core.exceptions import ImproperlyConfigured
-from core_backend.cache_utils import cache_static_data, cache_dynamic_data
+from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 
 
 class AppSettings:

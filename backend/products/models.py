@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from mptt.models import MPTTModel, TreeForeignKey
-from core_backend.archiving import SoftDeleteMixin
+from core_backend.utils.archiving import SoftDeleteMixin
 
 
 class Category(MPTTModel):

@@ -2,7 +2,7 @@ from django.db import transaction
 from .models import InventoryStock, Location, Recipe
 from products.models import Product
 from decimal import Decimal
-from core_backend.cache_utils import cache_dynamic_data, cache_static_data
+from core_backend.infrastructure.cache_utils import cache_dynamic_data, cache_static_data
 
 
 class InventoryService:

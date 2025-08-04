@@ -8,7 +8,7 @@ from django.dispatch import receiver
 from .models import GlobalSettings, StoreLocation, PrinterConfiguration, WebOrderSettings
 from django.utils import timezone
 from django.db import transaction
-from core_backend.cache_utils import invalidate_cache_pattern
+from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
 
 
 @receiver(post_save, sender=GlobalSettings)

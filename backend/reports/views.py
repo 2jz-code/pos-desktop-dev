@@ -8,7 +8,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.http import Http404
 
-from core_backend.mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
+from core_backend.base.mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
 from core_backend.pagination import StandardPagination
 from users.permissions import IsManagerOrHigher
 

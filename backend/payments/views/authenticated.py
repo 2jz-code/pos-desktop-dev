@@ -37,7 +37,7 @@ from ..serializers import (
 from ..services import PaymentService
 from orders.models import Order
 from users.authentication import CustomerCookieJWTAuthentication
-from core_backend.mixins import OptimizedQuerysetMixin
+from core_backend.base.mixins import OptimizedQuerysetMixin
 from core_backend.pagination import StandardPagination
 from rest_framework.permissions import AllowAny
 from django.db import models

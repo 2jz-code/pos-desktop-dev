@@ -1,6 +1,6 @@
 from django.contrib import admin
 from mptt.admin import DraggableMPTTAdmin
-from core_backend.admin_mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin
 from .models import (
     Category, Tax, Product, ProductType, 
     ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption

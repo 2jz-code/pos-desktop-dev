@@ -2,7 +2,7 @@ from django.dispatch import Signal
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Order, OrderItem, OrderDiscount
-from core_backend.cache_utils import invalidate_cache_pattern
+from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
 
 # from .serializers import OrderSerializer  # Import the serializer
 import logging

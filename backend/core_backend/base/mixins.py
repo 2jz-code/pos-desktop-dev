@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import models
-from .archive_permissions import CanArchiveRecords, CanUnarchiveRecords, CanForceDelete, CanViewArchived
+from .permissions import CanArchiveRecords, CanUnarchiveRecords, CanForceDelete, CanViewArchived
 
 
 class OptimizedQuerysetMixin(ViewSetMixin):

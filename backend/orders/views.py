@@ -36,7 +36,7 @@ from payments.models import Payment
 from payments.strategies import StripeTerminalStrategy
 
 # --- Import our new mixin ---
-from core_backend.mixins import OptimizedQuerysetMixin
+from core_backend.base.mixins import OptimizedQuerysetMixin
 
 # --- Import pagination class ---
 from core_backend.pagination import StandardPagination

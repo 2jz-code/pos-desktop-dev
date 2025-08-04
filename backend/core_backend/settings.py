@@ -86,8 +86,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_ratelimit.middleware.RatelimitMiddleware",
-    "core_backend.middleware.BusinessHoursMiddleware",  # Business hours enforcement
-    "core_backend.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
+    "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement
+    "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
@@ -666,19 +666,19 @@ CELERY_BEAT_SCHEDULE = {
     },
     # Cache warming tasks
     "warm-critical-caches": {
-        "task": "core_backend.tasks.warm_critical_caches",
+        "task": "core_backend.infrastructure.tasks.warm_critical_caches",
         "schedule": crontab(hour=7, minute=0),  # 7 AM daily
         "options": {"expires": 3600},
     },
     # Cache health monitoring
     "cache-health-check": {
-        "task": "core_backend.tasks.cache_health_check",
+        "task": "core_backend.infrastructure.tasks.cache_health_check",
         "schedule": 300.0,  # Every 5 minutes
         "options": {"expires": 240},
     },
     # Clear expired cache locks
     "clear-expired-locks": {
-        "task": "core_backend.tasks.clear_expired_cache_locks",
+        "task": "core_backend.infrastructure.tasks.clear_expired_cache_locks",
         "schedule": 3600.0,  # Every hour
         "options": {"expires": 1800},
     },

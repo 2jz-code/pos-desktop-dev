@@ -20,9 +20,12 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls.static import static
 from django.http import JsonResponse
-from .views import cache_health_check, warm_caches, invalidate_cache, cache_statistics
-from .demo_views import cached_data_demo
-from .phase3c_demo import phase3c_advanced_demo
+from .views import (
+    cache_health_check,
+    warm_caches,
+    invalidate_cache,
+    cache_statistics,
+)
 
 
 def health_check(request):
@@ -38,8 +41,6 @@ urlpatterns = [
     path("api/cache/warm/", warm_caches, name="warm_caches"),
     path("api/cache/invalidate/", invalidate_cache, name="invalidate_cache"),
     path("api/cache/stats/", cache_statistics, name="cache_statistics"),
-    path("api/cache/demo/", cached_data_demo, name="cached_data_demo"),
-    path("api/cache/demo/advanced/", phase3c_advanced_demo, name="phase3c_advanced_demo"),
     path("api/users/", include("users.urls")),
     path(
         "api/auth/customer/", include("users.customer_urls")

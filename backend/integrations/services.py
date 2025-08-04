@@ -2,7 +2,7 @@ import logging
 from django.conf import settings
 from django.core.cache import cache
 import requests
-from core_backend.cache_utils import cache_static_data
+from core_backend.infrastructure.cache_utils import cache_static_data
 
 # Set up a logger for this service
 logger = logging.getLogger(__name__)
