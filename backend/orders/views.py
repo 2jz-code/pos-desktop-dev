@@ -1,12 +1,13 @@
 from django.db import models
 from rest_framework import viewsets, permissions, status, filters, generics
+from core_backend.base import BaseViewSet
 from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Order, OrderItem
 from .serializers import (
     OrderSerializer,
-    OrderListSerializer,
+    OptimizedOrderSerializer,
     OrderCreateSerializer,
     AddItemSerializer,
     UpdateOrderItemSerializer,
@@ -46,7 +47,6 @@ from notifications.services import EmailService
 
 logger = logging.getLogger(__name__)
 
-
 class GetPendingOrderView(generics.RetrieveAPIView):
     """
     A view to get the current user's (guest or authenticated) pending order.
@@ -85,8 +85,7 @@ class GetPendingOrderView(generics.RetrieveAPIView):
 
         return order
 
-
-class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class OrderViewSet(BaseViewSet):
     """
     A comprehensive ViewSet for handling orders and their items - Admin/Staff only.
     Provides CRUD for orders and cart management functionalities.
@@ -112,40 +111,12 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
 
     ordering = ["-created_at"]  # Newest orders first (descending)
 
-    def get_queryset(self):
-        """Optimized queryset to prevent N+1 queries"""
-        return Order.objects.select_related(
-            'customer',
-            'cashier',
-        ).prefetch_related(
-            'items__product',  # Only basic product info needed now
-            'applied_discounts__discount',
-            'items__selected_modifiers_snapshot',
-            models.Prefetch('payment_details', queryset=Payment.objects.select_related().prefetch_related('transactions'))
-        ).filter(
-            # Add appropriate filters based on user type
-            **self._get_base_filters()
-        )
-    
-    def _get_base_filters(self):
-        """Get base filters for current user context"""
-        if self.request.user and self.request.user.is_authenticated:
-            if self.request.user.is_pos_staff:
-                return {}
-            return {'customer': self.request.user}
-        else:
-            # Handle guest orders
-            guest_id = self.request.session.get('guest_id')
-            if guest_id:
-                return {'guest_id': guest_id}
-            return {'pk__in': []}  # No orders for invalid sessions
-
     def get_serializer_class(self):
         """
         Return the appropriate serializer class based on the request action.
         """
         if self.action == "list":
-            return OrderListSerializer
+            return OptimizedOrderSerializer
         if self.action == "create":
             return OrderCreateSerializer
         if self.action == "update_status":
@@ -338,7 +309,6 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
                 {"error": "An error occurred while updating customer information."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
     @action(
         detail=True,
@@ -535,8 +505,7 @@ class OrderViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-
-class OrderItemViewSet(viewsets.ModelViewSet):
+class OrderItemViewSet(BaseViewSet):
     """
     A ViewSet for managing a specific item within an order.
     """

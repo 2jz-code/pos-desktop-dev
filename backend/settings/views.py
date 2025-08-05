@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, status, generics
+from core_backend.base import BaseViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -25,8 +26,7 @@ from core_backend.base.mixins import ArchivingViewSetMixin
 
 # Create your views here.
 
-
-class GlobalSettingsViewSet(viewsets.ModelViewSet):
+class GlobalSettingsViewSet(BaseViewSet):
     """
     API endpoint for viewing and editing the application's single GlobalSettings object.
     Provides convenient endpoints for different settings sections.
@@ -260,8 +260,7 @@ class GlobalSettingsViewSet(viewsets.ModelViewSet):
                 # Return updated data
                 return self.business_hours(type("Request", (), {"method": "GET"})())
 
-
-class PrinterConfigurationViewSet(viewsets.ModelViewSet):
+class PrinterConfigurationViewSet(BaseViewSet):
     """
     API endpoint for viewing and editing the singleton PrinterConfiguration object.
     """
@@ -299,8 +298,7 @@ class PrinterConfigurationViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
 
-
-class WebOrderSettingsViewSet(viewsets.ModelViewSet):
+class WebOrderSettingsViewSet(BaseViewSet):
     """
     API endpoint for viewing and editing the singleton WebOrderSettings object.
     Manages which terminals should print customer receipts for web orders.
@@ -352,8 +350,7 @@ class WebOrderSettingsViewSet(viewsets.ModelViewSet):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
-
-class TerminalRegistrationViewSet(viewsets.ModelViewSet):
+class TerminalRegistrationViewSet(BaseViewSet):
     """
     API endpoint for managing Terminal Registrations.
     This replaces the old POSDeviceViewSet.
@@ -416,8 +413,7 @@ class TerminalRegistrationViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
 
-
-class StoreLocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
+class StoreLocationViewSet(BaseViewSet):
     """
     API endpoint for managing primary Store Locations.
     """
@@ -440,7 +436,6 @@ class StoreLocationViewSet(ArchivingViewSetMixin, viewsets.ModelViewSet):
             }
         )
 
-
 class TerminalLocationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Stripe Terminal Locations to be viewed.
@@ -448,7 +443,6 @@ class TerminalLocationViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = TerminalLocation.objects.select_related("store_location").all()
     serializer_class = TerminalLocationSerializer
-
 
 class TerminalReaderListView(APIView):
     """
@@ -471,7 +465,6 @@ class TerminalReaderListView(APIView):
                 {"error": f"Failed to retrieve readers from Stripe: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 class SyncStripeLocationsView(APIView):
     """

@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
 from rest_framework import generics, status, viewsets
+from core_backend.base import BaseViewSet
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from orders.models import Order
@@ -16,7 +17,6 @@ from .filters import DiscountFilter
 from core_backend.base.mixins import OptimizedQuerysetMixin
 
 # Create your views here.
-
 
 class ApplyDiscountView(APIView):
     """
@@ -52,8 +52,7 @@ class ApplyDiscountView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-class DiscountViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class DiscountViewSet(BaseViewSet):
     """
     A ViewSet for viewing and editing discounts.
     Provides list, create, retrieve, update, and destroy actions.
@@ -94,7 +93,6 @@ class DiscountViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
 
         return queryset
 
-
 class AvailableDiscountListView(generics.ListAPIView):
     """
     Provides a read-only list of all currently active discounts.
@@ -104,7 +102,6 @@ class AvailableDiscountListView(generics.ListAPIView):
         "applicable_products", "applicable_categories"
     )
     serializer_class = DiscountSerializer
-
 
 from rest_framework.decorators import api_view
 

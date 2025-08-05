@@ -1,5 +1,6 @@
 from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions, status
+from core_backend.base import BaseViewSet
 from rest_framework.views import APIView
 from rest_framework.response import Response
 import stripe
@@ -32,11 +33,7 @@ import json
 # Create your views here.
 logger = logging.getLogger(__name__)
 
-
-
-
-
-class PaymentViewSet(viewsets.ModelViewSet):
+class PaymentViewSet(BaseViewSet):
     """
     ViewSet for handling payments.
     Provides list, retrieve, and other standard actions.
@@ -234,7 +231,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
 class TerminalConnectionTokenView(APIView):
     """Generate a connection token for the active terminal provider."""
 
@@ -254,7 +250,6 @@ class TerminalConnectionTokenView(APIView):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 class CreateTerminalIntentView(generics.GenericAPIView):
     """
@@ -309,7 +304,6 @@ class CreateTerminalIntentView(generics.GenericAPIView):
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
 class CancelPaymentIntentView(APIView):
     """
     Cancels a specific Payment Intent.
@@ -335,7 +329,6 @@ class CancelPaymentIntentView(APIView):
                 {"error": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 class CaptureTerminalIntentView(APIView):
     """
@@ -386,7 +379,6 @@ class CaptureTerminalIntentView(APIView):
         ) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class CancelTerminalActionView(APIView):
     """Cancels an ongoing action on a terminal reader."""
 
@@ -409,7 +401,6 @@ class CancelTerminalActionView(APIView):
             ValueError,
         ) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
 
 class TerminalConfigurationView(APIView):
     """
@@ -436,7 +427,6 @@ class TerminalConfigurationView(APIView):
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
 class PaymentProcessView(generics.GenericAPIView):
     """
     The main endpoint for processing a payment transaction.
@@ -459,7 +449,6 @@ class PaymentProcessView(generics.GenericAPIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class PaymentDetailView(generics.RetrieveAPIView):
     """
     An endpoint to retrieve the full payment details for an order.
@@ -469,7 +458,6 @@ class PaymentDetailView(generics.RetrieveAPIView):
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "order__id"  # Look up payments by the order ID
-
 
 # This view is now deprecated in favor of the more specific terminal views above.
 # We will remove it after confirming the new flow.
@@ -500,7 +488,6 @@ class InitiateTerminalPaymentView(generics.GenericAPIView):
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         except (RuntimeError, ValueError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
 
 class StripeWebhookView(APIView):
     """
@@ -771,7 +758,6 @@ class StripeWebhookView(APIView):
         except Exception as e:
             logger.error(f"An unexpected error occurred in _handle_refund_updated: {e}")
 
-
 class CreatePaymentView(APIView):
     """
     Creates a new Payment object for a given Order, or returns the existing one.
@@ -807,7 +793,6 @@ class CreatePaymentView(APIView):
         # Return 201 if created, 200 if it already existed.
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(serializer.data, status=status_code)
-
 
 class CreateGuestPaymentIntentView(APIView):
     """
@@ -935,7 +920,6 @@ class CreateGuestPaymentIntentView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
 class CompleteGuestPaymentView(APIView):
     """
     Completes a guest payment after successful Stripe confirmation.
@@ -999,7 +983,6 @@ class CompleteGuestPaymentView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
 class SurchargeCalculationView(APIView):
     """
     Calculates surcharge for a given amount or amounts.
@@ -1020,6 +1003,4 @@ class SurchargeCalculationView(APIView):
                 return Response({'surcharges': surcharges}, status=status.HTTP_200_OK)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 

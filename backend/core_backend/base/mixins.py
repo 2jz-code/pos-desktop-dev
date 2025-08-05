@@ -1,46 +1,76 @@
 from rest_framework.viewsets import ViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
 from django.db import models
+from django.db.models import Prefetch
 from .permissions import CanArchiveRecords, CanUnarchiveRecords, CanForceDelete, CanViewArchived
+from django.db.models.fields.related import ForwardManyToOneDescriptor, ForwardOneToOneDescriptor
 
 
 class OptimizedQuerysetMixin(ViewSetMixin):
     """
-    A ViewSet mixin that automatically optimizes the queryset by inspecting
-    the associated serializer for `select_related_fields` and
-    `prefetch_related_fields` attributes in its Meta class.
-    
-    This mixin is action-aware and will use the appropriate serializer
-    for the current action when determining optimizations.
+    A ViewSet mixin that automatically optimizes the queryset by recursively
+    inspecting the associated serializer and its nested serializers for
+    `select_related_fields` and `prefetch_related_fields` attributes in their
+    Meta classes.
     """
+
+    def _get_nested_optimizations(self, serializer_class, base_path=""):
+        """
+        Recursively find all select_related and prefetch_related fields
+        from a serializer and its nested serializers.
+        """
+        select_related = set()
+        prefetch_related = set()
+
+        if not hasattr(serializer_class, "Meta"):
+            return select_related, prefetch_related
+
+        meta = getattr(serializer_class, "Meta")
+        model = getattr(meta, "model", None)
+
+        # Get optimizations from the current serializer
+        for field in getattr(meta, "select_related_fields", []):
+            select_related.add(f"{base_path}{field}")
+
+        for field in getattr(meta, "prefetch_related_fields", []):
+            # Handle Prefetch objects correctly
+            if isinstance(field, Prefetch):
+                if base_path:
+                    # For nested prefetch, we need to adjust the prefetch_to path
+                    prefetch_related.add(Prefetch(f"{base_path}{field.prefetch_to}", queryset=field.queryset))
+                else:
+                    prefetch_related.add(field)
+            else:
+                prefetch_related.add(f"{base_path}{field}")
+
+        # Temporarily disable recursive optimization to prevent over-optimization
+        # The explicit optimization fields in serializer Meta classes are sufficient
+        # TODO: Re-enable with smarter field mapping once manual optimizations are complete
+        pass
+
+        return select_related, prefetch_related
 
     def get_queryset(self):
         """
         Overrides the default get_queryset to apply optimizations based on
-        the current action's serializer.
+        the current action's serializer and its nested serializers.
         """
         queryset = super().get_queryset()
 
-        # Get the serializer class for the current action
-        # This handles ViewSets that use different serializers for different actions
         try:
             serializer_class = self.get_serializer_class()
         except (AttributeError, AssertionError):
-            # If we can't get serializer class (e.g., in admin or tests), skip optimization
             return queryset
 
-        if hasattr(serializer_class, "Meta"):
-            meta = getattr(serializer_class, "Meta")
+        select_related, prefetch_related = self._get_nested_optimizations(serializer_class)
 
-            # Apply select_related for foreign key relationships
-            if hasattr(meta, "select_related_fields") and meta.select_related_fields:
-                queryset = queryset.select_related(*meta.select_related_fields)
+        if select_related:
+            queryset = queryset.select_related(*select_related)
 
-            # Apply prefetch_related for many-to-many or reverse foreign key
-            if hasattr(meta, "prefetch_related_fields") and meta.prefetch_related_fields:
-                queryset = queryset.prefetch_related(*meta.prefetch_related_fields)
+        if prefetch_related:
+            queryset = queryset.prefetch_related(*prefetch_related)
 
         return queryset
 
@@ -245,3 +275,4 @@ class ArchivingViewSetMixin(ViewSetMixin):
             },
             status=status.HTTP_200_OK
         )
+

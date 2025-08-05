@@ -4,15 +4,16 @@ from .models import Payment, PaymentTransaction, Order, GiftCard
 from .services import PaymentService
 from django.shortcuts import get_object_or_404
 from orders.serializers import SimpleOrderSerializer
+from core_backend.base import BaseModelSerializer
 
 
-class PaymentTransactionSerializer(serializers.ModelSerializer):
+class PaymentTransactionSerializer(BaseModelSerializer):
     class Meta:
         model = PaymentTransaction
         fields = "__all__"
 
 
-class PaymentSerializer(serializers.ModelSerializer):
+class PaymentSerializer(BaseModelSerializer):
     transactions = PaymentTransactionSerializer(many=True, read_only=True)
     order = SimpleOrderSerializer(read_only=True)
 
@@ -23,7 +24,7 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = "__all__"
-        select_related_fields = ["order", "order__customer", "order__cashier"]
+        select_related_fields = ["order"]
         prefetch_related_fields = ["transactions"]
         read_only_fields = [
             "id",
@@ -154,7 +155,7 @@ class SurchargeCalculationSerializer(serializers.Serializer):
         return data
 
 
-class GiftCardSerializer(serializers.ModelSerializer):
+class GiftCardSerializer(BaseModelSerializer):
     """
     Serializer for GiftCard model - used for display purposes.
     """

@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from rest_framework import viewsets, permissions, status, filters
+from core_backend.base import BaseViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -32,7 +33,6 @@ from .advanced_exports import AdvancedExportService, ExportQueue
 from .tasks import create_bulk_export_async, process_export_queue
 
 logger = logging.getLogger(__name__)
-
 
 class ReportViewSet(viewsets.ViewSet):
     """
@@ -322,8 +322,7 @@ class ReportViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
-class SavedReportViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class SavedReportViewSet(BaseViewSet):
     """
     Saved reports management following existing patterns
     """
@@ -331,7 +330,6 @@ class SavedReportViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets
     queryset = SavedReport.objects.all()
     serializer_class = SavedReportSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -460,8 +458,7 @@ class SavedReportViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
-class ReportTemplateViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, viewsets.ModelViewSet):
+class ReportTemplateViewSet(BaseViewSet):
     """
     Report templates management
     """
@@ -469,7 +466,6 @@ class ReportTemplateViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, views
     queryset = ReportTemplate.objects.all()
     serializer_class = ReportTemplateSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -514,7 +510,6 @@ class ReportTemplateViewSet(ArchivingViewSetMixin, OptimizedQuerysetMixin, views
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
 class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
     Report cache management (admin only)
@@ -523,7 +518,6 @@ class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ReportCache.objects.all()
     serializer_class = ReportCacheSerializer
     permission_classes = [IsManagerOrHigher]
-    pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -554,7 +548,6 @@ class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-
 class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
     Report execution history (read-only)
@@ -563,7 +556,6 @@ class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewS
     queryset = ReportExecution.objects.all()
     serializer_class = ReportExecutionSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -585,7 +577,6 @@ class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewS
             return queryset
 
         return queryset.filter(saved_report__user=self.request.user)
-
 
 # Legacy view for backward compatibility
 class SalesSummaryViewSet(viewsets.ViewSet):
@@ -627,7 +618,6 @@ class SalesSummaryViewSet(viewsets.ViewSet):
                 {"error": "Failed to generate sales summary", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
 
 class BulkExportViewSet(viewsets.ViewSet):
     """

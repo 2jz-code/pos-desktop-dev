@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
 from rest_framework import generics, permissions, status
+from core_backend.base import BaseViewSet
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -32,12 +33,10 @@ from .permissions import (
 
 # Create your views here.
 
-
 class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
-
 
 class UserListView(generics.ListAPIView):
     queryset = User.objects.all().order_by("email")
@@ -64,12 +63,10 @@ class UserListView(generics.ListAPIView):
 
         return queryset
 
-
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated, CanEditUserDetails]
-
 
 class SetPinView(generics.GenericAPIView):
     serializer_class = SetPinSerializer
@@ -105,7 +102,6 @@ class SetPinView(generics.GenericAPIView):
         return Response(
             {"message": "PIN updated successfully."}, status=status.HTTP_200_OK
         )
-
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
@@ -150,7 +146,6 @@ class POSLoginView(APIView):
         )
         return response
 
-
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class WebLoginView(TokenObtainPairView):
     serializer_class = WebLoginSerializer
@@ -162,7 +157,6 @@ class WebLoginView(TokenObtainPairView):
             refresh_token = response.data.pop("refresh")
             UserService.set_auth_cookies(response, access_token, refresh_token)
         return response
-
 
 class WebTokenRefreshView(TokenRefreshView):
     serializer_class = WebTokenRefreshSerializer
@@ -192,7 +186,6 @@ class WebTokenRefreshView(TokenRefreshView):
             # Use the UserService method with admin path
             UserService.set_auth_cookies(response, access_token, new_refresh_token, cookie_path="/api")
         return response
-
 
 class LogoutView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -260,14 +253,12 @@ class LogoutView(APIView):
 
         return response
 
-
 class CurrentUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
-
 
 class GenerateAPIKeyView(APIView):
     """Generate a new API key for the authenticated user"""
@@ -283,7 +274,6 @@ class GenerateAPIKeyView(APIView):
             }
         )
 
-
 class RevokeAPIKeyView(APIView):
     """Revoke the current API key for the authenticated user"""
 
@@ -292,7 +282,6 @@ class RevokeAPIKeyView(APIView):
     def post(self, request):
         request.user.revoke_api_key()
         return Response({"message": "API key revoked successfully."})
-
 
 class APIKeyStatusView(APIView):
     """Check if the user has an API key (without revealing it)"""
