@@ -9,7 +9,7 @@ urlpatterns = [
     path('apply-code/', apply_discount_code, name='apply-discount-code'),
     path(
         "available/",  # Corrected path
-        AvailableDiscountListView.as_view(),
+        AvailableDiscountListView.as_view({'get': 'list'}),
         name="available-discounts",
     ),
     path("", include(router.urls)),

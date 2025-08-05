@@ -1,8 +1,8 @@
-from django_filters import rest_framework as filters
+from core_backend.base import BaseFilterSet
 from .models import Discount
 
 
-class DiscountFilter(filters.FilterSet):
+class DiscountFilter(BaseFilterSet):
     class Meta:
         model = Discount
         fields = {

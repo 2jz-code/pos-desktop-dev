@@ -6,17 +6,22 @@ like saved payment methods, payment history, and user-specific settings.
 """
 
 from rest_framework.views import APIView
-from rest_framework import status, viewsets, generics, filters
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import status, viewsets, generics
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from django.db import models
 from decimal import Decimal
 import logging
 import stripe
-from orders.serializers import OrderSerializer
-from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
+
+from orders.serializers import OrderSerializer
+from orders.models import Order
+from users.authentication import CustomerCookieJWTAuthentication
+from core_backend.base import BaseViewSet
+from core_backend.pagination import StandardPagination
 from .base import (
     BasePaymentView,
     PaymentValidationMixin,
@@ -35,12 +40,6 @@ from ..serializers import (
     GiftCardPaymentSerializer,
 )
 from ..services import PaymentService
-from orders.models import Order
-from users.authentication import CustomerCookieJWTAuthentication
-from core_backend.base.mixins import OptimizedQuerysetMixin
-from core_backend.pagination import StandardPagination
-from rest_framework.permissions import AllowAny
-from django.db import models
 
 logger = logging.getLogger(__name__)
 
@@ -128,31 +127,22 @@ class AuthenticatedOrderAccessMixin(OrderAccessMixin):
         return True
 
 
-class PaymentViewSet(
-    OptimizedQuerysetMixin, TerminalPaymentViewSet, viewsets.ModelViewSet
-):
+class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
     """
     ViewSet for handling authenticated user payments.
     Provides list, retrieve, and other standard actions with user-specific filtering.
     Includes terminal payment functionality via TerminalPaymentViewSet mixin.
-    (Now with automated query optimization)
+    (Now with automated query optimization via BaseViewSet)
     """
 
     serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
     queryset = Payment.objects.all()
-    pagination_class = StandardPagination  # Add pagination for payments
 
-    # Add filter backends to enable sorting and filtering
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
+    # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_class = PaymentFilter
     search_fields = ["payment_number", "order__order_number"]
     ordering_fields = ["created_at", "status", "total_collected"]
-    ordering = ["-created_at"]  # Default ordering
 
     def get_queryset(self):
         """Optimized queryset for payment operations"""

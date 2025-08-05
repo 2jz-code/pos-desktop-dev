@@ -1,9 +1,14 @@
 from django.db import models
-from rest_framework import viewsets, permissions, status, filters, generics
+from rest_framework import viewsets, status, generics
 from core_backend.base import BaseViewSet
 from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from rest_framework.request import Request
+import stripe
+import logging
+
 from .models import Order, OrderItem
 from .serializers import (
     OrderSerializer,
@@ -25,24 +30,9 @@ from users.authentication import (
     CustomerCookieJWTAuthentication,
     CookieJWTAuthentication,
 )
-from django.shortcuts import get_object_or_404
-from rest_framework.request import Request
-from django_filters.rest_framework import DjangoFilterBackend
 from products.models import Product
-
-# --- NEW IMPORTS NEEDED FOR THE MOVED ACTION ---
-import stripe
-import logging
 from payments.models import Payment
 from payments.strategies import StripeTerminalStrategy
-
-# --- Import our new mixin ---
-from core_backend.base.mixins import OptimizedQuerysetMixin
-
-# --- Import pagination class ---
-from core_backend.pagination import StandardPagination
-
-# --- Import EmailService ---
 from notifications.services import EmailService
 
 logger = logging.getLogger(__name__)
@@ -96,20 +86,11 @@ class OrderViewSet(BaseViewSet):
     queryset = Order.objects.all()
     authentication_classes = [CookieJWTAuthentication]  # Admin/staff authentication only
     permission_classes = [IsAuthenticatedOrGuestOrder]
-    pagination_class = StandardPagination  # Add pagination for orders
-    ordering = ['-created_at']  # Explicitly set ordering for pagination
-
-    # --- THE FIX: Add filter backends and define filterable/searchable fields ---
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
+    
+    # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_fields = ["status", "payment_status", "order_type"]
     search_fields = ["id", "customer__username", "cashier__username"]
     ordering_fields = ["created_at", "grand_total"]
-
-    ordering = ["-created_at"]  # Newest orders first (descending)
 
     def get_serializer_class(self):
         """

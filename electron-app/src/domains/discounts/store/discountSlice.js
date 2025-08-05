@@ -12,7 +12,7 @@ export const createDiscountSlice = (set, get) => ({
 		set({ isLoading: true, error: null });
 		try {
 			const response = await discountService.getDiscounts(params);
-			set({ discounts: response.data, isLoading: false });
+			set({ discounts: response.data.results, isLoading: false });
 		} catch (error) {
 			console.error("Failed to fetch discounts:", error);
 			set({ isLoading: false, error });

@@ -81,7 +81,7 @@ class StripeWebhookView(BasePaymentView):
             transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL
             and transaction.card_brand
         ):
-            print(
+            logger.info(
                 f"Transaction {transaction.id} is already fully processed with card details."
             )
             return
@@ -129,7 +129,7 @@ class StripeWebhookView(BasePaymentView):
             if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
                 PaymentService.confirm_successful_transaction(transaction)
 
-        print(f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}")
+        logger.info(f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}")
 
     def _handle_payment_intent_payment_failed(self, payment_intent):
         """Handles 'payment_intent.payment_failed' events."""
@@ -231,7 +231,7 @@ class StripeWebhookView(BasePaymentView):
         # If no transaction, create one from the PaymentIntent metadata
         order_id = payment_intent.metadata.get("order_id")
         if not order_id:
-            print(
+            logger.error(
                 f"Webhook Error: PaymentIntent {pi_id} has no 'order_id' in metadata."
             )
             return None
@@ -259,16 +259,16 @@ class StripeWebhookView(BasePaymentView):
                 },
             )
             if created:
-                print(
+                logger.info(
                     f"Webhook: Created new PaymentTransaction {txn.id} for PI {pi_id}"
                 )
             return txn
         except Order.DoesNotExist:
-            print(
+            logger.error(
                 f"Webhook Error: Order {order_id} from PI {pi_id} metadata not found."
             )
         except Exception as e:
-            print(f"Webhook Error: Could not create transaction for PI {pi_id}: {e}")
+            logger.error(f"Webhook Error: Could not create transaction for PI {pi_id}: {e}")
 
         return None
 
@@ -288,7 +288,7 @@ class StripeWebhookView(BasePaymentView):
         )
 
         if transaction.status == target_status:
-            print(
+            logger.info(
                 f"Transaction {transaction.id} already in desired state: {target_status}."
             )
             return

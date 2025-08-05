@@ -37,7 +37,7 @@ export const updatePrinterConfig = async (printerData) => {
 
 export const getStoreLocations = async () => {
 	const response = await apiClient.get("settings/store-locations/");
-	return response.data;
+	return response.data.results;
 };
 
 export const createStoreLocation = async (locationData) => {
@@ -179,7 +179,7 @@ export const getPosDeviceById = async (deviceId) => {
 // Terminal Locations
 export const getTerminalLocations = async () => {
 	const response = await apiClient.get("/settings/terminal-locations/");
-	return response.data;
+	return response.data.results;
 };
 
 // Terminal Configuration (Provider-Specific)

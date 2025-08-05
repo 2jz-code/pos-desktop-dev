@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, status, generics
-from core_backend.base import BaseViewSet
+from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -359,6 +359,7 @@ class TerminalRegistrationViewSet(BaseViewSet):
     queryset = TerminalRegistration.objects.all()
     serializer_class = TerminalRegistrationSerializer
     lookup_field = "device_id"
+    ordering = ["device_id"]  # Override default ordering since this model uses device_id as PK
 
     def get_queryset(self):
         return TerminalRegistration.objects.select_related('store_location')
@@ -436,7 +437,7 @@ class StoreLocationViewSet(BaseViewSet):
             }
         )
 
-class TerminalLocationViewSet(viewsets.ReadOnlyModelViewSet):
+class TerminalLocationViewSet(ReadOnlyBaseViewSet):
     """
     API endpoint that allows Stripe Terminal Locations to be viewed.
     """

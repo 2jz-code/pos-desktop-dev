@@ -1,9 +1,9 @@
-from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
-from rest_framework import generics, status, viewsets
-from core_backend.base import BaseViewSet
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view
+from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
 from orders.models import Order
 from .models import Discount
 from .serializers import (
@@ -12,9 +12,7 @@ from .serializers import (
     DiscountApplySerializer,
 )
 from .services import DiscountService
-from django_filters.rest_framework import DjangoFilterBackend
 from .filters import DiscountFilter
-from core_backend.base.mixins import OptimizedQuerysetMixin
 
 # Create your views here.
 
@@ -62,9 +60,8 @@ class DiscountViewSet(BaseViewSet):
 
     queryset = Discount.objects.all()
     serializer_class = DiscountSerializer
-    filter_backends = [DjangoFilterBackend]
     filterset_class = DiscountFilter
-    ordering = ['-start_date']  # Explicitly set ordering for pagination
+    ordering = ['-start_date']
 
     def get_serializer_class(self):
         # Use sync serializer if sync=true parameter is present
@@ -93,17 +90,13 @@ class DiscountViewSet(BaseViewSet):
 
         return queryset
 
-class AvailableDiscountListView(generics.ListAPIView):
+class AvailableDiscountListView(ReadOnlyBaseViewSet):
     """
     Provides a read-only list of all currently active discounts.
     This view is optimized to prefetch related fields to avoid N+1 queries.
     """
-    queryset = Discount.objects.filter(is_active=True).prefetch_related(
-        "applicable_products", "applicable_categories"
-    )
+    queryset = Discount.objects.filter(is_active=True)
     serializer_class = DiscountSerializer
-
-from rest_framework.decorators import api_view
 
 @api_view(['POST'])
 def apply_discount_code(request):

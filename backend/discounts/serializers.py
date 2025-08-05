@@ -1,15 +1,11 @@
 from rest_framework import serializers
+from core_backend.base import BaseModelSerializer, BasicProductSerializer, BasicCategorySerializer
 from .models import Discount
 from orders.models import Order
-from products.serializers import (
-    BasicProductSerializer,
-    BasicCategorySerializer,
-    Product,
-    Category,
-)
+from products.models import Product, Category
 
 
-class DiscountSerializer(serializers.ModelSerializer):
+class DiscountSerializer(BaseModelSerializer):
     """
     Serializes Discount objects, including details about what they apply to.
     """
@@ -55,6 +51,7 @@ class DiscountSerializer(serializers.ModelSerializer):
             "buy_quantity",
             "get_quantity",
         ]
+        select_related_fields = []
         prefetch_related_fields = [
             'applicable_products',
             'applicable_categories'
@@ -82,7 +79,7 @@ class DiscountSerializer(serializers.ModelSerializer):
 
 
 # Sync-specific serializer that sends simple field values instead of nested objects
-class DiscountSyncSerializer(serializers.ModelSerializer):
+class DiscountSyncSerializer(BaseModelSerializer):
     """
     Sync-specific serializer for discounts that only includes basic fields
     suitable for SQLite storage without nested objects.
@@ -103,6 +100,8 @@ class DiscountSyncSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
         ]
+        select_related_fields = []
+        prefetch_related_fields = []
 
 
 class DiscountApplySerializer(serializers.Serializer):

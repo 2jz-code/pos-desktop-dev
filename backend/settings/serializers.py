@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core_backend.base import BaseModelSerializer
 from .models import (
     GlobalSettings,
     StoreLocation,
@@ -9,7 +10,7 @@ from .models import (
 )
 
 
-class GlobalSettingsSerializer(serializers.ModelSerializer):
+class GlobalSettingsSerializer(BaseModelSerializer):
     class Meta:
         model = GlobalSettings
         fields = [
@@ -27,15 +28,19 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "default_low_stock_threshold",
             "default_expiration_threshold",
         ]
+        select_related_fields = ["default_inventory_location"]
+        prefetch_related_fields = []
 
 
-class PrinterConfigurationSerializer(serializers.ModelSerializer):
+class PrinterConfigurationSerializer(BaseModelSerializer):
     class Meta:
         model = PrinterConfiguration
         fields = "__all__"
+        select_related_fields = []
+        prefetch_related_fields = []
 
 
-class NestedStoreLocationSerializer(serializers.ModelSerializer):
+class NestedStoreLocationSerializer(BaseModelSerializer):
     """
     A simplified serializer for StoreLocation used for nesting.
     """
@@ -43,9 +48,11 @@ class NestedStoreLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreLocation
         fields = ("id", "name")
+        select_related_fields = []
+        prefetch_related_fields = []
 
 
-class TerminalRegistrationSerializer(serializers.ModelSerializer):
+class TerminalRegistrationSerializer(BaseModelSerializer):
     store_location = NestedStoreLocationSerializer(read_only=True)
     store_location_id = serializers.PrimaryKeyRelatedField(
         queryset=StoreLocation.objects.all(),
@@ -66,9 +73,11 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             "last_seen",
             "reader_id",
         ]
+        select_related_fields = ["store_location"]
+        prefetch_related_fields = []
 
 
-class TerminalLocationSerializer(serializers.ModelSerializer):
+class TerminalLocationSerializer(BaseModelSerializer):
     """
     Serializer for the Stripe-specific location link.
     """
@@ -87,12 +96,14 @@ class TerminalLocationSerializer(serializers.ModelSerializer):
             "store_location_details",
             "is_default",
         )
+        select_related_fields = ["store_location"]
+        prefetch_related_fields = []
 
     def get_is_default(self, obj):
         return obj.store_location.is_default
 
 
-class StoreLocationSerializer(serializers.ModelSerializer):
+class StoreLocationSerializer(BaseModelSerializer):
     """
     Serializer for the primary StoreLocation model.
     Includes a nested representation of the linked Stripe configuration.
@@ -106,9 +117,11 @@ class StoreLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreLocation
         fields = ("id", "name", "address", "is_default", "stripe_config")
+        select_related_fields = []
+        prefetch_related_fields = ["terminallocation"]
 
 
-class WebOrderSettingsSerializer(serializers.ModelSerializer):
+class WebOrderSettingsSerializer(BaseModelSerializer):
     """
     Serializer for WebOrderSettings model.
     Handles the web order notification configuration including terminal selection.
@@ -125,6 +138,8 @@ class WebOrderSettingsSerializer(serializers.ModelSerializer):
             "auto_print_kitchen",
             "web_receipt_terminals",
         ]
+        select_related_fields = []
+        prefetch_related_fields = ["web_receipt_terminals"]
 
     def update(self, instance, validated_data):
         # Handle web_receipt_terminals update separately since it's a ManyToMany field
