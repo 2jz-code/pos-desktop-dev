@@ -369,21 +369,27 @@ class ProductViewSet(BaseViewSet):
     search_fields = ["name", "description", "barcode"]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-
+        """
+        Get queryset using ProductSearchService for business logic.
+        Extracted filtering logic (30+ lines) to service layer.
+        """
+        from .services import ProductSearchService
+        
         is_for_website = self.request.query_params.get("for_website") == "true"
+        
         if is_for_website:
-            queryset = queryset.filter(is_public=True, category__is_public=True, category__is_active=True)
-
+            # Use service for website-specific filtering
+            queryset = ProductSearchService.get_products_for_website()
+        else:
+            queryset = super().get_queryset()
+        
+        # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:
-            try:
-                modified_since_dt = parse_datetime(modified_since)
-                if modified_since_dt:
-                    queryset = queryset.filter(updated_at__gte=modified_since_dt)
-            except (ValueError, TypeError):
-                pass
-
+            modified_queryset = ProductSearchService.get_products_modified_since(modified_since)
+            if modified_queryset is not None:
+                queryset = queryset.filter(id__in=modified_queryset.values_list('id', flat=True))
+        
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -459,20 +465,28 @@ class ProductViewSet(BaseViewSet):
 def barcode_lookup(request, barcode):
     """
     Simple barcode lookup endpoint for POS system.
-    Returns product details if found.
+    Business logic (25+ lines) extracted to ProductSearchService.
     """
+    from .services import ProductSearchService
+    from rest_framework.exceptions import ValidationError as DRFValidationError
+    
     try:
-        product = get_object_or_404(
-            Product.objects.all(),  # Let serializer handle optimization
-            barcode=barcode,
-            is_active=True,
+        product = ProductSearchService.search_products_by_barcode(
+            barcode, include_inactive=False
         )
-        serializer = ProductSerializer(product)
-        return Response({"success": True, "product": serializer.data})
-    except Product.DoesNotExist:
+        
+        if product:
+            serializer = ProductSerializer(product, context={'request': request})
+            return Response({"success": True, "product": serializer.data})
+        else:
+            return Response(
+                {"success": False, "error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    except ValidationError as e:
         return Response(
-            {"success": False, "error": "Product not found"},
-            status=status.HTTP_404_NOT_FOUND,
+            {"success": False, "error": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
 

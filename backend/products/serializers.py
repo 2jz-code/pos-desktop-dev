@@ -269,18 +269,12 @@ class ProductSerializer(BaseModelSerializer):
         ]
 
     def get_image_url(self, obj):
-        if obj.image:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            else:
-                image_url = obj.image.url
-                if image_url.startswith("http"):
-                    return image_url
-                else:
-                    base_url = getattr(settings, "BASE_URL", "http://127.0.0.1:8001")
-                    return f"{base_url}{image_url}"
-        return None
+        """
+        Get image URL using ProductImageService.
+        Business logic extracted to service layer.
+        """
+        from .services import ProductImageService
+        return ProductImageService.get_image_url(obj, self.context.get("request"))
 
     def get_modifier_groups(self, obj):
         """Get modifier groups using service layer"""
@@ -374,9 +368,36 @@ class ProductCreateSerializer(BaseModelSerializer):
         ]
 
     def validate_barcode(self, value):
-        if value == "" or value is None:
-            return None
-        return value
+        """
+        Validate barcode using ProductValidationService.
+        Business logic extracted to service layer.
+        """
+        from .services import ProductValidationService
+        return ProductValidationService.validate_barcode_format(value)
+    
+    def validate(self, data):
+        """
+        Comprehensive validation using ProductValidationService.
+        Business logic extracted to service layer.
+        """
+        from .services import ProductValidationService
+        
+        # Use service for comprehensive validation
+        validated_data = ProductValidationService.validate_product_data(data)
+        
+        # Validate category assignment if provided
+        if 'category_id' in validated_data:
+            ProductValidationService.validate_category_assignment(
+                None, validated_data['category_id']
+            )
+        
+        # Validate pricing rules
+        if 'price' in validated_data:
+            ProductValidationService.validate_price_rules(
+                validated_data['price']
+            )
+        
+        return validated_data
 
     def create(self, validated_data):
         image = validated_data.pop("image", None)

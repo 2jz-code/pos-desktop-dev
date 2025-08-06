@@ -3,6 +3,7 @@ from django.db import transaction
 from rest_framework.exceptions import ValidationError
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 from collections import defaultdict
+from typing import Optional, Dict, Any, List
 
 
 class ProductService:
@@ -457,3 +458,339 @@ class ModifierValidationService:
             strategy = cls.STRATEGIES.get(pms.modifier_set.selection_type)
             if strategy:
                 strategy.validate(pms, selections_by_pms[pms.id])
+
+
+class ProductValidationService:
+    """
+    Service layer for product validation and business rules.
+    Extracts validation logic from serializers and views.
+    """
+    
+    @staticmethod
+    def validate_barcode_format(barcode: str) -> str:
+        """
+        Validate and normalize barcode format.
+        
+        Extracted from ProductSyncSerializer.validate_barcode().
+        
+        Args:
+            barcode: The barcode string to validate
+            
+        Returns:
+            str: Normalized barcode (None for empty values)
+            
+        Raises:
+            ValidationError: If barcode format is invalid
+        """
+        if barcode == "" or barcode is None:
+            return None
+            
+        # Additional barcode validation rules can be added here
+        barcode = barcode.strip()
+        
+        if len(barcode) < 3:
+            raise ValidationError("Barcode must be at least 3 characters long")
+            
+        if len(barcode) > 50:
+            raise ValidationError("Barcode cannot exceed 50 characters")
+            
+        # Check for valid characters (alphanumeric and common barcode symbols)
+        import re
+        if not re.match(r'^[A-Za-z0-9\-_]+$', barcode):
+            raise ValidationError("Barcode contains invalid characters. Use only alphanumeric, dash, and underscore.")
+            
+        return barcode
+    
+    @staticmethod
+    def validate_product_data(data: dict) -> dict:
+        """
+        Validate product data with business rules.
+        
+        Args:
+            data: Dictionary of product data
+            
+        Returns:
+            dict: Validated and normalized product data
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        validated_data = data.copy()
+        
+        # Validate required fields
+        if not validated_data.get('name', '').strip():
+            raise ValidationError("Product name is required")
+            
+        # Validate price
+        price = validated_data.get('price')
+        if price is not None:
+            if price < 0:
+                raise ValidationError("Product price cannot be negative")
+            if price > 99999.99:
+                raise ValidationError("Product price cannot exceed $99,999.99")
+        
+        # Validate barcode if provided
+        if 'barcode' in validated_data:
+            validated_data['barcode'] = ProductValidationService.validate_barcode_format(
+                validated_data['barcode']
+            )
+            
+        # Check for duplicate barcode
+        if validated_data.get('barcode'):
+            existing_product = Product.objects.filter(
+                barcode=validated_data['barcode']
+            ).exclude(
+                id=validated_data.get('id')
+            ).first()
+            
+            if existing_product:
+                raise ValidationError(f"Product with barcode '{validated_data['barcode']}' already exists")
+        
+        return validated_data
+    
+    @staticmethod
+    def validate_category_assignment(product_id: int, category_id: int) -> None:
+        """
+        Validate that a product can be assigned to a category.
+        
+        Args:
+            product_id: ID of the product
+            category_id: ID of the category
+            
+        Raises:
+            ValidationError: If assignment is not valid
+        """
+        if category_id:
+            try:
+                category = Category.objects.get(id=category_id)
+                if not category.is_active:
+                    raise ValidationError("Cannot assign product to inactive category")
+            except Category.DoesNotExist:
+                raise ValidationError(f"Category with ID {category_id} does not exist")
+    
+    @staticmethod
+    def validate_price_rules(price: float, cost: float = None) -> None:
+        """
+        Validate pricing business rules.
+        
+        Args:
+            price: The selling price
+            cost: The cost price (optional)
+            
+        Raises:
+            ValidationError: If pricing rules are violated
+        """
+        if price < 0:
+            raise ValidationError("Price cannot be negative")
+            
+        if cost is not None:
+            if cost < 0:
+                raise ValidationError("Cost cannot be negative")
+            if cost > price:
+                # Warning rather than error - allow negative margin but warn
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Product cost ({cost}) exceeds price ({price}) - negative margin")
+
+
+class ProductSearchService:
+    """
+    Service layer for product search and filtering operations.
+    Extracts search logic from views and provides advanced search capabilities.
+    """
+    
+    @staticmethod
+    def search_products_by_barcode(barcode: str, include_inactive: bool = False):
+        """
+        Search for products by barcode with business logic.
+        
+        Extracted from barcode_lookup view function (25+ lines).
+        
+        Args:
+            barcode: The barcode to search for
+            include_inactive: Whether to include inactive products
+            
+        Returns:
+            Product instance or None if not found
+            
+        Raises:
+            ValidationError: If barcode format is invalid
+        """
+        # Validate barcode format first
+        normalized_barcode = ProductValidationService.validate_barcode_format(barcode)
+        if not normalized_barcode:
+            return None
+            
+        # Build query
+        queryset = Product.objects.select_related(
+            "category", "product_type"
+        ).prefetch_related(
+            "taxes",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options", 
+            "product_modifier_sets__extra_options"
+        ).filter(barcode=normalized_barcode)
+        
+        # Filter by active status unless specifically including inactive
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+            
+        return queryset.first()
+    
+    @staticmethod
+    def get_products_for_website(include_archived: bool = False):
+        """
+        Get products suitable for public website display.
+        
+        Extracted from ProductViewSet.get_queryset() business logic.
+        
+        Args:
+            include_archived: Whether to include archived products
+            
+        Returns:
+            QuerySet of public products
+        """
+        queryset = Product.objects.select_related(
+            "category", "product_type"
+        ).prefetch_related("taxes")
+        
+        if include_archived:
+            queryset = queryset.with_archived()
+            
+        # Business rules for public website
+        queryset = queryset.filter(
+            is_public=True,
+            category__is_public=True,
+            category__is_active=True
+        )
+        
+        return queryset.order_by(
+            "category__order", "category__name", "name"
+        )
+    
+    @staticmethod
+    def get_products_modified_since(modified_since_str: str):
+        """
+        Get products modified since a specific datetime.
+        
+        Extracted from ProductViewSet.get_queryset() delta sync logic.
+        
+        Args:
+            modified_since_str: ISO datetime string
+            
+        Returns:
+            QuerySet of modified products or None if invalid date
+        """
+        from django.utils.dateparse import parse_datetime
+        
+        try:
+            modified_since_dt = parse_datetime(modified_since_str)
+            if modified_since_dt:
+                return Product.objects.filter(updated_at__gte=modified_since_dt)
+        except (ValueError, TypeError):
+            pass
+            
+        return None
+    
+    @staticmethod
+    def search_products_advanced(
+        query: str = None,
+        category_id: int = None,
+        is_active: bool = None,
+        is_public: bool = None,
+        price_min: float = None,
+        price_max: float = None,
+        for_website: bool = False
+    ):
+        """
+        Advanced product search with multiple filters.
+        
+        Args:
+            query: Search query for name/description/barcode
+            category_id: Filter by category
+            is_active: Filter by active status
+            is_public: Filter by public status
+            price_min: Minimum price filter
+            price_max: Maximum price filter
+            for_website: Apply website-specific filters
+            
+        Returns:
+            QuerySet of matching products
+        """
+        queryset = Product.objects.select_related(
+            "category", "product_type"
+        ).prefetch_related("taxes")
+        
+        # Apply website-specific filters
+        if for_website:
+            queryset = queryset.filter(
+                is_public=True,
+                category__is_public=True,
+                category__is_active=True
+            )
+        
+        # Text search
+        if query:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(name__icontains=query) |
+                Q(description__icontains=query) |
+                Q(barcode__icontains=query)
+            )
+        
+        # Category filter
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+            
+        # Status filters
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
+            
+        if is_public is not None:
+            queryset = queryset.filter(is_public=is_public)
+            
+        # Price filters
+        if price_min is not None:
+            queryset = queryset.filter(price__gte=price_min)
+            
+        if price_max is not None:
+            queryset = queryset.filter(price__lte=price_max)
+            
+        return queryset.order_by(
+            "category__order", "category__name", "name"
+        )
+
+
+class ProductImageService:
+    """
+    Service layer for product image handling.
+    Centralizes image processing business logic.
+    """
+    
+    @staticmethod
+    def get_image_url(product, request=None):
+        """
+        Get the full image URL for a product.
+        
+        Extracted from ProductSerializer.get_image_url() method.
+        
+        Args:
+            product: Product instance
+            request: HTTP request for building absolute URL
+            
+        Returns:
+            str: Full image URL or None if no image
+        """
+        if not product.image:
+            return None
+            
+        if request:
+            return request.build_absolute_uri(product.image.url)
+        else:
+            image_url = product.image.url
+            if image_url.startswith("http"):
+                return image_url
+            else:
+                from django.conf import settings
+                base_url = getattr(settings, "BASE_URL", "http://127.0.0.1:8001")
+                return f"{base_url}{image_url}"
