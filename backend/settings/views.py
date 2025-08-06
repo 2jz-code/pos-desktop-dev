@@ -4,6 +4,7 @@ from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
+from django.core.exceptions import ValidationError
 from .models import (
     GlobalSettings,
     StoreLocation,
@@ -23,6 +24,13 @@ from .serializers import (
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from payments.strategies import StripeTerminalStrategy
 from core_backend.base.mixins import ArchivingViewSetMixin
+from .services import (
+    SettingsService,
+    PrinterConfigurationService,
+    WebOrderSettingsService,
+    TerminalService,
+    SettingsValidationService,
+)
 
 # Create your views here.
 
@@ -39,9 +47,9 @@ class GlobalSettingsViewSet(BaseViewSet):
     def get_object(self):
         """
         Always returns the single GlobalSettings instance.
+        Uses SettingsService for consistent singleton management.
         """
-        obj, created = GlobalSettings.objects.get_or_create(pk=1)
-        return obj
+        return SettingsService.get_global_settings()
 
     def list(self, request, *args, **kwargs):
         """
@@ -74,34 +82,21 @@ class GlobalSettingsViewSet(BaseViewSet):
     def store_info(self, request):
         """
         Get or update just the store information section.
+        Business logic extracted to SettingsService.
         """
-        instance = self.get_object()
-
         if request.method == "GET":
-            data = {
-                "store_name": instance.store_name,
-                "store_address": instance.store_address,
-                "store_phone": instance.store_phone,
-                "store_email": instance.store_email,
-            }
+            data = SettingsService.get_store_info()
             return Response(data)
 
         elif request.method == "PATCH":
-            # Update only store info fields
-            allowed_fields = [
-                "store_name",
-                "store_address",
-                "store_phone",
-                "store_email",
-            ]
-            update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
-
-            serializer = self.get_serializer(instance, data=update_data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-
-            # Return updated store info
-            return self.store_info(type("Request", (), {"method": "GET"})())
+            try:
+                data = SettingsService.update_store_info(request.data)
+                return Response(data)
+            except ValidationError as e:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
     @action(
         detail=False,
@@ -111,154 +106,79 @@ class GlobalSettingsViewSet(BaseViewSet):
     def financial(self, request):
         """
         Get or update just the financial settings section.
+        Business logic extracted to SettingsService.
         """
-        instance = self.get_object()
-
         if request.method == "GET":
-            data = {
-                "tax_rate": instance.tax_rate,
-                "surcharge_percentage": instance.surcharge_percentage,
-                "currency": instance.currency,
-            }
+            data = SettingsService.get_financial_settings()
             return Response(data)
 
         elif request.method == "PATCH":
-            # Update only financial fields
-            allowed_fields = ["tax_rate", "surcharge_percentage", "currency"]
-            update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
-
-            serializer = self.get_serializer(instance, data=update_data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-
-            # Return updated financial settings
-            return self.financial(type("Request", (), {"method": "GET"})())
+            try:
+                data = SettingsService.update_financial_settings(request.data)
+                return Response(data)
+            except ValidationError as e:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
     @action(detail=False, methods=["get", "patch"])
     def receipt_config(self, request):
         """
         Get or update just the receipt configuration section.
+        Business logic extracted to SettingsService.
         """
-        instance = self.get_object()
-
         if request.method == "GET":
-            data = {
-                "receipt_header": instance.receipt_header,
-                "receipt_footer": instance.receipt_footer,
-            }
+            data = SettingsService.get_receipt_config()
             return Response(data)
 
         elif request.method == "PATCH":
-            # Update only receipt config fields
-            allowed_fields = ["receipt_header", "receipt_footer"]
-            update_data = {k: v for k, v in request.data.items() if k in allowed_fields}
-
-            serializer = self.get_serializer(instance, data=update_data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-
-            # Return updated receipt config
-            return self.receipt_config(type("Request", (), {"method": "GET"})())
+            try:
+                data = SettingsService.update_receipt_config(request.data)
+                return Response(data)
+            except ValidationError as e:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
     @action(detail=False, methods=["get"])
     def summary(self, request):
         """
         Get a summary of key settings for display purposes.
+        Business logic extracted to SettingsService.
         """
-        instance = self.get_object()
-        data = {
-            "store_name": instance.store_name,
-            "currency": instance.currency,
-            "tax_rate": instance.tax_rate,
-            "timezone": instance.timezone,
-            "active_terminal_provider": instance.active_terminal_provider,
-        }
+        data = SettingsService.get_settings_summary()
         return Response(data)
 
     @action(detail=False, methods=["get"])
     def receipt_format_data(self, request):
         """
         Get all the data needed for receipt formatting.
-        This combines store info and receipt configuration for use by receipt formatters.
+        Business logic extracted to SettingsService.
         """
-        instance = self.get_object()
-        data = {
-            # Store Information
-            "store_name": instance.store_name,
-            "store_address": instance.store_address,
-            "store_phone": instance.store_phone,
-            "store_email": instance.store_email,
-            # Receipt Configuration
-            "receipt_header": instance.receipt_header,
-            "receipt_footer": instance.receipt_footer,
-        }
+        data = SettingsService.get_receipt_format_data()
         return Response(data)
 
     @action(detail=False, methods=["get", "patch"])
     def business_hours(self, request):
         """
         Get or update business hours configuration.
+        Complex business logic (64+ lines) extracted to SettingsService.
         """
-        instance = self.get_object()
-
         if request.method == "GET":
-            data = {
-                "opening_time": (
-                    instance.opening_time.strftime("%H:%M")
-                    if instance.opening_time
-                    else None
-                ),
-                "closing_time": (
-                    instance.closing_time.strftime("%H:%M")
-                    if instance.closing_time
-                    else None
-                ),
-                "timezone": instance.timezone,
-            }
+            data = SettingsService.get_business_hours()
             return Response(data)
 
         elif request.method == "PATCH":
-            # Update business hours fields
-            allowed_fields = ["opening_time", "closing_time", "timezone"]
-
-            updated_data = {}
-            for field in allowed_fields:
-                if field in request.data:
-                    value = request.data[field]
-
-                    # Handle time fields that might be null/empty
-                    if field in ["opening_time", "closing_time"]:
-                        if value is None or value == "":
-                            setattr(instance, field, None)
-                        else:
-                            # Parse time string (HH:MM format)
-                            from datetime import datetime
-
-                            try:
-                                time_obj = datetime.strptime(value, "%H:%M").time()
-                                setattr(instance, field, time_obj)
-                            except ValueError:
-                                return Response(
-                                    {
-                                        "error": f"Invalid time format for {field}. Use HH:MM format."
-                                    },
-                                    status=400,
-                                )
-                    else:
-                        setattr(instance, field, value)
-
-                    updated_data[field] = request.data[field]
-
-            if updated_data:
-                instance.save(update_fields=list(updated_data.keys()))
-
-                # Clear settings cache after update
-                from .config import app_settings
-
-                app_settings.reload()
-
-                # Return updated data
-                return self.business_hours(type("Request", (), {"method": "GET"})())
+            try:
+                data = SettingsService.update_business_hours(request.data)
+                return Response(data)
+            except ValidationError as e:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
 class PrinterConfigurationViewSet(BaseViewSet):
     """
@@ -270,8 +190,8 @@ class PrinterConfigurationViewSet(BaseViewSet):
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
     def get_object(self):
-        obj, _ = PrinterConfiguration.objects.get_or_create(pk=1)
-        return obj
+        """Uses PrinterConfigurationService for consistent singleton management."""
+        return PrinterConfigurationService.get_printer_configuration()
 
     def list(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -283,20 +203,32 @@ class PrinterConfigurationViewSet(BaseViewSet):
         return self.update(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        # Handle singleton update without requiring an ID in the URL
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=False)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        """Handle singleton update using PrinterConfigurationService."""
+        try:
+            instance = PrinterConfigurationService.update_printer_configuration(
+                request.data, partial=False
+            )
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        except ValidationError as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     def partial_update(self, request, *args, **kwargs):
-        # Handle singleton partial update without requiring an ID in the URL
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        """Handle singleton partial update using PrinterConfigurationService."""
+        try:
+            instance = PrinterConfigurationService.update_printer_configuration(
+                request.data, partial=True
+            )
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        except ValidationError as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class WebOrderSettingsViewSet(BaseViewSet):
     """
@@ -311,11 +243,9 @@ class WebOrderSettingsViewSet(BaseViewSet):
     def get_object(self):
         """
         Always returns the single WebOrderSettings instance.
+        Uses WebOrderSettingsService for optimized queries.
         """
-        obj, created = WebOrderSettings.objects.prefetch_related(
-            'web_receipt_terminals__store_location'
-        ).get_or_create(pk=1)
-        return obj
+        return WebOrderSettingsService.get_web_order_settings()
 
     def list(self, request, *args, **kwargs):
         """
@@ -334,14 +264,20 @@ class WebOrderSettingsViewSet(BaseViewSet):
 
     def update(self, request, *args, **kwargs):
         """
-        Handle PUT/PATCH requests to update settings.
+        Handle PUT/PATCH requests using WebOrderSettingsService.
         """
         partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        try:
+            instance = WebOrderSettingsService.update_web_order_settings(
+                request.data, partial=partial
+            )
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+        except ValidationError as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     def partial_update(self, request, *args, **kwargs):
         """
@@ -373,35 +309,30 @@ class TerminalRegistrationViewSet(BaseViewSet):
     def create(self, request, *args, **kwargs):
         """
         Creates or updates a terminal registration (UPSERT).
-        This method is designed to be called via a POST request.
+        Complex business logic (40+ lines) extracted to TerminalService.
         """
-        # The device_id is expected in the request data
-        device_id = request.data.get("device_id")
-        if not device_id:
-            return Response(
-                {"device_id": ["This field is required."]},
-                status=status.HTTP_400_BAD_REQUEST,
+        try:
+            instance, created = TerminalService.upsert_terminal_registration(
+                request.data
             )
-
-        # Get the instance if it exists, otherwise None
-        instance = self.get_queryset().filter(device_id=device_id).first()
-
-        # When creating, partial=False. When updating, partial=True.
-        serializer = self.get_serializer(
-            instance, data=request.data, partial=instance is not None
-        )
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-
-        # Determine the status code based on whether an instance was updated or created
-        status_code = status.HTTP_200_OK if instance else status.HTTP_201_CREATED
-        headers = (
-            self.get_success_headers(serializer.data)
-            if status_code == status.HTTP_201_CREATED
-            else {}
-        )
-
-        return Response(serializer.data, status=status_code, headers=headers)
+            serializer = self.get_serializer(instance)
+            
+            # Return appropriate status code
+            status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            headers = (
+                self.get_success_headers(serializer.data)
+                if created else {}
+            )
+            
+            return Response(serializer.data, status=status_code, headers=headers)
+        except ValidationError as e:
+            if isinstance(e.message_dict if hasattr(e, 'message_dict') else e, dict):
+                return Response(e.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response(
+                    {"error": str(e)}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
     def update(self, request, *args, **kwargs):
         """
@@ -426,16 +357,21 @@ class StoreLocationViewSet(BaseViewSet):
     def set_default(self, request, pk=None):
         """
         Sets this location as the default store location.
+        Business logic extracted to TerminalService.
         """
-        location = self.get_object()
-        location.is_default = True
-        location.save()
-        return Response(
-            {
-                "status": "success",
-                "message": f"'{location.name}' is now the default store location.",
-            }
-        )
+        try:
+            location = TerminalService.set_default_store_location(pk)
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"'{location.name}' is now the default store location.",
+                }
+            )
+        except ValidationError as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class TerminalLocationViewSet(ReadOnlyBaseViewSet):
     """
@@ -454,16 +390,18 @@ class TerminalReaderListView(APIView):
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
     def get(self, request, *args, **kwargs):
+        """
+        List Stripe Terminal Readers using TerminalService.
+        Business logic (25+ lines) extracted to service.
+        """
         location_id = request.query_params.get("location_id", None)
-
-        try:
-            strategy = StripeTerminalStrategy()
-            readers = strategy.list_readers(location_id=location_id)
-            return Response(readers)
-        except Exception as e:
-            # Consider more specific error handling for Stripe errors
+        result = TerminalService.list_stripe_readers(location_id)
+        
+        if result["status"] == "success":
+            return Response(result["readers"])
+        else:
             return Response(
-                {"error": f"Failed to retrieve readers from Stripe: {str(e)}"},
+                {"error": result["error"]},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -474,9 +412,11 @@ class SyncStripeLocationsView(APIView):
 
     def post(self, request, *args, **kwargs):
         """
-        Handles the POST request to sync locations.
+        Sync locations from Stripe using TerminalService.
+        Business logic extracted to service.
         """
-        result = StripeTerminalStrategy.sync_locations_from_stripe()
+        result = TerminalService.sync_stripe_locations()
+        
         if result["status"] == "success":
             return Response(result, status=status.HTTP_200_OK)
         else:
