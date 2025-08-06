@@ -4,6 +4,43 @@ export const getProducts = (params) => {
 	return apiClient.get("/products/", { params });
 };
 
+// Get all products (handles pagination automatically)
+export const getAllProducts = async (params = {}) => {
+	let allProducts = [];
+	let nextUrl = "/products/";
+	let requestParams = { ...params, limit: 1000 }; // Request large batches to minimize requests
+	
+	while (nextUrl) {
+		try {
+			const response = await apiClient.get(nextUrl, { params: requestParams });
+			const data = response.data;
+			
+			// Handle both paginated and non-paginated responses
+			if (data.results) {
+				allProducts = allProducts.concat(data.results);
+				// Extract path relative to /api/ to avoid double /api/ prefix
+				if (data.next) {
+					const url = new URL(data.next);
+					// Remove /api prefix from pathname since apiClient will add it back
+					nextUrl = url.pathname.replace('/api', '') + url.search;
+				} else {
+					nextUrl = null;
+				}
+				requestParams = {}; // Clear params for subsequent requests as they're in the URL
+			} else {
+				// Non-paginated response
+				allProducts = data;
+				nextUrl = null;
+			}
+		} catch (error) {
+			console.error("Error fetching products:", error);
+			throw error;
+		}
+	}
+	
+	return { data: allProducts };
+};
+
 export const getProductById = (id) => {
 	return apiClient.get(`/products/${id}/`);
 };

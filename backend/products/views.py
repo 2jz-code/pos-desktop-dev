@@ -373,7 +373,7 @@ class ProductViewSet(BaseViewSet):
 
         is_for_website = self.request.query_params.get("for_website") == "true"
         if is_for_website:
-            queryset = queryset.filter(is_public=True, category__is_public=True)
+            queryset = queryset.filter(is_public=True, category__is_public=True, category__is_active=True)
 
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:
@@ -412,8 +412,13 @@ class ProductViewSet(BaseViewSet):
         if is_sync_request and self.action in ["list", "retrieve"]:
             return ProductSyncSerializer
 
+        # Check if this is for the customer website - use full serializer with description
+        is_for_website = self.request.query_params.get("for_website") == "true"
+        
         if self.action == "list":
-            return OptimizedProductSerializer  # Fast list view with minimal fields
+            if is_for_website:
+                return ProductSerializer  # Full serializer with description for customer site
+            return OptimizedProductSerializer  # Fast list view with minimal fields for admin
         elif self.action in ["create", "update", "partial_update"]:
             return ProductCreateSerializer
         return ProductSerializer  # Full detail view
@@ -491,7 +496,7 @@ class CategoryViewSet(BaseViewSet):
 
         is_for_website = self.request.query_params.get("for_website") == "true"
         if is_for_website:
-            queryset = queryset.filter(is_public=True)
+            queryset = queryset.filter(is_public=True, is_active=True)
 
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:

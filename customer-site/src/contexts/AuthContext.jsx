@@ -7,6 +7,8 @@ import React, {
 } from "react";
 import { authAPI } from "@/api/auth";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { cartKeys } from "@/hooks/useCart";
 
 const AuthContext = createContext(null);
 
@@ -14,6 +16,7 @@ export default function AuthContextProvider({ children }) {
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const [user, setUser] = useState(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const queryClient = useQueryClient();
 
 	const verifyAuth = useCallback(async () => {
 		setIsLoading(true);
@@ -46,6 +49,8 @@ export default function AuthContextProvider({ children }) {
 			if (response.user) {
 				setUser(response.user);
 				setIsAuthenticated(true);
+				// Clear all cart cache and refetch - the backend will handle cart association
+				queryClient.invalidateQueries({ queryKey: cartKeys.all });
 				toast.success("Welcome back!");
 				return { success: true };
 			}
@@ -72,6 +77,8 @@ export default function AuthContextProvider({ children }) {
 			if (response.user) {
 				setUser(response.user);
 				setIsAuthenticated(true);
+				// Clear all cart cache and refetch - the backend will handle cart association
+				queryClient.invalidateQueries({ queryKey: cartKeys.all });
 				toast.success("Account created successfully!");
 				return { success: true };
 			}
@@ -102,12 +109,16 @@ export default function AuthContextProvider({ children }) {
 			await authAPI.logout();
 			setUser(null);
 			setIsAuthenticated(false);
+			// Clear all cart cache - backend will provide fresh guest cart
+			queryClient.invalidateQueries({ queryKey: cartKeys.all });
 			toast.success("Logged out successfully");
 		} catch (error) {
 			console.error("Logout error:", error);
 			// Still clear local state even if API call fails
 			setUser(null);
 			setIsAuthenticated(false);
+			// Still clear cart cache on error
+			queryClient.invalidateQueries({ queryKey: cartKeys.all });
 		}
 	};
 

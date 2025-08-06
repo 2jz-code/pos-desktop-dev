@@ -155,7 +155,8 @@ const ProductsPage = () => {
 	const fetchChildCategories = async (parentId) => {
 		try {
 			const response = await getCategories({ parent: parentId });
-			setChildCategories(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setChildCategories(Array.isArray(data) ? data : []);
 		} catch (err) {
 			console.error("Failed to fetch child categories:", err);
 		}
@@ -186,11 +187,12 @@ const ProductsPage = () => {
 	// Removing to avoid duplicate fetches
 
 	useEffect(() => {
+		// Always clear child categories first to avoid stale data
+		setChildCategories([]);
+		setSelectedChildCategory("all");
+		
 		if (selectedParentCategory && selectedParentCategory !== "all") {
 			fetchChildCategories(selectedParentCategory);
-		} else {
-			setChildCategories([]);
-			setSelectedChildCategory("all");
 		}
 	}, [selectedParentCategory]);
 
@@ -221,36 +223,47 @@ const ProductsPage = () => {
 		}
 
 		// Category filtering logic
-		if (
-			selectedChildCategory &&
-			selectedChildCategory !== "all" &&
-			selectedChildCategory !== "parent-only"
-		) {
-			// Show products from specific child category
-			filtered = filtered.filter((product) => {
-				const category = product.category;
-				return category && category.id === parseInt(selectedChildCategory);
-			});
-		} else if (
-			selectedChildCategory === "parent-only" &&
-			selectedParentCategory &&
-			selectedParentCategory !== "all"
-		) {
-			// Show only products directly assigned to the parent category
-			filtered = filtered.filter((product) => {
-				const category = product.category;
-				return category && category.id === parseInt(selectedParentCategory);
-			});
-		} else if (selectedParentCategory && selectedParentCategory !== "all") {
-			// Show all products under parent category (including child categories) - "All Subcategories"
-			filtered = filtered.filter((product) => {
-				const category = product.category;
-				if (!category) return false;
-				if (category.id === parseInt(selectedParentCategory)) return true;
-
-				const parentId = category.parent_id ?? category.parent?.id;
-				return parentId === parseInt(selectedParentCategory);
-			});
+		if (selectedParentCategory && selectedParentCategory !== "all") {
+			if (selectedChildCategory === "parent-only") {
+				// Show only products directly assigned to the parent category
+				filtered = filtered.filter((product) => {
+					const category = product.category;
+					return category && category.id === parseInt(selectedParentCategory);
+				});
+			} else if (selectedChildCategory && selectedChildCategory !== "all") {
+				// Show products from specific child category
+				filtered = filtered.filter((product) => {
+					const category = product.category;
+					return category && category.id === parseInt(selectedChildCategory);
+				});
+			} else {
+				// Show all products under parent category (including child categories) - "All Subcategories"
+				// This handles the case when selectedChildCategory is "all" or undefined
+				filtered = filtered.filter((product) => {
+					const category = product.category;
+					if (!category) return false;
+					
+					const selectedParentId = parseInt(selectedParentCategory);
+					
+					// Include products directly assigned to the parent category
+					if (category.id === selectedParentId) {
+						return true;
+					}
+					
+					// Include products assigned to child categories of the selected parent
+					// Since the product's category doesn't include parent info, we check if this category ID
+					// is in our childCategories list (which are children of the selected parent)
+					// Only use childCategories if we have them and they're for the current selected parent
+					if (childCategories.length > 0) {
+						const isChildCategory = childCategories.some(child => child.id === category.id);
+						if (isChildCategory) {
+							return true;
+						}
+					}
+					
+					return false;
+				});
+			}
 		}
 
 		setProducts(filtered);
@@ -263,6 +276,7 @@ const ProductsPage = () => {
 		selectedChildCategory,
 		allProducts,
 		modifierContext,
+		childCategories,
 	]);
 
 	useEffect(() => {

@@ -41,10 +41,11 @@ class GetPendingOrderView(generics.RetrieveAPIView):
     """
     A view to get the current user's (guest or authenticated) pending order.
     Returns 404 if no pending order exists, without creating one.
+    Customer-site only endpoint.
     """
 
     serializer_class = OrderSerializer
-    authentication_classes = [CustomerCookieJWTAuthentication, CookieJWTAuthentication]
+    authentication_classes = [CustomerCookieJWTAuthentication]  # Customer auth only to prevent admin cookie interference
     permission_classes = [AllowAny]  # Let the service layer handle guest/auth logic
 
     def get_object(self):
@@ -162,6 +163,7 @@ class OrderViewSet(BaseViewSet):
         methods=["post"],
         url_path="add-item",
         permission_classes=[IsGuestOrAuthenticated],
+        authentication_classes=[CustomerCookieJWTAuthentication, CookieJWTAuthentication],
     )
     def add_item_to_cart(self, request, *args, **kwargs):
         """

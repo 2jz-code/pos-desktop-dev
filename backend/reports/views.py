@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from rest_framework import viewsets, permissions, status, filters
-from core_backend.base import BaseViewSet
+from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +9,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.http import Http404
 
-from core_backend.base.mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
 from core_backend.pagination import StandardPagination
 from users.permissions import IsManagerOrHigher
 
@@ -340,10 +339,6 @@ class SavedReportViewSet(BaseViewSet):
     ordering_fields = ["created_at", "last_run", "name"]
     ordering = ["-created_at"]
 
-    class Meta:
-        select_related_fields = ['user']
-        prefetch_related_fields = []
-
     def get_queryset(self):
         """Filter by user - users can only see their own reports"""
         queryset = super().get_queryset()
@@ -510,7 +505,7 @@ class ReportTemplateViewSet(BaseViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
+class ReportCacheViewSet(ReadOnlyBaseViewSet):
     """
     Report cache management (admin only)
     """
@@ -518,11 +513,6 @@ class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ReportCache.objects.all()
     serializer_class = ReportCacheSerializer
     permission_classes = [IsManagerOrHigher]
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
     filterset_fields = ["report_type"]
     search_fields = ["parameters_hash"]
     ordering_fields = ["generated_at", "expires_at"]
@@ -548,7 +538,7 @@ class ReportCacheViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
+class ReportExecutionViewSet(ReadOnlyBaseViewSet):
     """
     Report execution history (read-only)
     """
@@ -556,11 +546,6 @@ class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewS
     queryset = ReportExecution.objects.all()
     serializer_class = ReportExecutionSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [
-        DjangoFilterBackend,
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
     filterset_fields = ["status", "saved_report__report_type"]
     search_fields = ["saved_report__name"]
     ordering_fields = ["started_at", "completed_at"]
@@ -568,9 +553,7 @@ class ReportExecutionViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewS
 
     def get_queryset(self):
         """Filter by user - users can only see their own execution history"""
-        queryset = ReportExecution.objects.select_related(
-            'saved_report__user'
-        )
+        queryset = super().get_queryset()
 
         # Staff can see all executions, regular users only their own
         if self.request.user.is_staff:

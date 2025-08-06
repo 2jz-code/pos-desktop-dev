@@ -9,11 +9,11 @@ import {
 	createImageErrorHandler,
 } from "../../../../src/lib/imageUtils"; // Adjust path as needed
 import {
-	canQuickAddProduct,
+	// canQuickAddProduct,
 	getProductButtonText,
 	getProductButtonTooltip,
 	productHasRequiredModifiers,
-	productHasModifiers
+	productHasModifiers,
 } from "@/utils/modifierCalculations";
 
 const ProductCard = ({
@@ -62,7 +62,7 @@ const ProductCard = ({
 
 	const handleProductAction = (e) => {
 		stopPropagation(e);
-		
+
 		// If product has required modifiers, navigate to details page
 		if (productHasRequiredModifiers(product)) {
 			navigate(`/product/${encodeURIComponent(product.name)}`);
@@ -184,7 +184,9 @@ const ProductCard = ({
 			</div>
 
 			<AnimatePresence>
-				{showQuickAdd && !productHasRequiredModifiers(product) && renderQuickAddPanel()}
+				{showQuickAdd &&
+					!productHasRequiredModifiers(product) &&
+					renderQuickAddPanel()}
 			</AnimatePresence>
 		</motion.div>
 	);
@@ -231,11 +233,17 @@ const ProductCard = ({
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={productHasRequiredModifiers(product) && !showQuickAdd ? handleProductAction : handleToggleQuickAdd}
+						onClick={
+							productHasRequiredModifiers(product) && !showQuickAdd
+								? handleProductAction
+								: handleToggleQuickAdd
+						}
 						aria-label={
-							productHasRequiredModifiers(product) && !showQuickAdd 
-								? "View product details" 
-								: showQuickAdd ? "Close quick add" : "Open quick add"
+							productHasRequiredModifiers(product) && !showQuickAdd
+								? "View product details"
+								: showQuickAdd
+								? "Close quick add"
+								: "Open quick add"
 						}
 						title={showQuickAdd ? "" : getProductButtonTooltip(product)}
 					>

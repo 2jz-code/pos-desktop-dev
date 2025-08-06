@@ -76,9 +76,9 @@ export function ProductFormDialog({
 				inventoryService.getLocations(),
 			]);
 
-			// Axios responses vs direct data handling
-			const categoriesData = categoriesRes.data ?? categoriesRes;
-			const typesData = typesRes.data ?? typesRes;
+			// Axios responses vs direct data handling - handle paginated responses
+			const categoriesData = categoriesRes.data?.results || categoriesRes.data || categoriesRes;
+			const typesData = typesRes.data?.results || typesRes.data || typesRes;
 			const locationsData = Array.isArray(locationsRaw)
 				? locationsRaw
 				: locationsRaw?.data ?? [];

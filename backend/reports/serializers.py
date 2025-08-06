@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 from datetime import datetime, timedelta
+from core_backend.base import BaseModelSerializer
 from .models import (
     ReportCache,
     SavedReport,
@@ -51,7 +52,7 @@ class ProductReportParameterSerializer(ReportParameterSerializer):
     )
 
 
-class ReportCacheSerializer(serializers.ModelSerializer):
+class ReportCacheSerializer(BaseModelSerializer):
     """Serializer for report cache entries"""
 
     is_expired = serializers.ReadOnlyField()
@@ -68,9 +69,12 @@ class ReportCacheSerializer(serializers.ModelSerializer):
             "is_expired",
         ]
         read_only_fields = ["id", "generated_at", "is_expired"]
+        # ReportCache model typically has no FK relationships to optimize
+        select_related_fields = []
+        prefetch_related_fields = []
 
 
-class SavedReportSerializer(serializers.ModelSerializer):
+class SavedReportSerializer(BaseModelSerializer):
     """Serializer for saved reports"""
 
     file_size_mb = serializers.ReadOnlyField()
@@ -108,6 +112,9 @@ class SavedReportSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        # Optimize user relationship for reports
+        select_related_fields = ["user"]
+        prefetch_related_fields = []
 
     def validate_parameters(self, value):
         """Validate report parameters JSON"""
@@ -145,7 +152,7 @@ class SavedReportCreateSerializer(SavedReportSerializer):
         fields = ["name", "report_type", "parameters", "schedule", "format", "status"]
 
 
-class ReportTemplateSerializer(serializers.ModelSerializer):
+class ReportTemplateSerializer(BaseModelSerializer):
     """Serializer for report templates"""
 
     class Meta:
@@ -162,6 +169,9 @@ class ReportTemplateSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        # Optimize created_by relationship
+        select_related_fields = ["created_by"]
+        prefetch_related_fields = []
 
     def validate_default_parameters(self, value):
         """Validate default parameters JSON"""
@@ -179,7 +189,7 @@ class ReportTemplateSerializer(serializers.ModelSerializer):
         return value
 
 
-class ReportExecutionSerializer(serializers.ModelSerializer):
+class ReportExecutionSerializer(BaseModelSerializer):
     """Serializer for report executions"""
 
     saved_report_name = serializers.CharField(
@@ -212,6 +222,9 @@ class ReportExecutionSerializer(serializers.ModelSerializer):
             "row_count",
             "file_size",
         ]
+        # Optimize saved_report relationship with its user
+        select_related_fields = ["saved_report__user"]
+        prefetch_related_fields = []
 
     def get_execution_time_formatted(self, obj):
         """Format execution time for display"""

@@ -14,14 +14,36 @@ export const cartKeys = {
 // Hook for getting current cart data
 export const useCartQuery = () => {
 	const { checkoutCompleted } = useCartStore();
+	const { isAuthenticated } = useAuth();
+	console.log('useCart: useCartQuery called, checkoutCompleted:', checkoutCompleted);
 
 	return useQuery({
 		queryKey: cartKeys.current(),
 		queryFn: () => {
+			console.log('useCart: queryFn called! checkoutCompleted:', checkoutCompleted);
 			if (checkoutCompleted) {
+				console.log('useCart: checkoutCompleted is true, returning null');
 				return null;
 			}
-			return ordersAPI.getPendingOrder();
+			console.log('useCart: Fetching pending order...', {
+				'isAuthenticated from useAuth': isAuthenticated,
+				'request.user in backend': 'will be determined by backend'
+			});
+			return ordersAPI.getPendingOrder().then(result => {
+				console.log('useCart: getPendingOrder returned:', result);
+				console.log('Cart belongs to:', result?.customer ? 'Authenticated User' : 'Guest');
+				console.log('Cart items count:', result?.items?.length || 0);
+				console.log('Cart items:', result?.items);
+				return result;
+			}).catch(error => {
+				console.log('useCart: getPendingOrder ERROR:', error);
+				console.log('Error status:', error.response?.status);
+				// For 404 errors (no cart found), return null instead of throwing
+				if (error.response?.status === 404) {
+					return null;
+				}
+				throw error;
+			});
 		},
 		staleTime: 1000 * 30, // 30 seconds
 		cacheTime: 1000 * 60 * 5, // 5 minutes
@@ -41,20 +63,27 @@ export const useCartMutations = () => {
 	const { isAuthenticated } = useAuth();
 
 	const invalidateCart = () => {
+		console.log('useCart: Invalidating cart cache...');
 		queryClient.invalidateQueries({ queryKey: cartKeys.current() });
+		// Also force refetch to ensure the cart updates
+		console.log('useCart: Force refetching cart...');
+		queryClient.refetchQueries({ queryKey: cartKeys.current() });
 	};
 
 	const addToCartMutation = useMutation({
 		mutationFn: async ({ productId, quantity, notes, selectedModifiers }) => {
+			console.log('useCart: addToCartMutation starting for product:', productId);
 			// Initialize guest session for unauthenticated users (only if needed)
 			if (!isAuthenticated) {
 				try {
+					console.log('useCart: Trying add to cart (unauthenticated)');
 					// Try adding to cart first - if it fails due to session, then initialize
 					return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 				} catch (error) {
 					// If it's a permission/session error, initialize guest session and retry
 					if (error.response?.status === 403 || error.response?.status === 401) {
 						try {
+							console.log('useCart: Session error, initializing guest session and retrying');
 							await ordersAPI.initGuestSession();
 							return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 						} catch (sessionError) {
@@ -66,43 +95,45 @@ export const useCartMutations = () => {
 					}
 				}
 			}
+			console.log('useCart: Calling addToCart (authenticated)');
 			return cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 		},
-		// Optimistic update for adding items
-		onMutate: async ({ product, quantity }) => {
-			// Cancel any outgoing refetches
-			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
+		// Temporarily disable optimistic update to avoid state conflicts
+		// onMutate: async ({ product, quantity }) => {
+		// 	// Cancel any outgoing refetches
+		// 	await queryClient.cancelQueries({ queryKey: cartKeys.current() });
 
-			// Snapshot the previous value
-			const previousCart = queryClient.getQueryData(cartKeys.current());
+		// 	// Snapshot the previous value
+		// 	const previousCart = queryClient.getQueryData(cartKeys.current());
 
-			// Optimistically update to the new value
-			if (previousCart) {
-				const optimisticCart = { ...previousCart };
-				const existingItemIndex = optimisticCart.items.findIndex(
-					(item) => item.product.id === product.id
-				);
+		// 	// Optimistically update to the new value
+		// 	if (previousCart) {
+		// 		const optimisticCart = { ...previousCart };
+		// 		const existingItemIndex = optimisticCart.items.findIndex(
+		// 			(item) => item.product.id === product.id
+		// 		);
 
-				if (existingItemIndex > -1) {
-					// Update quantity if item exists
-					optimisticCart.items[existingItemIndex].quantity += quantity;
-				} else {
-					// Add new item with full product details
-					optimisticCart.items.push({
-						id: `temp-${Date.now()}`, // Temporary ID
-						product: product, // Use the full product object
-						quantity,
-						price_at_sale: product.price, // Use product's current price
-						notes: "",
-					});
-				}
-				queryClient.setQueryData(cartKeys.current(), optimisticCart);
-			}
+		// 		if (existingItemIndex > -1) {
+		// 			// Update quantity if item exists
+		// 			optimisticCart.items[existingItemIndex].quantity += quantity;
+		// 		} else {
+		// 			// Add new item with full product details
+		// 			optimisticCart.items.push({
+		// 				id: `temp-${Date.now()}`, // Temporary ID
+		// 				product: product, // Use the full product object
+		// 				quantity,
+		// 				price_at_sale: product.price, // Use product's current price
+		// 				notes: "",
+		// 			});
+		// 		}
+		// 		queryClient.setQueryData(cartKeys.current(), optimisticCart);
+		// 	}
 
-			// Return a context with the previous cart for rollback
-			return { previousCart };
-		},
-		onSuccess: () => {
+		// 	// Return a context with the previous cart for rollback
+		// 	return { previousCart };
+		// },
+		onSuccess: (data) => {
+			console.log('useCart: addToCart SUCCESS, backend returned:', data);
 			toast.success("Item added to cart");
 		},
 		onError: (error, variables, context) => {
@@ -116,6 +147,7 @@ export const useCartMutations = () => {
 		},
 		onSettled: () => {
 			// Always refetch after error or success to get accurate backend calculations
+			console.log('useCart: addToCart onSettled called, invalidating cart...');
 			invalidateCart();
 		},
 	});

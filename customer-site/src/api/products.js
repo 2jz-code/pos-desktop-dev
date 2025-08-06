@@ -16,7 +16,7 @@ export const productsAPI = {
 			params.append("is_active", filters.is_active);
 
 		const response = await apiClient.get(`/products/?${params.toString()}`);
-		return response.data;
+		return response.data.results || response.data;
 	},
 
 	// Get single product by ID
@@ -60,7 +60,7 @@ export const productsAPI = {
 		const response = await apiClient.get(
 			"/products/categories/?for_website=true"
 		);
-		return response.data;
+		return response.data.results || response.data;
 	},
 
 	// Get product types

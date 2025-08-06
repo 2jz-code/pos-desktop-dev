@@ -1,10 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from core_backend.base import BaseModelSerializer
 from .models import User
 
 
-class CustomerRegistrationSerializer(serializers.ModelSerializer):
+class CustomerRegistrationSerializer(BaseModelSerializer):
     """
     Serializer for customer registration.
     Includes all necessary fields for customer account creation.
@@ -30,6 +31,9 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
             "first_name": {"required": True},
             "last_name": {"required": True},
         }
+        # User model typically has no FK relationships to optimize
+        select_related_fields = []
+        prefetch_related_fields = []
 
     def validate_email(self, value):
         """Validate email uniqueness"""
@@ -121,7 +125,7 @@ class CustomerLoginSerializer(serializers.Serializer):
         return attrs
 
 
-class CustomerProfileSerializer(serializers.ModelSerializer):
+class CustomerProfileSerializer(BaseModelSerializer):
     """
     Serializer for customer profile information.
     Read-only fields for sensitive data.
@@ -143,6 +147,9 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
             "is_active",
         ]
         read_only_fields = ["id", "date_joined", "is_active"]
+        # User model typically has no FK relationships to optimize
+        select_related_fields = []
+        prefetch_related_fields = []
 
     def get_full_name(self, obj):
         """Return full name"""

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core_backend.base import BaseModelSerializer
 from .models import User
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
@@ -6,7 +7,7 @@ from rest_framework_simplejwt.serializers import (
 )
 
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(BaseModelSerializer):
     class Meta:
         model = User
         fields = (
@@ -20,14 +21,20 @@ class UserSerializer(serializers.ModelSerializer):
             "is_pos_staff",
         )
         read_only_fields = ("id",)
+        # User model typically has no FK relationships to optimize
+        select_related_fields = []
+        prefetch_related_fields = []
 
 
-class UserRegistrationSerializer(serializers.ModelSerializer):
+class UserRegistrationSerializer(BaseModelSerializer):
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
     class Meta:
         model = User
         fields = ("email", "username", "password", "first_name", "last_name", "role")
+        # User model typically has no FK relationships to optimize
+        select_related_fields = []
+        prefetch_related_fields = []
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)

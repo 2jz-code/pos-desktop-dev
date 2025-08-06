@@ -1,5 +1,5 @@
 import inventoryService from "@/domains/inventory/services/inventoryService";
-import { getProducts } from "@/domains/products/services/productService";
+import { getProducts, getAllProducts } from "@/domains/products/services/productService";
 import { toast } from "@/shared/components/ui/use-toast";
 
 export const createInventorySlice = (set, get) => ({
@@ -98,8 +98,29 @@ export const createInventorySlice = (set, get) => ({
 
 	fetchProducts: async () => {
 		try {
-			const response = await getProducts({ limit: 1000 });
-			set({ products: response.data });
+			console.log("🔄 [InventorySlice] fetchProducts called - fetching ALL products with pagination");
+			const response = await getAllProducts();
+			// getAllProducts returns all products directly in response.data
+			const allProducts = response.data;
+			console.log("📦 [InventorySlice] Received products:", allProducts.length, "items");
+			
+			// Filter out archived products to ensure only active products are shown
+			const activeProducts = allProducts.filter(product => product.is_active !== false);
+			console.log("📦 [InventorySlice] Active products:", activeProducts.length, "items");
+			
+			// Debug: Show category breakdown
+			if (Array.isArray(activeProducts)) {
+				const desserts = activeProducts.filter(p => p.category?.name === 'Desserts');
+				const drinks = activeProducts.filter(p => p.category?.name === 'Drinks');
+				console.log("🍰 [InventorySlice] Found desserts:", desserts.length);
+				console.log("🥤 [InventorySlice] Found drinks:", drinks.length);
+				
+				// Debug: Show archived products count
+				const archivedProducts = allProducts.filter(product => product.is_active === false);
+				console.log("🗄️ [InventorySlice] Filtered out archived products:", archivedProducts.length);
+			}
+			
+			set({ products: activeProducts });
 		} catch (error) {
 			console.error("Failed to fetch products:", error);
 			set({ error: "Failed to load products: " + error.message });
@@ -131,14 +152,18 @@ export const createInventorySlice = (set, get) => ({
 				inventoryService.getDashboardData(),
 				inventoryService.getAllStock(),
 				inventoryService.getLocations(),
-				getProducts({ limit: 1000 }),
+				getAllProducts(),
 			]);
 
+			// Filter out archived products from the response
+			const allProducts = productsResponse.data;
+			const activeProducts = allProducts.filter(product => product.is_active !== false);
+			
 			set({
 				dashboardData: dashboard,
 				stockData: stock,
 				locations,
-				products: productsResponse.data,
+				products: activeProducts,
 				isLoading: false,
 				error: null,
 			});

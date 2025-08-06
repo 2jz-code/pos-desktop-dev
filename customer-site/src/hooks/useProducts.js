@@ -31,8 +31,8 @@ export const useProducts = (categoryId = null) => {
 		enabled: true, // Always enabled, will fetch when categoryId changes
 		select: (data) => {
 			const normalizedProducts = data?.map(normalizeProductData) || [];
-			// Sort products alphabetically by name
-			return normalizedProducts.sort((a, b) => a.name.localeCompare(b.name));
+			// Preserve backend ordering - don't sort alphabetically
+			return normalizedProducts;
 		},
 	});
 

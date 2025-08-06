@@ -1,5 +1,5 @@
 // desktop-combined/electron-app/src/store/slices/productSlice.js
-import { getProducts } from "@/domains/products/services/productService";
+import { getProducts, getAllProducts } from "@/domains/products/services/productService";
 import { getCategories } from "@/domains/products/services/categoryService";
 
 // Helper function to sort products by category and name
@@ -43,24 +43,20 @@ const sortProductsByCategory = (products) => {
 // Helper function to filter out grocery items
 const filterOutGroceryItems = (products) => {
 	// Define grocery category names that should be hidden when showing "all"
+	// Only filter the specific "grocery" category that contains retail items
 	const groceryCategoryNames = [
-		"Grocery",
-		"Groceries",
-		"Food Items",
-		"Pantry Items",
-		"Dry Goods",
-		"Packaged Foods",
+		"grocery", // This is the specific category from your data that should be hidden
 	];
 
 	return products.filter((p) => {
 		const categoryName = p.category?.name || "";
 		const parentCategoryName = p.category?.parent?.name || "";
 
-		// Exclude if product's category or parent category is in the grocery list
+		// Only exclude exact matches to avoid filtering legitimate food categories
 		return !groceryCategoryNames.some(
 			(groceryName) =>
-				categoryName.toLowerCase().includes(groceryName.toLowerCase()) ||
-				parentCategoryName.toLowerCase().includes(groceryName.toLowerCase())
+				categoryName.toLowerCase() === groceryName.toLowerCase() ||
+				parentCategoryName.toLowerCase() === groceryName.toLowerCase()
 		);
 	});
 };
@@ -77,16 +73,32 @@ export const createProductSlice = (set, get) => ({
 	isLoadingCategories: false,
 
 	fetchProducts: async () => {
-		console.log("🔄 [ProductSlice] fetchProducts function called!");
+		console.log("🔄 [ProductSlice] fetchProducts function called! UPDATED VERSION");
 		console.log("🔄 [ProductSlice] Starting to fetch products...");
 		set({ isLoadingProducts: true });
 		try {
-			console.log("📡 [ProductSlice] Making API call to /products/");
-			const response = await getProducts({ include_all_modifiers: 'true' });
+			console.log("📡 [ProductSlice] Making API call to fetch ALL products (with pagination)");
+			const response = await getAllProducts({ include_all_modifiers: 'true' });
 			console.log("📦 [ProductSlice] Raw API response:", response);
+			console.log("📦 [ProductSlice] Response keys:", Object.keys(response));
+			console.log("📦 [ProductSlice] Response.data type:", typeof response.data);
+			console.log("📦 [ProductSlice] Response.data is array:", Array.isArray(response.data));
 			
+			// Extract products from response - getAllProducts returns all products directly in data
 			const products = response.data;
-			console.log("📦 [ProductSlice] Products data:", products);
+			console.log("📦 [ProductSlice] Products data sample:", products?.slice(0, 3));
+			console.log("📦 [ProductSlice] Is products an array?", Array.isArray(products));
+			console.log("📦 [ProductSlice] Products length:", products?.length);
+			
+			// Check if we have drinks and desserts
+			if (Array.isArray(products)) {
+				const desserts = products.filter(p => p.category?.name === 'Desserts');
+				const drinks = products.filter(p => p.category?.name === 'Drinks');
+				console.log("🍰 [ProductSlice] Found desserts:", desserts.length);
+				console.log("🥤 [ProductSlice] Found drinks:", drinks.length);
+				console.log("🍰 [ProductSlice] Dessert samples:", desserts.slice(0, 2).map(p => p.name));
+				console.log("🥤 [ProductSlice] Drink samples:", drinks.slice(0, 2).map(p => p.name));
+			}
 
 			if (!Array.isArray(products)) {
 				console.error("❌ [ProductSlice] Products is not an array:", typeof products, products);
@@ -94,16 +106,38 @@ export const createProductSlice = (set, get) => ({
 				return;
 			}
 
+			// Filter out archived products to ensure only active products are shown
+			const activeProducts = products.filter(product => product.is_active !== false);
+			console.log("🔍 [ProductSlice] Active products sample:", activeProducts.slice(0, 5).map(p => ({
+				name: p.name,
+				category: p.category?.name,
+				is_active: p.is_active
+			})));
+			
 			// Sort products using the helper function
-			const sortedProducts = sortProductsByCategory(products);
+			const sortedProducts = sortProductsByCategory(activeProducts);
 
 			// Filter out grocery items by default (since we start with "all" products)
 			const filteredProducts = filterOutGroceryItems(sortedProducts);
+			
+			// Debug: Show category breakdown
+			const categoryBreakdown = {};
+			filteredProducts.forEach(p => {
+				const cat = p.category?.name || 'No Category';
+				categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+			});
+			console.log("📊 [ProductSlice] Category breakdown:", categoryBreakdown);
 
 			console.log(
-				`🎯 [ProductSlice] Loaded ${products.length} total products, showing ${filteredProducts.length} non-grocery products by default`
+				`🎯 [ProductSlice] Loaded ${products.length} total products, ${activeProducts.length} active products, showing ${filteredProducts.length} non-grocery products by default`
 			);
 
+			console.log("📦 [ProductSlice] Setting products in store:", {
+				productsCount: sortedProducts.length,
+				filteredProductsCount: filteredProducts.length,
+				isArray: Array.isArray(sortedProducts)
+			});
+			
 			set({
 				products: sortedProducts,
 				filteredProducts: filteredProducts,
@@ -127,8 +161,9 @@ export const createProductSlice = (set, get) => ({
 	fetchParentCategories: async () => {
 		set({ isLoadingCategories: true });
 		try {
-			const response = await getCategories({ parent: "null" });
-			const categories = response.data;
+			const response = await getCategories({ parent: "null", is_active: "true" });
+			// Handle paginated response - extract categories from results array
+			const categories = response.data.results || response.data;
 			set({ parentCategories: categories, isLoadingCategories: false });
 		} catch (error) {
 			console.error(
@@ -149,8 +184,9 @@ export const createProductSlice = (set, get) => ({
 			console.log(
 				`🔄 [ProductSlice] Fetching child categories for parent ${parentId} from API...`
 			);
-			const response = await getCategories({ parent: parentId });
-			const categories = response.data;
+			const response = await getCategories({ parent: parentId, is_active: "true" });
+			// Handle paginated response - extract categories from results array
+			const categories = response.data.results || response.data;
 			set({ childCategories: categories, selectedChildCategory: "all" });
 			get().applyFilter({
 				categoryId: parentId,
@@ -238,14 +274,14 @@ export const createProductSlice = (set, get) => ({
 				);
 			}
 		} else {
-			// When showing "all" products, exclude grocery items
+			// When showing "all" products, exclude only the specific "grocery" category
 			console.log(
-				`🎯 [ProductSlice] Showing all products, excluding grocery items`
+				`🎯 [ProductSlice] Showing all products, excluding retail grocery items`
 			);
 			filtered = filterOutGroceryItems(filtered);
 
 			console.log(
-				`🎯 [ProductSlice] Found ${filtered.length} non-grocery products`
+				`🎯 [ProductSlice] Found ${filtered.length} products after filtering`
 			);
 		}
 
@@ -266,6 +302,14 @@ export const createProductSlice = (set, get) => ({
 
 	resetFilters: () => {
 		const state = get();
+		
+		// Defensive check: ensure products is an array before sorting
+		if (!Array.isArray(state.products)) {
+			console.warn("⚠️ [ProductSlice] resetFilters called but products is not an array:", state.products);
+			console.warn("⚠️ [ProductSlice] Skipping resetFilters until products are loaded");
+			return;
+		}
+		
 		const sortedProducts = sortProductsByCategory(state.products);
 
 		// Filter out grocery items when resetting (since we go back to "all" products)

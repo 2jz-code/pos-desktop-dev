@@ -126,7 +126,7 @@ class CustomerAuthService:
             value=access_token,
             max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/api/auth/customer",  # Use customer-specific path to avoid conflicts
+            path="/",  # Use root path so cookies are available for all customer endpoints
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,
@@ -137,7 +137,7 @@ class CustomerAuthService:
             value=refresh_token,
             max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
             domain=None,  # Allow cookies to be sent from any origin
-            path="/api/auth/customer",  # Use customer-specific path to avoid conflicts
+            path="/",  # Use root path so cookies are available for all customer endpoints
             httponly=True,
             secure=is_secure,
             samesite=samesite_policy,
@@ -147,12 +147,27 @@ class CustomerAuthService:
     def clear_customer_auth_cookies(response):
         """
         Clear customer authentication cookies.
+        Must match the same parameters used when setting the cookies.
         """
         access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
         refresh_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
         
-        response.delete_cookie(access_cookie_name, path="/api/auth/customer")
-        response.delete_cookie(refresh_cookie_name, path="/api/auth/customer")
+        # Use same parameters as when setting cookies for proper deletion
+        is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+        samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
+        
+        response.delete_cookie(
+            access_cookie_name, 
+            path="/", 
+            domain=None, 
+            samesite=samesite_policy
+        )
+        response.delete_cookie(
+            refresh_cookie_name, 
+            path="/", 
+            domain=None, 
+            samesite=samesite_policy
+        )
 
     @staticmethod
     def get_customer_profile(user):

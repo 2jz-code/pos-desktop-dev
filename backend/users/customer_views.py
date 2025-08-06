@@ -187,7 +187,7 @@ class CustomerTokenRefreshView(APIView):
                     value=str(new_access),
                     max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
                     domain=None,
-                    path="/api/auth/customer",  # Use customer-specific path
+                    path="/",  # Use root path so cookies are available for all customer endpoints
                     httponly=True,
                     secure=is_secure,
                     samesite=samesite_policy,

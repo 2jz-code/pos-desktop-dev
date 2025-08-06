@@ -129,6 +129,7 @@ const ProductDetailsPage = () => {
 	};
 
 	const handleAddToCart = async () => {
+		console.log('Adding to cart from details page');
 		if (!product) return;
 		
 		// Check if modifiers are valid
