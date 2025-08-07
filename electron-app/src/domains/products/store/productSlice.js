@@ -1,5 +1,5 @@
 // desktop-combined/electron-app/src/store/slices/productSlice.js
-import { getProducts, getAllProducts } from "@/domains/products/services/productService";
+import { getProducts, getAllProducts, getAllActiveProducts } from "@/domains/products/services/productService";
 import { getCategories } from "@/domains/products/services/categoryService";
 
 // Helper function to sort products by category and name
@@ -77,14 +77,14 @@ export const createProductSlice = (set, get) => ({
 		console.log("🔄 [ProductSlice] Starting to fetch products...");
 		set({ isLoadingProducts: true });
 		try {
-			console.log("📡 [ProductSlice] Making API call to fetch ALL products (with pagination)");
-			const response = await getAllProducts({ include_all_modifiers: 'true' });
+			console.log("📡 [ProductSlice] Making API call to fetch active products (non-paginated, cached)");
+			const response = await getAllActiveProducts();
 			console.log("📦 [ProductSlice] Raw API response:", response);
 			console.log("📦 [ProductSlice] Response keys:", Object.keys(response));
 			console.log("📦 [ProductSlice] Response.data type:", typeof response.data);
 			console.log("📦 [ProductSlice] Response.data is array:", Array.isArray(response.data));
 			
-			// Extract products from response - getAllProducts returns all products directly in data
+			// Extract products from response - getAllActiveProducts returns active products directly
 			const products = response.data;
 			console.log("📦 [ProductSlice] Products data sample:", products?.slice(0, 3));
 			console.log("📦 [ProductSlice] Is products an array?", Array.isArray(products));
@@ -106,16 +106,15 @@ export const createProductSlice = (set, get) => ({
 				return;
 			}
 
-			// Filter out archived products to ensure only active products are shown
-			const activeProducts = products.filter(product => product.is_active !== false);
-			console.log("🔍 [ProductSlice] Active products sample:", activeProducts.slice(0, 5).map(p => ({
+			// Products are already active from the backend, no filtering needed
+			console.log("🔍 [ProductSlice] Active products sample:", products.slice(0, 5).map(p => ({
 				name: p.name,
 				category: p.category?.name,
 				is_active: p.is_active
 			})));
 			
 			// Sort products using the helper function
-			const sortedProducts = sortProductsByCategory(activeProducts);
+			const sortedProducts = sortProductsByCategory(products);
 
 			// Filter out grocery items by default (since we start with "all" products)
 			const filteredProducts = filterOutGroceryItems(sortedProducts);
@@ -129,7 +128,7 @@ export const createProductSlice = (set, get) => ({
 			console.log("📊 [ProductSlice] Category breakdown:", categoryBreakdown);
 
 			console.log(
-				`🎯 [ProductSlice] Loaded ${products.length} total products, ${activeProducts.length} active products, showing ${filteredProducts.length} non-grocery products by default`
+				`🎯 [ProductSlice] Loaded ${products.length} active products, showing ${filteredProducts.length} non-grocery products by default`
 			);
 
 			console.log("📦 [ProductSlice] Setting products in store:", {

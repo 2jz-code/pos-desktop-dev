@@ -118,3 +118,152 @@ class UserService:
             secure=is_secure,
             samesite=samesite_policy,
         )
+    
+    # ========== NEW METHODS FOR VIEW LOGIC CONSOLIDATION ==========
+    
+    @staticmethod
+    def set_user_pin(user_id: int, pin: str, current_user: 'User') -> dict:
+        """
+        Extract PIN setting logic from SetPinView.
+        Handles validation, permissions, and PIN updates.
+        """
+        # Input validation
+        if not user_id:
+            return {"success": False, "error": "User ID is required."}
+        
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return {"success": False, "error": "User not found."}
+        
+        # Permission validation
+        if not UserService.validate_pin_permissions(current_user, user):
+            return {
+                "success": False, 
+                "error": "You do not have permission to perform this action."
+            }
+        
+        # PIN format validation
+        try:
+            UserService.validate_pin_format(pin)
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+        
+        # Set the PIN using the model method
+        user.set_pin(pin)
+        user.save()
+        
+        return {
+            "success": True,
+            "message": "PIN updated successfully.",
+            "user_id": user_id,
+            "username": user.username
+        }
+    
+    @staticmethod
+    def validate_pin_permissions(current_user: 'User', target_user: 'User') -> bool:
+        """
+        Centralize PIN permission checking logic.
+        Allow user to change their own PIN or manager+ to change others'.
+        """
+        return (
+            current_user.pk == target_user.pk or
+            current_user.role in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]
+        )
+    
+    @staticmethod
+    def validate_pin_format(pin: str) -> None:
+        """
+        Centralize PIN format validation rules.
+        Can be extended with more complex validation rules.
+        """
+        if not pin:
+            raise ValueError("PIN is required.")
+        
+        if len(pin) < 4:
+            raise ValueError("PIN must be at least 4 characters long.")
+        
+        if len(pin) > 8:
+            raise ValueError("PIN must be no more than 8 characters long.")
+        
+        # Additional validation rules can be added here
+        # e.g., complexity requirements, no sequential numbers, etc.
+    
+    @staticmethod
+    def get_filtered_users(filters: dict) -> 'QuerySet':
+        """
+        Extract user filtering logic from UserListView.
+        Handles delta sync and POS staff filtering.
+        """
+        from django.utils.dateparse import parse_datetime
+        
+        queryset = User.objects.all().order_by("email")
+        
+        # Filter to only show POS staff users (not customers)
+        queryset = queryset.filter(is_pos_staff=True)
+        
+        # Delta sync filtering
+        modified_since = filters.get("modified_since")
+        if modified_since:
+            try:
+                modified_since_dt = parse_datetime(modified_since)
+                if modified_since_dt:
+                    queryset = queryset.filter(updated_at__gte=modified_since_dt)
+            except (ValueError, TypeError):
+                # If parsing fails, ignore the parameter and continue
+                pass
+        
+        return queryset
+    
+    @staticmethod
+    def update_user_profile(user_id: int, profile_data: dict, current_user: 'User') -> dict:
+        """
+        Centralize user profile update logic with permission checking.
+        """
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return {"success": False, "error": "User not found."}
+        
+        # Basic permission check (can be extended)
+        if not (current_user.pk == user.pk or 
+                current_user.role in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]):
+            return {
+                "success": False,
+                "error": "You do not have permission to update this user."
+            }
+        
+        # Update allowed fields (customize as needed)
+        allowed_fields = ['first_name', 'last_name', 'email', 'phone']
+        updated_fields = []
+        
+        for field in allowed_fields:
+            if field in profile_data:
+                setattr(user, field, profile_data[field])
+                updated_fields.append(field)
+        
+        if updated_fields:
+            user.save(update_fields=updated_fields)
+        
+        return {
+            "success": True,
+            "message": "Profile updated successfully.",
+            "updated_fields": updated_fields
+        }
+    
+    @staticmethod
+    def get_user_permissions_summary(user: 'User') -> dict:
+        """
+        Get comprehensive user permissions information.
+        """
+        role_permissions = UserService.get_user_permissions_by_role()
+        
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "permissions": role_permissions.get(user.role, []),
+            "is_active": user.is_active,
+            "is_staff": user.is_staff,
+            "is_superuser": user.is_superuser,
+        }

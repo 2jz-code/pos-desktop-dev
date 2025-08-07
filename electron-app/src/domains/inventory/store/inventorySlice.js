@@ -1,5 +1,5 @@
 import inventoryService from "@/domains/inventory/services/inventoryService";
-import { getProducts, getAllProducts } from "@/domains/products/services/productService";
+import { getProducts, getAllProducts, getAllActiveProducts } from "@/domains/products/services/productService";
 import { toast } from "@/shared/components/ui/use-toast";
 
 export const createInventorySlice = (set, get) => ({
@@ -98,15 +98,11 @@ export const createInventorySlice = (set, get) => ({
 
 	fetchProducts: async () => {
 		try {
-			console.log("🔄 [InventorySlice] fetchProducts called - fetching ALL products with pagination");
-			const response = await getAllProducts();
-			// getAllProducts returns all products directly in response.data
-			const allProducts = response.data;
-			console.log("📦 [InventorySlice] Received products:", allProducts.length, "items");
-			
-			// Filter out archived products to ensure only active products are shown
-			const activeProducts = allProducts.filter(product => product.is_active !== false);
-			console.log("📦 [InventorySlice] Active products:", activeProducts.length, "items");
+			console.log("🔄 [InventorySlice] fetchProducts called - fetching active products (non-paginated, cached)");
+			const response = await getAllActiveProducts();
+			// Backend returns non-paginated list of active products with caching
+			const activeProducts = response.data;
+			console.log("📦 [InventorySlice] Received active products:", activeProducts.length, "items");
 			
 			// Debug: Show category breakdown
 			if (Array.isArray(activeProducts)) {
@@ -114,10 +110,6 @@ export const createInventorySlice = (set, get) => ({
 				const drinks = activeProducts.filter(p => p.category?.name === 'Drinks');
 				console.log("🍰 [InventorySlice] Found desserts:", desserts.length);
 				console.log("🥤 [InventorySlice] Found drinks:", drinks.length);
-				
-				// Debug: Show archived products count
-				const archivedProducts = allProducts.filter(product => product.is_active === false);
-				console.log("🗄️ [InventorySlice] Filtered out archived products:", archivedProducts.length);
 			}
 			
 			set({ products: activeProducts });
@@ -152,12 +144,11 @@ export const createInventorySlice = (set, get) => ({
 				inventoryService.getDashboardData(),
 				inventoryService.getAllStock(),
 				inventoryService.getLocations(),
-				getAllProducts(),
+				getAllActiveProducts(),
 			]);
 
-			// Filter out archived products from the response
-			const allProducts = productsResponse.data;
-			const activeProducts = allProducts.filter(product => product.is_active !== false);
+			// Backend already returns only active products
+			const activeProducts = productsResponse.data;
 			
 			set({
 				dashboardData: dashboard,

@@ -131,3 +131,149 @@ class DiscountService:
         from orders.signals import order_needs_recalculation
 
         order_needs_recalculation.send(sender=DiscountService, order=order)
+
+
+class DiscountValidationService:
+    """
+    Service for handling discount validation business rules and code application.
+    Extracted from views to centralize validation logic.
+    """
+    
+    @staticmethod
+    def validate_discount_code(code: str, order_id: int) -> dict:
+        """
+        Extract discount code validation logic from apply_discount_code view.
+        Handles code lookup, order lookup, and discount application.
+        """
+        # Input validation
+        if not order_id or not code:
+            return {
+                "success": False,
+                "error": "Order ID and code are required."
+            }
+        
+        try:
+            # Order lookup with validation
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return {
+                "success": False,
+                "error": "Order not found."
+            }
+        
+        try:
+            # Discount code lookup with case-insensitive search
+            discount = Discount.objects.get(code__iexact=code)
+        except Discount.DoesNotExist:
+            return {
+                "success": False,
+                "error": "Invalid discount code."
+            }
+        
+        try:
+            # Apply discount using existing service
+            DiscountService.apply_discount_to_order(order, discount)
+            
+            return {
+                "success": True,
+                "message": "Discount applied successfully.",
+                "discount_name": discount.name,
+                "order_id": order_id
+            }
+            
+        except ValueError as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to apply discount: {str(e)}"
+            }
+    
+    @staticmethod
+    def validate_discount_eligibility(discount: Discount, order: Order = None) -> list:
+        """
+        Comprehensive discount eligibility checking.
+        Can be expanded for more complex validation rules.
+        """
+        errors = []
+        
+        # Check if discount is active
+        if not discount.is_active:
+            errors.append("Discount is not active")
+        
+        # Check date range
+        now = timezone.now()
+        if discount.start_date and discount.start_date > now:
+            errors.append("Discount has not started yet")
+        
+        if discount.end_date and discount.end_date < now:
+            errors.append("Discount has expired")
+        
+        # Order-specific validations
+        if order:
+            # Check minimum purchase amount
+            if discount.minimum_purchase_amount:
+                order_total = getattr(order, 'total_amount', 0)
+                if order_total < discount.minimum_purchase_amount:
+                    errors.append(f"Minimum purchase amount of ${discount.minimum_purchase_amount} not met")
+        
+        return errors
+    
+    @staticmethod
+    def get_filtered_discounts(filters: dict) -> 'QuerySet':
+        """
+        Extract filtering logic for discount queries.
+        Handles delta sync and other filtering operations.
+        """
+        from django.utils.dateparse import parse_datetime
+        
+        queryset = Discount.objects.all()
+        
+        # Delta sync filtering
+        modified_since = filters.get("modified_since")
+        if modified_since:
+            try:
+                modified_since_dt = parse_datetime(modified_since)
+                if modified_since_dt:
+                    # Note: Discount model doesn't have updated_at field by default
+                    # For now, return all discounts until updated_at field is added
+                    # This could be enhanced when the model includes timestamps
+                    queryset = queryset.filter(id__gte=1)
+            except (ValueError, TypeError):
+                # If parsing fails, ignore the parameter and continue
+                pass
+        
+        return queryset
+    
+    @staticmethod
+    def validate_discount_combination(discounts: list) -> dict:
+        """
+        Validate multiple discount application rules.
+        Checks stacking rules and conflicts.
+        """
+        from settings.config import app_settings
+        
+        if not discounts:
+            return {"valid": True, "messages": []}
+        
+        messages = []
+        
+        # Check if discount stacking is allowed
+        if len(discounts) > 1 and not app_settings.allow_discount_stacking:
+            return {
+                "valid": False,
+                "messages": ["Multiple discounts not allowed - stacking is disabled"]
+            }
+        
+        # Check for conflicting discount types
+        discount_types = [d.type for d in discounts if hasattr(d, 'type')]
+        if len(set(discount_types)) > 1:
+            messages.append("Warning: Different discount types applied simultaneously")
+        
+        return {
+            "valid": True,
+            "messages": messages
+        }

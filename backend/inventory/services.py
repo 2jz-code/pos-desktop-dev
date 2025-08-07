@@ -435,3 +435,409 @@ class InventoryService:
         
         logger.info(f"Daily low stock summary sent for {len(items_to_notify)} missed items to {len(owners)} owners")
         return len(items_to_notify)
+    
+    # ========== NEW METHODS FOR VIEW LOGIC CONSOLIDATION ==========
+    
+    @staticmethod
+    def apply_stock_filters(queryset, filters: dict) -> 'QuerySet':
+        """Apply filtering logic to an already-optimized queryset"""
+        from django.db import models
+        from django.db.models import Q, F, Case, When, Value
+        from django.utils import timezone
+        from datetime import timedelta
+        from settings.config import app_settings
+        
+        # Location filtering
+        location_id = filters.get("location")
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+        
+        # Search filtering
+        search_query = filters.get("search")
+        if search_query:
+            queryset = queryset.filter(
+                Q(product__name__icontains=search_query)
+                | Q(product__barcode__icontains=search_query)
+            )
+        
+        # Low stock filtering with effective thresholds
+        is_low_stock = filters.get("is_low_stock")
+        if is_low_stock and is_low_stock.lower() == "true":
+            queryset = queryset.filter(
+                quantity__lte=Case(
+                    When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
+                    default=Value(app_settings.default_low_stock_threshold),
+                )
+            )
+        
+        # Expiring soon filtering - simplified since SerializerOptimizedMixin handles relationships
+        is_expiring_soon = filters.get("is_expiring_soon")
+        if is_expiring_soon and is_expiring_soon.lower() == "true":
+            today = timezone.now().date()
+            default_threshold = app_settings.default_expiration_threshold
+            
+            # For simplicity and database portability, use a conservative approach
+            # Filter broadly first, then let the serializer's is_expiring_soon property handle exact logic
+            max_possible_threshold = 90  # Conservative maximum threshold
+            queryset = queryset.filter(
+                expiration_date__isnull=False,
+                expiration_date__lte=today + timedelta(days=max_possible_threshold)
+            )
+            
+            # The exact expiring logic will be handled by the model's is_expiring_soon property
+            # which uses the optimized relationships loaded by SerializerOptimizedMixin
+        
+        return queryset
+    
+    @staticmethod
+    def search_inventory_by_barcode(barcode: str, location_id: int = None) -> dict:
+        """Extract barcode lookup logic from barcode_stock_lookup view"""
+        from products.models import Product
+        from settings.config import app_settings
+        
+        try:
+            product = Product.objects.get(barcode=barcode, is_active=True)
+            
+            if location_id:
+                try:
+                    location = Location.objects.get(id=location_id)
+                except Location.DoesNotExist:
+                    location = app_settings.get_default_location()
+            else:
+                location = app_settings.get_default_location()
+            
+            stock_level = InventoryService.get_stock_level(product, location)
+            
+            return {
+                "success": True,
+                "barcode": barcode,
+                "product": {
+                    "id": product.id,
+                    "name": product.name,
+                    "barcode": product.barcode,
+                    "track_inventory": product.track_inventory,
+                },
+                "stock": {
+                    "location": location.name,
+                    "location_id": location.id,
+                    "quantity": stock_level,
+                    "is_available": stock_level > 0,
+                },
+            }
+            
+        except Product.DoesNotExist:
+            return {
+                "success": False,
+                "error": "Product with this barcode not found",
+                "barcode": barcode
+            }
+    
+    @staticmethod
+    @transaction.atomic
+    def perform_barcode_stock_adjustment(barcode: str, quantity: float, adjustment_type: str = "add", location_id: int = None) -> dict:
+        """Extract barcode stock adjustment logic from barcode_stock_adjustment view"""
+        from products.models import Product
+        from settings.config import app_settings
+        
+        # Validate inputs
+        if not quantity:
+            return {"success": False, "error": "Quantity is required"}
+        
+        try:
+            quantity = float(quantity)
+        except (ValueError, TypeError):
+            return {"success": False, "error": "Invalid quantity format"}
+        
+        # Adjust quantity based on type
+        if adjustment_type == "subtract":
+            quantity = -quantity
+        
+        try:
+            product = Product.objects.get(barcode=barcode, is_active=True)
+            
+            if not product.track_inventory:
+                return {"success": False, "error": "This product does not track inventory"}
+            
+            if location_id:
+                try:
+                    location = Location.objects.get(id=location_id)
+                except Location.DoesNotExist:
+                    location = app_settings.get_default_location()
+            else:
+                location = app_settings.get_default_location()
+            
+            # Perform stock adjustment using existing service methods
+            if quantity > 0:
+                InventoryService.add_stock(product, location, quantity)
+            else:
+                InventoryService.decrement_stock(product, location, abs(quantity))
+            
+            # Get updated stock level
+            new_stock_level = InventoryService.get_stock_level(product, location)
+            
+            return {
+                "success": True,
+                "message": "Stock adjusted successfully",
+                "product": {
+                    "id": product.id,
+                    "name": product.name,
+                    "barcode": product.barcode,
+                },
+                "adjustment": {
+                    "quantity": quantity,
+                    "type": adjustment_type
+                },
+                "stock": {
+                    "location": location.name,
+                    "location_id": location.id,
+                    "quantity": new_stock_level,
+                },
+            }
+            
+        except Product.DoesNotExist:
+            return {"success": False, "error": "Product with this barcode not found"}
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+    
+    @staticmethod
+    def check_bulk_stock_availability(product_ids: list, location_id: int = None) -> dict:
+        """Extract bulk stock checking logic from BulkStockCheckView"""
+        from products.models import Product
+        from settings.config import app_settings
+        
+        if not product_ids:
+            return {"error": "product_ids required"}
+        
+        if location_id:
+            try:
+                location = Location.objects.get(id=location_id)
+            except Location.DoesNotExist:
+                location = app_settings.get_default_location()
+        else:
+            location = app_settings.get_default_location()
+        
+        results = []
+        
+        for product_id in product_ids:
+            try:
+                product = Product.objects.get(id=product_id)
+                stock_level = InventoryService.get_stock_level(product, location)
+                
+                # Check if item is available (considering recipes)
+                is_available = InventoryService.check_stock_availability(
+                    product, location, 1
+                )
+                
+                results.append({
+                    "product_id": product_id,
+                    "product_name": product.name,
+                    "stock_level": stock_level,
+                    "is_available": is_available,
+                    "has_recipe": hasattr(product, "recipe") and product.recipe is not None,
+                })
+                
+            except Product.DoesNotExist:
+                results.append({
+                    "product_id": product_id,
+                    "error": "Product not found"
+                })
+        
+        return {
+            "location": location.name,
+            "location_id": location.id,
+            "products": results
+        }
+    
+    @staticmethod
+    def get_inventory_dashboard_data() -> dict:
+        """Extract dashboard aggregation logic from InventoryDashboardView"""
+        from django.db.models import Sum, F, Case, When, Value, Q
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        try:
+            # Get all stock records across all locations
+            all_stock_records = InventoryStock.objects.select_related(
+                "product", "location"
+            ).filter(archived_at__isnull=True)
+            
+            # Aggregate total quantities per product across all locations
+            product_totals = all_stock_records.values("product").annotate(
+                total_quantity=Sum("quantity"),
+                product_name=F("product__name"),
+                product_price=F("product__price"),
+                product_id=F("product__id"),
+            )
+            
+            total_products = product_totals.count()
+            
+            # Calculate low stock count based on aggregated quantities
+            low_stock_count = 0
+            out_of_stock_count = 0
+            low_stock_products = []
+            
+            for product_data in product_totals:
+                total_qty = product_data["total_quantity"] or 0
+                
+                # Get the most restrictive low stock threshold for this product
+                product_stocks = all_stock_records.filter(
+                    product_id=product_data["product_id"]
+                )
+                min_threshold = min(
+                    stock.effective_low_stock_threshold for stock in product_stocks
+                )
+                
+                if total_qty == 0:
+                    out_of_stock_count += 1
+                elif total_qty <= min_threshold:
+                    low_stock_count += 1
+                    low_stock_products.append({
+                        "product_id": product_data["product_id"],
+                        "product_name": product_data["product_name"],
+                        "quantity": total_qty,
+                        "price": product_data["product_price"],
+                        "low_stock_threshold": min_threshold,
+                    })
+            
+            # Calculate expiring soon items across all locations
+            today = timezone.now().date()
+            expiring_soon_items = []
+            
+            for stock in all_stock_records.filter(expiration_date__isnull=False):
+                threshold_date = today + timedelta(
+                    days=stock.effective_expiration_threshold
+                )
+                if stock.expiration_date <= threshold_date:
+                    expiring_soon_items.append({
+                        "product_id": stock.product.id,
+                        "product_name": stock.product.name,
+                        "quantity": stock.quantity,
+                        "price": stock.product.price,
+                        "expiration_date": stock.expiration_date,
+                        "expiration_threshold": stock.effective_expiration_threshold,
+                        "location": stock.location.name,
+                    })
+            
+            expiring_soon_count = len(expiring_soon_items)
+            
+            # Calculate total inventory value across all locations
+            total_value = sum(
+                (product_data["total_quantity"] or 0)
+                * (product_data["product_price"] or 0)
+                for product_data in product_totals
+            )
+            
+            return {
+                "scope": "All Locations",
+                "summary": {
+                    "total_products": total_products,
+                    "low_stock_count": low_stock_count,
+                    "out_of_stock_count": out_of_stock_count,
+                    "expiring_soon_count": expiring_soon_count,
+                    "total_value": total_value,
+                },
+                "low_stock_items": low_stock_products[:10],
+                "expiring_soon_items": expiring_soon_items[:10],
+            }
+            
+        except Exception as e:
+            return {"error": f"Dashboard data error: {str(e)}"}
+    
+    @staticmethod
+    @transaction.atomic
+    def perform_quick_stock_adjustment(product_id: int, quantity: float, reason: str = None, adjustment_type: str = "FOUND_STOCK", user_id: int = None) -> dict:
+        """Extract quick stock adjustment logic from QuickStockAdjustmentView"""
+        from products.models import Product
+        from settings.config import app_settings
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        if not product_id or quantity is None:
+            return {"success": False, "error": "product_id and quantity are required"}
+        
+        if reason is None:
+            reason = "Quick adjustment during service"
+        
+        try:
+            product = Product.objects.get(id=product_id)
+            location = app_settings.get_default_location()
+            
+            # Add the found stock
+            stock = InventoryService.add_stock(product, location, quantity)
+            
+            # Log the adjustment for audit trail
+            log_message = f"QUICK STOCK ADJUSTMENT: Added {quantity} of {product.name} - {reason}"
+            if user_id:
+                try:
+                    from users.models import User
+                    user = User.objects.get(id=user_id)
+                    log_message += f" by {user.username}"
+                except User.DoesNotExist:
+                    pass
+            
+            logger.info(log_message)
+            print(log_message)  # Console log for immediate visibility
+            
+            return {
+                "success": True,
+                "message": f"Added {quantity} units of {product.name}",
+                "product": {
+                    "id": product.id,
+                    "name": product.name,
+                },
+                "new_stock_level": float(stock.quantity),
+                "adjustment": {
+                    "quantity": float(quantity),
+                    "reason": reason,
+                    "type": adjustment_type,
+                    "location": location.name,
+                },
+            }
+            
+        except Product.DoesNotExist:
+            return {"success": False, "error": "Product not found"}
+        except Exception as e:
+            return {"success": False, "error": f"Failed to adjust stock: {str(e)}"}
+    
+    @staticmethod
+    def get_product_stock_details(product_id: int, location_id: int = None) -> dict:
+        """Extract product stock checking logic from ProductStockCheckView"""
+        from products.models import Product
+        from settings.config import app_settings
+        
+        try:
+            product = Product.objects.get(id=product_id)
+            
+            if location_id:
+                try:
+                    location = Location.objects.get(id=location_id)
+                except Location.DoesNotExist:
+                    location = app_settings.get_default_location()
+            else:
+                location = app_settings.get_default_location()
+            
+            stock_level = InventoryService.get_stock_level(product, location)
+            is_available = stock_level > 0
+            
+            # For menu items with recipes, check ingredient availability
+            if hasattr(product, "recipe") and product.recipe:
+                is_available = InventoryService.check_recipe_availability(
+                    product, location, 1
+                )
+            
+            return {
+                "success": True,
+                "product_id": product_id,
+                "product_name": product.name,
+                "stock_level": stock_level,
+                "is_available": is_available,
+                "location": location.name,
+                "location_id": location.id,
+                "has_recipe": hasattr(product, "recipe") and product.recipe is not None,
+            }
+            
+        except Product.DoesNotExist:
+            return {"success": False, "error": "Product not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}

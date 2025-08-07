@@ -68,13 +68,15 @@ export function InventorySettings() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
 			// Invalidate all inventory-related queries to ensure threshold changes are reflected
-			queryClient.invalidateQueries({ predicate: (query) => 
-				query.queryKey[0] && query.queryKey[0].startsWith("inventory")
+			queryClient.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] && query.queryKey[0].startsWith("inventory"),
 			});
 			toast.success("Inventory defaults updated successfully");
 		},
 		onError: (error) => {
-			const errorMessage = error?.response?.data?.message || "Failed to update inventory defaults";
+			const errorMessage =
+				error?.response?.data?.message || "Failed to update inventory defaults";
 			toast.error("Update Failed", {
 				description: errorMessage,
 			});
@@ -94,9 +96,15 @@ export function InventorySettings() {
 	React.useEffect(() => {
 		if (settings && locations) {
 			form.reset({
-				default_low_stock_threshold: parseFloat(settings.default_low_stock_threshold || 10.0),
-				default_expiration_threshold: parseInt(settings.default_expiration_threshold || 7),
-				default_inventory_location: settings.default_inventory_location ? settings.default_inventory_location.toString() : "none",
+				default_low_stock_threshold: parseFloat(
+					settings.default_low_stock_threshold || 10.0
+				),
+				default_expiration_threshold: parseInt(
+					settings.default_expiration_threshold || 7
+				),
+				default_inventory_location: settings.default_inventory_location
+					? settings.default_inventory_location.toString()
+					: "none",
 			});
 		}
 	}, [settings, locations, form]);
@@ -105,7 +113,10 @@ export function InventorySettings() {
 		// Convert "none" to null for the API
 		const submitData = {
 			...data,
-			default_inventory_location: data.default_inventory_location === "none" ? null : data.default_inventory_location
+			default_inventory_location:
+				data.default_inventory_location === "none"
+					? null
+					: data.default_inventory_location,
 		};
 		mutation.mutate(submitData);
 	};
@@ -123,7 +134,9 @@ export function InventorySettings() {
 					<div className="flex items-center justify-center py-8">
 						<div className="text-center">
 							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-							<p className="mt-2 text-sm text-muted-foreground">Loading settings...</p>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Loading settings...
+							</p>
 						</div>
 					</div>
 				</CardContent>
@@ -139,12 +152,16 @@ export function InventorySettings() {
 					Inventory Defaults
 				</CardTitle>
 				<CardDescription>
-					Set global default thresholds for inventory warnings. These can be overridden for individual products.
+					Set global default thresholds for inventory warnings. These can be
+					overridden for individual products.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<Form {...form}>
-					<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+					<form
+						onSubmit={form.handleSubmit(onSubmit)}
+						className="space-y-6"
+					>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 							<FormField
 								control={form.control}
@@ -165,7 +182,8 @@ export function InventorySettings() {
 											/>
 										</FormControl>
 										<FormDescription>
-											Products will show as "low stock" when quantity falls to or below this value.
+											Products will show as "low stock" when quantity falls to
+											or below this value.
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
@@ -191,7 +209,8 @@ export function InventorySettings() {
 											/>
 										</FormControl>
 										<FormDescription>
-											Products will show as "expiring soon" this many days before their expiration date.
+											Products will show as "expiring soon" this many days
+											before their expiration date.
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
@@ -207,23 +226,32 @@ export function InventorySettings() {
 											<MapPin className="h-4 w-4 text-blue-500" />
 											Default Stock Location
 										</FormLabel>
-										<Select onValueChange={field.onChange} value={field.value}>
+										<Select
+											onValueChange={field.onChange}
+											value={field.value}
+										>
 											<FormControl>
 												<SelectTrigger>
 													<SelectValue placeholder="Select location" />
 												</SelectTrigger>
 											</FormControl>
 											<SelectContent>
-												<SelectItem value="none">None (Manual Selection)</SelectItem>
-												{locations?.map((location) => (
-													<SelectItem key={location.id} value={location.id.toString()}>
+												<SelectItem value="none">
+													None (Manual Selection)
+												</SelectItem>
+												{locations?.results?.map((location) => (
+													<SelectItem
+														key={location.id}
+														value={location.id.toString()}
+													>
 														{location.name}
 													</SelectItem>
 												))}
 											</SelectContent>
 										</Select>
 										<FormDescription>
-											Default location for stock operations and sales deductions.
+											Default location for stock operations and sales
+											deductions.
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
@@ -232,11 +260,22 @@ export function InventorySettings() {
 						</div>
 
 						<div className="bg-muted/50 rounded-lg p-4">
-							<h4 className="text-sm font-medium mb-2">3-Tier Threshold System:</h4>
+							<h4 className="text-sm font-medium mb-2">
+								3-Tier Threshold System:
+							</h4>
 							<ul className="text-sm text-muted-foreground space-y-1">
-								<li>• <strong>Global defaults</strong> (set here) - used as fallback for all locations</li>
-								<li>• <strong>Location-specific defaults</strong> - override global defaults per location</li>
-								<li>• <strong>Individual stock overrides</strong> - override location/global defaults per product</li>
+								<li>
+									• <strong>Global defaults</strong> (set here) - used as
+									fallback for all locations
+								</li>
+								<li>
+									• <strong>Location-specific defaults</strong> - override
+									global defaults per location
+								</li>
+								<li>
+									• <strong>Individual stock overrides</strong> - override
+									location/global defaults per product
+								</li>
 								<li>• Priority: Individual → Location → Global</li>
 							</ul>
 						</div>

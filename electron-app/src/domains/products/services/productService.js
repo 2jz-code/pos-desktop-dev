@@ -4,6 +4,11 @@ export const getProducts = (params) => {
 	return apiClient.get("/products/", { params });
 };
 
+// Get all active products without pagination (uses backend caching)
+export const getAllActiveProducts = () => {
+	return apiClient.get("/products/", { params: { is_active: "true" } });
+};
+
 // Get all products (handles pagination automatically)
 export const getAllProducts = async (params = {}) => {
 	let allProducts = [];
