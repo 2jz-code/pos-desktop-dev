@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -42,6 +42,9 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 		default_low_stock_threshold: 10,
 		default_expiration_threshold: 7
 	});
+	
+	// Track if we've already initiated data loading to prevent duplicate calls
+	const dataLoadInitiated = useRef(false);
 
 	// Get data and actions from the store
 	const { 
@@ -50,45 +53,70 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 		stockLevels, 
 		isLoading, 
 		adjustStock, 
-		loadInventoryData, 
-		fetchStockByProduct 
+		fetchLocations,
+		fetchStockByProduct,
+		fetchProducts
 	} = usePosStore((state) => ({
 		products: state.products,
 		locations: state.locations,
 		stockLevels: state.stockLevels,
 		isLoading: state.isLoading,
 		adjustStock: state.adjustStock,
-		loadInventoryData: state.loadInventoryData,
+		fetchLocations: state.fetchLocations,
 		fetchStockByProduct: state.fetchStockByProduct,
+		fetchProducts: state.fetchProducts,
 	}));
 
 	useEffect(() => {
-		if (isOpen) {
-			// Load initial data if not already loaded
-			if (!products.length || !locations.length) {
-				loadInventoryData();
+		if (isOpen && !dataLoadInitiated.current) {
+			dataLoadInitiated.current = true;
+			
+			// Load only missing data (reuse what's already in store)
+			if (!products.length) {
+				console.log("🔄 [StockAdjustmentDialog] Products not loaded, fetching products only");
+				fetchProducts();
+			} else {
+				console.log("✅ [StockAdjustmentDialog] Products already loaded, reusing from store");
 			}
 			
-			// Fetch global defaults
-			const fetchDefaults = async () => {
-				try {
-					const defaultSettings = await getInventoryDefaults();
-					setDefaults(defaultSettings);
-				} catch (error) {
-					console.error("Failed to fetch inventory defaults:", error);
-				}
-			};
-			fetchDefaults();
+			if (!locations.length) {
+				console.log("🔄 [StockAdjustmentDialog] Locations not loaded, fetching locations only");
+				fetchLocations();
+			} else {
+				console.log("✅ [StockAdjustmentDialog] Locations already loaded, reusing from store");
+			}
 			
-			if (product) {
-				setFormData((prev) => ({
-					...prev,
-					product_id: product.id?.toString() || "",
-				}));
-				fetchStockByProduct(product.id);
+			// Fetch global defaults (only if not already set)
+			if (defaults.default_low_stock_threshold === 10 && defaults.default_expiration_threshold === 7) {
+				console.log("🔄 [StockAdjustmentDialog] Defaults not loaded, fetching defaults only");
+				const fetchDefaults = async () => {
+					try {
+						const defaultSettings = await getInventoryDefaults();
+						setDefaults(defaultSettings);
+					} catch (error) {
+						console.error("Failed to fetch inventory defaults:", error);
+					}
+				};
+				fetchDefaults();
+			} else {
+				console.log("✅ [StockAdjustmentDialog] Defaults already loaded, reusing existing values");
 			}
 		}
-	}, [isOpen, product, products.length, locations.length, loadInventoryData, fetchStockByProduct]);
+		
+		// Handle product-specific logic separately (can change during dialog lifecycle)
+		if (isOpen && product) {
+			setFormData((prev) => ({
+				...prev,
+				product_id: product.id?.toString() || "",
+			}));
+			fetchStockByProduct(product.id);
+		}
+		
+		// Reset the flag when dialog closes
+		if (!isOpen) {
+			dataLoadInitiated.current = false;
+		}
+	}, [isOpen, product]);
 
 	const handleProductChange = (productId) => {
 		setFormData({
@@ -174,7 +202,7 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 			);
 
 			const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
-			const selectedLocation = locations.find((l) => l.id.toString() === formData.location_id);
+			const selectedLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.location_id);
 
 			toast.success("Stock Adjusted", {
 				description: `${
@@ -299,7 +327,7 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 								<SelectValue placeholder="Select a location" />
 							</SelectTrigger>
 							<SelectContent>
-								{locations.map((location) => (
+								{(locations?.results || locations || []).map((location) => (
 									<SelectItem
 										key={location.id}
 										value={location.id.toString()}

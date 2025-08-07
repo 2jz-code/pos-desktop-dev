@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -34,6 +34,9 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
+	
+	// Track if we've already initiated data loading to prevent duplicate calls
+	const dataLoadInitiated = useRef(false);
 
 	// Get data and actions from the store
 	const { 
@@ -42,34 +45,54 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 		stockLevels, 
 		isLoading, 
 		transferStock, 
-		loadInventoryData, 
-		fetchStockByProduct 
+		fetchLocations,
+		fetchStockByProduct,
+		fetchProducts
 	} = usePosStore((state) => ({
 		products: state.products,
 		locations: state.locations,
 		stockLevels: state.stockLevels,
 		isLoading: state.isLoading,
 		transferStock: state.transferStock,
-		loadInventoryData: state.loadInventoryData,
+		fetchLocations: state.fetchLocations,
 		fetchStockByProduct: state.fetchStockByProduct,
+		fetchProducts: state.fetchProducts,
 	}));
 
 	useEffect(() => {
-		if (isOpen) {
-			// Load initial data if not already loaded
-			if (!products.length || !locations.length) {
-				loadInventoryData();
+		if (isOpen && !dataLoadInitiated.current) {
+			dataLoadInitiated.current = true;
+			
+			// Load only missing data (reuse what's already in store)
+			if (!products.length) {
+				console.log("🔄 [StockTransferDialog] Products not loaded, fetching products only");
+				fetchProducts();
+			} else {
+				console.log("✅ [StockTransferDialog] Products already loaded, reusing from store");
 			}
 			
-			if (product) {
-				setFormData((prev) => ({
-					...prev,
-					product_id: product.id?.toString() || "",
-				}));
-				fetchStockByProduct(product.id);
+			if (!locations.length) {
+				console.log("🔄 [StockTransferDialog] Locations not loaded, fetching locations only");
+				fetchLocations();
+			} else {
+				console.log("✅ [StockTransferDialog] Locations already loaded, reusing from store");
 			}
 		}
-	}, [isOpen, product, products.length, locations.length, loadInventoryData, fetchStockByProduct]);
+		
+		// Handle product-specific logic separately (can change during dialog lifecycle)
+		if (isOpen && product) {
+			setFormData((prev) => ({
+				...prev,
+				product_id: product.id?.toString() || "",
+			}));
+			fetchStockByProduct(product.id);
+		}
+		
+		// Reset the flag when dialog closes
+		if (!isOpen) {
+			dataLoadInitiated.current = false;
+		}
+	}, [isOpen, product]);
 
 	const handleProductChange = (productId) => {
 		setFormData({
@@ -145,8 +168,8 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 
 			if (result.success) {
 				const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
-				const selectedFromLocation = locations.find((l) => l.id.toString() === formData.from_location_id);
-				const selectedToLocation = locations.find((l) => l.id.toString() === formData.to_location_id);
+				const selectedFromLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.from_location_id);
+				const selectedToLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.to_location_id);
 
 				toast.success("Stock Transferred", {
 					description: `Transferred ${formData.quantity} units of ${selectedProduct?.name} from ${selectedFromLocation?.name} to ${selectedToLocation?.name}`,
@@ -192,10 +215,10 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 		}
 	};
 
-	const selectedFromLocation = locations.find(
+	const selectedFromLocation = (locations?.results || locations || []).find(
 		(location) => location.id.toString() === formData.from_location_id
 	);
-	const selectedToLocation = locations.find(
+	const selectedToLocation = (locations?.results || locations || []).find(
 		(location) => location.id.toString() === formData.to_location_id
 	);
 
@@ -279,7 +302,7 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 									<SelectValue placeholder="Select source location" />
 								</SelectTrigger>
 								<SelectContent>
-									{locations.map((location) => (
+									{(locations?.results || locations || []).map((location) => (
 										<SelectItem
 											key={location.id}
 											value={location.id.toString()}
@@ -325,7 +348,7 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 									<SelectValue placeholder="Select destination location" />
 								</SelectTrigger>
 								<SelectContent>
-									{locations
+									{(locations?.results || locations || [])
 										.filter(
 											(location) =>
 												location.id.toString() !== formData.from_location_id

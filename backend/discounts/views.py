@@ -1,4 +1,4 @@
-from django.utils.dateparse import parse_datetime
+# Removed: from django.utils.dateparse import parse_datetime (moved to service)
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,7 +11,7 @@ from .serializers import (
     DiscountSyncSerializer,
     DiscountApplySerializer,
 )
-from .services import DiscountService
+from .services import DiscountService, DiscountValidationService
 from .filters import DiscountFilter
 
 # Create your views here.
@@ -73,21 +73,17 @@ class DiscountViewSet(BaseViewSet):
         return DiscountSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-
-        # Support for delta sync - filter by modified_since parameter
-        modified_since = self.request.query_params.get("modified_since")
-        if modified_since:
-            try:
-                modified_since_dt = parse_datetime(modified_since)
-                if modified_since_dt:
-                    # Discount model doesn't have updated_at by default
-                    # For now, return all discounts until we add updated_at field
-                    queryset = queryset.filter(id__gte=1)
-            except (ValueError, TypeError):
-                # If parsing fails, ignore the parameter
-                pass
-
+        # Extract filtering logic to service
+        filters = dict(self.request.query_params)
+        queryset = DiscountValidationService.get_filtered_discounts(filters)
+        
+        # Apply any additional filtering from parent class
+        # (This maintains compatibility with existing filterset_class)
+        base_queryset = super().get_queryset()
+        if hasattr(base_queryset, '_result_cache'):
+            # If base queryset has been evaluated, combine appropriately
+            return queryset.filter(id__in=base_queryset.values_list('id', flat=True))
+        
         return queryset
 
 class AvailableDiscountListView(ReadOnlyBaseViewSet):
@@ -100,23 +96,21 @@ class AvailableDiscountListView(ReadOnlyBaseViewSet):
 
 @api_view(['POST'])
 def apply_discount_code(request):
+    """Apply discount code to order using validation service"""
     order_id = request.data.get('order_id')
     code = request.data.get('code')
-
-    if not order_id or not code:
-        return Response({'error': 'Order ID and code are required.'}, status=400)
-
-    try:
-        order = Order.objects.get(id=order_id)
-        discount = Discount.objects.get(code__iexact=code) # Case-insensitive search
-        
-        # This assumes your DiscountService has a method like this
-        DiscountService.apply_discount_to_order(order, discount)
-
-        return Response({'message': 'Discount applied successfully.'})
-    except Order.DoesNotExist:
-        return Response({'error': 'Order not found.'}, status=404)
-    except Discount.DoesNotExist:
-        return Response({'error': 'Invalid discount code.'}, status=404)
-    except ValueError as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    result = DiscountValidationService.validate_discount_code(code, order_id)
+    
+    if result["success"]:
+        return Response(result)
+    else:
+        # Determine appropriate status code based on error
+        if "not found" in result["error"]:
+            status_code = status.HTTP_404_NOT_FOUND
+        elif "required" in result["error"]:
+            status_code = status.HTTP_400_BAD_REQUEST
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        return Response(result, status=status_code)

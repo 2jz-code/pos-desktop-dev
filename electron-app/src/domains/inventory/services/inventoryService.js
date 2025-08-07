@@ -175,7 +175,7 @@ class InventoryService {
 	async getLocations() {
 		try {
 			const response = await apiClient.get("/inventory/locations/");
-			return response.data.results;
+			return response.data;
 		} catch (error) {
 			console.error("Failed to get locations:", error);
 			throw error;

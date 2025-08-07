@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.utils.dateparse import parse_datetime
+# Removed: from django.utils.dateparse import parse_datetime (moved to service)
 from rest_framework import generics, permissions, status
 from core_backend.base import BaseViewSet
 from rest_framework.response import Response
@@ -16,6 +16,7 @@ from django.utils.decorators import method_decorator
 
 from .models import User
 from .services import UserService
+from .auth_cookie_service import AuthCookieService
 from .serializers import (
     UserSerializer,
     UserRegistrationSerializer,
@@ -43,9 +44,9 @@ class UserListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Use service layer for filtering logic
-        modified_since = self.request.query_params.get("modified_since")
-        return UserService.get_filtered_pos_users(modified_since)
+        # Extract filtering logic to service
+        filters = dict(self.request.query_params)
+        return UserService.get_filtered_users(filters)
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
@@ -58,23 +59,22 @@ class SetPinView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         user_id = kwargs.get("pk")
-        if not user_id:
-            return Response(
-                {"error": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            pin = request.data.get('pin')
-            result = UserService.set_user_pin(user_id, pin, request.user)
+        pin = request.data.get("pin")
+        
+        result = UserService.set_user_pin(user_id, pin, request.user)
+        
+        if result["success"]:
             return Response(result, status=status.HTTP_200_OK)
-        except ValueError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
-        except PermissionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_403_FORBIDDEN
-            )
+        else:
+            # Determine appropriate status code based on error
+            if "not found" in result["error"]:
+                status_code = status.HTTP_404_NOT_FOUND
+            elif "permission" in result["error"]:
+                status_code = status.HTTP_403_FORBIDDEN
+            else:
+                status_code = status.HTTP_400_BAD_REQUEST
+                
+            return Response(result, status=status_code)
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
@@ -92,31 +92,10 @@ class POSLoginView(APIView):
 
         tokens = UserService.generate_tokens_for_user(user)
         response = Response({"user": UserSerializer(user).data})
-
-        # Use settings from environment/settings.py instead of hardcoded values
-        is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
-        samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
-
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE"],
-            value=tokens["access"],
-            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
-            domain=None,  # Allow cookies to be sent from any origin
-            path="/",
-            httponly=True,
-            secure=is_secure,
-            samesite=samesite_policy,
-        )
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
-            value=tokens["refresh"],
-            max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
-            domain=None,  # Allow cookies to be sent from any origin
-            path="/",
-            httponly=True,
-            secure=is_secure,
-            samesite=samesite_policy,
-        )
+        
+        # Use centralized cookie service for consistent cookie handling
+        AuthCookieService.set_pos_auth_cookies(response, tokens["access"], tokens["refresh"])
+        
         return response
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
@@ -135,58 +114,41 @@ class WebTokenRefreshView(TokenRefreshView):
     serializer_class = WebTokenRefreshSerializer
 
     def post(self, request, *args, **kwargs):
-        refresh_token = request.COOKIES.get(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"])
-        if not refresh_token:
-            return Response(
-                {"error": "Refresh token not found."},
+        result = AuthCookieService.refresh_admin_token(request)
+        
+        if not result["success"]:
+            response = Response(
+                {"error": result["error"]},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-
-        request.data["refresh"] = refresh_token
-        try:
-            response = super().post(request, *args, **kwargs)
-        except (TokenError, InvalidToken) as e:
-            # If the refresh token is invalid, clear the cookies
-            response = Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
-            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE"], path="/api")
-            response.delete_cookie(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"], path="/api")
+            
+            if result["clear_cookies"]:
+                # Clear invalid cookies
+                AuthCookieService.clear_all_auth_cookies(response)
+            
             return response
 
-        if response.status_code == 200:
-            access_token = response.data.pop("access")
-            new_refresh_token = response.data.pop("refresh", None) or refresh_token
-
-            # Use the UserService method with admin path
-            UserService.set_auth_cookies(response, access_token, new_refresh_token, cookie_path="/api")
+        # Set new tokens in cookies
+        response = Response({"message": "Token refreshed successfully"})
+        AuthCookieService.set_admin_auth_cookies(
+            response, 
+            result["access_token"], 
+            result["refresh_token"]
+        )
+        
         return response
 
 class LogoutView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        # Blacklist the refresh token to invalidate it on the server side.
-        try:
-            refresh_token = request.COOKIES.get(
-                settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"]
-            )
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-        except Exception:
-            # Token might be invalid or already blacklisted, which is fine.
-            pass
-
-        # Prepare a response to send back to the client.
         response = Response(
             {"detail": "Successfully logged out."}, status=status.HTTP_200_OK
         )
-
-        # Use service layer for cookie clearing logic
-        UserService.clear_auth_cookies(response)
-
-        # Also call Django's logout to be safe and clear any residual session data.
-        logout(request)
-
+        
+        # Use centralized service for complete logout logic
+        AuthCookieService.perform_complete_logout(request, response)
+        
         return response
 
 class CurrentUserView(APIView):

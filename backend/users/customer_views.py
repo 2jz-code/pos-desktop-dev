@@ -10,6 +10,7 @@ from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 
 from .customer_services import CustomerAuthService
+from .auth_cookie_service import AuthCookieService
 from .authentication import CustomerCookieJWTAuthentication
 from .customer_serializers import (
     CustomerRegistrationSerializer,
@@ -46,8 +47,8 @@ class CustomerRegisterView(APIView):
                 
                 response = Response(response_data, status=status.HTTP_201_CREATED)
                 
-                # Set authentication cookies
-                CustomerAuthService.set_customer_auth_cookies(
+                # Set authentication cookies using centralized service
+                AuthCookieService.set_customer_auth_cookies(
                     response, tokens["access"], tokens["refresh"]
                 )
                 
@@ -89,8 +90,8 @@ class CustomerLoginView(APIView):
             
             response = Response(response_data, status=status.HTTP_200_OK)
             
-            # Set authentication cookies
-            CustomerAuthService.set_customer_auth_cookies(
+            # Set authentication cookies using centralized service
+            AuthCookieService.set_customer_auth_cookies(
                 response, tokens["access"], tokens["refresh"]
             )
             
@@ -129,8 +130,8 @@ class CustomerLogoutView(APIView):
                 status=status.HTTP_200_OK
             )
             
-            # Clear authentication cookies
-            CustomerAuthService.clear_customer_auth_cookies(response)
+            # Clear authentication cookies using centralized service
+            AuthCookieService.clear_customer_auth_cookies(response)
             
             return response
             
@@ -140,7 +141,7 @@ class CustomerLogoutView(APIView):
                 {"message": "Logout completed"}, 
                 status=status.HTTP_200_OK
             )
-            CustomerAuthService.clear_customer_auth_cookies(response)
+            AuthCookieService.clear_customer_auth_cookies(response)
             return response
 
 
@@ -201,7 +202,7 @@ class CustomerTokenRefreshView(APIView):
                     {"error": "Invalid refresh token"}, 
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-                CustomerAuthService.clear_customer_auth_cookies(response)
+                AuthCookieService.clear_customer_auth_cookies(response)
                 return response
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

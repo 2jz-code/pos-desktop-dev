@@ -50,7 +50,8 @@ const DiscountDialog = () => {
 				setError(null);
 				try {
 					const response = await getAvailableDiscounts();
-					setPromotionalDiscounts(response.data.filter((d) => !d.code));
+					const discounts = response.data?.results || response.data || [];
+					setPromotionalDiscounts(discounts.filter((d) => !d.code));
 				} catch (err) {
 					setError("Failed to fetch discounts. Please try again.");
 					console.error(err);
