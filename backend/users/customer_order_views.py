@@ -38,29 +38,26 @@ class CustomerOrderViewSet(ReadOnlyBaseViewSet):
     @action(detail=False, methods=['get'])
     def pending(self, request):
         """
-        Get the customer's pending order (supports both authenticated and guest users).
-        Prioritizes authenticated user orders over guest sessions.
+        Get the customer's pending order with strict separation between authenticated and guest carts.
+        Authenticated users only get authenticated orders, guests only get guest orders.
         """
         from orders.services import GuestSessionService
         
         order = None
         
-        # For authenticated users, prioritize their authenticated orders
+        # Strict separation: authenticated users get their own cart, guests get guest cart
         if request.user and request.user.is_authenticated:
-            try:
-                order = Order.objects.select_related('customer', 'cashier').prefetch_related(
-                    'items__product',
-                    'items__product__category', 
-                    'applied_discounts__discount'
-                ).filter(
-                    customer=request.user,
-                    status='PENDING'
-                ).order_by("-created_at").first()
-            except Order.DoesNotExist:
-                order = None
-        
-        # Only fall back to guest order if user is not authenticated
-        if not order and not (request.user and request.user.is_authenticated):
+            # Authenticated user: only return their own pending order
+            order = Order.objects.select_related('customer', 'cashier').prefetch_related(
+                'items__product',
+                'items__product__category', 
+                'applied_discounts__discount'
+            ).filter(
+                customer=request.user,
+                status='PENDING'
+            ).order_by("-created_at").first()
+        else:
+            # Guest user: only return guest order from session
             order = GuestSessionService.get_guest_order(request)
         
         if order:
@@ -91,9 +88,10 @@ class CustomerOrderViewSet(ReadOnlyBaseViewSet):
         # Use the same perform_create logic but for customer orders
         from orders.services import GuestSessionService
         
-        # For authenticated customers, find/create their pending order
+        # Strict separation: authenticated users get/create authenticated orders, guests get guest orders
         if request.user and request.user.is_authenticated:
             from orders.models import Order
+            # Find existing authenticated user order
             order = Order.objects.filter(
                 customer=request.user, 
                 status='PENDING'

@@ -39,29 +39,13 @@ class UserRegisterView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
 
 class UserListView(generics.ListAPIView):
-    queryset = User.objects.all().order_by("email")
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-
-        # Filter to only show POS staff users (not customers)
-        queryset = queryset.filter(is_pos_staff=True)
-
-        # Support for delta sync - filter by modified_since parameter
+        # Use service layer for filtering logic
         modified_since = self.request.query_params.get("modified_since")
-        if modified_since:
-            try:
-                modified_since_dt = parse_datetime(modified_since)
-                if modified_since_dt:
-                    # Use updated_at for more accurate delta synchronization
-                    queryset = queryset.filter(updated_at__gte=modified_since_dt)
-            except (ValueError, TypeError):
-                # If parsing fails, ignore the parameter
-                pass
-
-        return queryset
+        return UserService.get_filtered_pos_users(modified_since)
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
@@ -78,30 +62,19 @@ class SetPinView(generics.GenericAPIView):
             return Response(
                 {"error": "User ID is required."}, status=status.HTTP_400_BAD_REQUEST
             )
+
         try:
-            user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
+            pin = request.data.get('pin')
+            result = UserService.set_user_pin(user_id, pin, request.user)
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
             return Response(
-                {"error": "User not found."}, status=status.HTTP_404_NOT_FOUND
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
             )
-
-        # Allow user to change their own PIN or manager+ to change others'
-        if not (
-            request.user.pk == user.pk
-            or request.user.role
-            in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]
-        ):
+        except PermissionError as e:
             return Response(
-                {"error": "You do not have permission to perform this action."},
-                status=status.HTTP_403_FORBIDDEN,
+                {"error": str(e)}, status=status.HTTP_403_FORBIDDEN
             )
-
-        serializer = self.get_serializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(
-            {"message": "PIN updated successfully."}, status=status.HTTP_200_OK
-        )
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
@@ -208,45 +181,8 @@ class LogoutView(APIView):
             {"detail": "Successfully logged out."}, status=status.HTTP_200_OK
         )
 
-        # Forcefully expire the cookies by setting their max_age to 0.
-        # Clear cookies for both admin (/api) and customer (/api/auth/customer) paths
-        cookie_settings = {
-            'samesite': getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
-            'secure': getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG),
-            'httponly': True,
-        }
-        
-        # Clear admin cookies (path /api)
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE"],
-            value="",
-            max_age=0,
-            path="/api",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
-            value="",
-            max_age=0,
-            path="/api",
-            **cookie_settings
-        )
-        
-        # Clear customer cookies (path /api/auth/customer)
-        response.set_cookie(
-            key=f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer",
-            value="",
-            max_age=0,
-            path="/api/auth/customer",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",
-            value="",
-            max_age=0,
-            path="/api/auth/customer",
-            **cookie_settings
-        )
+        # Use service layer for cookie clearing logic
+        UserService.clear_auth_cookies(response)
 
         # Also call Django's logout to be safe and clear any residual session data.
         logout(request)

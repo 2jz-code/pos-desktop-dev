@@ -18,27 +18,42 @@ class CustomerAuthService:
         is_rewards_opted_in=False
     ):
         """
-        Register a new customer account with validation.
+        Register a new customer account with comprehensive validation.
+        Enhanced from CustomerRegistrationSerializer logic.
         """
+        # Enhanced validation with detailed error handling
+        errors = {}
+
         # Validate password strength
         try:
             validate_password(password)
         except ValidationError as e:
-            raise ValueError({"password": e.messages})
+            errors["password"] = e.messages
 
         # Check if email already exists
         if User.objects.filter(email=email).exists():
-            raise ValueError({"email": ["A user with this email already exists."]})
+            errors["email"] = ["A user with this email already exists."]
 
         # Check if username already exists (if provided)
         if username and User.objects.filter(username=username).exists():
-            raise ValueError({"username": ["A user with this username already exists."]})
+            errors["username"] = ["A user with this username already exists."]
+
+        # Validate email format (basic check)
+        if email and "@" not in email:
+            errors["email"] = ["Enter a valid email address."]
+
+        # Validate required fields
+        if not email:
+            errors["email"] = ["Email is required."]
+
+        if errors:
+            raise ValueError(errors)
 
         # Create customer user
         user = User.objects.create_user(
             email=email,
             password=password,
-            username=username,
+            username=username or email.split('@')[0],  # Use email prefix as username if not provided
             first_name=first_name,
             last_name=last_name,
             role=User.Role.CUSTOMER,
@@ -47,12 +62,34 @@ class CustomerAuthService:
         )
 
         # Store rewards opt-in preference (can be extended later)
-        # For now, we'll just log it or store in user profile if needed
         if is_rewards_opted_in:
             # TODO: Create customer profile model for storing preferences
             pass
 
         return user
+
+    @staticmethod
+    def register_customer_with_tokens(user_data: dict) -> tuple:
+        """
+        Register customer and immediately generate tokens.
+        Used by registration endpoints.
+        """
+        user = CustomerAuthService.register_customer(**user_data)
+        tokens = CustomerAuthService.generate_customer_tokens(user)
+        return user, tokens
+
+    @staticmethod
+    def login_customer_with_tokens(email_or_username: str, password: str) -> tuple:
+        """
+        Authenticate customer and generate tokens.
+        Used by login endpoints.
+        """
+        user = CustomerAuthService.authenticate_customer(email_or_username, password)
+        if not user:
+            raise ValueError("Invalid credentials")
+        
+        tokens = CustomerAuthService.generate_customer_tokens(user)
+        return user, tokens
 
     @staticmethod
     def authenticate_customer(email_or_username, password):

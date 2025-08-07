@@ -794,3 +794,201 @@ class ProductImageService:
                 from django.conf import settings
                 base_url = getattr(settings, "BASE_URL", "http://127.0.0.1:8001")
                 return f"{base_url}{image_url}"
+
+
+class ProductAnalyticsService:
+    """
+    Service for product and modifier analytics operations.
+    Extracted from ModifierSetViewSet for better architecture.
+    """
+
+    @staticmethod
+    def get_modifier_set_usage_analytics(modifier_set) -> Dict[str, Any]:
+        """
+        Get usage analytics for a specific modifier set.
+        Extracted from ModifierSetViewSet.get_usage_analytics()
+        """
+        from .serializers import BasicProductSerializer  # Import here to avoid circular imports
+        
+        # Get basic usage statistics
+        product_count = modifier_set.product_modifier_sets.count()
+
+        # Get list of products using this modifier set
+        product_modifier_sets = modifier_set.product_modifier_sets.select_related(
+            "product"
+        ).all()
+        products = [pms.product for pms in product_modifier_sets]
+
+        # Calculate analytics data
+        usage_data = {
+            "modifier_set_id": modifier_set.id,
+            "modifier_set_name": modifier_set.name,
+            "product_count": product_count,
+            "products": BasicProductSerializer(products, many=True).data,
+            "is_used": product_count > 0,
+            "usage_level": ProductAnalyticsService._get_usage_level(product_count),
+            "option_count": modifier_set.options.count(),
+            "selection_type": modifier_set.selection_type,
+            "min_selections": modifier_set.min_selections,
+            "max_selections": modifier_set.max_selections,
+            "is_conditional": modifier_set.triggered_by_option is not None,
+        }
+
+        return usage_data
+
+    @staticmethod
+    def get_products_using_modifier_set(modifier_set) -> List[Dict[str, Any]]:
+        """
+        Get detailed information about products using a modifier set.
+        Extracted from ModifierSetViewSet.get_products_using_modifier_set()
+        """
+        # Get products using this modifier set with their configurations
+        product_modifier_sets = (
+            modifier_set.product_modifier_sets.select_related("product")
+            .prefetch_related("hidden_options", "extra_options")
+            .all()
+        )
+
+        products_data = []
+        for pms in product_modifier_sets:
+            product = pms.product
+
+            # Get hidden and extra options for this product
+            hidden_options = list(pms.hidden_options.values("id", "name"))
+            extra_options = list(
+                pms.extra_options.values("id", "name", "price_delta")
+            )
+
+            product_data = {
+                "id": product.id,
+                "name": product.name,
+                "barcode": product.barcode,
+                "price": float(product.price),
+                "is_active": product.is_active,
+                "category": product.category.name if product.category else None,
+                "modifier_config": {
+                    "display_order": pms.display_order,
+                    "is_required_override": pms.is_required_override,
+                    "hidden_options": hidden_options,
+                    "extra_options": extra_options,
+                    "hidden_option_count": len(hidden_options),
+                    "extra_option_count": len(extra_options),
+                },
+            }
+            products_data.append(product_data)
+
+        # Sort by display order, then by product name
+        products_data.sort(
+            key=lambda x: (x["modifier_config"]["display_order"], x["name"])
+        )
+
+        return products_data
+
+    @staticmethod
+    def get_modifier_sets_analytics_summary() -> Dict[str, Any]:
+        """
+        Get overall analytics summary for all modifier sets.
+        Extracted from ModifierSetViewSet.get_analytics_summary()
+        """
+        from django.db import models
+
+        modifier_sets = ModifierSet.objects.all()
+        
+        total_sets = modifier_sets.count()
+        used_sets = (
+            modifier_sets.filter(product_modifier_sets__isnull=False)
+            .distinct()
+            .count()
+        )
+        unused_sets = total_sets - used_sets
+
+        # Calculate total products using modifiers
+        total_products_with_modifiers = (
+            Product.objects.filter(product_modifier_sets__isnull=False)
+            .distinct()
+            .count()
+        )
+
+        # Get modifier set usage distribution
+        usage_distribution = {
+            "unused": modifier_sets.filter(
+                product_modifier_sets__isnull=True
+            ).count(),
+            "low_usage": modifier_sets.annotate(
+                product_count=models.Count("product_modifier_sets")
+            )
+            .filter(product_count__gt=0, product_count__lte=3)
+            .count(),
+            "medium_usage": modifier_sets.annotate(
+                product_count=models.Count("product_modifier_sets")
+            )
+            .filter(product_count__gt=3, product_count__lte=10)
+            .count(),
+            "high_usage": modifier_sets.annotate(
+                product_count=models.Count("product_modifier_sets")
+            )
+            .filter(product_count__gt=10)
+            .count(),
+        }
+
+        # Calculate average options per set
+        avg_options_per_set = (
+            modifier_sets.annotate(option_count=models.Count("options")).aggregate(
+                models.Avg("option_count")
+            )["option_count__avg"]
+            or 0
+        )
+
+        summary_data = {
+            "total_modifier_sets": total_sets,
+            "used_modifier_sets": used_sets,
+            "unused_modifier_sets": unused_sets,
+            "usage_percentage": round(
+                (used_sets / total_sets * 100) if total_sets > 0 else 0, 1
+            ),
+            "total_products_with_modifiers": total_products_with_modifiers,
+            "average_options_per_set": round(avg_options_per_set, 1),
+            "usage_distribution": usage_distribution,
+            "most_used_sets": ProductAnalyticsService._get_most_used_sets(),
+            "least_used_sets": ProductAnalyticsService._get_least_used_sets(),
+        }
+
+        return summary_data
+
+    @staticmethod
+    def _get_usage_level(product_count: int) -> str:
+        """Helper method to determine usage level based on product count."""
+        if product_count == 0:
+            return "unused"
+        elif product_count <= 3:
+            return "low"
+        elif product_count <= 10:
+            return "medium"
+        else:
+            return "high"
+
+    @staticmethod
+    def _get_most_used_sets() -> List[Dict[str, Any]]:
+        """Get the top 5 most used modifier sets."""
+        from django.db import models
+        return list(
+            ModifierSet.objects.annotate(
+                product_count=models.Count("product_modifier_sets")
+            )
+            .filter(product_count__gt=0)
+            .order_by("-product_count")[:5]
+            .values("id", "name", "internal_name", "product_count")
+        )
+
+    @staticmethod
+    def _get_least_used_sets() -> List[Dict[str, Any]]:
+        """Get modifier sets that are unused or have low usage."""
+        from django.db import models
+        return list(
+            ModifierSet.objects.annotate(
+                product_count=models.Count("product_modifier_sets")
+            )
+            .filter(product_count__lte=1)
+            .order_by("product_count", "name")[:10]
+            .values("id", "name", "internal_name", "product_count")
+        )
