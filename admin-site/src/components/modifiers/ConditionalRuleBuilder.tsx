@@ -68,7 +68,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
       setIsConditional(true);
       setSelectedOption(currentTriggerOption);
       
-      if (availableModifierSets.length > 0) {
+      if (Array.isArray(availableModifierSets) && availableModifierSets.length > 0) {
         // Find which modifier set and option this trigger belongs to
         findTriggerDetails(currentTriggerOption);
       }
@@ -84,7 +84,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
     try {
       setLoading(true);
       const response = await modifierService.getModifierSets();
-      let modifierSets = response.data || [];
+      let modifierSets = response.data?.results || response.data || [];
       
       // Exclude the current modifier set to prevent self-referencing
       if (excludeCurrentSet) {
@@ -105,7 +105,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
   };
 
   const findTriggerDetails = async (triggerOptionId: number) => {
-    if (!triggerOptionId || !availableModifierSets.length) return;
+    if (!triggerOptionId || !Array.isArray(availableModifierSets) || !availableModifierSets.length) return;
     
     // Find which modifier set contains this option
     for (const modifierSet of availableModifierSets) {
@@ -135,7 +135,9 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
     setSelectedModifierSet(id);
     setSelectedOption(null);
     
-    const modifierSet = availableModifierSets.find(set => set.id === id);
+    const modifierSet = Array.isArray(availableModifierSets) 
+      ? availableModifierSets.find(set => set.id === id)
+      : null;
     setAvailableOptions(modifierSet?.options || []);
     
     // Clear the trigger since we changed the set
@@ -156,7 +158,9 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
     onTriggerChange(null);
   };
 
-  const selectedModifierSetName = availableModifierSets.find(set => set.id === selectedModifierSet)?.name;
+  const selectedModifierSetName = Array.isArray(availableModifierSets) 
+    ? availableModifierSets.find(set => set.id === selectedModifierSet)?.name
+    : null;
   const selectedOptionName = availableOptions.find(opt => opt.id === selectedOption)?.name;
 
   return (
@@ -200,7 +204,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                 <div className="animate-spin h-6 w-6 border-2 border-orange-500 border-t-transparent rounded-full mx-auto mb-2"></div>
                 <p className="text-sm text-gray-500">Loading modifier sets...</p>
               </div>
-            ) : availableModifierSets.length === 0 ? (
+            ) : !Array.isArray(availableModifierSets) || availableModifierSets.length === 0 ? (
               <div className="text-center py-6 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <AlertCircle className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
                 <h4 className="text-sm font-medium text-yellow-800 mb-1">No Trigger Options Available</h4>
@@ -246,7 +250,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                         <SelectValue placeholder="modifier set" />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableModifierSets.map((modifierSet) => (
+                        {Array.isArray(availableModifierSets) && availableModifierSets.map((modifierSet) => (
                           <SelectItem key={modifierSet.id} value={modifierSet.id.toString()}>
                             {modifierSet.name}
                           </SelectItem>

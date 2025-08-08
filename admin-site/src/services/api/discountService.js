@@ -1,7 +1,7 @@
 import apiClient from "./client";
 
 const discountService = {
-	getDiscounts(filters = {}) {
+	async getDiscounts(filters = {}) {
 		const params = new URLSearchParams();
 		if (filters.type) {
 			params.append("type", filters.type);
@@ -15,7 +15,8 @@ const discountService = {
 		if (filters.search) {
 			params.append("search", filters.search);
 		}
-		return apiClient.get("/discounts/", { params });
+		const response = await apiClient.get("/discounts/", { params });
+		return response.data;
 	},
 
 	createDiscount(data) {

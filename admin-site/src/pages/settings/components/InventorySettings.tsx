@@ -58,10 +58,15 @@ export function InventorySettings() {
 		queryFn: getGlobalSettings,
 	});
 
-	const { data: locations } = useQuery({
+	const { data: locationsResponse } = useQuery({
 		queryKey: ["locations"],
 		queryFn: inventoryService.getLocations,
 	});
+
+	// Extract locations array from API response
+	const locations = Array.isArray(locationsResponse) 
+		? locationsResponse 
+		: locationsResponse?.results || locationsResponse?.data || [];
 
 	const mutation = useMutation({
 		mutationFn: updateGlobalSettings,
@@ -232,7 +237,7 @@ export function InventorySettings() {
 											</FormControl>
 											<SelectContent>
 												<SelectItem value="none">None (Manual Selection)</SelectItem>
-												{locations?.map((location) => (
+												{Array.isArray(locations) && locations.map((location) => (
 													<SelectItem key={location.id} value={location.id.toString()}>
 														{location.name}
 													</SelectItem>

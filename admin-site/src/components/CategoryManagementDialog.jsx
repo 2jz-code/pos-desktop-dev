@@ -62,6 +62,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState(null);
 	const [categoryToDelete, setCategoryToDelete] = useState(null);
+	const [dataChanged, setDataChanged] = useState(false);
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
@@ -74,6 +75,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 	useEffect(() => {
 		if (open) {
+			setDataChanged(false); // Reset the flag when opening
 			fetchCategories();
 		}
 	}, [open]);
@@ -192,6 +194,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			}
 
 			setIsFormDialogOpen(false);
+			setDataChanged(true);
 			fetchCategories();
 		} catch (error) {
 			console.error("Failed to save category:", error);
@@ -223,6 +226,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				description: "Category deleted successfully.",
 			});
 			setIsDeleteDialogOpen(false);
+			setDataChanged(true);
 			fetchCategories();
 		} catch (error) {
 			console.error("Failed to delete category:", error);
@@ -431,7 +435,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					<DialogFooter>
 						<Button
 							variant="outline"
-							onClick={() => onOpenChange(false)}
+							onClick={() => onOpenChange(dataChanged)}
 						>
 							Close
 						</Button>

@@ -55,7 +55,7 @@ export function WebOrderNotificationSettings() {
 				"settings/web-order-settings/"
 			);
 			return {
-				terminals: terminalsRes.data,
+				terminals: terminalsRes.data.results,
 				settings: webOrderSettingsRes.data,
 			};
 		},

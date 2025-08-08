@@ -54,6 +54,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [editingType, setEditingType] = useState(null);
 	const [typeToDelete, setTypeToDelete] = useState(null);
+	const [dataChanged, setDataChanged] = useState(false);
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
@@ -63,6 +64,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 
 	useEffect(() => {
 		if (open) {
+			setDataChanged(false); // Reset the flag when opening
 			fetchProductTypes();
 		}
 	}, [open]);
@@ -152,6 +154,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 			}
 
 			setIsFormDialogOpen(false);
+			setDataChanged(true);
 			fetchProductTypes();
 		} catch (error) {
 			console.error("Failed to save product type:", error);
@@ -183,6 +186,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 				description: "Product type deleted successfully.",
 			});
 			setIsDeleteDialogOpen(false);
+			setDataChanged(true);
 			fetchProductTypes();
 		} catch (error) {
 			console.error("Failed to delete product type:", error);
@@ -325,7 +329,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 					<DialogFooter>
 						<Button
 							variant="outline"
-							onClick={() => onOpenChange(false)}
+							onClick={() => onOpenChange(dataChanged)}
 						>
 							Close
 						</Button>

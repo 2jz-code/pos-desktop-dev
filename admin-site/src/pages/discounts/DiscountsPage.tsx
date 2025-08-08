@@ -77,7 +77,7 @@ export const DiscountsPage = () => {
 		data: discounts,
 		isLoading,
 		error,
-	} = useQuery<{ data: Discount[] }, Error>({
+	} = useQuery<{ results: Discount[] }, Error>({
 		queryKey: ["discounts", { search: debouncedSearchQuery }],
 		queryFn: () =>
 			discountService.getDiscounts({ search: debouncedSearchQuery }),
@@ -143,7 +143,7 @@ export const DiscountsPage = () => {
 	};
 
 	const handleDelete = (id: number) => {
-		const discountToDelete = discounts?.data.find(d => d.id === id);
+		const discountToDelete = discounts?.data.find((d) => d.id === id);
 		if (!discountToDelete) return;
 
 		confirmation.show({
@@ -153,7 +153,7 @@ export const DiscountsPage = () => {
 			confirmText: "Delete",
 			onConfirm: () => {
 				deleteDiscountMutation.mutate(id);
-			}
+			},
 		});
 	};
 
@@ -291,7 +291,7 @@ export const DiscountsPage = () => {
 										</td>
 									</tr>
 								) : (
-									discounts?.data.map((discount) => (
+									discounts?.results.map((discount) => (
 										<tr
 											key={discount.id}
 											className="border-b"
