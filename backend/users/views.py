@@ -61,20 +61,13 @@ class SetPinView(generics.GenericAPIView):
         user_id = kwargs.get("pk")
         pin = request.data.get("pin")
         
-        result = UserService.set_user_pin(user_id, pin, request.user)
-        
-        if result["success"]:
+        try:
+            result = UserService.set_user_pin(user_id, pin, request.user)
             return Response(result, status=status.HTTP_200_OK)
-        else:
-            # Determine appropriate status code based on error
-            if "not found" in result["error"]:
-                status_code = status.HTTP_404_NOT_FOUND
-            elif "permission" in result["error"]:
-                status_code = status.HTTP_403_FORBIDDEN
-            else:
-                status_code = status.HTTP_400_BAD_REQUEST
-                
-            return Response(result, status=status_code)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as e:
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
@@ -189,3 +182,15 @@ class APIKeyStatusView(APIView):
     def get(self, request):
         has_api_key = bool(request.user.api_key)
         return Response({"has_api_key": has_api_key})
+
+class DebugCookiesView(APIView):
+    """Debug endpoint to see what cookies are set"""
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request):
+        return Response({
+            "cookies": dict(request.COOKIES),
+            "headers": dict(request.headers),
+            "method": request.method,
+            "path": request.path
+        })

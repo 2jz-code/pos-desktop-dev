@@ -12,6 +12,7 @@ from .views import (
     GenerateAPIKeyView,
     RevokeAPIKeyView,
     APIKeyStatusView,
+    DebugCookiesView,
 )
 
 app_name = "users"
@@ -27,6 +28,8 @@ urlpatterns = [
     path("api-key/generate/", GenerateAPIKeyView.as_view(), name="generate-api-key"),
     path("api-key/revoke/", RevokeAPIKeyView.as_view(), name="revoke-api-key"),
     path("api-key/status/", APIKeyStatusView.as_view(), name="api-key-status"),
+    # Debug
+    path("debug/cookies/", DebugCookiesView.as_view(), name="debug-cookies"),
     # User Management
     path("register/", UserRegisterView.as_view(), name="register"),
     path("", UserListView.as_view(), name="list"),

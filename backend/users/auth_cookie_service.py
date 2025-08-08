@@ -99,59 +99,81 @@ class AuthCookieService:
     def clear_all_auth_cookies(response: Response) -> Response:
         """
         Clear all authentication cookies (POS, admin, customer).
-        Extracted from LogoutView to centralize cookie cleanup logic.
+        Uses multiple approaches to ensure cookies are deleted across all browsers.
         """
-        cookie_settings = AuthCookieService.get_cookie_settings()
+        # Cookie names from settings
+        access_cookie = settings.SIMPLE_JWT["AUTH_COOKIE"]
+        refresh_cookie = settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"]
         
-        # Clear admin/staff cookies (path /api)
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE"],
-            value="",
-            max_age=0,
-            path="/api",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
-            value="",
-            max_age=0,
-            path="/api",
-            **cookie_settings
-        )
+        # Get base cookie settings for clearing
+        secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
+        samesite = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
         
-        # Clear POS cookies (path /)
+        # Clear cookies with multiple combinations to ensure deletion
+        paths_and_cookies = [
+            # POS cookies (path /)
+            ("/", access_cookie),
+            ("/", refresh_cookie),
+            # Admin cookies (path /api)  
+            ("/api", access_cookie),
+            ("/api", refresh_cookie),
+            # Customer cookies (path /)
+            ("/", f"{access_cookie}_customer"),
+            ("/", f"{refresh_cookie}_customer"),
+        ]
+        
+        for path, cookie_name in paths_and_cookies:
+            # Method 1: Standard clearing with all attributes
+            response.set_cookie(
+                key=cookie_name,
+                value="",
+                max_age=0,
+                path=path,
+                domain=None,
+                secure=secure,
+                samesite=samesite,
+                httponly=True
+            )
+            
+            # Method 2: Clear without httponly (some browsers need this)
+            response.set_cookie(
+                key=cookie_name,
+                value="",
+                max_age=0,
+                path=path,
+                domain=None,
+                secure=secure,
+                samesite=samesite,
+                httponly=False
+            )
+            
+            # Method 3: Clear with minimal attributes
+            response.set_cookie(
+                key=cookie_name,
+                value="",
+                max_age=0,
+                path=path
+            )
+        
+        # Also clear Django session cookies that might be keeping user logged in
         response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE"],
+            key=settings.SESSION_COOKIE_NAME,  # Usually 'sessionid'
             value="",
             max_age=0,
             path="/",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
-            value="",
-            max_age=0,
-            path="/",
-            **cookie_settings
+            domain=None,
+            secure=secure,
+            samesite=samesite,
+            httponly=True
         )
         
-        # Clear customer cookies (different names, path /)
-        customer_access_cookie = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
-        customer_refresh_cookie = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
-        
+        # Clear CSRF token cookie as well
         response.set_cookie(
-            key=customer_access_cookie,
+            key=settings.CSRF_COOKIE_NAME,  # Usually 'csrftoken'  
             value="",
             max_age=0,
             path="/",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=customer_refresh_cookie,
-            value="",
-            max_age=0,
-            path="/",
-            **cookie_settings
+            domain=None
         )
         
         return response
@@ -163,23 +185,20 @@ class AuthCookieService:
         """
         cookie_settings = AuthCookieService.get_cookie_settings()
         
-        customer_access_cookie = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
-        customer_refresh_cookie = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
+        customer_keys = [
+            f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer",
+            f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
+        ]
         
-        response.set_cookie(
-            key=customer_access_cookie,
-            value="",
-            max_age=0,
-            path="/",
-            **cookie_settings
-        )
-        response.set_cookie(
-            key=customer_refresh_cookie,
-            value="",
-            max_age=0,
-            path="/",
-            **cookie_settings
-        )
+        for key in customer_keys:
+            response.set_cookie(
+                key=key,
+                value="",
+                max_age=0,
+                path="/",
+                domain=None,
+                **cookie_settings
+            )
         
         return response
     
@@ -189,15 +208,21 @@ class AuthCookieService:
         Perform complete logout including token blacklisting and cookie clearing.
         Extracted from LogoutView to centralize logout logic.
         """
-        # Try to blacklist the refresh token
-        try:
-            refresh_token = request.COOKIES.get(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"])
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-        except (TokenError, Exception):
-            # Token might be invalid or already blacklisted, which is fine
-            pass
+        # Try to blacklist all possible refresh tokens
+        refresh_token_keys = [
+            settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],  # Admin/POS refresh token
+            f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",  # Customer refresh token
+        ]
+        
+        for token_key in refresh_token_keys:
+            try:
+                refresh_token = request.COOKIES.get(token_key)
+                if refresh_token:
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+            except (TokenError, Exception):
+                # Token might be invalid or already blacklisted, which is fine
+                continue
         
         # Clear all authentication cookies
         AuthCookieService.clear_all_auth_cookies(response)

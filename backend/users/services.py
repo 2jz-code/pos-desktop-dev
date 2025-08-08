@@ -151,6 +151,45 @@ class UserService:
         return {"message": "PIN updated successfully.", "user_id": user.id}
 
     @staticmethod
+    def get_filtered_users(filters=None):
+        """
+        Get filtered users based on query parameters.
+        General method for user list filtering.
+        """
+        queryset = User.objects.all().order_by("email")
+        
+        if not filters:
+            return queryset
+            
+        # Handle modified_since for delta sync
+        modified_since = filters.get('modified_since')
+        if modified_since:
+            try:
+                from django.utils.dateparse import parse_datetime
+                modified_since_dt = parse_datetime(modified_since[0] if isinstance(modified_since, list) else modified_since)
+                if modified_since_dt:
+                    queryset = queryset.filter(updated_at__gte=modified_since_dt)
+            except (ValueError, TypeError):
+                pass
+        
+        # Handle role filtering
+        role = filters.get('role')
+        if role:
+            role_value = role[0] if isinstance(role, list) else role
+            queryset = queryset.filter(role=role_value)
+        
+        # Handle is_pos_staff filtering
+        is_pos_staff = filters.get('is_pos_staff')
+        if is_pos_staff:
+            is_pos_staff_value = is_pos_staff[0] if isinstance(is_pos_staff, list) else is_pos_staff
+            if is_pos_staff_value.lower() in ['true', '1', 'yes']:
+                queryset = queryset.filter(is_pos_staff=True)
+            elif is_pos_staff_value.lower() in ['false', '0', 'no']:
+                queryset = queryset.filter(is_pos_staff=False)
+        
+        return queryset
+
+    @staticmethod
     def get_filtered_pos_users(modified_since=None):
         """
         Get POS staff users with optional delta sync filtering.
@@ -189,6 +228,7 @@ class UserService:
             value="",
             max_age=0,
             path=cookie_path,
+            domain=None,
             **cookie_settings
         )
         response.set_cookie(
@@ -196,6 +236,7 @@ class UserService:
             value="",
             max_age=0,
             path=cookie_path,
+            domain=None,
             **cookie_settings
         )
         
@@ -205,14 +246,16 @@ class UserService:
                 key=f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer",
                 value="",
                 max_age=0,
-                path="/api/auth/customer",
+                path="/",  # Customer cookies use path="/" not "/api/auth/customer"
+                domain=None,
                 **cookie_settings
             )
             response.set_cookie(
                 key=f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",
                 value="",
                 max_age=0,
-                path="/api/auth/customer",
+                path="/",  # Customer cookies use path="/" not "/api/auth/customer"
+                domain=None,
                 **cookie_settings
             )
 
