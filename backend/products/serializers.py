@@ -230,6 +230,54 @@ class CategorySerializer(BaseModelSerializer):
         prefetch_related_fields = ["children"]
 
 
+class CategoryBulkUpdateSerializer(serializers.Serializer):
+    """
+    Serializer for bulk category updates.
+    Validates the request payload and delegates business logic to CategoryService.
+    """
+    updates = serializers.ListSerializer(
+        child=serializers.DictField(),
+        help_text="List of category update objects with id and fields to update"
+    )
+    
+    def validate_updates(self, value):
+        """Validate the updates list structure"""
+        if not value:
+            raise serializers.ValidationError("Updates list cannot be empty")
+            
+        for i, update in enumerate(value):
+            if not isinstance(update, dict):
+                raise serializers.ValidationError(f"Update at index {i} must be a dictionary")
+                
+            if 'id' not in update:
+                raise serializers.ValidationError(f"Update at index {i} missing required 'id' field")
+                
+            # Validate ID is a valid integer
+            try:
+                int(update['id'])
+            except (ValueError, TypeError):
+                raise serializers.ValidationError(f"Update at index {i}: 'id' must be a valid integer")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Handle bulk update through CategoryService"""
+        from .services import CategoryService
+        
+        updates = validated_data['updates']
+        result = CategoryService.bulk_update_categories(updates)
+        
+        # Serialize the updated categories for response
+        if result['updated_categories']:
+            result['updated_categories'] = CategorySerializer(
+                result['updated_categories'],
+                many=True,
+                context=self.context
+            ).data
+            
+        return result
+
+
 class TaxSerializer(BaseModelSerializer):
     class Meta:
         model = Tax

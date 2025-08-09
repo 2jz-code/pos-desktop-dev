@@ -82,3 +82,10 @@ export const bulkArchiveCategories = (categoryIds) => {
 export const bulkUnarchiveCategories = (categoryIds) => {
 	return apiClient.post('/products/categories/bulk_unarchive/', { ids: categoryIds });
 };
+
+// Bulk update multiple categories
+export const bulkUpdateCategories = (categoryUpdates) => {
+	return apiClient.patch('/products/categories/bulk-update/', {
+		updates: categoryUpdates
+	});
+};

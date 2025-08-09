@@ -7,6 +7,7 @@ import {
 	updateCategory,
 	archiveCategory,
 	unarchiveCategory,
+	bulkUpdateCategories,
 } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -280,12 +281,17 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 						(cat) => cat.parent?.id === sourceItem.parent.id
 				  );
 
-			for (const category of categoriesToUpdate) {
-				await updateCategory(category.id, {
-					name: category.name,
-					order: category.order,
-				});
-			}
+			// Use bulk update API for better performance
+			const categoryUpdates = categoriesToUpdate.map(category => ({
+				id: category.id,
+				name: category.name,
+				description: category.description || "",
+				parent_id: category.parent?.id || null,
+				order: category.order,
+				is_public: category.is_public !== undefined ? category.is_public : true
+			}));
+
+			await bulkUpdateCategories(categoryUpdates);
 			toast({
 				title: "Success",
 				description: "Category order updated successfully.",

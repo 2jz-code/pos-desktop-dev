@@ -23,6 +23,7 @@ from .serializers import (
     OptimizedProductSerializer,
     POSProductSerializer,
     CategorySerializer,
+    CategoryBulkUpdateSerializer,
     TaxSerializer,
     ProductTypeSerializer,
     ModifierSetSerializer,
@@ -417,6 +418,34 @@ class CategoryViewSet(BaseViewSet):
 
         # Use queryset ordering for all requests
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["patch"], url_path="bulk-update")
+    def bulk_update(self, request):
+        """
+        Bulk update multiple categories in a single API call.
+        Follows the established architecture: lean views, service layer business logic.
+        
+        Payload:
+        {
+            "updates": [
+                {"id": 1, "name": "Category 1", "order": 1, "description": "..."},
+                {"id": 2, "name": "Category 2", "order": 2, "parent_id": 1},
+            ]
+        }
+        """
+        serializer = CategoryBulkUpdateSerializer(
+            data=request.data, 
+            context={"request": request}
+        )
+        
+        if serializer.is_valid():
+            result = serializer.save()
+            return Response(result, status=status.HTTP_200_OK)
+        
+        return Response(
+            serializer.errors, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class TaxViewSet(BaseViewSet):

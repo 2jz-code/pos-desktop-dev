@@ -117,8 +117,18 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 			const typesData = typesRes.data ?? typesRes;
 			const locationsData: Location[] = []; // TODO: Replace with actual locations
 
-			setCategories(categoriesData);
-			setProductTypes(typesData);
+			// Ensure categoriesData is an array - handle paginated responses
+			const finalCategoriesData = Array.isArray(categoriesData) 
+				? categoriesData 
+				: categoriesData?.results ?? [];
+			
+			// Ensure typesData is an array
+			const finalTypesData = Array.isArray(typesData) 
+				? typesData 
+				: typesData?.results ?? [];
+
+			setCategories(finalCategoriesData);
+			setProductTypes(finalTypesData);
 			setLocations(locationsData);
 
 			if (locationsData.length > 0) {
@@ -335,6 +345,11 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 	};
 
 	const renderCategoryOptions = (parentId: number | null = null, level = 0): React.ReactElement[] => {
+		// Safety check to ensure categories is an array
+		if (!Array.isArray(categories)) {
+			return [];
+		}
+		
 		return categories
 			.filter((c) => (c.parent?.id || null) === parentId)
 			.flatMap((c) => [

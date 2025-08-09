@@ -21,6 +21,14 @@ export const deleteCategory = (id) => {
 	return apiClient.delete(`/products/categories/${id}/`);
 };
 
+export const archiveCategory = (id) => {
+	return apiClient.patch(`/products/categories/${id}/archive/`);
+};
+
+export const unarchiveCategory = (id) => {
+	return apiClient.patch(`/products/categories/${id}/unarchive/`);
+};
+
 export const getParentCategories = () => {
 	return apiClient.get("/products/categories/", { params: { parent: "null" } });
 };
@@ -31,10 +39,9 @@ export const getChildCategories = (parentId) => {
 	});
 };
 
-export const bulkUpdateCategories = (categoryIds, updateData) => {
+export const bulkUpdateCategories = (categoryUpdates) => {
 	return apiClient.patch("/products/categories/bulk-update/", {
-		category_ids: categoryIds,
-		update_data: updateData,
+		updates: categoryUpdates,
 	});
 };
 
@@ -50,6 +57,8 @@ export default {
 	createCategory,
 	updateCategory,
 	deleteCategory,
+	archiveCategory,
+	unarchiveCategory,
 	getParentCategories,
 	getChildCategories,
 	bulkUpdateCategories,

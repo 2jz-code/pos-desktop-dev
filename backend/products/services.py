@@ -1036,3 +1036,245 @@ class ProductAnalyticsService:
             .order_by("product_count", "name")[:10]
             .values("id", "name", "internal_name", "product_count")
         )
+
+
+class CategoryService:
+    """
+    Service layer for category management operations.
+    Follows the established architecture pattern for business logic encapsulation.
+    """
+    
+    @staticmethod
+    @transaction.atomic
+    def bulk_update_categories(category_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Bulk update multiple categories in a single transaction.
+        
+        Args:
+            category_updates: List of dictionaries containing category data:
+                [
+                    {"id": 1, "name": "Category 1", "order": 1, ...},
+                    {"id": 2, "name": "Category 2", "order": 2, ...},
+                ]
+        
+        Returns:
+            Dict containing update results:
+            {
+                "success": True,
+                "updated_count": 5,
+                "updated_categories": [...],
+                "errors": [...]
+            }
+        
+        Raises:
+            ValidationError: If validation fails for any category
+        """
+        if not category_updates:
+            raise ValidationError("No category updates provided")
+        
+        updated_categories = []
+        errors = []
+        
+        for update_data in category_updates:
+            category_id = update_data.get("id")
+            if not category_id:
+                errors.append({"error": "Missing category ID in update data"})
+                continue
+            
+            try:
+                # Get the category instance
+                category = Category.objects.select_for_update().get(id=category_id)
+                
+                # Validate and update fields
+                CategoryService._update_category_fields(category, update_data)
+                
+                # Save the category
+                category.save()
+                
+                # Add to successful updates
+                updated_categories.append(category)
+                
+            except Category.DoesNotExist:
+                errors.append({
+                    "id": category_id, 
+                    "error": "Category not found"
+                })
+            except ValidationError as e:
+                errors.append({
+                    "id": category_id,
+                    "error": str(e)
+                })
+            except Exception as e:
+                errors.append({
+                    "id": category_id,
+                    "error": f"Unexpected error: {str(e)}"
+                })
+        
+        # Invalidate caches after successful bulk update
+        if updated_categories:
+            CategoryService._invalidate_category_caches()
+        
+        return {
+            "success": len(updated_categories) > 0,
+            "updated_count": len(updated_categories),
+            "updated_categories": updated_categories,
+            "errors": errors if errors else None
+        }
+    
+    @staticmethod
+    def _update_category_fields(category: 'Category', update_data: Dict[str, Any]) -> None:
+        """
+        Update category fields with validation.
+        
+        Args:
+            category: Category instance to update
+            update_data: Dictionary of fields to update
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        # Update name with validation
+        if "name" in update_data:
+            name = update_data["name"]
+            if not name or not name.strip():
+                raise ValidationError("Category name cannot be empty")
+            category.name = name.strip()
+        
+        # Update description
+        if "description" in update_data:
+            category.description = update_data["description"] or ""
+        
+        # Update order with validation
+        if "order" in update_data:
+            order = update_data["order"]
+            if order is not None:
+                try:
+                    category.order = int(order)
+                except (ValueError, TypeError):
+                    raise ValidationError("Order must be a valid integer")
+        
+        # Update parent with validation
+        if "parent_id" in update_data:
+            parent_id = update_data["parent_id"]
+            if parent_id is None:
+                category.parent = None
+            else:
+                try:
+                    parent_id = int(parent_id)
+                    # Prevent self-reference
+                    if parent_id == category.id:
+                        raise ValidationError("Cannot set category as its own parent")
+                    
+                    parent = Category.objects.get(id=parent_id)
+                    if not parent.is_active:
+                        raise ValidationError("Cannot set inactive category as parent")
+                    
+                    category.parent = parent
+                except (ValueError, TypeError):
+                    raise ValidationError("Parent ID must be a valid integer")
+                except Category.DoesNotExist:
+                    raise ValidationError(f"Parent category with ID {parent_id} does not exist")
+        
+        # Update public status
+        if "is_public" in update_data:
+            category.is_public = bool(update_data["is_public"])
+    
+    @staticmethod
+    def _invalidate_category_caches() -> None:
+        """
+        Invalidate category-related caches after updates.
+        Follows the established caching pattern.
+        """
+        # Clear static data caches related to categories
+        from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+        
+        # Clear category tree cache
+        invalidate_cache_pattern("*get_cached_category_tree*")
+        
+        # Clear product caches that include category data
+        invalidate_cache_pattern("*get_cached_products_list*")
+        invalidate_cache_pattern("*get_cached_active_products_list*")
+        invalidate_cache_pattern("*get_pos_menu_layout*")
+    
+    @staticmethod
+    def validate_category_hierarchy(category_id: int, parent_id: int = None) -> None:
+        """
+        Validate category hierarchy to prevent circular references.
+        
+        Args:
+            category_id: ID of the category being updated
+            parent_id: ID of the proposed parent category
+            
+        Raises:
+            ValidationError: If hierarchy would create circular reference
+        """
+        if not parent_id:
+            return
+        
+        if category_id == parent_id:
+            raise ValidationError("Cannot set category as its own parent")
+        
+        # Check if the proposed parent is a descendant of this category
+        def is_descendant(potential_parent_id: int, ancestor_id: int) -> bool:
+            """Check if potential_parent is a descendant of ancestor"""
+            try:
+                parent = Category.objects.get(id=potential_parent_id)
+                if parent.parent_id is None:
+                    return False
+                if parent.parent_id == ancestor_id:
+                    return True
+                return is_descendant(parent.parent_id, ancestor_id)
+            except Category.DoesNotExist:
+                return False
+        
+        if is_descendant(parent_id, category_id):
+            raise ValidationError("Cannot create circular reference in category hierarchy")
+    
+    @staticmethod
+    def reorder_categories_in_level(parent_id: int = None, category_orders: List[Dict[str, Any]] = None) -> List['Category']:
+        """
+        Reorder categories within the same hierarchical level.
+        
+        Args:
+            parent_id: ID of parent category (None for root level)
+            category_orders: List of {"id": int, "order": int} dictionaries
+            
+        Returns:
+            List of updated Category instances
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not category_orders:
+            return []
+        
+        with transaction.atomic():
+            updated_categories = []
+            
+            for item in category_orders:
+                category_id = item.get("id")
+                new_order = item.get("order")
+                
+                if not category_id or new_order is None:
+                    continue
+                
+                try:
+                    category = Category.objects.select_for_update().get(
+                        id=category_id,
+                        parent_id=parent_id
+                    )
+                    category.order = int(new_order)
+                    category.save()
+                    updated_categories.append(category)
+                    
+                except Category.DoesNotExist:
+                    raise ValidationError(
+                        f"Category {category_id} not found in specified parent level"
+                    )
+                except (ValueError, TypeError):
+                    raise ValidationError(f"Invalid order value for category {category_id}")
+            
+            # Invalidate caches after reordering
+            CategoryService._invalidate_category_caches()
+            
+            return updated_categories

@@ -3,17 +3,12 @@ import {
 	getCategories,
 	createCategory,
 	updateCategory,
-	deleteCategory,
+	archiveCategory,
+	unarchiveCategory,
+	bulkUpdateCategories,
 } from "@/services/api/categoryService";
 import { Button } from "@/components/ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
+import DraggableList from "@/components/ui/draggable-list";
 import {
 	Dialog,
 	DialogContent,
@@ -38,30 +33,19 @@ import { Badge } from "@/components/ui/badge";
 import {
 	Plus,
 	Edit,
-	Trash2,
 	Loader2,
-	AlertCircle,
 	FolderOpen,
 	Folder,
+	Archive,
+	ArchiveRestore,
 } from "lucide-react";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [categories, setCategories] = useState([]);
 	const [loading, setLoading] = useState(false);
+	const [showArchivedCategories, setShowArchivedCategories] = useState(false);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState(null);
-	const [categoryToDelete, setCategoryToDelete] = useState(null);
 	const [dataChanged, setDataChanged] = useState(false);
 	const [formData, setFormData] = useState({
 		name: "",
@@ -78,12 +62,16 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			setDataChanged(false); // Reset the flag when opening
 			fetchCategories();
 		}
-	}, [open]);
+	}, [open, showArchivedCategories]);
 
 	const fetchCategories = async () => {
 		try {
 			setLoading(true);
-			const response = await getCategories();
+			const params = {};
+			if (showArchivedCategories) {
+				params.include_archived = "only";
+			}
+			const response = await getCategories(params);
 			const data = response.data?.results || response.data || [];
 			setCategories(data);
 		} catch (error) {
@@ -137,11 +125,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		);
 		setErrors({});
 		setIsFormDialogOpen(true);
-	};
-
-	const openDeleteDialog = (category) => {
-		setCategoryToDelete(category);
-		setIsDeleteDialogOpen(true);
 	};
 
 	const validateForm = () => {
@@ -215,31 +198,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-	const handleDeleteCategory = async () => {
-		if (!categoryToDelete) return;
-
-		try {
-			setLoading(true);
-			await deleteCategory(categoryToDelete.id);
-			toast({
-				title: "Success",
-				description: "Category deleted successfully.",
-			});
-			setIsDeleteDialogOpen(false);
-			setDataChanged(true);
-			fetchCategories();
-		} catch (error) {
-			console.error("Failed to delete category:", error);
-			toast({
-				title: "Error",
-				description: "Failed to delete category. It may be in use by products.",
-				variant: "destructive",
-			});
-		} finally {
-			setLoading(false);
-		}
-	};
-
 	const renderCategoryOptions = (parentId = null, level = 0) => {
 		return categories
 			.filter((c) => (c.parent?.id || null) === parentId)
@@ -270,6 +228,29 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			]);
 	};
 
+	// Build hierarchical list for drag-and-drop
+	const buildHierarchicalList = () => {
+		const parentCategories = categories
+			.filter((cat) => !cat.parent)
+			.sort((a, b) => (a.order || 0) - (b.order || 0));
+		const hierarchicalList = [];
+
+		parentCategories.forEach((parent) => {
+			hierarchicalList.push({ ...parent, level: 0, isParent: true });
+
+			// Add children of this parent
+			const children = categories
+				.filter((cat) => cat.parent?.id === parent.id)
+				.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+			children.forEach((child) => {
+				hierarchicalList.push({ ...child, level: 1, isParent: false });
+			});
+		});
+
+		return hierarchicalList;
+	};
+
 	const resetForm = () => {
 		setFormData({
 			name: "",
@@ -280,6 +261,185 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		});
 		setErrors({});
 		setEditingCategory(null);
+	};
+
+	const handleReorder = async (
+		reorderedHierarchicalList,
+		sourceIndex,
+		destinationIndex
+	) => {
+		const hierarchicalList = buildHierarchicalList();
+		const sourceItem = hierarchicalList[sourceIndex];
+		const destinationItem = hierarchicalList[destinationIndex];
+
+		// Prevent invalid moves (parent to child position or child to parent position)
+		const isSourceParent = sourceItem.isParent;
+		const isDestinationParent = destinationItem.isParent;
+
+		if (isSourceParent !== isDestinationParent) {
+			toast({
+				title: "Invalid Move",
+				description:
+					"Cannot move parent categories to child positions or vice versa.",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		// For children, ensure they stay within the same parent group
+		if (
+			!isSourceParent &&
+			sourceItem.parent?.id !== destinationItem.parent?.id
+		) {
+			toast({
+				title: "Invalid Move",
+				description:
+					"Child categories can only be reordered within their parent category.",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		// Update order values based on new positions within the same level
+		let updatedCategories;
+		if (isSourceParent) {
+			// Reordering parent categories
+			const parentCategories = categories.filter((cat) => !cat.parent);
+			const childCategories = categories.filter((cat) => cat.parent);
+
+			// Find original parent indices
+			const parentSourceIndex = parentCategories.findIndex(
+				(cat) => cat.id === sourceItem.id
+			);
+			const parentDestinationIndex = parentCategories.findIndex(
+				(cat) => cat.id === destinationItem.id
+			);
+
+			const reorderedParents = Array.from(parentCategories);
+			const [movedParent] = reorderedParents.splice(parentSourceIndex, 1);
+			reorderedParents.splice(parentDestinationIndex, 0, movedParent);
+
+			// Update parent orders
+			const updatedParents = reorderedParents.map((parent, index) => ({
+				...parent,
+				order: index + 1,
+			}));
+
+			updatedCategories = [...updatedParents, ...childCategories];
+		} else {
+			// Reordering child categories within the same parent
+			const parentId = sourceItem.parent.id;
+			const siblingCategories = categories.filter(
+				(cat) => cat.parent?.id === parentId
+			);
+			const otherCategories = categories.filter(
+				(cat) => cat.parent?.id !== parentId
+			);
+
+			const siblingSourceIndex = siblingCategories.findIndex(
+				(cat) => cat.id === sourceItem.id
+			);
+			const siblingDestinationIndex = siblingCategories.findIndex(
+				(cat) => cat.id === destinationItem.id
+			);
+
+			const reorderedSiblings = Array.from(siblingCategories);
+			const [movedChild] = reorderedSiblings.splice(siblingSourceIndex, 1);
+			reorderedSiblings.splice(siblingDestinationIndex, 0, movedChild);
+
+			// Update child orders within parent
+			const updatedSiblings = reorderedSiblings.map((child, index) => ({
+				...child,
+				order: index + 1,
+			}));
+
+			updatedCategories = [...otherCategories, ...updatedSiblings];
+		}
+
+		// Store original state for rollback on error
+		const originalCategories = [...categories];
+
+		// Optimistically update UI first
+		setCategories(updatedCategories);
+		setDataChanged(true);
+
+		// Save the new order to backend - use sequential updates to avoid race conditions
+		try {
+			const categoriesToUpdate = isSourceParent
+				? updatedCategories.filter((cat) => !cat.parent)
+				: updatedCategories.filter(
+						(cat) => cat.parent?.id === sourceItem.parent.id
+				  );
+
+			// Use bulk update API for better performance
+			const categoryUpdates = categoriesToUpdate.map(category => ({
+				id: category.id,
+				name: category.name,
+				description: category.description || "",
+				parent_id: category.parent?.id || null,
+				order: category.order,
+				is_public: category.is_public !== undefined ? category.is_public : true
+			}));
+
+			await bulkUpdateCategories(categoryUpdates);
+
+			toast({
+				title: "Success",
+				description: "Category order updated successfully.",
+			});
+		} catch (error) {
+			console.error("Failed to update category order:", error);
+
+			// Rollback to original state instead of refetching to avoid scrambling
+			setCategories(originalCategories);
+
+			toast({
+				title: "Error",
+				description:
+					"Failed to update category order. Changes have been reverted.",
+				variant: "destructive",
+			});
+		}
+	};
+
+	const handleArchiveToggle = async (category) => {
+		try {
+			if (category.is_active) {
+				await archiveCategory(category.id);
+				toast({
+					title: "Success",
+					description: "Category archived successfully.",
+				});
+			} else {
+				await unarchiveCategory(category.id);
+				toast({
+					title: "Success",
+					description: "Category restored successfully.",
+				});
+			}
+			setDataChanged(true);
+			fetchCategories();
+		} catch (error) {
+			console.error("Archive/restore error:", error);
+
+			// Better error handling - check for specific error messages
+			let errorMessage = "Failed to update category status.";
+			if (error.response?.status === 403) {
+				errorMessage = "You don't have permission to archive categories.";
+			} else if (error.response?.status === 401) {
+				errorMessage = "You need to be logged in to archive categories.";
+			} else if (error.response?.data?.error) {
+				errorMessage = error.response.data.error;
+			} else if (error.message) {
+				errorMessage = error.message;
+			}
+
+			toast({
+				title: "Error",
+				description: errorMessage,
+				variant: "destructive",
+			});
+		}
 	};
 
 	const handleFormDialogOpenChange = (open) => {
@@ -306,8 +466,25 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 					<div className="space-y-4">
 						<div className="flex justify-between items-center">
-							<div className="text-sm text-muted-foreground">
-								Total Categories: {categories.length}
+							<div className="flex items-center space-x-3">
+								<div className="text-sm text-muted-foreground">
+									{showArchivedCategories ? "Archived" : "Active"} Categories:{" "}
+									{categories.length}
+								</div>
+								<Button
+									variant={showArchivedCategories ? "default" : "outline"}
+									size="sm"
+									onClick={() =>
+										setShowArchivedCategories(!showArchivedCategories)
+									}
+								>
+									{showArchivedCategories ? (
+										<ArchiveRestore className="mr-2 h-4 w-4" />
+									) : (
+										<Archive className="mr-2 h-4 w-4" />
+									)}
+									{showArchivedCategories ? "Show Active" : "Show Archived"}
+								</Button>
 							</div>
 							<Button onClick={() => openFormDialog()}>
 								<Plus className="mr-2 h-4 w-4" />
@@ -320,115 +497,150 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 								<Loader2 className="h-6 w-6 animate-spin" />
 							</div>
 						) : (
-							<div className="border rounded-lg">
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Name</TableHead>
-											<TableHead>Description</TableHead>
-											<TableHead>Type</TableHead>
-											<TableHead>Hierarchy</TableHead>
-											<TableHead className="text-center">Order</TableHead>
-											<TableHead className="text-center">Visibility</TableHead>
-											<TableHead className="text-right">Actions</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{categories.length === 0 ? (
-											<TableRow>
-												<TableCell
-													colSpan={7}
-													className="text-center py-8"
-												>
-													<div className="flex flex-col items-center space-y-2">
-														<FolderOpen className="h-12 w-12 text-muted-foreground" />
-														<p className="text-muted-foreground">
-															No categories found. Create your first category!
-														</p>
-													</div>
-												</TableCell>
-											</TableRow>
-										) : (
-											flattenedCategories().map((category) => (
-												<TableRow key={category.id}>
-													<TableCell 
-														className="font-medium"
-														style={{ paddingLeft: `${category.level * 20 + 12}px` }}
-													>
-														{category.name}
-													</TableCell>
-													<TableCell>
-														{category.description || (
-															<span className="text-muted-foreground">
-																No description
-															</span>
-														)}
-													</TableCell>
-													<TableCell>
-														{category.parent ? (
-															<Badge variant="secondary">
-																<Folder className="mr-1 h-3 w-3" />
-																Subcategory
-															</Badge>
-														) : (
-															<Badge variant="default">
-																<FolderOpen className="mr-1 h-3 w-3" />
-																Parent
-															</Badge>
-														)}
-													</TableCell>
-													<TableCell>
-														<span className="text-sm">
-															{getCategoryHierarchy(category)}
-														</span>
-													</TableCell>
-													<TableCell className="text-center">
-														<Badge
-															variant="secondary"
-															className="text-xs"
-														>
-															{category.order || 0}
-														</Badge>
-													</TableCell>
-													<TableCell className="text-center">
-														<Badge
-															variant={
-																category.is_public ? "default" : "outline"
-															}
-															className={`text-xs ${
-																category.is_public
-																	? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-																	: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-															}`}
-														>
-															{category.is_public ? "Public" : "Private"}
-														</Badge>
-													</TableCell>
-													<TableCell className="text-right">
-														<div className="flex justify-end space-x-2">
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() => openFormDialog(category)}
-															>
-																<Edit className="h-4 w-4" />
-															</Button>
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() => openDeleteDialog(category)}
-																className="text-destructive hover:text-destructive"
-															>
-																<Trash2 className="h-4 w-4" />
-															</Button>
+							<DraggableList
+								items={buildHierarchicalList()}
+								onReorder={handleReorder}
+								getItemId={(item) => item.id}
+								tableStyle={true}
+								showHeaders={true}
+								headers={[
+									{ label: "Name", className: "flex-1" },
+									{ label: "Description", className: "w-[150px]" },
+									{ label: "Parent", className: "w-[100px]" },
+									{ label: "Order", className: "w-[80px] text-center" },
+									{ label: "Public", className: "w-[80px] text-center" },
+									{ label: "Actions", className: "w-[100px] text-center" },
+								]}
+								showEmptyState={true}
+								emptyStateMessage="No categories yet"
+								className="border rounded-lg"
+								renderItem={({ item: category, dragHandle }) => (
+									<div
+										className={`flex items-center gap-3 p-3 ${
+											category.is_active ? "" : "opacity-60"
+										}`}
+									>
+										{dragHandle}
+
+										{/* Name with visual hierarchy indicators */}
+										<div className="flex-1">
+											<div className="flex items-center">
+												{/* Visual indicator for hierarchy level */}
+												{category.level > 0 && (
+													<>
+														<div className="w-4 h-4 mr-2 flex items-center justify-center">
+															<div className="w-2 h-px bg-gray-300"></div>
 														</div>
-													</TableCell>
-												</TableRow>
-											))
-										)}
-									</TableBody>
-								</Table>
-							</div>
+														<span className="text-gray-400 text-xs mr-2">
+															└
+														</span>
+													</>
+												)}
+												{/* Parent indicator icon */}
+												{category.isParent && (
+													<span className="text-blue-600 text-xs mr-2 font-semibold">
+														●
+													</span>
+												)}
+												<div
+													className={`font-medium ${
+														category.is_active
+															? ""
+															: "line-through text-gray-500"
+													} ${
+														category.isParent
+															? "text-blue-800 font-semibold"
+															: "text-gray-700"
+													}`}
+												>
+													{category.name}
+													{!category.is_active && (
+														<span className="ml-2 text-xs text-orange-600 font-normal">
+															(Archived)
+														</span>
+													)}
+												</div>
+											</div>
+										</div>
+
+										{/* Description */}
+										<div className="w-[150px] text-slate-600 dark:text-slate-400 truncate text-sm">
+											{category.description || "—"}
+										</div>
+
+										{/* Parent */}
+										<div className="w-[100px]">
+											{category.parent?.name ? (
+												<Badge
+													variant="outline"
+													className="text-xs"
+												>
+													{category.parent.name}
+												</Badge>
+											) : (
+												<span className="text-slate-500 dark:text-slate-400 text-xs">
+													None
+												</span>
+											)}
+										</div>
+
+										{/* Order */}
+										<div className="w-[80px] text-center">
+											<span className="text-sm font-medium">
+												{category.order || 0}
+											</span>
+										</div>
+
+										{/* Public */}
+										<div className="w-[80px] text-center">
+											<Badge
+												variant={category.is_public ? "default" : "outline"}
+												className={`text-xs ${
+													category.is_public
+														? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+														: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+												}`}
+											>
+												{category.is_public ? "Public" : "Private"}
+											</Badge>
+										</div>
+
+										{/* Actions */}
+										<div className="w-[100px] flex items-center justify-center gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => openFormDialog(category)}
+												className="h-8 w-8 p-0"
+											>
+												<Edit className="h-4 w-4" />
+												<span className="sr-only">Edit category</span>
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => handleArchiveToggle(category)}
+												className={`h-8 w-8 p-0 ${
+													category.is_active
+														? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
+														: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+												}`}
+											>
+												{category.is_active ? (
+													<Archive className="h-4 w-4" />
+												) : (
+													<ArchiveRestore className="h-4 w-4" />
+												)}
+												<span className="sr-only">
+													{category.is_active
+														? "Archive category"
+														: "Restore category"}
+												</span>
+											</Button>
+										</div>
+									</div>
+								)}
+							/>
 						)}
 					</div>
 
@@ -598,50 +810,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			{/* Delete Confirmation Dialog */}
-			<AlertDialog
-				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle className="flex items-center gap-2">
-							<AlertCircle className="h-5 w-5 text-destructive" />
-							Delete Category
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to delete "{categoryToDelete?.name}"? This
-							action cannot be undone.
-							{categoryToDelete && !categoryToDelete.parent && (
-								<div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-									<p className="text-sm text-yellow-800">
-										<strong>Warning:</strong> This is a parent category.
-										Deleting it may affect its subcategories.
-									</p>
-								</div>
-							)}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDeleteCategory}
-							disabled={loading}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							{loading ? (
-								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									Deleting...
-								</>
-							) : (
-								"Delete"
-							)}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</>
 	);
 }
