@@ -72,36 +72,64 @@ class ProductService:
     @staticmethod
     @cache_static_data(timeout=3600*2)  # 2 hours in static cache
     def get_cached_products_list():
-        """Cache the most common product query in static data cache"""
+        """Cache the most common product query in static data cache with hierarchical ordering"""
+        from django.db import models
         return list(Product.objects.select_related(
-            "category", "product_type"
+            "category", "category__parent", "product_type"
         ).prefetch_related(
             "taxes",
             "modifier_sets",
             "product_modifier_sets__modifier_set__options",
             "product_modifier_sets__hidden_options", 
             "product_modifier_sets__extra_options"
-        ).filter(is_active=True))
+        ).filter(is_active=True).annotate(
+            # Calculate parent order for hierarchical sorting
+            parent_order=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.F('category__order')),
+                default=models.F('category__parent__order'),
+                output_field=models.IntegerField()
+            ),
+            # Mark category level (0 for parent, 1 for child)
+            category_level=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField()
+            )
+        ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name'))
     
     @staticmethod
     @cache_static_data(timeout=3600*2)  # 2 hours in static cache
     def get_cached_active_products_list():
-        """Cache specifically for is_active=true POS requests"""
+        """Cache specifically for is_active=true POS requests with hierarchical ordering"""
+        from django.db import models
         return list(Product.objects.select_related(
-            "category", "product_type"
+            "category", "category__parent", "product_type"
         ).prefetch_related(
             "taxes",
             "modifier_sets",
             "product_modifier_sets__modifier_set__options",
             "product_modifier_sets__hidden_options", 
             "product_modifier_sets__extra_options"
-        ).filter(is_active=True))
+        ).filter(is_active=True).annotate(
+            # Calculate parent order for hierarchical sorting
+            parent_order=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.F('category__order')),
+                default=models.F('category__parent__order'),
+                output_field=models.IntegerField()
+            ),
+            # Mark category level (0 for parent, 1 for child)
+            category_level=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField()
+            )
+        ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name'))
     
     @staticmethod
     @cache_static_data(timeout=3600*8)  # 8 hours - categories change rarely
     def get_cached_category_tree():
-        """Cache category hierarchy - changes infrequently"""
-        return Category.objects.select_related("parent").prefetch_related("children").all()
+        """Cache category hierarchy in hierarchical order - changes infrequently"""
+        return Category.objects.all_hierarchical_order().select_related("parent").prefetch_related("children")
     
     @staticmethod
     @cache_static_data(timeout=3600*24)  # 24 hours - very static
@@ -508,12 +536,13 @@ class ProductValidationService:
         return barcode
     
     @staticmethod
-    def validate_product_data(data: dict) -> dict:
+    def validate_product_data(data: dict, exclude_product_id: int = None) -> dict:
         """
         Validate product data with business rules.
         
         Args:
             data: Dictionary of product data
+            exclude_product_id: Product ID to exclude from uniqueness checks (for updates)
             
         Returns:
             dict: Validated and normalized product data
@@ -543,11 +572,15 @@ class ProductValidationService:
             
         # Check for duplicate barcode
         if validated_data.get('barcode'):
-            existing_product = Product.objects.filter(
+            barcode_query = Product.objects.filter(
                 barcode=validated_data['barcode']
-            ).exclude(
-                id=validated_data.get('id')
-            ).first()
+            )
+            
+            # Exclude current product during updates
+            if exclude_product_id:
+                barcode_query = barcode_query.exclude(id=exclude_product_id)
+            
+            existing_product = barcode_query.first()
             
             if existing_product:
                 raise ValidationError(f"Product with barcode '{validated_data['barcode']}' already exists")

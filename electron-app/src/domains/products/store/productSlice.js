@@ -3,36 +3,51 @@ import { getProducts, getAllProducts, getAllActiveProducts } from "@/domains/pro
 import { getCategories } from "@/domains/products/services/categoryService";
 
 // Helper function to sort products by category and name
+// Note: Products should now come pre-sorted from backend with hierarchical category ordering
+// This function provides fallback sorting if needed, respecting category.order field
 const sortProductsByCategory = (products) => {
 	return products.sort((a, b) => {
-		const aCategoryName = a.category?.name || "";
-		const bCategoryName = b.category?.name || "";
+		const aCategory = a.category;
+		const bCategory = b.category;
 
-		// Custom ordering: Fresh Drinks should come before Canned Drinks
-		const categoryOrder = {
-			"Fresh Drinks": 0,
-			"Canned Drinks": 1,
-			"Hot Drinks": 2,
-			"Cold Drinks": 3,
+		// Handle products without categories
+		if (!aCategory && !bCategory) return a.name.localeCompare(b.name);
+		if (!aCategory) return 1;
+		if (!bCategory) return -1;
+
+		// Get parent category for hierarchical ordering
+		const getParentOrder = (category) => {
+			if (!category.parent) return category.order || 999;
+			return category.parent.order || 999;
 		};
 
-		const aOrder =
-			categoryOrder[aCategoryName] !== undefined
-				? categoryOrder[aCategoryName]
-				: 999;
-		const bOrder =
-			categoryOrder[bCategoryName] !== undefined
-				? categoryOrder[bCategoryName]
-				: 999;
+		const getIsParent = (category) => !category.parent;
 
-		// First sort by category order
-		if (aOrder !== bOrder) {
-			return aOrder - bOrder;
+		const aParentOrder = getParentOrder(aCategory);
+		const bParentOrder = getParentOrder(bCategory);
+
+		// First sort by parent category order
+		if (aParentOrder !== bParentOrder) {
+			return aParentOrder - bParentOrder;
+		}
+
+		// Then sort parents before children within same parent group
+		const aIsParent = getIsParent(aCategory);
+		const bIsParent = getIsParent(bCategory);
+		if (aIsParent !== bIsParent) {
+			return aIsParent ? -1 : 1;
+		}
+
+		// Within same level, sort by category order
+		const aCategoryOrder = aCategory.order || 999;
+		const bCategoryOrder = bCategory.order || 999;
+		if (aCategoryOrder !== bCategoryOrder) {
+			return aCategoryOrder - bCategoryOrder;
 		}
 
 		// If same category order, sort by category name
-		if (aCategoryName !== bCategoryName) {
-			return aCategoryName.localeCompare(bCategoryName);
+		if (aCategory.name !== bCategory.name) {
+			return aCategory.name.localeCompare(bCategory.name);
 		}
 
 		// If same category, sort by product name

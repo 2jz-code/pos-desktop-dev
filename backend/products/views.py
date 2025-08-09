@@ -209,9 +209,21 @@ class ModifierOptionViewSet(BaseViewSet):
 
 
 class ProductViewSet(BaseViewSet):
-    queryset = Product.objects.with_archived().order_by(
-        "category__order", "category__name", "name"
-    )
+    # Products ordered hierarchically by category (parent categories first, then subcategories)
+    queryset = Product.objects.with_archived().select_related('category', 'category__parent').annotate(
+        # Calculate parent order for hierarchical sorting
+        parent_order=models.Case(
+            models.When(category__parent_id__isnull=True, then=models.F('category__order')),
+            default=models.F('category__parent__order'),
+            output_field=models.IntegerField()
+        ),
+        # Mark category level (0 for parent, 1 for child)
+        category_level=models.Case(
+            models.When(category__parent_id__isnull=True, then=models.Value(0)),
+            default=models.Value(1),
+            output_field=models.IntegerField()
+        )
+    ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name')
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -232,6 +244,7 @@ class ProductViewSet(BaseViewSet):
             # Use service for website-specific filtering
             queryset = ProductSearchService.get_products_for_website()
         else:
+            # Use hierarchical ordering for POS and other non-website requests
             queryset = super().get_queryset()
         
         # Handle delta sync using service
@@ -377,24 +390,32 @@ class CategoryViewSet(BaseViewSet):
         parent_id = self.request.query_params.get("parent")
         if parent_id is not None:
             if parent_id == "null":
-                queryset = queryset.filter(parent__isnull=True)
+                # Show only parent categories, ordered by their order field
+                queryset = queryset.filter(parent__isnull=True).order_by('order', 'name')
             else:
-                queryset = queryset.filter(parent_id=parent_id)
+                # Show subcategories of specific parent, ordered by their order field
+                queryset = queryset.filter(parent_id=parent_id).order_by('order', 'name')
+        else:
+            # When no parent filter is applied, use simple ordering by order field
+            # This is suitable for management interfaces that show a flat list
+            queryset = queryset.order_by('order', 'name')
 
         return queryset
 
     def list(self, request, *args, **kwargs):
+        # For now, disable caching to ensure proper ordering is applied
+        # TODO: Update cache to respect hierarchical ordering
         # Use cache for simple requests without complex filtering
-        if (
-            not request.query_params.get("parent")
-            and not request.query_params.get("modified_since")
-            and not request.query_params.get("include_archived")
-        ):
-            categories = ProductService.get_cached_category_tree()
-            serializer = self.get_serializer(categories, many=True)
-            return Response(serializer.data)
+        # if (
+        #     not request.query_params.get("parent")
+        #     and not request.query_params.get("modified_since")
+        #     and not request.query_params.get("include_archived")
+        # ):
+        #     categories = ProductService.get_cached_category_tree()
+        #     serializer = self.get_serializer(categories, many=True)
+        #     return Response(serializer.data)
 
-        # Fall back to normal queryset for filtered requests
+        # Use queryset ordering for all requests
         return super().list(request, *args, **kwargs)
 
 

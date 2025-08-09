@@ -79,8 +79,13 @@ export const ProductsPage = () => {
 	const fetchProducts = async (includeArchived = false) => {
 		try {
 			setLoading(true);
-			// Pass is_active parameter based on what products we want to show
-			const params = { is_active: !includeArchived };
+			// Use include_archived parameter to control which products are returned
+			const params = {};
+			
+			if (includeArchived) {
+				params.include_archived = 'only'; // Show only archived products
+			}
+			// When includeArchived is false, don't pass any parameter to show only active products (default behavior)
 			
 			// If we have a modifier context, we need to include all modifiers to see conditional ones
 			if (modifierContext) {

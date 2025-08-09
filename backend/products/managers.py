@@ -55,6 +55,30 @@ class CategoryQuerySet(TreeQuerySet):
             archived_at=None,
             archived_by=None
         )
+    
+    def hierarchical_order(self):
+        """
+        Return categories in hierarchical order: parent categories first (by their order),
+        then all their subcategories (by their order), then next parent, etc.
+        
+        This ensures proper hierarchical display where all children of a parent
+        appear together before moving to the next parent category.
+        """
+        from django.db.models import Case, When, F, Value, IntegerField
+        
+        # Use Django ORM annotations instead of raw SQL for better compatibility
+        return self.annotate(
+            parent_order=Case(
+                When(parent_id__isnull=True, then=F('order')),
+                default=F('parent__order'),
+                output_field=IntegerField()
+            ),
+            category_level=Case(
+                When(parent_id__isnull=True, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField()
+            )
+        ).order_by('parent_order', 'category_level', 'order', 'name')
 
 
 class CategoryManager(TreeManager):
@@ -74,3 +98,11 @@ class CategoryManager(TreeManager):
     def archived_only(self):
         """Return only archived categories."""
         return CategoryQuerySet(self.model, using=self._db).archived()
+    
+    def hierarchical_order(self):
+        """Return active categories in hierarchical order."""
+        return self.get_queryset().hierarchical_order()
+    
+    def all_hierarchical_order(self):
+        """Return all categories (including archived) in hierarchical order."""
+        return self.with_archived().hierarchical_order()

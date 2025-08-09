@@ -22,11 +22,11 @@ export const deleteProduct = (id) => {
 };
 
 export const archiveProduct = (id) => {
-	return apiClient.patch(`/products/${id}/`, { is_active: false });
+	return apiClient.post(`/products/${id}/archive/`);
 };
 
 export const unarchiveProduct = (id) => {
-	return apiClient.patch(`/products/${id}/`, { is_active: true });
+	return apiClient.post(`/products/${id}/unarchive/`);
 };
 
 export const getProductPerformance = (params = {}) => {

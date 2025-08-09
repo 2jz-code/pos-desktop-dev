@@ -329,7 +329,7 @@ class POSProductSerializer(BaseModelSerializer):
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'barcode', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups']
+        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups']
         select_related_fields = ['category']
         prefetch_related_fields = [
             'product_modifier_sets__modifier_set__options',
@@ -338,13 +338,23 @@ class POSProductSerializer(BaseModelSerializer):
         ]
     
     def get_category(self, obj):
-        """Return minimal category info that POS expects"""
+        """Return category info with parent relationship for hierarchical display"""
         if obj.category:
-            return {
+            category_data = {
                 'id': obj.category.id,
                 'name': obj.category.name,
                 'order': obj.category.order
             }
+            # Include parent information for hierarchical grouping
+            if obj.category.parent:
+                category_data['parent'] = {
+                    'id': obj.category.parent.id,
+                    'name': obj.category.parent.name,
+                    'order': obj.category.parent.order
+                }
+            else:
+                category_data['parent'] = None
+            return category_data
         return None
     
     def get_has_modifiers(self, obj):
@@ -455,13 +465,20 @@ class ProductCreateSerializer(BaseModelSerializer):
         """
         from .services import ProductValidationService
         
+        # Get current product ID for updates (to exclude from uniqueness checks)
+        exclude_product_id = None
+        if self.instance:
+            exclude_product_id = self.instance.id
+        
         # Use service for comprehensive validation
-        validated_data = ProductValidationService.validate_product_data(data)
+        validated_data = ProductValidationService.validate_product_data(
+            data, exclude_product_id=exclude_product_id
+        )
         
         # Validate category assignment if provided
         if 'category_id' in validated_data:
             ProductValidationService.validate_category_assignment(
-                None, validated_data['category_id']
+                exclude_product_id, validated_data['category_id']
             )
         
         # Validate pricing rules

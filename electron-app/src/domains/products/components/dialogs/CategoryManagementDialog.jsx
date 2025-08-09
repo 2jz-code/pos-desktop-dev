@@ -10,14 +10,6 @@ import {
 } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/shared/components/ui/table";
-import {
 	Dialog,
 	DialogContent,
 	DialogHeader,
@@ -37,6 +29,7 @@ import {
 import { Switch } from "@/shared/components/ui/switch";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
+import DraggableList from "@/shared/components/ui/draggable-list";
 import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 // Inline Order Editor Component
@@ -145,19 +138,22 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		try {
 			const params = {};
 			if (showArchivedCategories) {
-				params.include_archived = 'only';
+				params.include_archived = "only";
 			} else {
 				// When showing active categories, don't send any parameter to get only active records
 				// The backend defaults to showing only active records when no include_archived parameter is provided
 			}
-			
-			console.log('Fetching categories with params:', params);
+
+			console.log("Fetching categories with params:", params);
 			const response = await getCategories(params);
-			console.log('Categories response:', response);
+			console.log("Categories response:", response);
 			const data = response.data?.results || response.data || [];
-			console.log('Processed categories data:', data);
-			const sorted = [...data].sort((a, b) => a.order - b.order);
-			setCategories(sorted);
+			console.log("Processed categories data:", data);
+			// Sort categories by order field for management interface
+			const sortedData = [...data].sort(
+				(a, b) => (a.order || 0) - (b.order || 0)
+			);
+			setCategories(sortedData);
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
 			toast({
@@ -173,11 +169,136 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			const updated = prevCategories.map((cat) =>
 				cat.id === categoryId ? { ...cat, order: newOrder } : cat
 			);
-			// Re-sort categories by order
-			return updated.sort((a, b) => a.order - b.order);
+			// Sort updated categories by order field for management interface
+			return updated.sort((a, b) => (a.order || 0) - (b.order || 0));
 		});
 		// Mark that data has changed
 		setDataChanged(true);
+	};
+
+	const handleReorder = async (
+		reorderedHierarchicalList,
+		sourceIndex,
+		destinationIndex
+	) => {
+		const hierarchicalList = buildHierarchicalList();
+		const sourceItem = hierarchicalList[sourceIndex];
+		const destinationItem = hierarchicalList[destinationIndex];
+
+		// Prevent invalid moves (parent to child position or child to parent position)
+		const isSourceParent = sourceItem.isParent;
+		const isDestinationParent = destinationItem.isParent;
+
+		if (isSourceParent !== isDestinationParent) {
+			toast({
+				title: "Invalid Move",
+				description:
+					"Cannot move parent categories to child positions or vice versa.",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		// For children, ensure they stay within the same parent group
+		if (
+			!isSourceParent &&
+			sourceItem.parent?.id !== destinationItem.parent?.id
+		) {
+			toast({
+				title: "Invalid Move",
+				description:
+					"Child categories can only be reordered within their parent category.",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		// Update order values based on new positions within the same level
+		let updatedCategories;
+		if (isSourceParent) {
+			// Reordering parent categories
+			const parentCategories = categories.filter((cat) => !cat.parent);
+			const childCategories = categories.filter((cat) => cat.parent);
+
+			// Find original parent indices
+			const parentSourceIndex = parentCategories.findIndex(
+				(cat) => cat.id === sourceItem.id
+			);
+			const parentDestinationIndex = parentCategories.findIndex(
+				(cat) => cat.id === destinationItem.id
+			);
+
+			const reorderedParents = Array.from(parentCategories);
+			const [movedParent] = reorderedParents.splice(parentSourceIndex, 1);
+			reorderedParents.splice(parentDestinationIndex, 0, movedParent);
+
+			// Update parent orders
+			const updatedParents = reorderedParents.map((parent, index) => ({
+				...parent,
+				order: index + 1,
+			}));
+
+			updatedCategories = [...updatedParents, ...childCategories];
+		} else {
+			// Reordering child categories within the same parent
+			const parentId = sourceItem.parent.id;
+			const siblingCategories = categories.filter(
+				(cat) => cat.parent?.id === parentId
+			);
+			const otherCategories = categories.filter(
+				(cat) => cat.parent?.id !== parentId
+			);
+
+			const siblingSourceIndex = siblingCategories.findIndex(
+				(cat) => cat.id === sourceItem.id
+			);
+			const siblingDestinationIndex = siblingCategories.findIndex(
+				(cat) => cat.id === destinationItem.id
+			);
+
+			const reorderedSiblings = Array.from(siblingCategories);
+			const [movedChild] = reorderedSiblings.splice(siblingSourceIndex, 1);
+			reorderedSiblings.splice(siblingDestinationIndex, 0, movedChild);
+
+			// Update child orders within parent
+			const updatedSiblings = reorderedSiblings.map((child, index) => ({
+				...child,
+				order: index + 1,
+			}));
+
+			updatedCategories = [...otherCategories, ...updatedSiblings];
+		}
+
+		setCategories(updatedCategories);
+		setDataChanged(true);
+
+		// Save the new order to backend
+		try {
+			const categoriesToUpdate = isSourceParent
+				? updatedCategories.filter((cat) => !cat.parent)
+				: updatedCategories.filter(
+						(cat) => cat.parent?.id === sourceItem.parent.id
+				  );
+
+			for (const category of categoriesToUpdate) {
+				await updateCategory(category.id, {
+					name: category.name,
+					order: category.order,
+				});
+			}
+			toast({
+				title: "Success",
+				description: "Category order updated successfully.",
+			});
+		} catch (error) {
+			console.error("Failed to update category order:", error);
+			toast({
+				title: "Error",
+				description: "Failed to update category order.",
+				variant: "destructive",
+			});
+			fetchCategories();
+		}
 	};
 
 	const handleFormChange = (e) => {
@@ -228,7 +349,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-
 	const handleFormSubmit = async (e) => {
 		e.preventDefault();
 		try {
@@ -252,7 +372,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-
 	const handleArchiveToggle = async (category) => {
 		try {
 			if (category.is_active) {
@@ -274,7 +393,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			fetchCategories();
 		} catch (error) {
 			console.error("Archive/restore error:", error);
-			
+
 			// Better error handling - check for specific error messages
 			let errorMessage = "Failed to update category status.";
 			if (error.response?.status === 403) {
@@ -286,7 +405,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			} else if (error.message) {
 				errorMessage = error.message;
 			}
-			
+
 			toast({
 				title: "Error",
 				description: errorMessage,
@@ -310,13 +429,27 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			]);
 	};
 
-	const flattenedCategories = (parentId = null, level = 0) => {
-		return categories
-			.filter((c) => (c.parent?.id || null) === parentId)
-			.flatMap((c) => [
-				{ ...c, level },
-				...flattenedCategories(c.id, level + 1),
-			]);
+	// Build hierarchical list for drag-and-drop
+	const buildHierarchicalList = () => {
+		const parentCategories = categories
+			.filter((cat) => !cat.parent)
+			.sort((a, b) => (a.order || 0) - (b.order || 0));
+		const hierarchicalList = [];
+
+		parentCategories.forEach((parent) => {
+			hierarchicalList.push({ ...parent, level: 0, isParent: true });
+
+			// Add children of this parent
+			const children = categories
+				.filter((cat) => cat.parent?.id === parent.id)
+				.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+			children.forEach((child) => {
+				hierarchicalList.push({ ...child, level: 1, isParent: false });
+			});
+		});
+
+		return hierarchicalList;
 	};
 
 	return (
@@ -327,7 +460,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			<DialogContent className="!max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
 				<DialogHeader>
 					<DialogTitle>
-						{showArchivedCategories ? "Archived Categories" : "Manage Categories"}
+						{showArchivedCategories
+							? "Archived Categories"
+							: "Manage Categories"}
 					</DialogTitle>
 				</DialogHeader>
 				<div className="flex-1 overflow-hidden">
@@ -346,31 +481,57 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 						</Button>
 						<Button onClick={() => openFormDialog()}>Add Category</Button>
 					</div>
-					<div className="border rounded-lg">
-						<Table>
-							<TableHeader className="sticky top-0 bg-background">
-								<TableRow>
-									<TableHead className="w-[200px]">Name</TableHead>
-									<TableHead className="w-[150px]">Description</TableHead>
-									<TableHead className="w-[100px]">Parent</TableHead>
-									<TableHead className="w-[80px] text-center">Order</TableHead>
-									<TableHead className="w-[80px] text-center">Public</TableHead>
-									<TableHead className="w-[100px] text-center">
-										Actions
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{flattenedCategories().map((category) => (
-									<TableRow 
-										key={category.id}
-										className={category.is_active ? "" : "opacity-60"}
-									>
-										<TableCell
+					<DraggableList
+						items={buildHierarchicalList()}
+						onReorder={handleReorder}
+						getItemId={(item) => item.id}
+						tableStyle={true}
+						showHeaders={true}
+						headers={[
+							{ label: "Name", className: "flex-1" },
+							{ label: "Description", className: "w-[150px]" },
+							{ label: "Parent", className: "w-[100px]" },
+							{ label: "Order", className: "w-[80px] text-center" },
+							{ label: "Public", className: "w-[80px] text-center" },
+							{ label: "Actions", className: "w-[100px] text-center" },
+						]}
+						showEmptyState={true}
+						emptyStateMessage="No categories yet"
+						className="border rounded-lg"
+						renderItem={({ item: category, dragHandle }) => (
+							<div
+								className={`flex items-center gap-3 p-3 ${
+									category.is_active ? "" : "opacity-60"
+								}`}
+							>
+								{dragHandle}
+
+								{/* Name with visual hierarchy indicators */}
+								<div className="flex-1">
+									<div className="flex items-center">
+										{/* Visual indicator for hierarchy level */}
+										{category.level > 0 && (
+											<>
+												<div className="w-4 h-4 mr-2 flex items-center justify-center">
+													<div className="w-2 h-px bg-gray-300"></div>
+												</div>
+												<span className="text-gray-400 text-xs mr-2">└</span>
+											</>
+										)}
+										{/* Parent indicator icon */}
+										{category.isParent && (
+											<span className="text-blue-600 text-xs mr-2 font-semibold">
+												●
+											</span>
+										)}
+										<div
 											className={`font-medium ${
 												category.is_active ? "" : "line-through text-gray-500"
+											} ${
+												category.isParent
+													? "text-blue-800 font-semibold"
+													: "text-gray-700"
 											}`}
-											style={{ paddingLeft: `${category.level * 20 + 12}px` }}
 										>
 											{category.name}
 											{!category.is_active && (
@@ -378,79 +539,88 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 													(Archived)
 												</span>
 											)}
-										</TableCell>
-										<TableCell className="text-slate-600 dark:text-slate-400 truncate max-w-[150px]">
-											{category.description || "—"}
-										</TableCell>
-										<TableCell>
-											{category.parent?.name ? (
-												<Badge
-													variant="outline"
-													className="text-xs"
-												>
-													{category.parent.name}
-												</Badge>
-											) : (
-												<span className="text-slate-500 dark:text-slate-400 text-xs">
-													None
-												</span>
-											)}
-										</TableCell>
-										<TableCell className="text-center">
-											<InlineOrderEditor
-												category={category}
-												onOrderChange={handleOrderChange}
-											/>
-										</TableCell>
-										<TableCell className="text-center">
-											<Badge
-												variant={category.is_public ? "default" : "outline"}
-												className={`text-xs ${
-													category.is_public
-														? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-														: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-												}`}
-											>
-												{category.is_public ? "Public" : "Private"}
-											</Badge>
-										</TableCell>
-										<TableCell>
-											<div className="flex items-center justify-center gap-1">
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => openFormDialog(category)}
-													className="h-8 w-8 p-0"
-												>
-													<Edit className="h-4 w-4" />
-													<span className="sr-only">Edit category</span>
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleArchiveToggle(category)}
-													className={`h-8 w-8 p-0 ${
-														category.is_active 
-															? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
-															: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-													}`}
-												>
-													{category.is_active ? (
-														<Archive className="h-4 w-4" />
-													) : (
-														<ArchiveRestore className="h-4 w-4" />
-													)}
-													<span className="sr-only">
-														{category.is_active ? "Archive category" : "Restore category"}
-													</span>
-												</Button>
-											</div>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</div>
+										</div>
+									</div>
+								</div>
+
+								{/* Description */}
+								<div className="w-[150px] text-slate-600 dark:text-slate-400 truncate text-sm">
+									{category.description || "—"}
+								</div>
+
+								{/* Parent */}
+								<div className="w-[100px]">
+									{category.parent?.name ? (
+										<Badge
+											variant="outline"
+											className="text-xs"
+										>
+											{category.parent.name}
+										</Badge>
+									) : (
+										<span className="text-slate-500 dark:text-slate-400 text-xs">
+											None
+										</span>
+									)}
+								</div>
+
+								{/* Order */}
+								<div className="w-[80px] text-center">
+									<span className="text-sm font-medium">
+										{category.order || 0}
+									</span>
+								</div>
+
+								{/* Public */}
+								<div className="w-[80px] text-center">
+									<Badge
+										variant={category.is_public ? "default" : "outline"}
+										className={`text-xs ${
+											category.is_public
+												? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+												: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+										}`}
+									>
+										{category.is_public ? "Public" : "Private"}
+									</Badge>
+								</div>
+
+								{/* Actions */}
+								<div className="w-[100px] flex items-center justify-center gap-1">
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => openFormDialog(category)}
+										className="h-8 w-8 p-0"
+									>
+										<Edit className="h-4 w-4" />
+										<span className="sr-only">Edit category</span>
+									</Button>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => handleArchiveToggle(category)}
+										className={`h-8 w-8 p-0 ${
+											category.is_active
+												? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
+												: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+										}`}
+									>
+										{category.is_active ? (
+											<Archive className="h-4 w-4" />
+										) : (
+											<ArchiveRestore className="h-4 w-4" />
+										)}
+										<span className="sr-only">
+											{category.is_active
+												? "Archive category"
+												: "Restore category"}
+										</span>
+									</Button>
+								</div>
+							</div>
+						)}
+					/>
 				</div>
 			</DialogContent>
 
@@ -556,7 +726,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					</form>
 				</DialogContent>
 			</Dialog>
-
 		</Dialog>
 	);
 }
