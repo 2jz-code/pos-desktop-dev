@@ -239,6 +239,12 @@ class ProductService:
         if not hasattr(product, "product_modifier_sets"):
             return {'sets_to_return': [], 'options_map': {}, 'triggered_map': {}}
 
+        # Only clear cache if we're in a context where modifiers might have changed
+        # For normal read operations (serialization), use prefetched data for performance
+        if context and context.get('force_refresh_modifiers', False):
+            prefetch_cache = getattr(product, '_prefetched_objects_cache', {})
+            prefetch_cache.pop('product_modifier_sets', None)
+        
         product_modifier_sets = product.product_modifier_sets.all()
 
         # If there are no modifier sets, return empty structure
@@ -652,7 +658,12 @@ class ProductSearchService:
         """
         queryset = Product.objects.select_related(
             "category", "product_type"
-        ).prefetch_related("taxes")
+        ).prefetch_related(
+            "taxes",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options", 
+            "product_modifier_sets__extra_options"
+        )
         
         if include_archived:
             queryset = queryset.with_archived()

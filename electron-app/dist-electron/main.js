@@ -15,7 +15,7 @@ path.dirname(__filename$1);
 function printLine(printer, left, right) {
   printer.leftRight(left, right);
 }
-async function formatReceipt(order, storeSettings = null) {
+async function formatReceipt(order, storeSettings = null, isTransaction = false) {
   var _a, _b;
   let printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
@@ -66,6 +66,17 @@ async function formatReceipt(order, storeSettings = null) {
   });
   printer.println(`Order #: ${orderId}`);
   printer.println(`Date: ${orderDate}`);
+  if (isTransaction) {
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println("--- TRANSACTION RECEIPT ---");
+    printer.bold(false);
+    printer.alignLeft();
+    if (order.status) {
+      printer.println(`Order Status: ${order.status}`);
+    }
+    printer.println("** Payment Not Yet Processed **");
+  }
   printer.println("");
   printer.alignCenter();
   printer.bold(true);
@@ -121,30 +132,38 @@ async function formatReceipt(order, storeSettings = null) {
   );
   printer.bold(false);
   printer.println("");
-  const transactions = ((_b = order.payment_details) == null ? void 0 : _b.transactions) || [];
-  if (transactions.length > 0) {
-    printer.bold(true);
-    printer.println("Payment Details:");
-    printer.bold(false);
-    for (const [index, txn] of transactions.entries()) {
-      const method = (txn.method || "N/A").toUpperCase();
-      const amount = parseFloat(txn.amount).toFixed(2);
-      printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
-      if (method === "CASH") {
-        const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
-        const change = parseFloat(txn.change || 0).toFixed(2);
-        if (parseFloat(tendered) > 0) {
-          printLine(printer, "   Tendered:", `$${tendered}`);
-          printLine(printer, "   Change:", `$${change}`);
-        }
-      } else if (method === "CREDIT" && txn.metadata) {
-        const brand = txn.metadata.card_brand || "";
-        const last4 = txn.metadata.card_last4 || "";
-        if (brand && last4) {
-          printer.println(`    ${brand} ****${last4}`);
+  if (!isTransaction) {
+    const transactions = ((_b = order.payment_details) == null ? void 0 : _b.transactions) || [];
+    if (transactions.length > 0) {
+      printer.bold(true);
+      printer.println("Payment Details:");
+      printer.bold(false);
+      for (const [index, txn] of transactions.entries()) {
+        const method = (txn.method || "N/A").toUpperCase();
+        const amount = parseFloat(txn.amount).toFixed(2);
+        printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
+        if (method === "CASH") {
+          const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
+          const change = parseFloat(txn.change || 0).toFixed(2);
+          if (parseFloat(tendered) > 0) {
+            printLine(printer, "   Tendered:", `$${tendered}`);
+            printLine(printer, "   Change:", `$${change}`);
+          }
+        } else if (method === "CREDIT" && txn.metadata) {
+          const brand = txn.metadata.card_brand || "";
+          const last4 = txn.metadata.card_last4 || "";
+          if (brand && last4) {
+            printer.println(`    ${brand} ****${last4}`);
+          }
         }
       }
     }
+  } else {
+    printer.bold(true);
+    printer.println("Payment Information:");
+    printer.bold(false);
+    printer.println("This is a transaction receipt.");
+    printer.println("Payment will be processed separately.");
   }
   printer.println("");
   printer.alignCenter();
@@ -527,14 +546,16 @@ async function sendBufferToPrinter(printer, buffer) {
 }
 ipcMain.handle(
   "print-receipt",
-  async (event, { printer, data, storeSettings }) => {
+  async (event, { printer, data, storeSettings, isTransaction = false }) => {
     console.log("\n--- [Main Process] Using HYBRID print method ---");
     console.log(
       "[Main Process] Store settings:",
-      storeSettings ? "provided" : "not provided"
+      storeSettings ? "provided" : "not provided",
+      "isTransaction:",
+      isTransaction
     );
     try {
-      const buffer = await formatReceipt(data, storeSettings);
+      const buffer = await formatReceipt(data, storeSettings, isTransaction);
       console.log(
         `[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
       );

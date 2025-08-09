@@ -26,7 +26,7 @@ function printLine(printer, left, right) {
  * @param {object} storeSettings - Store configuration from backend (optional, falls back to hardcoded values).
  * @returns {Buffer} The raw command buffer for the printer.
  */
-export async function formatReceipt(order, storeSettings = null) {
+export async function formatReceipt(order, storeSettings = null, isTransaction = false) {
 	let printer = new ThermalPrinter({
 		type: PrinterTypes.EPSON,
 		characterSet: "PC437_USA",
@@ -95,6 +95,21 @@ export async function formatReceipt(order, storeSettings = null) {
 	});
 	printer.println(`Order #: ${orderId}`);
 	printer.println(`Date: ${orderDate}`);
+	
+	// Show transaction receipt header and order status for non-completed orders
+	if (isTransaction) {
+		printer.alignCenter();
+		printer.bold(true);
+		printer.println("--- TRANSACTION RECEIPT ---");
+		printer.bold(false);
+		printer.alignLeft();
+		
+		if (order.status) {
+			printer.println(`Order Status: ${order.status}`);
+		}
+		printer.println("** Payment Not Yet Processed **");
+	}
+	
 	printer.println("");
 
 	// --- Items ---
@@ -167,32 +182,41 @@ export async function formatReceipt(order, storeSettings = null) {
 	printer.println("");
 
 	// --- Payment Details ---
-	const transactions = order.payment_details?.transactions || [];
-	if (transactions.length > 0) {
-		printer.bold(true);
-		printer.println("Payment Details:");
-		printer.bold(false);
+	if (!isTransaction) {
+		const transactions = order.payment_details?.transactions || [];
+		if (transactions.length > 0) {
+			printer.bold(true);
+			printer.println("Payment Details:");
+			printer.bold(false);
 
-		for (const [index, txn] of transactions.entries()) {
-			const method = (txn.method || "N/A").toUpperCase();
-			const amount = parseFloat(txn.amount).toFixed(2);
-			printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
+			for (const [index, txn] of transactions.entries()) {
+				const method = (txn.method || "N/A").toUpperCase();
+				const amount = parseFloat(txn.amount).toFixed(2);
+				printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
 
-			if (method === "CASH") {
-				const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
-				const change = parseFloat(txn.change || 0).toFixed(2);
-				if (parseFloat(tendered) > 0) {
-					printLine(printer, "   Tendered:", `$${tendered}`);
-					printLine(printer, "   Change:", `$${change}`);
-				}
-			} else if (method === "CREDIT" && txn.metadata) {
-				const brand = txn.metadata.card_brand || "";
-				const last4 = txn.metadata.card_last4 || "";
-				if (brand && last4) {
-					printer.println(`    ${brand} ****${last4}`);
+				if (method === "CASH") {
+					const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
+					const change = parseFloat(txn.change || 0).toFixed(2);
+					if (parseFloat(tendered) > 0) {
+						printLine(printer, "   Tendered:", `$${tendered}`);
+						printLine(printer, "   Change:", `$${change}`);
+					}
+				} else if (method === "CREDIT" && txn.metadata) {
+					const brand = txn.metadata.card_brand || "";
+					const last4 = txn.metadata.card_last4 || "";
+					if (brand && last4) {
+						printer.println(`    ${brand} ****${last4}`);
+					}
 				}
 			}
 		}
+	} else {
+		// For transaction receipts, show a note about payment
+		printer.bold(true);
+		printer.println("Payment Information:");
+		printer.bold(false);
+		printer.println("This is a transaction receipt.");
+		printer.println("Payment will be processed separately.");
 	}
 
 	// --- Footer ---

@@ -7,14 +7,16 @@ export const discoverPrinters = () => {
 	return hardwareApi.invoke("discover-printers");
 };
 
-export const printReceipt = (printer, data, storeSettings = null) => {
+export const printReceipt = (printer, data, storeSettings = null, isTransaction = false) => {
 	console.log(
 		"[printerService] Invoking 'print-receipt' in main process with printer:",
 		printer,
 		"and store settings:",
-		storeSettings ? "provided" : "not provided"
+		storeSettings ? "provided" : "not provided",
+		"isTransaction:",
+		isTransaction
 	);
-	return hardwareApi.invoke("print-receipt", { printer, data, storeSettings });
+	return hardwareApi.invoke("print-receipt", { printer, data, storeSettings, isTransaction });
 };
 
 // --- UPDATE THIS FUNCTION ---

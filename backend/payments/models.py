@@ -77,21 +77,27 @@ class Payment(models.Model):
         help_text=_("Stripe Payment Intent ID for guest payments"),
     )
 
-    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The payment ID from the old system.")
+    legacy_id = models.IntegerField(
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="The payment ID from the old system.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "payment_number"]
         verbose_name = _("Payment")
         verbose_name_plural = _("Payments")
         indexes = [
-            models.Index(fields=['status'], name='payment_status_idx'),
-            models.Index(fields=['order', 'status'], name='payment_order_status_idx'),
-            models.Index(fields=['created_at'], name='payment_created_at_idx'),
-            models.Index(fields=['order'], name='payment_order_idx'),
-            models.Index(fields=['payment_number'], name='payment_number_idx'),
+            models.Index(fields=["status"], name="payment_status_idx"),
+            models.Index(fields=["order", "status"], name="payment_order_status_idx"),
+            models.Index(fields=["created_at"], name="payment_created_at_idx"),
+            models.Index(fields=["order"], name="payment_order_idx"),
+            models.Index(fields=["payment_number"], name="payment_number_idx"),
         ]
 
     def __str__(self):
@@ -105,13 +111,13 @@ class Payment(models.Model):
     # --- ADD THIS SAVE METHOD AND HELPER FUNCTION ---
     def save(self, *args, **kwargs):
         from django.utils import timezone
-        
+
         # Auto-set created_at and updated_at if not provided
         if not self.created_at:
             self.created_at = timezone.now()
         if not self.updated_at:
             self.updated_at = timezone.now()
-        
+
         if not self.payment_number:
             max_retries = 5
             for _ in range(max_retries):
@@ -247,7 +253,13 @@ class PaymentTransaction(models.Model):
         blank=True, null=True, help_text="Reason for the refund."
     )
 
-    legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The transaction ID from the old system.")
+    legacy_id = models.IntegerField(
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="The transaction ID from the old system.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
 
@@ -260,9 +272,10 @@ class PaymentTransaction(models.Model):
         # Auto-set created_at if not provided (like auto_now_add but allows override)
         if not self.created_at:
             from django.utils import timezone
+
             self.created_at = timezone.now()
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return (
             f"Transaction {self.id} ({self.method}) for {self.amount} - {self.status}"
@@ -341,29 +354,29 @@ class GiftCard(models.Model):
         # Set current_balance to original_balance if it's a new instance
         if not self.pk and self.current_balance is None:
             self.current_balance = self.original_balance
-        
+
         # Update status based on balance
         if self.current_balance <= 0:
             self.status = self.GiftCardStatus.REDEEMED
         elif self.status == self.GiftCardStatus.REDEEMED and self.current_balance > 0:
             self.status = self.GiftCardStatus.ACTIVE
-            
+
         super().save(*args, **kwargs)
 
     @property
     def is_valid(self):
         """Check if the gift card is valid for use"""
         from django.utils import timezone
-        
+
         if self.status != self.GiftCardStatus.ACTIVE:
             return False
-        
+
         if self.current_balance <= 0:
             return False
-            
+
         if self.expiry_date and self.expiry_date < timezone.now():
             return False
-            
+
         return True
 
     def can_pay_amount(self, amount):
@@ -377,12 +390,13 @@ class GiftCard(models.Model):
         """
         if not self.is_valid:
             return Decimal("0.00")
-        
+
         amount_to_use = min(amount, self.current_balance)
         self.current_balance -= amount_to_use
-        
+
         from django.utils import timezone
+
         self.last_used_date = timezone.now()
-        
+
         self.save()
         return amount_to_use

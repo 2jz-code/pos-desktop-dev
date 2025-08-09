@@ -13,6 +13,7 @@ from django.db.models import Prefetch
 
 class OrderItemProductSerializer(BaseModelSerializer):
     """Lightweight product serializer for use within OrderItemSerializer"""
+    modifier_groups = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -24,7 +25,42 @@ class OrderItemProductSerializer(BaseModelSerializer):
             "is_active",
             "barcode",
             "track_inventory",
+            "modifier_groups",
         ]
+        prefetch_related_fields = [
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options",
+            "product_modifier_sets__extra_options",
+        ]
+
+    def get_modifier_groups(self, obj):
+        """Get modifier groups using service layer - optimized for performance"""
+        from products.services import ProductService
+        from products.serializers import FinalProductModifierSetSerializer
+        
+        # Quick check - if no modifier sets, return empty array immediately
+        if not hasattr(obj, 'product_modifier_sets') or not obj.product_modifier_sets.exists():
+            return []
+        
+        try:
+            structured_data = ProductService.get_structured_modifier_groups_for_product(
+                obj, context=self.context
+            )
+            
+            context = self.context.copy() if self.context else {}
+            context["options_for_set"] = structured_data['options_map']
+            context["triggered_sets_for_option"] = structured_data['triggered_map']
+            
+            return FinalProductModifierSetSerializer(
+                structured_data['sets_to_return'],
+                many=True,
+                context=context
+            ).data
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to get modifier groups for product {obj.id}: {e}")
+            return []
 
 
 class OrderItemModifierSerializer(BaseModelSerializer):

@@ -36,6 +36,23 @@ const ProductModifierSelectorContent = ({
 
   // Get modifier sets for this product (they should already be in the correct order)
   const modifierSets = product?.modifier_groups || [];
+  
+  // Debug logging to understand the data being passed (only once when dialog opens)
+  useEffect(() => {
+    if (open) {
+      console.log(`=== ProductModifierSelector Debug (${editMode ? 'Edit' : 'Add'} Mode) ===`);
+      console.log('Product received:', product);
+      console.log('Product modifier_groups:', product?.modifier_groups);
+      console.log('Product modifier_groups type:', typeof product?.modifier_groups);
+      console.log('Product modifier_groups length:', product?.modifier_groups?.length);
+      console.log('Modifier sets length:', modifierSets.length);
+      console.log('modifierSets array:', modifierSets);
+      if (editMode) {
+        console.log('Existing selections:', existingSelections);
+      }
+      console.log('=== End Debug ===');
+    }
+  }, [open, editMode]); // Removed modifierSets and other dependencies to prevent infinite loop
 
   // Helper function to find option in modifier sets
   const findOptionInSets = (optionId) => {
@@ -50,26 +67,40 @@ const ProductModifierSelectorContent = ({
   // Initialize existing selections for edit mode
   useEffect(() => {
     if (editMode && existingSelections?.length > 0) {
+      console.log('Initializing existing selections for edit mode:', existingSelections);
+      console.log('Available modifier sets:', modifierSets);
+      
       const initialSelections = {};
       
-      // Group existing selections by modifier set
+      // Process each existing selection
       existingSelections.forEach(selection => {
-        // Find which modifier set this option belongs to
-        for (const modifierSet of modifierSets) {
+        // Find the correct modifier set by name
+        const modifierSet = modifierSets.find(ms => ms.name === selection.modifier_set_name);
+        
+        if (modifierSet) {
+          // Find the correct option within that specific modifier set
           const option = modifierSet.options?.find(opt => opt.name === selection.option_name);
+          
           if (option) {
             if (!initialSelections[modifierSet.id]) {
               initialSelections[modifierSet.id] = [];
             }
+            
             initialSelections[modifierSet.id].push({
               option_id: option.id,
               quantity: selection.quantity || 1
             });
-            break;
+            
+            console.log(`Matched selection: ${selection.modifier_set_name} -> ${selection.option_name} (ID: ${option.id})`);
+          } else {
+            console.warn(`Option not found: ${selection.option_name} in modifier set ${selection.modifier_set_name}`);
           }
+        } else {
+          console.warn(`Modifier set not found: ${selection.modifier_set_name}`);
         }
       });
       
+      console.log('Final initial selections:', initialSelections);
       setSelectedModifiers(initialSelections);
     }
   }, [editMode, existingSelections, modifierSets]);

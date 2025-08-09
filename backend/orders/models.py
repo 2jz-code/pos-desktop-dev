@@ -147,8 +147,8 @@ class Order(models.Model):
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order ID from the old system.")
 
     class Meta:
-        # Consider ordering by `created_at` or `pk` for consistent numbering if `order_number` is null
-        ordering = ["order_number", "created_at"]
+        # Show newest orders first, with order_number as secondary sort for same timestamps
+        ordering = ["-created_at", "order_number"]
         verbose_name = _("Order")
         verbose_name_plural = _("Orders")
         indexes = [

@@ -21,6 +21,7 @@ from .serializers import (
     ProductCreateSerializer,
     ProductSyncSerializer,
     OptimizedProductSerializer,
+    POSProductSerializer,
     CategorySerializer,
     TaxSerializer,
     ProductTypeSerializer,
@@ -274,7 +275,7 @@ class ProductViewSet(BaseViewSet):
         if self.action == "list":
             if is_for_website:
                 return ProductSerializer  # Full serializer with description for customer site
-            return OptimizedProductSerializer  # Fast list view with minimal fields for admin
+            return POSProductSerializer  # Lightweight POS serializer with modifier detection
         elif self.action in ["create", "update", "partial_update"]:
             return ProductCreateSerializer
         return ProductSerializer  # Full detail view

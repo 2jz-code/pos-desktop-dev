@@ -78,6 +78,13 @@ class ProductModifierSetSerializer(BaseModelSerializer):
         source="modifier_set.max_selections", read_only=True
     )
     options = serializers.SerializerMethodField()
+    
+    # Add the field needed for creation
+    modifier_set_id = serializers.PrimaryKeyRelatedField(
+        source="modifier_set",
+        queryset=ModifierSet.objects.all(),
+        write_only=True
+    )
 
     class Meta:
         model = ProductModifierSet
@@ -90,6 +97,7 @@ class ProductModifierSetSerializer(BaseModelSerializer):
             "max_selections",
             "display_order",
             "options",
+            "modifier_set_id",
         ]
         select_related_fields = ["modifier_set", "product"]
         prefetch_related_fields = ["modifier_set__options", "hidden_options", "extra_options"]
@@ -158,7 +166,7 @@ class FinalModifierOptionSerializer(BaseModelSerializer):
         return getattr(obj, "is_hidden_for_product", False)
 
 
-class FinalProductModifierSetSerializer(BaseModelSerializer):
+class FinalProductModifierSetSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     internal_name = serializers.CharField()
@@ -310,6 +318,71 @@ class OptimizedProductSerializer(BaseModelSerializer):
         model = Product
         fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category']
         select_related_fields = ['category']
+
+
+class POSProductSerializer(BaseModelSerializer):
+    """POS serializer with complete modifier data for editing functionality"""
+    category = serializers.SerializerMethodField()
+    has_modifiers = serializers.SerializerMethodField()
+    modifier_summary = serializers.SerializerMethodField()
+    modifier_groups = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'price', 'barcode', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups']
+        select_related_fields = ['category']
+        prefetch_related_fields = [
+            'product_modifier_sets__modifier_set__options',
+            'product_modifier_sets__hidden_options',
+            'product_modifier_sets__extra_options',
+        ]
+    
+    def get_category(self, obj):
+        """Return minimal category info that POS expects"""
+        if obj.category:
+            return {
+                'id': obj.category.id,
+                'name': obj.category.name,
+                'order': obj.category.order
+            }
+        return None
+    
+    def get_has_modifiers(self, obj):
+        return hasattr(obj, 'product_modifier_sets') and obj.product_modifier_sets.exists()
+    
+    def get_modifier_summary(self, obj):
+        """Return just count of modifier groups, not full data"""
+        if hasattr(obj, 'product_modifier_sets'):
+            return obj.product_modifier_sets.count()
+        return 0
+    
+    def get_modifier_groups(self, obj):
+        """Get modifier groups using service layer - optimized for performance"""
+        from .services import ProductService
+        
+        # Quick check - if no modifier sets, return empty array immediately
+        if not hasattr(obj, 'product_modifier_sets') or not obj.product_modifier_sets.exists():
+            return []
+        
+        try:
+            structured_data = ProductService.get_structured_modifier_groups_for_product(
+                obj, context=self.context
+            )
+            
+            context = self.context.copy() if self.context else {}
+            context["options_for_set"] = structured_data['options_map']
+            context["triggered_sets_for_option"] = structured_data['triggered_map']
+            
+            return FinalProductModifierSetSerializer(
+                structured_data['sets_to_return'],
+                many=True,
+                context=context
+            ).data
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to get modifier groups for product {obj.id}: {e}")
+            return []
 
 
 class ProductSyncSerializer(BaseModelSerializer):

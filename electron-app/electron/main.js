@@ -259,14 +259,16 @@ async function sendBufferToPrinter(printer, buffer) {
 
 ipcMain.handle(
 	"print-receipt",
-	async (event, { printer, data, storeSettings }) => {
+	async (event, { printer, data, storeSettings, isTransaction = false }) => {
 		console.log("\n--- [Main Process] Using HYBRID print method ---");
 		console.log(
 			"[Main Process] Store settings:",
-			storeSettings ? "provided" : "not provided"
+			storeSettings ? "provided" : "not provided",
+			"isTransaction:",
+			isTransaction
 		);
 		try {
-			const buffer = await formatReceipt(data, storeSettings);
+			const buffer = await formatReceipt(data, storeSettings, isTransaction);
 			console.log(
 				`[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
 			);

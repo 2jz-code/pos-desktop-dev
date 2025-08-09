@@ -11,16 +11,24 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle } from "lucide-react";
+import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle, Printer } from "lucide-react";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
+import { printReceipt } from "@/shared/lib/hardware/printerService";
+import { getReceiptFormatData } from "@/domains/settings/services/settingsService";
+import { toast } from "@/shared/components/ui/use-toast";
 import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
-	const { clearCart, holdOrder, items } = usePosStore(
+	const { clearCart, holdOrder, items, subtotal, total, taxAmount, totalDiscountsAmount, surchargesAmount } = usePosStore(
 		(state) => ({
 			clearCart: state.clearCart,
 			holdOrder: state.holdOrder,
 			items: state.items,
+			subtotal: state.subtotal,
+			total: state.total,
+			taxAmount: state.taxAmount,
+			totalDiscountsAmount: state.totalDiscountsAmount,
+			surchargesAmount: state.surchargesAmount,
 		}),
 		shallow
 	);
@@ -56,6 +64,60 @@ const CartActionsDropdown = () => {
 				holdOrder();
 			},
 		});
+	};
+
+	const handlePrintTransactionReceipt = async () => {
+		try {
+			// Find the receipt printer
+			const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+			
+			if (!receiptPrinter) {
+				toast({
+					title: "Printer Error",
+					description: "No receipt printer is configured.",
+					variant: "destructive",
+				});
+				return;
+			}
+
+			// Convert cart items to order-like format for receipt printing
+			const currentTime = new Date().toISOString();
+			const orderData = {
+				id: `CART-${Date.now()}`, // Temporary ID for cart
+				order_number: `CART-${Date.now()}`,
+				created_at: currentTime,
+				status: "PENDING",
+				order_type: "POS",
+				items: items, // Cart items already have the correct structure with price_at_sale
+				subtotal: subtotal || 0,
+				tax_total: taxAmount || 0,
+				total_with_tip: total || 0,
+				total_discounts_amount: totalDiscountsAmount || 0,
+				surcharges_total: surchargesAmount || 0,
+				payment_details: null, // No payment for transaction receipt
+			};
+
+			// Fetch store settings for receipt formatting
+			let storeSettings = null;
+			try {
+				storeSettings = await getReceiptFormatData();
+			} catch (error) {
+				console.warn("Failed to fetch store settings, using fallback values:", error);
+			}
+
+			await printReceipt(receiptPrinter, orderData, storeSettings, true); // Pass true for isTransaction
+			toast({
+				title: "Success",
+				description: "Transaction receipt sent to printer.",
+			});
+		} catch (error) {
+			toast({
+				title: "Printing Error",
+				description: error.message || "Could not print the transaction receipt.",
+				variant: "destructive",
+			});
+			console.error("Error printing transaction receipt:", error);
+		}
 	};
 
 	const handleOpenCashDrawer = async () => {
@@ -113,6 +175,14 @@ const CartActionsDropdown = () => {
 				>
 					<PauseCircle className="mr-2 h-4 w-4" />
 					<span>Hold Order</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={handlePrintTransactionReceipt}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+				>
+					<Printer className="mr-2 h-4 w-4" />
+					<span>Print Transaction Receipt</span>
 				</DropdownMenuItem>
 				{canOpenCashDrawer && (
 					<DropdownMenuItem

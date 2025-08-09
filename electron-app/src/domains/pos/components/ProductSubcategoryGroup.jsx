@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 
 export const ProductCard = ({ product }) => {
 	const [showModifierSelector, setShowModifierSelector] = useState(false);
+	
 	const { addItem, addItemWithModifiers, addingItemId } = usePosStore((state) => ({
 		addItem: state.addItem,
 		addItemWithModifiers: state.addItemWithModifiers,
@@ -14,7 +15,7 @@ export const ProductCard = ({ product }) => {
 	}));
 
 	const isAdding = addingItemId === product.id;
-	const hasModifiers = product.modifier_groups && product.modifier_groups.length > 0;
+	const hasModifiers = product.has_modifiers || (product.modifier_groups && product.modifier_groups.length > 0);
 
 	const handleProductClick = () => {
 		if (isAdding) return;

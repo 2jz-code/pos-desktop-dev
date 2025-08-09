@@ -91,7 +91,8 @@ class OrderViewSet(BaseViewSet):
     # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_fields = ["status", "payment_status", "order_type"]
     search_fields = ["id", "customer__username", "cashier__username"]
-    ordering_fields = ["created_at", "grand_total"]
+    ordering_fields = ["created_at", "grand_total", "order_number"]
+    ordering = ["-created_at"]  # Override BaseViewSet default to show newest orders first
 
     def get_serializer_class(self):
         """

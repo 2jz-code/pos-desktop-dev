@@ -16,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction, connection
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
+from django.db.models.signals import post_save, post_delete
 
 from users.models import User
 from products.models import Product, Category, ProductType
@@ -27,6 +28,10 @@ from inventory.models import Location, InventoryStock
 
 class Command(BaseCommand):
     help = 'Migrate data from legacy schema to new POS system'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.disconnected_signals = []
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -74,9 +79,15 @@ class Command(BaseCommand):
                 self.style.ERROR(f'Migration failed: {str(e)}')
             )
             raise
+        finally:
+            # Always reconnect signals, even if migration fails
+            self.reconnect_all_signals()
 
     def run_all_migrations(self):
         """Run all migration steps in correct order"""
+        # Disconnect signals at the start of full migration
+        self.disconnect_all_signals()
+        
         steps = ['users', 'categories', 'products', 'orders', 'payments']
         
         for step in steps:
@@ -95,6 +106,10 @@ class Command(BaseCommand):
 
     def run_migration_step(self, step):
         """Run a specific migration step"""
+        # For individual steps that might trigger signals, disconnect them
+        if step in ['orders', 'payments']:
+            self.disconnect_all_signals()
+            
         if step == 'users':
             self.migrate_users()
         elif step == 'categories':
@@ -111,6 +126,77 @@ class Command(BaseCommand):
             self.cleanup_post_migration()
         else:
             raise CommandError(f'Unknown migration step: {step}')
+
+    def disconnect_all_signals(self):
+        """Disconnect all signals that could interfere with migration"""
+        self.stdout.write(
+            self.style.WARNING('Disconnecting signals to prevent emails and notifications during migration...')
+        )
+        
+        # Store signal-handler pairs for reconnection
+        try:
+            # Import signals that we need to disconnect
+            from payments.signals import payment_completed
+            from orders.signals import web_order_ready_for_notification
+            from orders.models import Order
+            from payments.models import Payment
+            
+            # Disconnect post_save signals
+            from notifications.signals import handle_order_status_completion, handle_payment_completed
+            
+            # Store original connections
+            self.disconnected_signals = [
+                ('post_save', Order, handle_order_status_completion),
+                ('payment_completed', None, handle_payment_completed),
+            ]
+            
+            # Disconnect signals
+            post_save.disconnect(handle_order_status_completion, sender=Order)
+            payment_completed.disconnect(handle_payment_completed)
+            
+            self.stdout.write(
+                self.style.SUCCESS(f'✓ Disconnected {len(self.disconnected_signals)} signal handlers')
+            )
+            
+        except ImportError as e:
+            self.stdout.write(
+                self.style.WARNING(f'Some signal handlers not found (this is OK): {e}')
+            )
+        except Exception as e:
+            self.stdout.write(
+                self.style.WARNING(f'Error disconnecting signals: {e}')
+            )
+
+    def reconnect_all_signals(self):
+        """Reconnect all previously disconnected signals"""
+        if not self.disconnected_signals:
+            return
+            
+        self.stdout.write(
+            self.style.WARNING('Reconnecting signals...')
+        )
+        
+        try:
+            from payments.signals import payment_completed
+            from orders.models import Order
+            from notifications.signals import handle_order_status_completion, handle_payment_completed
+            
+            # Reconnect signals
+            for signal_type, sender, handler in self.disconnected_signals:
+                if signal_type == 'post_save':
+                    post_save.connect(handler, sender=sender)
+                elif signal_type == 'payment_completed':
+                    payment_completed.connect(handler)
+            
+            self.stdout.write(
+                self.style.SUCCESS(f'✓ Reconnected {len(self.disconnected_signals)} signal handlers')
+            )
+            self.disconnected_signals = []
+            
+        except Exception as e:
+            self.stdout.write(
+                self.style.ERROR(f'Error reconnecting signals: {e}')
+            )
 
     def get_legacy_data(self, query):
         """Execute query against legacy schema"""
@@ -370,7 +456,9 @@ class Command(BaseCommand):
         with transaction.atomic():
             orders_to_create = []
             
-            for order_data in legacy_orders:
+            self.stdout.write(f'Processing {len(legacy_orders)} orders in chronological order (oldest first)...')
+            
+            for index, order_data in enumerate(legacy_orders, 1):
                 # Map legacy status to new status
                 status_mapping = {
                     'pending': Order.OrderStatus.PENDING,
@@ -426,8 +514,13 @@ class Command(BaseCommand):
                         )
                     )
                 
+                # Pre-assign order number to ensure chronological order
+                # Oldest order gets ORD-00001, newest gets highest number
+                order_number = f"ORD-{index:05d}"
+                
                 order = Order(
                     id=uuid.uuid4(),
+                    order_number=order_number,  # Pre-assign to ensure chronological order
                     status=status_mapping.get(order_data['status'], Order.OrderStatus.PENDING),
                     order_type=order_type_mapping.get(order_data['source'], Order.OrderType.POS),
                     payment_status=payment_status_mapping.get(
@@ -540,6 +633,7 @@ class Command(BaseCommand):
             return
 
         # Enhanced payment query to get order financial data (excluding payments for in progress/pending orders)
+        # Process in chronological order (oldest first) to maintain numbering consistency
         payment_query = """
         SELECT p.id, p.amount, p.status, p.created_at, p.updated_at, p.order_id,
                p.payment_method, p.is_split_payment,
@@ -551,6 +645,7 @@ class Command(BaseCommand):
         )
         AND o.status NOT IN ('in_progress', 'pending')
         AND o.payment_status != 'pending'
+        ORDER BY p.created_at ASC
         """
         
         legacy_payments = self.get_legacy_data(payment_query)
@@ -558,7 +653,9 @@ class Command(BaseCommand):
         with transaction.atomic():
             payments_to_create = []
             
-            for payment_data in legacy_payments:
+            self.stdout.write(f'Processing {len(legacy_payments)} payments in chronological order (oldest first)...')
+            
+            for index, payment_data in enumerate(legacy_payments, 1):
                 # Find the migrated order
                 try:
                     order = Order.objects.get(legacy_id=payment_data['order_id'])
@@ -578,6 +675,10 @@ class Command(BaseCommand):
                     'refunded': Payment.PaymentStatus.REFUNDED,
                 }
                 
+                # Pre-assign payment number to ensure chronological order
+                # Oldest payment gets PAY-00001, newest gets highest number
+                payment_number = f"PAY-{index:05d}"
+                
                 # Fixed financial mapping: Payment stores full financial picture
                 tip_amount = Decimal(str(payment_data['tip_amount'] or 0))
                 surcharge_amount = Decimal(str(payment_data['surcharge_amount'] or 0))
@@ -587,6 +688,7 @@ class Command(BaseCommand):
                 
                 payment = Payment(
                     id=uuid.uuid4(),
+                    payment_number=payment_number,  # Pre-assign to ensure chronological order
                     order=order,
                     status=status_mapping.get(
                         payment_data['status'], 
@@ -739,6 +841,74 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(f'⚠ {name}: {new_count}/{legacy_count}')
                 )
+        
+        # Additional validation: Check chronological ordering
+        self.validate_chronological_ordering()
+
+    def validate_chronological_ordering(self):
+        """Validate that orders and payments are numbered chronologically"""
+        self.stdout.write('\n--- Chronological Ordering Validation ---')
+        
+        # Check orders
+        orders_with_legacy = Order.objects.filter(
+            legacy_id__isnull=False, 
+            order_number__isnull=False
+        ).order_by('created_at')
+        
+        if orders_with_legacy.exists():
+            first_order = orders_with_legacy.first()
+            last_order = orders_with_legacy.last()
+            
+            self.stdout.write(f'Orders chronological check:')
+            self.stdout.write(f'  Oldest order: {first_order.order_number} (created: {first_order.created_at})')
+            self.stdout.write(f'  Newest order: {last_order.order_number} (created: {last_order.created_at})')
+            
+            # Check if numbering is sequential
+            expected_sequential = True
+            previous_number = None
+            
+            for order in orders_with_legacy[:5]:  # Check first 5
+                if order.order_number and order.order_number.startswith('ORD-'):
+                    try:
+                        current_number = int(order.order_number.split('-')[1])
+                        if previous_number and current_number != previous_number + 1:
+                            expected_sequential = False
+                            break
+                        previous_number = current_number
+                    except (ValueError, IndexError):
+                        expected_sequential = False
+                        break
+            
+            if expected_sequential:
+                self.stdout.write(self.style.SUCCESS('✓ Order numbers appear to be sequential'))
+            else:
+                self.stdout.write(self.style.WARNING('⚠ Order numbers may not be sequential'))
+            
+            # Check if first order is ORD-00001
+            if first_order.order_number == 'ORD-00001':
+                self.stdout.write(self.style.SUCCESS('✓ Oldest order has ORD-00001 as expected'))
+            else:
+                self.stdout.write(self.style.WARNING(f'⚠ Oldest order is {first_order.order_number}, expected ORD-00001'))
+        
+        # Check payments
+        payments_with_legacy = Payment.objects.filter(
+            legacy_id__isnull=False,
+            payment_number__isnull=False
+        ).order_by('created_at')
+        
+        if payments_with_legacy.exists():
+            first_payment = payments_with_legacy.first()
+            last_payment = payments_with_legacy.last()
+            
+            self.stdout.write(f'Payments chronological check:')
+            self.stdout.write(f'  Oldest payment: {first_payment.payment_number} (created: {first_payment.created_at})')
+            self.stdout.write(f'  Newest payment: {last_payment.payment_number} (created: {last_payment.created_at})')
+            
+            # Check if first payment is PAY-00001
+            if first_payment.payment_number == 'PAY-00001':
+                self.stdout.write(self.style.SUCCESS('✓ Oldest payment has PAY-00001 as expected'))
+            else:
+                self.stdout.write(self.style.WARNING(f'⚠ Oldest payment is {first_payment.payment_number}, expected PAY-00001'))
 
     def cleanup_post_migration(self):
         """Cleanup tasks after migration"""

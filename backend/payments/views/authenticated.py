@@ -142,7 +142,8 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
     # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_class = PaymentFilter
     search_fields = ["payment_number", "order__order_number"]
-    ordering_fields = ["created_at", "status", "total_collected"]
+    ordering_fields = ["created_at", "status", "total_collected", "payment_number"]
+    ordering = ["-created_at"]  # Override BaseViewSet default to show newest payments first
 
     def get_queryset(self):
         """Optimized queryset for payment operations"""

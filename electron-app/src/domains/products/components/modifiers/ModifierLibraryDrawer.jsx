@@ -44,7 +44,7 @@ const ModifierLibraryDrawer = ({
       if (searchTerm) params.search = searchTerm;
       
       const response = await modifierService.getModifierSets(params);
-      setAvailableModifierSets(response.data || []);
+      setAvailableModifierSets(response.data?.results || []);
     } catch (error) {
       console.error('Error fetching modifier sets:', error);
       toast({

@@ -109,14 +109,16 @@ const OrderDetailsPage = () => {
 
 		setIsPrinting(true);
 		try {
+			const isTransaction = status !== "COMPLETED";
 			await window.hardwareApi.invoke("print-receipt", {
 				printer: receiptPrinter,
 				data: order,
 				storeSettings: settings,
+				isTransaction: isTransaction,
 			});
 			toast({
 				title: "Success",
-				description: "Receipt sent to printer.",
+				description: isTransaction ? "Transaction receipt sent to printer." : "Receipt sent to printer.",
 			});
 		} catch (error) {
 			console.error("Failed to print receipt:", error);
@@ -381,7 +383,7 @@ const OrderDetailsPage = () => {
 									</div>
 								</CardContent>
 								<CardFooter className="flex flex-wrap justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
-									{status === "COMPLETED" &&
+									{["COMPLETED", "PENDING", "HOLD"].includes(status) &&
 										["POS", "WEB"].includes(order.order_type) &&
 										permissions?.canCancelOrders() && (
 											<Button
@@ -391,7 +393,8 @@ const OrderDetailsPage = () => {
 												className="border-slate-200 dark:border-slate-700 bg-transparent"
 											>
 												<Printer className="mr-2 h-4 w-4" />
-												{isPrinting ? "Printing..." : "Print Receipt"}
+												{isPrinting ? "Printing..." : 
+													(status === "COMPLETED" ? "Print Receipt" : "Print Transaction Receipt")}
 											</Button>
 										)}
 									{status === "COMPLETED" && permissions?.canCancelOrders() && (

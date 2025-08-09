@@ -67,7 +67,7 @@ export const addModifierSetToProduct = async (productId, modifierSetId) => {
     try {
       const response = await apiClient.post(urlPattern, {
         product: productId,
-        modifier_set: modifierSetId,
+        modifier_set_id: modifierSetId,
         display_order: 0 // Default to 0, can be updated later
       });
       console.log(`Successfully used URL pattern: ${urlPattern}`);
