@@ -33,7 +33,11 @@ from django.utils import timezone
 from django.conf import settings
 import pytz
 from django.core.cache import cache
-from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data, cache_session_data
+from core_backend.infrastructure.cache_utils import (
+    cache_static_data,
+    cache_dynamic_data,
+    cache_session_data,
+)
 
 # Export functionality imports
 from openpyxl import Workbook
@@ -66,11 +70,11 @@ class ReportService:
         "payments": 2,
         "operations": 1,
     }
-    
+
     # Phase 3C: Advanced caching methods
-    
+
     @staticmethod
-    @cache_static_data(timeout=3600*8)  # 8 hours - business metrics change slowly
+    @cache_static_data(timeout=3600 * 8)  # 8 hours - business metrics change slowly
     def get_cached_business_kpis():
         """Cache core business KPIs that don't change frequently"""
         try:
@@ -78,311 +82,331 @@ class ReportService:
             thirty_days_ago = timezone.now() - timedelta(days=30)
             seven_days_ago = timezone.now() - timedelta(days=7)
             today = timezone.now()
-            
+
             # Monthly performance
             monthly_orders = Order.objects.filter(
-                created_at__gte=thirty_days_ago,
-                status=Order.OrderStatus.COMPLETED
+                created_at__gte=thirty_days_ago, status=Order.OrderStatus.COMPLETED
             )
-            
-            monthly_revenue = monthly_orders.aggregate(
-                total=Sum('grand_total')
-            )['total'] or Decimal('0.00')
-            
+
+            monthly_revenue = monthly_orders.aggregate(total=Sum("grand_total"))[
+                "total"
+            ] or Decimal("0.00")
+
             # Weekly performance
             weekly_orders = Order.objects.filter(
-                created_at__gte=seven_days_ago,
-                status=Order.OrderStatus.COMPLETED
+                created_at__gte=seven_days_ago, status=Order.OrderStatus.COMPLETED
             )
-            
-            weekly_revenue = weekly_orders.aggregate(
-                total=Sum('grand_total')
-            )['total'] or Decimal('0.00')
-            
+
+            weekly_revenue = weekly_orders.aggregate(total=Sum("grand_total"))[
+                "total"
+            ] or Decimal("0.00")
+
             # Average order value
-            avg_order_value = monthly_orders.aggregate(
-                avg=Avg('grand_total')
-            )['avg'] or Decimal('0.00')
-            
+            avg_order_value = monthly_orders.aggregate(avg=Avg("grand_total"))[
+                "avg"
+            ] or Decimal("0.00")
+
             # Top products (last 30 days)
-            top_products = OrderItem.objects.filter(
-                order__created_at__gte=thirty_days_ago,
-                order__status=Order.OrderStatus.COMPLETED
-            ).values(
-                'product_id', 'product__name'
-            ).annotate(
-                total_quantity=Sum('quantity'),
-                total_revenue=Sum(F('quantity') * F('price_at_sale'))
-            ).order_by('-total_revenue')[:10]
-            
+            top_products = (
+                OrderItem.objects.filter(
+                    order__created_at__gte=thirty_days_ago,
+                    order__status=Order.OrderStatus.COMPLETED,
+                )
+                .values("product_id", "product__name")
+                .annotate(
+                    total_quantity=Sum("quantity"),
+                    total_revenue=Sum(F("quantity") * F("price_at_sale")),
+                )
+                .order_by("-total_revenue")[:10]
+            )
+
             return {
-                'monthly_revenue': float(monthly_revenue),
-                'weekly_revenue': float(weekly_revenue),
-                'monthly_order_count': monthly_orders.count(),
-                'weekly_order_count': weekly_orders.count(),
-                'average_order_value': float(avg_order_value),
-                'top_products': list(top_products),
-                'period': {
-                    'start_date': thirty_days_ago.isoformat(),
-                    'end_date': today.isoformat()
+                "monthly_revenue": float(monthly_revenue),
+                "weekly_revenue": float(weekly_revenue),
+                "monthly_order_count": monthly_orders.count(),
+                "weekly_order_count": weekly_orders.count(),
+                "average_order_value": float(avg_order_value),
+                "top_products": list(top_products),
+                "period": {
+                    "start_date": thirty_days_ago.isoformat(),
+                    "end_date": today.isoformat(),
                 },
-                'last_updated': timezone.now().isoformat()
+                "last_updated": timezone.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to generate business KPIs: {e}")
             return {
-                'error': f'Failed to generate KPIs: {str(e)}',
-                'monthly_revenue': 0,
-                'weekly_revenue': 0,
-                'monthly_order_count': 0,
-                'weekly_order_count': 0,
-                'average_order_value': 0,
-                'top_products': []
+                "error": f"Failed to generate KPIs: {str(e)}",
+                "monthly_revenue": 0,
+                "weekly_revenue": 0,
+                "monthly_order_count": 0,
+                "weekly_order_count": 0,
+                "average_order_value": 0,
+                "top_products": [],
             }
-    
+
     @staticmethod
     @cache_dynamic_data(timeout=1800)  # 30 minutes - current day changes frequently
     def get_real_time_sales_summary():
         """Cache current day sales summary for dashboard"""
         try:
             # Today's performance
-            today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = timezone.now().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             today_end = timezone.now()
-            
+
             today_orders = Order.objects.filter(
                 created_at__gte=today_start,
                 created_at__lte=today_end,
-                status=Order.OrderStatus.COMPLETED
+                status=Order.OrderStatus.COMPLETED,
             )
-            
-            today_revenue = today_orders.aggregate(
-                total=Sum('grand_total')
-            )['total'] or Decimal('0.00')
-            
+
+            today_revenue = today_orders.aggregate(total=Sum("grand_total"))[
+                "total"
+            ] or Decimal("0.00")
+
             # Hourly breakdown for today
-            hourly_sales = today_orders.annotate(
-                hour=Extract('created_at', 'hour')
-            ).values('hour').annotate(
-                count=Count('id'),
-                revenue=Sum('grand_total')
-            ).order_by('hour')
-            
+            hourly_sales = (
+                today_orders.annotate(hour=Extract("created_at", "hour"))
+                .values("hour")
+                .annotate(count=Count("id"), revenue=Sum("grand_total"))
+                .order_by("hour")
+            )
+
             # Payment method breakdown
-            payment_methods = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                payment__order__created_at__gte=today_start,
-                payment__order__status=Order.OrderStatus.COMPLETED,
-                status='completed'
-            ).values('method').annotate(
-                count=Count('id'),
-                total=Sum('amount')
-            ).order_by('-total')
-            
+            payment_methods = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(
+                    payment__order__created_at__gte=today_start,
+                    payment__order__status=Order.OrderStatus.COMPLETED,
+                    status="completed",
+                )
+                .values("method")
+                .annotate(count=Count("id"), total=Sum("amount"))
+                .order_by("-total")
+            )
+
             return {
-                'today_revenue': float(today_revenue),
-                'today_order_count': today_orders.count(),
-                'hourly_breakdown': list(hourly_sales),
-                'payment_methods': list(payment_methods),
-                'current_hour': today_end.hour,
-                'last_updated': timezone.now().isoformat()
+                "today_revenue": float(today_revenue),
+                "today_order_count": today_orders.count(),
+                "hourly_breakdown": list(hourly_sales),
+                "payment_methods": list(payment_methods),
+                "current_hour": today_end.hour,
+                "last_updated": timezone.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to generate real-time sales summary: {e}")
             return {
-                'error': f'Failed to generate real-time summary: {str(e)}',
-                'today_revenue': 0,
-                'today_order_count': 0,
-                'hourly_breakdown': [],
-                'payment_methods': []
+                "error": f"Failed to generate real-time summary: {str(e)}",
+                "today_revenue": 0,
+                "today_order_count": 0,
+                "hourly_breakdown": [],
+                "payment_methods": [],
             }
-    
+
     @staticmethod
-    @cache_static_data(timeout=3600*24)  # 24 hours - historical trends change rarely
+    @cache_static_data(timeout=3600 * 24)  # 24 hours - historical trends change rarely
     def get_historical_trends_data():
         """Cache monthly/yearly trends that rarely change"""
         try:
             # Last 12 months performance
             twelve_months_ago = timezone.now() - timedelta(days=365)
-            
-            monthly_trends = Order.objects.filter(
-                created_at__gte=twelve_months_ago,
-                status=Order.OrderStatus.COMPLETED
-            ).annotate(
-                month=TruncMonth('created_at')
-            ).values('month').annotate(
-                order_count=Count('id'),
-                revenue=Sum('grand_total'),
-                avg_order_value=Avg('grand_total')
-            ).order_by('month')
-            
+
+            monthly_trends = (
+                Order.objects.filter(
+                    created_at__gte=twelve_months_ago,
+                    status=Order.OrderStatus.COMPLETED,
+                )
+                .annotate(month=TruncMonth("created_at"))
+                .values("month")
+                .annotate(
+                    order_count=Count("id"),
+                    revenue=Sum("grand_total"),
+                    avg_order_value=Avg("grand_total"),
+                )
+                .order_by("month")
+            )
+
             # Year-over-year comparison (if we have data)
             this_year = timezone.now().year
             last_year = this_year - 1
-            
+
             this_year_revenue = Order.objects.filter(
-                created_at__year=this_year,
-                status=Order.OrderStatus.COMPLETED
-            ).aggregate(
-                total=Sum('grand_total')
-            )['total'] or Decimal('0.00')
-            
+                created_at__year=this_year, status=Order.OrderStatus.COMPLETED
+            ).aggregate(total=Sum("grand_total"))["total"] or Decimal("0.00")
+
             last_year_revenue = Order.objects.filter(
-                created_at__year=last_year,
-                status=Order.OrderStatus.COMPLETED
-            ).aggregate(
-                total=Sum('grand_total')
-            )['total'] or Decimal('0.00')
-            
+                created_at__year=last_year, status=Order.OrderStatus.COMPLETED
+            ).aggregate(total=Sum("grand_total"))["total"] or Decimal("0.00")
+
             # Calculate growth rate
             growth_rate = 0
             if last_year_revenue > 0:
-                growth_rate = ((this_year_revenue - last_year_revenue) / last_year_revenue) * 100
-            
+                growth_rate = (
+                    (this_year_revenue - last_year_revenue) / last_year_revenue
+                ) * 100
+
             return {
-                'monthly_trends': list(monthly_trends),
-                'year_over_year': {
-                    'this_year_revenue': float(this_year_revenue),
-                    'last_year_revenue': float(last_year_revenue),
-                    'growth_rate': float(growth_rate)
+                "monthly_trends": list(monthly_trends),
+                "year_over_year": {
+                    "this_year_revenue": float(this_year_revenue),
+                    "last_year_revenue": float(last_year_revenue),
+                    "growth_rate": float(growth_rate),
                 },
-                'trend_period': {
-                    'start_date': twelve_months_ago.isoformat(),
-                    'end_date': timezone.now().isoformat()
+                "trend_period": {
+                    "start_date": twelve_months_ago.isoformat(),
+                    "end_date": timezone.now().isoformat(),
                 },
-                'last_updated': timezone.now().isoformat()
+                "last_updated": timezone.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to generate historical trends: {e}")
             return {
-                'error': f'Failed to generate trends: {str(e)}',
-                'monthly_trends': [],
-                'year_over_year': {
-                    'this_year_revenue': 0,
-                    'last_year_revenue': 0,
-                    'growth_rate': 0
-                }
+                "error": f"Failed to generate trends: {str(e)}",
+                "monthly_trends": [],
+                "year_over_year": {
+                    "this_year_revenue": 0,
+                    "last_year_revenue": 0,
+                    "growth_rate": 0,
+                },
             }
-    
+
     @staticmethod
-    @cache_dynamic_data(timeout=3600*2)  # 2 hours - payment patterns change moderately
+    @cache_dynamic_data(
+        timeout=3600 * 2
+    )  # 2 hours - payment patterns change moderately
     def get_payment_analytics():
         """Cache payment method analytics and trends"""
         try:
             # Last 30 days payment analytics
             thirty_days_ago = timezone.now() - timedelta(days=30)
-            
+
             # Payment method performance
-            payment_performance = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                created_at__gte=thirty_days_ago,
-                status='completed'
-            ).values('method').annotate(
-                transaction_count=Count('id'),
-                total_amount=Sum('amount'),
-                avg_amount=Avg('amount'),
-                success_rate=Count('id', filter=Q(status='completed')) * 100.0 / Count('id')
-            ).order_by('-total_amount')
-            
+            payment_performance = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(created_at__gte=thirty_days_ago, status="completed")
+                .values("method")
+                .annotate(
+                    transaction_count=Count("id"),
+                    total_amount=Sum("amount"),
+                    avg_amount=Avg("amount"),
+                    success_rate=Count("id", filter=Q(status="completed"))
+                    * 100.0
+                    / Count("id"),
+                )
+                .order_by("-total_amount")
+            )
+
             # Daily payment trends
-            daily_payments = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                created_at__gte=thirty_days_ago,
-                status='completed'
-            ).annotate(
-                date=TruncDate('created_at')
-            ).values('date').annotate(
-                count=Count('id'),
-                total=Sum('amount')
-            ).order_by('date')
-            
+            daily_payments = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(created_at__gte=thirty_days_ago, status="completed")
+                .annotate(date=TruncDate("created_at"))
+                .values("date")
+                .annotate(count=Count("id"), total=Sum("amount"))
+                .order_by("date")
+            )
+
             # Payment failure analysis
-            failed_payments = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                created_at__gte=thirty_days_ago,
-                status__in=['failed', 'declined', 'cancelled']
-            ).values('method', 'status').annotate(
-                count=Count('id')
-            ).order_by('-count')
-            
+            failed_payments = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(
+                    created_at__gte=thirty_days_ago,
+                    status__in=["failed", "declined", "cancelled"],
+                )
+                .values("method", "status")
+                .annotate(count=Count("id"))
+                .order_by("-count")
+            )
+
             # Average transaction times (if available)
             avg_processing_times = {
-                'card': '2.5s',  # Placeholder - would need actual timing data
-                'cash': '0.1s',
-                'gift_card': '1.2s'
+                "card": "2.5s",  # Placeholder - would need actual timing data
+                "cash": "0.1s",
+                "gift_card": "1.2s",
             }
-            
+
             return {
-                'payment_methods': list(payment_performance),
-                'daily_trends': list(daily_payments),
-                'failed_payments': list(failed_payments),
-                'processing_times': avg_processing_times,
-                'total_processed': sum(p['total_amount'] for p in payment_performance),
-                'period': {
-                    'start_date': thirty_days_ago.isoformat(),
-                    'end_date': timezone.now().isoformat()
+                "payment_methods": list(payment_performance),
+                "daily_trends": list(daily_payments),
+                "failed_payments": list(failed_payments),
+                "processing_times": avg_processing_times,
+                "total_processed": sum(p["total_amount"] for p in payment_performance),
+                "period": {
+                    "start_date": thirty_days_ago.isoformat(),
+                    "end_date": timezone.now().isoformat(),
                 },
-                'last_updated': timezone.now().isoformat()
+                "last_updated": timezone.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to generate payment analytics: {e}")
             return {
-                'error': f'Failed to generate payment analytics: {str(e)}',
-                'payment_methods': [],
-                'daily_trends': [],
-                'failed_payments': [],
-                'processing_times': {},
-                'total_processed': 0
+                "error": f"Failed to generate payment analytics: {str(e)}",
+                "payment_methods": [],
+                "daily_trends": [],
+                "failed_payments": [],
+                "processing_times": {},
+                "total_processed": 0,
             }
-    
+
     @staticmethod
-    @cache_session_data(timeout=900)  # 15 minutes - performance monitoring changes frequently
+    @cache_session_data(
+        timeout=900
+    )  # 15 minutes - performance monitoring changes frequently
     def get_performance_monitoring_cache():
         """Cache comprehensive system performance metrics"""
         try:
             from core_backend.infrastructure.cache import CacheMonitor
-            
+
             # Get cache health stats
             cache_health = CacheMonitor.health_check()
             cache_stats = CacheMonitor.get_all_cache_stats()
-            
+
             # Database performance indicators
             recent_orders = Order.objects.filter(
                 created_at__gte=timezone.now() - timedelta(hours=1)
             ).count()
-            
-            recent_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                created_at__gte=timezone.now() - timedelta(hours=1)
-            ).count()
-            
+
+            recent_transactions = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(created_at__gte=timezone.now() - timedelta(hours=1))
+                .count()
+            )
+
             # System health indicators
             performance_metrics = {
-                'cache_health': cache_health,
-                'cache_statistics': cache_stats,
-                'recent_activity': {
-                    'orders_last_hour': recent_orders,
-                    'transactions_last_hour': recent_transactions,
-                    'system_load': 'normal'  # Placeholder - would integrate with system monitoring
+                "cache_health": cache_health,
+                "cache_statistics": cache_stats,
+                "recent_activity": {
+                    "orders_last_hour": recent_orders,
+                    "transactions_last_hour": recent_transactions,
+                    "system_load": "normal",  # Placeholder - would integrate with system monitoring
                 },
-                'response_times': {
-                    'database_avg': '15ms',  # Placeholder - would need actual monitoring
-                    'cache_avg': '2ms',
-                    'api_avg': '45ms'
+                "response_times": {
+                    "database_avg": "15ms",  # Placeholder - would need actual monitoring
+                    "cache_avg": "2ms",
+                    "api_avg": "45ms",
                 },
-                'uptime': '99.9%',  # Placeholder - would integrate with uptime monitoring
-                'last_updated': timezone.now().isoformat()
+                "uptime": "99.9%",  # Placeholder - would integrate with uptime monitoring
+                "last_updated": timezone.now().isoformat(),
             }
-            
+
             return performance_metrics
-            
+
         except Exception as e:
             logger.error(f"Failed to generate performance monitoring data: {e}")
             return {
-                'error': f'Failed to generate performance metrics: {str(e)}',
-                'cache_health': {},
-                'cache_statistics': {},
-                'recent_activity': {},
-                'response_times': {},
-                'uptime': 'unknown'
+                "error": f"Failed to generate performance metrics: {str(e)}",
+                "cache_health": {},
+                "cache_statistics": {},
+                "recent_activity": {},
+                "response_times": {},
+                "uptime": "unknown",
             }
 
     @staticmethod
@@ -560,7 +584,8 @@ class ReportService:
             )
             .values("method")
             .annotate(
-                amount=Sum("amount"), count=Count("id")  # Use amount only to match legacy
+                amount=Sum("amount"),
+                count=Count("id"),  # Use amount only to match legacy
             )
             .order_by("-amount")
         )
@@ -623,6 +648,9 @@ class ReportService:
         use_cache: bool = True,
     ) -> Dict[str, Any]:
         """Generate detailed sales report"""
+        
+        # Import PaymentTransaction at function scope to avoid scoping issues
+        from payments.models import PaymentTransaction
 
         cache_key = ReportService._generate_cache_key(
             "sales",
@@ -649,14 +677,16 @@ class ReportService:
         )
 
         # Calculate total refunds separately
-        total_refunds = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-            payment__order__in=orders_queryset,
-            status=PaymentTransaction.TransactionStatus.REFUNDED,
-        ).aggregate(
-            total_refunds=Coalesce(Sum("refunded_amount"), Value(Decimal("0.00")))
-        )[
-            "total_refunds"
-        ]
+        total_refunds = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(
+                payment__order__in=orders_queryset,
+                status=PaymentTransaction.TransactionStatus.REFUNDED,
+            )
+            .aggregate(
+                total_refunds=Coalesce(Sum("refunded_amount"), Value(Decimal("0.00")))
+            )["total_refunds"]
+        )
 
         # Core sales metrics (WITHOUT items to avoid JOIN duplication)
         sales_data = orders_queryset.aggregate(
@@ -734,11 +764,13 @@ class ReportService:
 
         for period_item in sales_agg:
             period_start = period_item["period"]
-            
+
             # Create timezone-aware datetime objects for the period range
             local_tz = ReportService.get_local_timezone()
-            start_dt = timezone.make_aware(datetime.combine(period_start, datetime.min.time()), local_tz)
-            
+            start_dt = timezone.make_aware(
+                datetime.combine(period_start, datetime.min.time()), local_tz
+            )
+
             if group_by == "week":
                 end_dt = start_dt + timedelta(days=7)
             elif group_by == "month":
@@ -748,61 +780,74 @@ class ReportService:
                 end_dt = start_dt + timedelta(days=1)
 
             # Get transactions for this period using the precise datetime range
-            period_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-                payment__order__in=orders_queryset,
-                payment__created_at__gte=start_dt,
-                payment__created_at__lt=end_dt,
-                status=PaymentTransaction.TransactionStatus.SUCCESSFUL
-            ).select_related('payment', 'payment__order').order_by('-payment__created_at')
-            
+            period_transactions = (
+                PaymentTransaction.objects.select_related("payment", "payment__order")
+                .filter(
+                    payment__order__in=orders_queryset,
+                    payment__created_at__gte=start_dt,
+                    payment__created_at__lt=end_dt,
+                    status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                )
+                .select_related("payment", "payment__order")
+                .order_by("-payment__created_at")
+            )
+
             # Get payment totals for this period
             period_payments = Payment.objects.filter(
                 order__in=orders_queryset,
                 created_at__gte=start_dt,
-                created_at__lt=end_dt
+                created_at__lt=end_dt,
             ).aggregate(
                 total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
-                total_surcharges=Coalesce(Sum("total_surcharges"), Value(Decimal("0.00"))),
-                total_collected=Coalesce(Sum("total_collected"), Value(Decimal("0.00")))
+                total_surcharges=Coalesce(
+                    Sum("total_surcharges"), Value(Decimal("0.00"))
+                ),
+                total_collected=Coalesce(
+                    Sum("total_collected"), Value(Decimal("0.00"))
+                ),
             )
-            
+
             # Group transactions by payment method
             method_breakdown = {}
             for transaction in period_transactions:
                 method = transaction.method
                 if method not in method_breakdown:
                     method_breakdown[method] = {
-                        'count': 0,
-                        'total_amount': 0,
-                        'total_tips': 0,
-                        'total_surcharges': 0
+                        "count": 0,
+                        "total_amount": 0,
+                        "total_tips": 0,
+                        "total_surcharges": 0,
                     }
-                method_breakdown[method]['count'] += 1
-                method_breakdown[method]['total_amount'] += float(transaction.amount or 0)
-                method_breakdown[method]['total_tips'] += float(transaction.tip or 0)
-                method_breakdown[method]['total_surcharges'] += float(transaction.surcharge or 0)
-            
+                method_breakdown[method]["count"] += 1
+                method_breakdown[method]["total_amount"] += float(
+                    transaction.amount or 0
+                )
+                method_breakdown[method]["total_tips"] += float(transaction.tip or 0)
+                method_breakdown[method]["total_surcharges"] += float(
+                    transaction.surcharge or 0
+                )
+
             transaction_details_by_period[period_item["period"]] = {
-                'transactions': [
+                "transactions": [
                     {
-                        'order_number': trans.payment.order.order_number,
-                        'created_at': trans.payment.order.created_at.isoformat(),
-                        'amount': float(trans.amount or 0),
-                        'tip': float(trans.tip or 0),
-                        'surcharge': float(trans.surcharge or 0),
-                        'method': trans.method,
-                        'transaction_id': trans.transaction_id,
-                        'card_brand': trans.card_brand,
-                        'card_last4': trans.card_last4
+                        "order_number": trans.payment.order.order_number,
+                        "created_at": trans.payment.order.created_at.isoformat(),
+                        "amount": float(trans.amount or 0),
+                        "tip": float(trans.tip or 0),
+                        "surcharge": float(trans.surcharge or 0),
+                        "method": trans.method,
+                        "transaction_id": trans.transaction_id,
+                        "card_brand": trans.card_brand,
+                        "card_last4": trans.card_last4,
                     }
                     for trans in period_transactions
                 ],
-                'payment_totals': {
-                    'total_tips': float(period_payments['total_tips']),
-                    'total_surcharges': float(period_payments['total_surcharges']),
-                    'total_collected': float(period_payments['total_collected'])
+                "payment_totals": {
+                    "total_tips": float(period_payments["total_tips"]),
+                    "total_surcharges": float(period_payments["total_surcharges"]),
+                    "total_collected": float(period_payments["total_collected"]),
                 },
-                'method_breakdown': method_breakdown
+                "method_breakdown": method_breakdown,
             }
 
         sales_data["sales_by_period"] = [
@@ -811,11 +856,18 @@ class ReportService:
                 "revenue": float(item["revenue"] or 0),
                 "orders": item["orders"],
                 "items": items_dict.get(item["period"], 0) or 0,
-                "transaction_details": transaction_details_by_period.get(item["period"], {
-                    'transactions': [],
-                    'payment_totals': {'total_tips': 0, 'total_surcharges': 0, 'total_collected': 0},
-                    'method_breakdown': {}
-                })
+                "transaction_details": transaction_details_by_period.get(
+                    item["period"],
+                    {
+                        "transactions": [],
+                        "payment_totals": {
+                            "total_tips": 0,
+                            "total_surcharges": 0,
+                            "total_collected": 0,
+                        },
+                        "method_breakdown": {},
+                    },
+                ),
             }
             for item in sales_agg
         ]
@@ -858,6 +910,98 @@ class ReportService:
         ]
 
         # Add metadata
+        # Add comprehensive order vs payment reconciliation
+        # Calculate what customers actually paid (matching payment processing approach)
+        
+        # Get all payment transactions for completed, canceled, AND voided orders (matching payments report)
+        all_order_transactions = PaymentTransaction.objects.filter(
+            payment__order__created_at__range=(start_date, end_date),
+            payment__order__status__in=[Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED, Order.OrderStatus.VOID],
+            payment__order__subtotal__gt=0
+        )
+        
+        # Debug: Log transaction counts for diagnosis
+        total_transactions_debug = all_order_transactions.count()
+        logger.info(f"=== SALES REPORT TRANSACTION DEBUG ===")
+        logger.info(f"Total transactions found: {total_transactions_debug}")
+        logger.info(f"Date range: {start_date} to {end_date}")
+        
+        payment_reconciliation = all_order_transactions.aggregate(
+            successful_payments=Coalesce(
+                Sum("amount", filter=Q(status=PaymentTransaction.TransactionStatus.SUCCESSFUL)),
+                Value(Decimal("0.00"))
+            ),
+            successful_count=Count("id", filter=Q(status=PaymentTransaction.TransactionStatus.SUCCESSFUL)),
+            refunded_payments=Coalesce(
+                Sum("amount", filter=Q(status=PaymentTransaction.TransactionStatus.REFUNDED)),
+                Value(Decimal("0.00"))
+            ),
+            refunded_count=Count("id", filter=Q(status=PaymentTransaction.TransactionStatus.REFUNDED)),
+            failed_payments=Coalesce(
+                Sum("amount", filter=Q(status=PaymentTransaction.TransactionStatus.FAILED)),
+                Value(Decimal("0.00"))
+            ),
+            failed_count=Count("id", filter=Q(status=PaymentTransaction.TransactionStatus.FAILED)),
+            canceled_payments=Coalesce(
+                Sum("amount", filter=Q(status=PaymentTransaction.TransactionStatus.CANCELED)),
+                Value(Decimal("0.00"))
+            ),
+            canceled_count=Count("id", filter=Q(status=PaymentTransaction.TransactionStatus.CANCELED))
+        )
+        
+        # Debug: Log individual payment status totals
+        logger.info(f"Successful payments: ${payment_reconciliation['successful_payments']} (count: {payment_reconciliation['successful_count']})")
+        logger.info(f"Refunded payments: ${payment_reconciliation['refunded_payments']} (count: {payment_reconciliation['refunded_count']})")
+        logger.info(f"Failed payments: ${payment_reconciliation['failed_payments']} (count: {payment_reconciliation['failed_count']})")
+        logger.info(f"Canceled payments: ${payment_reconciliation['canceled_payments']} (count: {payment_reconciliation['canceled_count']})")
+        logger.info(f"=== END TRANSACTION DEBUG ===")
+        
+        # Calculate voided orders total separately
+        voided_orders_total = Order.objects.filter(
+            status=Order.OrderStatus.VOID,
+            created_at__range=(start_date, end_date),
+            subtotal__gt=0
+        ).aggregate(
+            total=Coalesce(Sum("grand_total"), Value(Decimal("0.00")))
+        )["total"]
+        
+        # Calculate comprehensive totals
+        total_orders_value = float(sales_data["total_revenue"])  # What customers ordered ($16,782.72)
+        voided_orders_value = float(voided_orders_total or 0)
+        total_payment_attempts = float(
+            payment_reconciliation["successful_payments"] + 
+            payment_reconciliation["refunded_payments"] + 
+            payment_reconciliation["failed_payments"] + 
+            payment_reconciliation["canceled_payments"]
+        )  # What was attempted to be processed ($16,771.24)
+        
+        sales_data["order_vs_payment_reconciliation"] = {
+            "total_orders_value": total_orders_value,
+            "total_payment_attempts": total_payment_attempts,
+            "successfully_processed": float(payment_reconciliation["successful_payments"]),
+            "voided_orders_value": voided_orders_value,
+            "lost_revenue": total_orders_value - total_payment_attempts,
+            "order_completion_rate": round((total_payment_attempts / total_orders_value * 100), 2) if total_orders_value > 0 else 0,
+            "payment_breakdown": {
+                "successful": {
+                    "amount": float(payment_reconciliation["successful_payments"]),
+                    "count": payment_reconciliation["successful_count"]
+                },
+                "refunded": {
+                    "amount": float(payment_reconciliation["refunded_payments"]),
+                    "count": payment_reconciliation["refunded_count"]
+                },
+                "failed": {
+                    "amount": float(payment_reconciliation["failed_payments"]),
+                    "count": payment_reconciliation["failed_count"]
+                },
+                "canceled": {
+                    "amount": float(payment_reconciliation["canceled_payments"]),
+                    "count": payment_reconciliation["canceled_count"]
+                }
+            }
+        }
+
         sales_data["generated_at"] = timezone.now().isoformat()
         sales_data["date_range"] = {
             "start": start_date.isoformat(),
@@ -983,7 +1127,7 @@ class ReportService:
 
         # Product trends with proper period handling
         date_diff = (end_date - start_date).days
-        
+
         # Determine trend period
         if trend_period == "auto":
             if date_diff <= 7:
@@ -994,10 +1138,11 @@ class ReportService:
                 actual_period = "monthly"
         else:
             actual_period = trend_period
-        
+
         # Apply correct grouping based on period
         if actual_period == "weekly":
             from django.db.models.functions import TruncWeek
+
             product_trends = (
                 order_items.filter(
                     product__in=[p["product__id"] for p in top_products[:5]]
@@ -1009,6 +1154,7 @@ class ReportService:
             )
         elif actual_period == "monthly":
             from django.db.models.functions import TruncMonth
+
             product_trends = (
                 order_items.filter(
                     product__in=[p["product__id"] for p in top_products[:5]]
@@ -1062,10 +1208,10 @@ class ReportService:
             "end": end_date.isoformat(),
         }
         products_data["filters"] = {
-            "category_id": category_id, 
+            "category_id": category_id,
             "limit": limit,
             "trend_period": trend_period,
-            "actual_period": actual_period
+            "actual_period": actual_period,
         }
 
         # Cache the result
@@ -1097,20 +1243,51 @@ class ReportService:
         start_time = time.time()
 
         # Base queryset for successful transactions only
-        successful_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-            payment__order__status=Order.OrderStatus.COMPLETED,
-            payment__order__created_at__range=(start_date, end_date),
-            payment__order__subtotal__gt=0,
-            status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
-        ).select_related("payment", "payment__order")
+        successful_transactions = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(
+                payment__order__status=Order.OrderStatus.COMPLETED,
+                payment__order__created_at__range=(start_date, end_date),
+                payment__order__subtotal__gt=0,
+                status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
+            )
+            .select_related("payment", "payment__order")
+        )
 
-        # Base queryset for refunded transactions (tracked separately)
-        refunded_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
-            payment__order__status=Order.OrderStatus.COMPLETED,
-            payment__order__created_at__range=(start_date, end_date),
-            payment__order__subtotal__gt=0,
-            status=PaymentTransaction.TransactionStatus.REFUNDED,
-        ).select_related("payment", "payment__order")
+        # Base queryset for refunded transactions (include both completed and canceled orders)
+        refunded_transactions = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(
+                payment__order__status__in=[Order.OrderStatus.COMPLETED, Order.OrderStatus.CANCELLED],
+                payment__order__created_at__range=(start_date, end_date),
+                payment__order__subtotal__gt=0,
+                status=PaymentTransaction.TransactionStatus.REFUNDED,
+            )
+            .select_related("payment", "payment__order")
+        )
+
+        # Track failed and canceled transactions for complete transparency
+        failed_transactions = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(
+                payment__order__status=Order.OrderStatus.COMPLETED,
+                payment__order__created_at__range=(start_date, end_date),
+                payment__order__subtotal__gt=0,
+                status=PaymentTransaction.TransactionStatus.FAILED,
+            )
+            .select_related("payment", "payment__order")
+        )
+
+        canceled_transactions = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(
+                payment__order__status=Order.OrderStatus.COMPLETED,
+                payment__order__created_at__range=(start_date, end_date),
+                payment__order__subtotal__gt=0,
+                status=PaymentTransaction.TransactionStatus.CANCELED,
+            )
+            .select_related("payment", "payment__order")
+        )
 
         # Get payments for the filtered orders
         payments = Payment.objects.filter(
@@ -1131,19 +1308,16 @@ class ReportService:
         )
 
         # Get refunded amounts by payment method for display
-        refunded_methods_agg = (
-            refunded_transactions.values("method")
-            .annotate(
-                refunded_amount=Sum("amount"),
-                refunded_count=Count("id"),
-            )
+        refunded_methods_agg = refunded_transactions.values("method").annotate(
+            refunded_amount=Sum("amount"),
+            refunded_count=Count("id"),
         )
-        
+
         # Create a lookup dict for refunded amounts
         refunded_by_method = {
             item["method"]: {
                 "amount": float(item["refunded_amount"] or 0),
-                "count": item["refunded_count"]
+                "count": item["refunded_count"],
             }
             for item in refunded_methods_agg
         }
@@ -1169,7 +1343,9 @@ class ReportService:
         previous_start = start_date - timedelta(days=previous_period_days)
         previous_end = start_date
 
-        previous_successful_transactions = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
+        previous_successful_transactions = PaymentTransaction.objects.select_related(
+            "payment", "payment__order"
+        ).filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(previous_start, previous_end),
             payment__order__subtotal__gt=0,
@@ -1192,7 +1368,9 @@ class ReportService:
             method_name = item["method"]
 
             # Get refunded amounts for this method
-            refunded_info = refunded_by_method.get(method_name, {"amount": 0, "count": 0})
+            refunded_info = refunded_by_method.get(
+                method_name, {"amount": 0, "count": 0}
+            )
             refunded_amount = refunded_info["amount"]
             refunded_count = refunded_info["count"]
 
@@ -1210,11 +1388,7 @@ class ReportService:
             previous_amount = previous_amounts.get(method_name, 0)
             trend = (
                 round(
-                    (
-                        (method_amount - previous_amount)
-                        / (previous_amount or 1)
-                    )
-                    * 100,
+                    ((method_amount - previous_amount) / (previous_amount or 1)) * 100,
                     2,
                 )
                 if previous_amount > 0
@@ -1227,9 +1401,7 @@ class ReportService:
                     "amount": method_amount,  # Successful transactions only
                     "count": item["count"],
                     "avg_amount": (
-                        method_amount / item["count"]
-                        if item["count"] > 0
-                        else 0
+                        method_amount / item["count"] if item["count"] > 0 else 0
                     ),
                     "processing_fees": method_fees,
                     "percentage": round(amount_percentage, 2),
@@ -1263,7 +1435,9 @@ class ReportService:
 
         # Daily breakdown by payment method (successful transactions only)
         daily_breakdown_data = (
-            successful_transactions.annotate(date=ReportService.trunc_date_local("created_at"))
+            successful_transactions.annotate(
+                date=ReportService.trunc_date_local("created_at")
+            )
             .values("date", "method")
             .annotate(total=Sum("amount"))
             .order_by("date", "method")
@@ -1290,9 +1464,37 @@ class ReportService:
         total_refunds = float(
             refunded_transactions.aggregate(total=Sum("amount"))["total"] or 0
         )
-        
-        # Calculate total processed including refunds (for complete picture)
-        total_all_processed = total_processed_from_transactions + total_refunds
+
+        # Calculate failed and canceled transaction totals for complete transparency
+        total_failed = float(
+            failed_transactions.aggregate(total=Sum("amount"))["total"] or 0
+        )
+
+        total_canceled = float(
+            canceled_transactions.aggregate(total=Sum("amount"))["total"] or 0
+        )
+
+        # Calculate total attempted (ALL transactions regardless of status)
+        total_attempted = (
+            total_processed_from_transactions
+            + total_refunds
+            + total_failed
+            + total_canceled
+        )
+
+        # Calculate processing issues (non-successful transactions)
+        total_processing_issues = total_refunds + total_failed + total_canceled
+
+        # Temporary diagnostic logging to compare with diagnostic script
+        logger.info(f"=== PAYMENT TOTALS BREAKDOWN ===")
+        logger.info(f"Successful transactions: ${total_processed_from_transactions}")
+        logger.info(f"Refunded transactions: ${total_refunds}")
+        logger.info(f"Failed transactions: ${total_failed}")
+        logger.info(f"Canceled transactions: ${total_canceled}")
+        logger.info(f"TOTAL ATTEMPTED: ${total_attempted}")
+        logger.info(f"Expected from diagnostic: $16771.24")
+        logger.info(f"Difference: ${16771.24 - total_attempted}")
+        logger.info(f"=== END BREAKDOWN ===")
 
         # Order totals for comparison
         completed_orders = Order.objects.filter(
@@ -1307,24 +1509,58 @@ class ReportService:
         payments_data["order_totals_comparison"] = {
             "order_grand_total": float(completed_orders["order_total"] or 0),
             "order_count": completed_orders["order_count"],
-            "payment_transaction_total": total_all_processed,  # Use total including refunds
+            "payment_transaction_total": total_attempted,  # Use total attempted (all transactions)
             "difference": float(completed_orders["order_total"] or 0)
-            - total_all_processed,  # Compare against total processed amount
+            - total_attempted,  # Compare against total attempted amount
         }
-        
+
         payments_data["summary"] = {
+            # Primary metrics showing complete payment processing picture
+            "total_attempted": total_attempted,  # ALL transactions regardless of status
+            "successfully_processed": total_processed_from_transactions,  # Successful only
+            "processing_issues": total_processing_issues,  # Failed + Canceled + Refunded
+            # Detailed breakdown by status
+            "breakdown": {
+                "successful": {
+                    "amount": total_processed_from_transactions,
+                    "count": successful_transactions.count(),
+                },
+                "refunded": {
+                    "amount": total_refunds,
+                    "count": refunded_transactions.count(),
+                },
+                "failed": {
+                    "amount": total_failed,
+                    "count": failed_transactions.count(),
+                },
+                "canceled": {
+                    "amount": total_canceled,
+                    "count": canceled_transactions.count(),
+                },
+            },
+            # Legacy fields for backward compatibility
             "total_processed": total_processed_from_transactions,  # Successful transactions only
             "total_transactions": successful_transactions.count(),
             "total_refunds": total_refunds,
             "total_refunded_transactions": refunded_transactions.count(),
             "net_revenue": total_processed_from_transactions,  # Successful transactions ARE the net revenue
-            # New comprehensive fields
-            "total_all_processed": total_all_processed,  # Including refunds for reconciliation
-            "refund_rate": round((total_refunds / total_all_processed * 100), 2) if total_all_processed > 0 else 0,
+            # Calculated rates
+            "processing_success_rate": (
+                round((total_processed_from_transactions / total_attempted * 100), 2)
+                if total_attempted > 0
+                else 0
+            ),
+            "processing_issues_rate": (
+                round((total_processing_issues / total_attempted * 100), 2)
+                if total_attempted > 0
+                else 0
+            ),
         }
 
         # Processing statistics (use all transactions for complete picture)
-        all_transactions_for_stats = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(
+        all_transactions_for_stats = PaymentTransaction.objects.select_related(
+            "payment", "payment__order"
+        ).filter(
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
             payment__order__subtotal__gt=0,
@@ -1609,6 +1845,9 @@ class ReportService:
     @transaction.atomic
     def get_quick_metrics() -> Dict[str, Any]:
         """Get today/MTD/YTD metrics for dashboard"""
+        
+        # Import PaymentTransaction at function scope to avoid scoping issues
+        from payments.models import PaymentTransaction
 
         # Get local timezone for date calculations
         local_tz = ReportService.get_local_timezone()
@@ -1647,15 +1886,43 @@ class ReportService:
                 order__subtotal__gt=0,  # Exclude orders with $0.00 subtotals
             ).aggregate(total_items=Coalesce(Sum("quantity"), Value(0)))["total_items"]
 
+            # Add comprehensive payment reconciliation (matching sales report approach)
+            
+            orders_queryset = Order.objects.filter(
+                status=Order.OrderStatus.COMPLETED,
+                created_at__range=(start_time, end_time),
+                subtotal__gt=0,
+            )
+            
+            all_order_transactions = PaymentTransaction.objects.filter(
+                payment__order__in=orders_queryset
+            ).aggregate(
+                successful_payments=Coalesce(
+                    Sum("amount", filter=Q(status=PaymentTransaction.TransactionStatus.SUCCESSFUL)),
+                    Value(Decimal("0.00"))
+                ),
+                total_attempted_payments=Coalesce(Sum("amount"), Value(Decimal("0.00")))
+            )
+
+            total_orders_value = float(orders["total_sales"] or 0)  # What customers ordered
+            total_payment_attempts = float(all_order_transactions["total_attempted_payments"] or 0)  # What was processed
+            successful_payments = float(all_order_transactions["successful_payments"] or 0)
+
             return {
-                "sales": float(orders["total_sales"] or 0),
+                "sales": total_payment_attempts,  # Updated to show payment attempts instead of order grand totals
                 "orders": orders["total_orders"] or 0,
                 "items": total_items or 0,
                 "avg_order_value": (
-                    float(orders["total_sales"] or 0) / (orders["total_orders"] or 1)
+                    total_orders_value / (orders["total_orders"] or 1)
                     if orders["total_orders"] > 0
                     else 0
                 ),
+                # New comprehensive metrics
+                "total_orders_value": total_orders_value,
+                "total_payment_attempts": total_payment_attempts,
+                "successful_payments": successful_payments,
+                "lost_revenue": total_orders_value - total_payment_attempts,
+                "order_completion_rate": round((total_payment_attempts / total_orders_value * 100), 2) if total_orders_value > 0 else 0,
             }
 
         # Get metrics for each period

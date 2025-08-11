@@ -76,13 +76,41 @@ interface PaymentsData {
 		difference: number;
 	};
 	summary: {
+		// Primary comprehensive metrics
+		total_attempted: number;
+		successfully_processed: number;
+		processing_issues: number;
+		
+		// Detailed breakdown by status
+		breakdown: {
+			successful: {
+				amount: number;
+				count: number;
+			};
+			refunded: {
+				amount: number;
+				count: number;
+			};
+			failed: {
+				amount: number;
+				count: number;
+			};
+			canceled: {
+				amount: number;
+				count: number;
+			};
+		};
+		
+		// Calculated rates
+		processing_success_rate: number;
+		processing_issues_rate: number;
+		
+		// Legacy fields for backward compatibility
 		total_processed: number;
 		total_transactions: number;
 		total_refunds: number;
 		total_refunded_transactions: number;
 		net_revenue: number;
-		total_all_processed: number;
-		refund_rate: number;
 	};
 }
 
@@ -182,10 +210,25 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			</div>
 		);
 	}
+	// New comprehensive payment metrics
+	const totalAttempted = Number(data?.summary?.total_attempted || 0);
+	const successfullyProcessed = Number(data?.summary?.successfully_processed || 0);
+	const processingIssues = Number(data?.summary?.processing_issues || 0);
+	const processingSuccessRate = Number(data?.summary?.processing_success_rate || 0);
+	const processingIssuesRate = Number(data?.summary?.processing_issues_rate || 0);
+	
+	// Detailed breakdown
+	const successfulCount = Number(data?.summary?.breakdown?.successful?.count || 0);
+	const refundedAmount = Number(data?.summary?.breakdown?.refunded?.amount || 0);
+	const refundedCount = Number(data?.summary?.breakdown?.refunded?.count || 0);
+	const failedAmount = Number(data?.summary?.breakdown?.failed?.amount || 0);
+	const failedCount = Number(data?.summary?.breakdown?.failed?.count || 0);
+	const canceledAmount = Number(data?.summary?.breakdown?.canceled?.amount || 0);
+	const canceledCount = Number(data?.summary?.breakdown?.canceled?.count || 0);
+	
+	// Legacy fields for backward compatibility
 	const totalRefunds = Number(data?.summary?.total_refunds || 0);
 	const netRevenue = Number(data?.summary?.net_revenue || 0);
-	const totalAllProcessed = Number(data?.summary?.total_all_processed || 0);
-	const refundRate = Number(data?.summary?.refund_rate || 0);
 	const totalTransactions = Number(data?.summary?.total_transactions || 0);
 
 	return (
@@ -216,31 +259,46 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							💰 Total Processed
+							🎯 Total Attempted
 						</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
+						<CreditCard className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
-							${totalAllProcessed.toLocaleString()}
+						<div className="text-2xl font-bold text-blue-600">
+							${totalAttempted.toLocaleString()}
 						</div>
-						<p className="text-xs text-muted-foreground">Including refunds</p>
+						<p className="text-xs text-muted-foreground">All payment attempts</p>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							↩️ Total Refunded
+							✅ Successfully Processed
+						</CardTitle>
+						<CheckCircle className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-green-600">
+							${successfullyProcessed.toLocaleString()}
+						</div>
+						<p className="text-xs text-muted-foreground">Completed transactions</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							⚠️ Processing Issues
 						</CardTitle>
 						<AlertCircle className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold text-red-600">
-							-${totalRefunds.toLocaleString()}
+							${processingIssues.toLocaleString()}
 						</div>
 						<p className="text-xs text-muted-foreground">
-							{refundRate.toFixed(1)}% refund rate
+							{processingIssuesRate.toFixed(1)}% of attempts
 						</p>
 					</CardContent>
 				</Card>
@@ -262,29 +320,17 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Transactions</CardTitle>
-						<CreditCard className="h-4 w-4 text-muted-foreground" />
+						<CardTitle className="text-sm font-medium">📊 Success Rate</CardTitle>
+						<TrendingUp className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">
-							{totalTransactions.toLocaleString()}
+						<div className="text-2xl font-bold text-green-600">
+							{processingSuccessRate.toFixed(1)}%
 						</div>
-						<p className="text-xs text-muted-foreground">Successful only</p>
+						<p className="text-xs text-muted-foreground">Payment success</p>
 					</CardContent>
 				</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-						<CheckCircle className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.processing_stats?.success_rate?.toFixed(1) || "0"}%
-						</div>
-						<p className="text-xs text-muted-foreground">Transaction success</p>
-					</CardContent>
-				</Card>
 			</div>
 
 			{/* Payment Methods Breakdown */}
@@ -448,30 +494,50 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 					<CardDescription>Transaction processing performance</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="grid gap-4 md:grid-cols-4">
+					<div className="grid gap-4 md:grid-cols-5">
 						<div className="space-y-2">
-							<p className="text-sm font-medium">Total Attempts</p>
-							<p className="text-2xl font-bold">
-								{data?.processing_stats?.total_attempts?.toLocaleString() ||
-									"0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium text-green-600">Successful</p>
+							<p className="text-sm font-medium">✅ Successful</p>
 							<p className="text-2xl font-bold text-green-600">
-								{data?.processing_stats?.successful?.toLocaleString() || "0"}
+								{successfulCount.toLocaleString()}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								${successfullyProcessed.toLocaleString()}
 							</p>
 						</div>
 						<div className="space-y-2">
-							<p className="text-sm font-medium text-red-600">Failed</p>
-							<p className="text-2xl font-bold text-red-600">
-								{data?.processing_stats?.failed?.toLocaleString() || "0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium text-orange-600">Refunded</p>
+							<p className="text-sm font-medium text-orange-600">↩️ Refunded</p>
 							<p className="text-2xl font-bold text-orange-600">
-								{data?.processing_stats?.refunded?.toLocaleString() || "0"}
+								{refundedCount.toLocaleString()}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								${refundedAmount.toLocaleString()}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium text-red-600">❌ Failed</p>
+							<p className="text-2xl font-bold text-red-600">
+								{failedCount.toLocaleString()}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								${failedAmount.toLocaleString()}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium text-gray-600">🚫 Canceled</p>
+							<p className="text-2xl font-bold text-gray-600">
+								{canceledCount.toLocaleString()}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								${canceledAmount.toLocaleString()}
+							</p>
+						</div>
+						<div className="space-y-2">
+							<p className="text-sm font-medium text-blue-600">📊 Success Rate</p>
+							<p className="text-2xl font-bold text-blue-600">
+								{processingSuccessRate.toFixed(1)}%
+							</p>
+							<p className="text-xs text-muted-foreground">
+								{(successfulCount + refundedCount + failedCount + canceledCount).toLocaleString()} total
 							</p>
 						</div>
 					</div>
