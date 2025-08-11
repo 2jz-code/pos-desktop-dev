@@ -196,6 +196,26 @@ class InventoryService {
 		}
 	}
 
+	async bulkAdjustStock(data) {
+		try {
+			const response = await apiClient.post("/inventory/stock/bulk-adjust/", data);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to bulk adjust stock:", error);
+			throw error;
+		}
+	}
+
+	async bulkTransferStock(data) {
+		try {
+			const response = await apiClient.post("/inventory/stock/bulk-transfer/", data);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to bulk transfer stock:", error);
+			throw error;
+		}
+	}
+
 	/**
 	 * Check stock availability for a single product
 	 * @param {number} productId - Product ID to check

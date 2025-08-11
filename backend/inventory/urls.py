@@ -13,6 +13,8 @@ from .views import (
     InventoryDashboardView,
     QuickStockAdjustmentView,
     InventoryDefaultsView,
+    BulkAdjustStockView,
+    BulkTransferStockView,
     barcode_stock_lookup,
     barcode_stock_adjustment,
 )
@@ -38,6 +40,8 @@ urlpatterns = [
     # Stock Management Actions
     path("stock/adjust/", AdjustStockView.as_view(), name="stock-adjust"),
     path("stock/transfer/", TransferStockView.as_view(), name="stock-transfer"),
+    path("stock/bulk-adjust/", BulkAdjustStockView.as_view(), name="bulk-stock-adjust"),
+    path("stock/bulk-transfer/", BulkTransferStockView.as_view(), name="bulk-stock-transfer"),
     # Barcode-based Operations
     path(
         "barcode/<str:barcode>/stock/",

@@ -244,3 +244,52 @@ class StockTransferSerializer(serializers.Serializer):
         return InventoryService.transfer_stock(
             product, from_location, to_location, quantity
         )
+
+
+# --- Bulk Operations Serializers ---
+
+class BulkStockAdjustmentItemSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField()
+    location_id = serializers.IntegerField()
+    adjustment_type = serializers.ChoiceField(choices=[("Add", "Add"), ("Subtract", "Subtract")])
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+    reason = serializers.CharField(max_length=255)
+
+class BulkStockAdjustmentSerializer(serializers.Serializer):
+    adjustments = BulkStockAdjustmentItemSerializer(many=True)
+    user_id = serializers.IntegerField()
+
+    def save(self):
+        adjustments_data = self.validated_data["adjustments"]
+        user_id = self.validated_data["user_id"]
+        return InventoryService.perform_bulk_stock_adjustment(adjustments_data, user_id)
+
+
+class BulkStockTransferItemSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField()
+    from_location_id = serializers.IntegerField()
+    to_location_id = serializers.IntegerField()
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+class BulkStockTransferSerializer(serializers.Serializer):
+    transfers = BulkStockTransferItemSerializer(many=True)
+    user_id = serializers.IntegerField()
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_transfers(self, transfers):
+        for transfer in transfers:
+            if transfer['from_location_id'] == transfer['to_location_id']:
+                raise serializers.ValidationError(
+                    "Source and destination locations cannot be the same for product ID {}.".format(transfer['product_id'])
+                )
+            if transfer['quantity'] <= 0:
+                raise serializers.ValidationError(
+                    "Quantity must be positive for a transfer for product ID {}.".format(transfer['product_id'])
+                )
+        return transfers
+
+    def save(self):
+        transfers_data = self.validated_data["transfers"]
+        user_id = self.validated_data["user_id"]
+        notes = self.validated_data.get("notes", "")
+        return InventoryService.perform_bulk_stock_transfer(transfers_data, user_id, notes)

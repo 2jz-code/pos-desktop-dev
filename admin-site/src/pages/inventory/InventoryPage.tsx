@@ -292,6 +292,13 @@ export const InventoryPage = () => {
 						<Plus className="h-4 w-4 mr-2" />
 						New Adjustment
 					</Button>
+					<Button
+						size="sm"
+						onClick={() => navigate('/inventory/bulk-operations')}
+					>
+						<Warehouse className="h-4 w-4 mr-2" />
+						Bulk Operations
+					</Button>
 				</div>
 			</header>
 

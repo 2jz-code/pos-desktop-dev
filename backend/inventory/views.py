@@ -14,6 +14,8 @@ from .serializers import (
     RecipeSerializer,
     StockAdjustmentSerializer,
     StockTransferSerializer,
+    BulkStockAdjustmentSerializer,
+    BulkStockTransferSerializer,
 )
 from .services import InventoryService
 from products.models import Product
@@ -165,6 +167,50 @@ class TransferStockView(APIView):
                 serializer.save()
                 return Response(
                     {"status": "success", "message": "Stock transferred successfully."},
+                    status=status.HTTP_200_OK,
+                )
+            except ValueError as e:
+                return Response(
+                    {"status": "error", "message": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BulkAdjustStockView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, *args, **kwargs):
+        mutable_data = request.data.copy()
+        mutable_data['user_id'] = request.user.id
+        serializer = BulkStockAdjustmentSerializer(data=mutable_data)
+        if serializer.is_valid():
+            try:
+                serializer.save()
+                return Response(
+                    {"status": "success", "message": "Bulk stock adjusted successfully."},
+                    status=status.HTTP_200_OK,
+                )
+            except ValueError as e:
+                return Response(
+                    {"status": "error", "message": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BulkTransferStockView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, *args, **kwargs):
+        mutable_data = request.data.copy()
+        mutable_data['user_id'] = request.user.id
+        serializer = BulkStockTransferSerializer(data=mutable_data)
+        if serializer.is_valid():
+            try:
+                serializer.save()
+                return Response(
+                    {"status": "success", "message": "Bulk stock transferred successfully."},
                     status=status.HTTP_200_OK,
                 )
             except ValueError as e:

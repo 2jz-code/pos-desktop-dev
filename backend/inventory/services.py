@@ -841,3 +841,67 @@ class InventoryService:
             return {"success": False, "error": "Product not found"}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    @staticmethod
+    @transaction.atomic
+    def perform_bulk_stock_adjustment(adjustments_data, user_id):
+        from users.models import User
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            raise ValueError(f"User with id {user_id} not found")
+
+        results = []
+        for item in adjustments_data:
+            product = Product.objects.get(id=item['product_id'])
+            location = Location.objects.get(id=item['location_id'])
+            quantity = Decimal(item['quantity'])
+            reason = item['reason']
+            adjustment_type = item['adjustment_type']
+
+            if adjustment_type == "Add":
+                stock = InventoryService.add_stock(product, location, quantity)
+            else:
+                stock = InventoryService.decrement_stock(product, location, quantity)
+            
+            # TODO: Create a StockAdjustment record for auditing
+
+            results.append({
+                'product_id': product.id,
+                'location_id': location.id,
+                'new_quantity': stock.quantity
+            })
+        
+        return results
+
+    @staticmethod
+    @transaction.atomic
+    def perform_bulk_stock_transfer(transfers_data, user_id, notes):
+        from users.models import User
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            raise ValueError(f"User with id {user_id} not found")
+
+        results = []
+        for item in transfers_data:
+            product = Product.objects.get(id=item['product_id'])
+            from_location = Location.objects.get(id=item['from_location_id'])
+            to_location = Location.objects.get(id=item['to_location_id'])
+            quantity = Decimal(item['quantity'])
+
+            source_stock, destination_stock = InventoryService.transfer_stock(
+                product, from_location, to_location, quantity
+            )
+
+            # TODO: Create a StockTransfer record for auditing
+
+            results.append({
+                'product_id': product.id,
+                'from_location_id': from_location.id,
+                'to_location_id': to_location.id,
+                'from_location_quantity': source_stock.quantity,
+                'to_location_quantity': destination_stock.quantity
+            })
+        
+        return results
