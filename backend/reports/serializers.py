@@ -288,6 +288,8 @@ class SalesReportDataSerializer(ReportDataSerializer):
         # Validate required fields for sales report
         required_fields = [
             "total_revenue",
+            "net_revenue", 
+            "revenue_breakdown",
             "total_orders",
             "average_order_value",
             "sales_by_period",

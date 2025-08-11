@@ -38,11 +38,15 @@ import {
 	CreditCard,
 	Banknote,
 	Gift,
+	HelpCircle,
+	Info,
+	MinusCircle,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import { RevenueTooltip } from "@/components/reports/RevenueTooltip";
 import {
 	Table,
 	TableBody,
@@ -87,6 +91,7 @@ interface TransactionDetails {
 
 interface SalesData {
 	total_revenue: number;
+	net_revenue: number;
 	total_subtotal: number;
 	total_orders: number;
 	avg_order_value: number;
@@ -95,6 +100,23 @@ interface SalesData {
 	total_items: number;
 	total_surcharges: number;
 	total_tips: number;
+	revenue_breakdown?: {
+		revenue_components: {
+			subtotal: number;
+			tips: number;
+			discounts_applied: number;
+			refunds: number;
+			net_revenue: number;
+		};
+		non_revenue_components: {
+			tax: number;
+			surcharges: number;
+		};
+		customer_totals: {
+			grand_total: number;
+			total_collected: number;
+		};
+	};
 	order_vs_payment_reconciliation: {
 		total_orders_value: number;
 		total_payment_attempts: number;
@@ -313,7 +335,9 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 						<div className="text-2xl font-bold">
 							${data?.total_revenue?.toLocaleString() || "0"}
 						</div>
-						<p className="text-xs text-muted-foreground">Total value of orders placed</p>
+						<p className="text-xs text-muted-foreground">
+							Grand total of all orders (inc. tax)
+						</p>
 					</CardContent>
 				</Card>
 
@@ -363,45 +387,77 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 			<Card>
 				<CardHeader>
 					<CardTitle>Order vs Payment Reconciliation</CardTitle>
-					<CardDescription>Detailed breakdown of order processing and payments</CardDescription>
+					<CardDescription>
+						Detailed breakdown of order processing and payments
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 						<div>
-							<p className="text-sm font-medium text-muted-foreground">Total Orders Value</p>
+							<p className="text-sm font-medium text-muted-foreground">
+								Total Orders Value
+							</p>
 							<p className="text-2xl font-bold">
-								${data?.order_vs_payment_reconciliation?.total_orders_value?.toLocaleString() || "0"}
+								$
+								{data?.order_vs_payment_reconciliation?.total_orders_value?.toLocaleString() ||
+									"0"}
 							</p>
 						</div>
 						<div>
-							<p className="text-sm font-medium text-muted-foreground">Successfully Processed</p>
+							<p className="text-sm font-medium text-muted-foreground">
+								Successfully Processed
+							</p>
 							<p className="text-2xl font-bold text-green-600">
-								${data?.order_vs_payment_reconciliation?.successfully_processed?.toLocaleString() || "0"}
+								$
+								{data?.order_vs_payment_reconciliation?.successfully_processed?.toLocaleString() ||
+									"0"}
 							</p>
 						</div>
 						<div>
-							<p className="text-sm font-medium text-muted-foreground">Lost Revenue</p>
+							<p className="text-sm font-medium text-muted-foreground">
+								Lost Revenue
+							</p>
 							<p className="text-2xl font-bold text-red-600">
-								${data?.order_vs_payment_reconciliation?.lost_revenue?.toLocaleString() || "0"}
+								$
+								{data?.order_vs_payment_reconciliation?.lost_revenue?.toLocaleString() ||
+									"0"}
 							</p>
 						</div>
 						<div>
-							<p className="text-sm font-medium text-muted-foreground">Order Completion Rate</p>
+							<p className="text-sm font-medium text-muted-foreground">
+								Order Completion Rate
+							</p>
 							<p className="text-2xl font-bold">
-								{data?.order_vs_payment_reconciliation?.order_completion_rate?.toFixed(2) || "0"}%
+								{data?.order_vs_payment_reconciliation?.order_completion_rate?.toFixed(
+									2
+								) || "0"}
+								%
 							</p>
 						</div>
 					</div>
 					{data?.order_vs_payment_reconciliation?.payment_breakdown && (
 						<div className="mt-4">
-							<h4 className="text-sm font-medium mb-2">Payment Status Breakdown</h4>
+							<h4 className="text-sm font-medium mb-2">
+								Payment Status Breakdown
+							</h4>
 							<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-								{Object.entries(data.order_vs_payment_reconciliation.payment_breakdown).map(([status, breakdown]) => (
-									<div key={status} className="bg-muted/20 p-3 rounded-lg">
-										<p className="text-xs text-muted-foreground capitalize">{status.replace('_', ' ')}</p>
+								{Object.entries(
+									data.order_vs_payment_reconciliation.payment_breakdown
+								).map(([status, breakdown]) => (
+									<div
+										key={status}
+										className="bg-muted/20 p-3 rounded-lg"
+									>
+										<p className="text-xs text-muted-foreground capitalize">
+											{status.replace("_", " ")}
+										</p>
 										<div className="flex justify-between mt-1">
-											<span className="text-sm font-medium">{breakdown?.count || 0} transactions</span>
-											<span className="text-sm font-bold">${(breakdown?.amount || 0).toLocaleString()}</span>
+											<span className="text-sm font-medium">
+												{breakdown?.count || 0} transactions
+											</span>
+											<span className="text-sm font-bold">
+												${(breakdown?.amount || 0).toLocaleString()}
+											</span>
 										</div>
 									</div>
 								))}
@@ -410,7 +466,146 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 					)}
 				</CardContent>
 			</Card>
+			{/* Enhanced Revenue Breakdown */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<DollarSign className="h-5 w-5" />
+						Revenue Breakdown
+					</CardTitle>
+					<CardDescription>
+						Clear breakdown of what contributes to your business profit
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{/* Net Revenue Highlight */}
+					<div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-2">
+								<RevenueTooltip type="net_revenue">
+									<div className="flex items-center gap-2 cursor-help">
+										<TrendingUp className="h-5 w-5 text-green-600" />
+										<span className="text-lg font-semibold text-green-800">
+											Net Revenue
+										</span>
+										<HelpCircle className="h-4 w-4 text-green-600" />
+									</div>
+								</RevenueTooltip>
+							</div>
+							<div className="text-right">
+								<div className="text-3xl font-bold text-green-700">
+									$
+									{data?.revenue_breakdown?.revenue_components?.net_revenue?.toLocaleString() ||
+										data?.net_revenue?.toLocaleString() ||
+										"0"}
+								</div>
+								<div className="text-sm text-green-600">
+									Your actual business profit
+								</div>
+							</div>
+						</div>
+					</div>
 
+					{/* Revenue Components */}
+					<div className="space-y-4">
+						<div>
+							<h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+								<TrendingUp className="h-4 w-4 text-green-500" />
+								Revenue Components (Contribute to Profit)
+							</h4>
+							<div className="grid gap-3 md:grid-cols-3">
+								<div className="p-3 bg-blue-50 border border-blue-200 rounded">
+									<RevenueTooltip type="subtotal">
+										<div className="flex items-center justify-between cursor-help">
+											<div className="flex items-center gap-2">
+												<DollarSign className="h-4 w-4 text-blue-600" />
+												<span className="text-sm font-medium">Subtotal</span>
+												<HelpCircle className="h-3 w-3 text-blue-600" />
+											</div>
+											<span className="font-bold text-blue-700">
+												${data?.total_subtotal?.toLocaleString() || "0"}
+											</span>
+										</div>
+									</RevenueTooltip>
+								</div>
+
+								<div className="p-3 bg-green-50 border border-green-200 rounded">
+									<RevenueTooltip type="tips">
+										<div className="flex items-center justify-between cursor-help">
+											<div className="flex items-center gap-2">
+												<TrendingUp className="h-4 w-4 text-green-600" />
+												<span className="text-sm font-medium">Tips</span>
+												<HelpCircle className="h-3 w-3 text-green-600" />
+											</div>
+											<span className="font-bold text-green-700">
+												+${data?.total_tips?.toLocaleString() || "0"}
+											</span>
+										</div>
+									</RevenueTooltip>
+								</div>
+
+								<div className="p-3 bg-red-50 border border-red-200 rounded">
+									<RevenueTooltip type="discounts">
+										<div className="flex items-center justify-between cursor-help">
+											<div className="flex items-center gap-2">
+												<MinusCircle className="h-4 w-4 text-red-600" />
+												<span className="text-sm font-medium">Discounts</span>
+												<HelpCircle className="h-3 w-3 text-red-600" />
+											</div>
+											<span className="font-bold text-red-700">
+												-${data?.total_discounts?.toLocaleString() || "0"}
+											</span>
+										</div>
+									</RevenueTooltip>
+								</div>
+							</div>
+						</div>
+
+						{/* Non-Revenue Components */}
+						<div>
+							<h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+								<Info className="h-4 w-4 text-gray-500" />
+								Non-Revenue Components (Informational)
+							</h4>
+							<div className="grid gap-3 md:grid-cols-2">
+								<div className="p-3 bg-gray-50 border border-gray-200 rounded">
+									<RevenueTooltip type="tax">
+										<div className="flex items-center justify-between cursor-help">
+											<div className="flex items-center gap-2">
+												<HelpCircle className="h-4 w-4 text-gray-600" />
+												<span className="text-sm font-medium">
+													Tax Collected
+												</span>
+												<span className="text-xs text-gray-500">(Gov)</span>
+												<HelpCircle className="h-3 w-3 text-gray-600" />
+											</div>
+											<span className="font-bold text-gray-700">
+												${data?.total_tax?.toLocaleString() || "0"}
+											</span>
+										</div>
+									</RevenueTooltip>
+								</div>
+
+								<div className="p-3 bg-orange-50 border border-orange-200 rounded">
+									<RevenueTooltip type="surcharges">
+										<div className="flex items-center justify-between cursor-help">
+											<div className="flex items-center gap-2">
+												<CreditCard className="h-4 w-4 text-orange-600" />
+												<span className="text-sm font-medium">Surcharges</span>
+												<span className="text-xs text-orange-500">(Fees)</span>
+												<HelpCircle className="h-3 w-3 text-orange-600" />
+											</div>
+											<span className="font-bold text-orange-700">
+												${data?.total_surcharges?.toLocaleString() || "0"}
+											</span>
+										</div>
+									</RevenueTooltip>
+								</div>
+							</div>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
 			{/* Sales Trend Chart */}
 			<Card>
 				<CardHeader>
@@ -538,51 +733,6 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 					</CardContent>
 				</Card>
 			</div>
-
-			{/* Summary Stats */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Sales Summary</CardTitle>
-					<CardDescription>Additional sales metrics</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="grid gap-4 md:grid-cols-5">
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Tax Collected</p>
-							<p className="text-2xl font-bold">
-								${data?.total_tax?.toLocaleString() || "0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Discounts Applied</p>
-							<p className="text-2xl font-bold">
-								${data?.total_discounts?.toLocaleString() || "0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Surcharges Collected</p>
-							<p className="text-2xl font-bold">
-								${data?.total_surcharges?.toLocaleString() || "0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Tips Collected</p>
-							<p className="text-2xl font-bold">
-								${data?.total_tips?.toLocaleString() || "0"}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Net Revenue</p>
-							<p className="text-2xl font-bold">
-								$
-								{(
-									(data?.total_subtotal || 0) + (data?.total_tips || 0)
-								).toLocaleString()}
-							</p>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
 			{/* Sales Breakdown by Period */}
 			<Card>
 				<CardHeader>
@@ -643,7 +793,10 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 										</TableRow>
 										{isExpanded && (
 											<TableRow>
-												<TableCell colSpan={6} className="p-0">
+												<TableCell
+													colSpan={6}
+													className="p-0"
+												>
 													<div className="p-4 bg-muted/20 border-t">
 														<div className="space-y-4">
 															{/* Payment Summary */}
@@ -660,7 +813,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																			$
 																			{(
 																				period.transaction_details
-																						?.payment_totals?.total_tips ?? 0
+																					?.payment_totals?.total_tips ?? 0
 																			).toLocaleString()}
 																		</div>
 																	</div>
@@ -671,10 +824,10 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																		<div className="font-medium">
 																			$
 																			{(
-																					period.transaction_details
-																						?.payment_totals?.total_surcharges ??
-																					0
-																				).toLocaleString()}
+																				period.transaction_details
+																					?.payment_totals?.total_surcharges ??
+																				0
+																			).toLocaleString()}
 																		</div>
 																	</div>
 																	<div>
@@ -684,8 +837,8 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																		<div className="font-medium">
 																			$
 																			{(
-																					period.transaction_details
-																						?.payment_totals?.total_collected ?? 0
+																				period.transaction_details
+																					?.payment_totals?.total_collected ?? 0
 																			).toLocaleString()}
 																		</div>
 																	</div>
@@ -704,7 +857,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																	<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 																		{Object.entries(
 																			period.transaction_details
-																					?.method_breakdown ?? {}
+																				?.method_breakdown ?? {}
 																		).map(([method, breakdown]) => (
 																			<div
 																				key={method}

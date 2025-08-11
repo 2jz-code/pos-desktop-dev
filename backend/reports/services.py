@@ -208,6 +208,58 @@ class ReportService:
             }
 
     @staticmethod
+    def calculate_net_revenue(subtotal, tips, discounts, refunds=0):
+        """
+        Calculate net revenue using the correct business formula.
+        
+        Net Revenue = Subtotal + Tips - Discounts - Refunds
+        
+        This represents the actual business profit, excluding:
+        - Tax (goes to government, not business profit)
+        - Surcharges (covers processing fees, not business profit)
+        
+        Args:
+            subtotal (float): Base order subtotal
+            tips (float): Customer tips collected
+            discounts (float): Discount amounts applied
+            refunds (float): Total refunds issued (default: 0)
+            
+        Returns:
+            float: Calculated net revenue
+        """
+        return subtotal + tips - discounts - refunds
+
+    @staticmethod
+    def get_revenue_breakdown(subtotal, tips, discounts, tax, surcharges, refunds=0):
+        """
+        Get detailed breakdown of revenue components for frontend display.
+        
+        Returns a dictionary with clear categorization of revenue vs non-revenue items.
+        """
+        net_revenue = ReportService.calculate_net_revenue(subtotal, tips, discounts, refunds)
+        
+        return {
+            # Revenue components (contribute to business profit)
+            "revenue_components": {
+                "subtotal": subtotal,
+                "tips": tips,
+                "discounts_applied": -discounts,  # Negative because it reduces revenue
+                "refunds": -refunds,  # Negative because it reduces revenue
+                "net_revenue": net_revenue
+            },
+            # Non-revenue components (informational only)
+            "non_revenue_components": {
+                "tax": tax,  # Goes to government
+                "surcharges": surcharges  # Covers processing fees
+            },
+            # Total customer payment
+            "customer_totals": {
+                "grand_total": subtotal + tax + surcharges,
+                "total_collected": subtotal + tax + surcharges + tips
+            }
+        }
+
+    @staticmethod
     @cache_static_data(timeout=3600 * 24)  # 24 hours - historical trends change rarely
     def get_historical_trends_data():
         """Cache monthly/yearly trends that rarely change"""
@@ -718,8 +770,23 @@ class ReportService:
 
         # Add refunds to the sales data
         sales_data["total_refunds"] = float(total_refunds)
-        sales_data["net_revenue"] = (
-            sales_data["total_revenue"] - sales_data["total_refunds"]
+        
+        # Calculate net revenue using the centralized method
+        sales_data["net_revenue"] = ReportService.calculate_net_revenue(
+            sales_data["total_subtotal"],
+            sales_data["total_tips"],
+            sales_data["total_discounts"],
+            sales_data["total_refunds"]
+        )
+        
+        # Add detailed revenue breakdown for frontend
+        sales_data["revenue_breakdown"] = ReportService.get_revenue_breakdown(
+            sales_data["total_subtotal"],
+            sales_data["total_tips"],
+            sales_data["total_discounts"],
+            sales_data["total_tax"],
+            sales_data["total_surcharges"],
+            sales_data["total_refunds"]
         )
 
         # Calculate total_items separately to avoid ORDER duplication from JOINs
@@ -1543,7 +1610,7 @@ class ReportService:
             "total_transactions": successful_transactions.count(),
             "total_refunds": total_refunds,
             "total_refunded_transactions": refunded_transactions.count(),
-            "net_revenue": total_processed_from_transactions,  # Successful transactions ARE the net revenue
+            "net_revenue": total_processed_from_transactions,  # Note: This is payment-focused net revenue (successful transactions)
             # Calculated rates
             "processing_success_rate": (
                 round((total_processed_from_transactions / total_attempted * 100), 2)
@@ -1870,13 +1937,23 @@ class ReportService:
         # Base queryset for completed orders
         def get_metrics_for_period(start_time, end_time):
             # Get order-level metrics WITHOUT JOINs to avoid duplication
-            orders = Order.objects.filter(
+            orders_queryset_inner = Order.objects.filter(
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_time, end_time),
                 subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-            ).aggregate(
+            )
+            
+            orders = orders_queryset_inner.aggregate(
                 total_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
+                total_subtotal=Coalesce(Sum("subtotal"), Value(Decimal("0.00"))),
+                total_discounts=Coalesce(Sum("total_discounts_amount"), Value(Decimal("0.00"))),
                 total_orders=Count("id"),
+            )
+            
+            # Get payment totals for tips
+            from payments.models import Payment
+            payment_totals = Payment.objects.filter(order__in=orders_queryset_inner).aggregate(
+                total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
             )
 
             # Calculate total items separately to avoid JOIN duplication
@@ -1907,9 +1984,19 @@ class ReportService:
             total_orders_value = float(orders["total_sales"] or 0)  # What customers ordered
             total_payment_attempts = float(all_order_transactions["total_attempted_payments"] or 0)  # What was processed
             successful_payments = float(all_order_transactions["successful_payments"] or 0)
+            
+            # Calculate net revenue using the centralized method
+            net_revenue = ReportService.calculate_net_revenue(
+                float(orders["total_subtotal"] or 0),
+                float(payment_totals["total_tips"] or 0),
+                float(orders["total_discounts"] or 0),
+                0  # No refunds calculation in quick metrics for performance
+            )
 
             return {
-                "sales": total_payment_attempts,  # Updated to show payment attempts instead of order grand totals
+                "sales": total_payment_attempts,  # Keep for backward compatibility
+                "gross_revenue": successful_payments,  # Total successfully processed payments
+                "net_revenue": net_revenue,  # New proper net revenue calculation
                 "orders": orders["total_orders"] or 0,
                 "items": total_items or 0,
                 "avg_order_value": (
@@ -1917,7 +2004,11 @@ class ReportService:
                     if orders["total_orders"] > 0
                     else 0
                 ),
-                # New comprehensive metrics
+                # Revenue breakdown components
+                "subtotal": float(orders["total_subtotal"] or 0),
+                "tips": float(payment_totals["total_tips"] or 0),
+                "discounts": float(orders["total_discounts"] or 0),
+                # Existing comprehensive metrics
                 "total_orders_value": total_orders_value,
                 "total_payment_attempts": total_payment_attempts,
                 "successful_payments": successful_payments,

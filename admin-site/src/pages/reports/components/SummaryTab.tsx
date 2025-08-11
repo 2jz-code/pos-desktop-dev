@@ -33,11 +33,13 @@ import {
 	Download,
 	RefreshCw,
 	Package,
+	HelpCircle,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import { RevenueTooltip } from "@/components/reports/RevenueTooltip";
 
 interface SummaryData {
 	total_sales: number;
@@ -74,6 +76,11 @@ interface SummaryData {
 interface QuickMetrics {
 	today: {
 		sales: number;
+		gross_revenue: number;
+		net_revenue: number;
+		subtotal: number;
+		tips: number;
+		discounts: number;
 		orders: number;
 		items: number;
 		avg_order_value: number;
@@ -84,6 +91,11 @@ interface QuickMetrics {
 	};
 	month_to_date: {
 		sales: number;
+		gross_revenue: number;
+		net_revenue: number;
+		subtotal: number;
+		tips: number;
+		discounts: number;
 		orders: number;
 		items: number;
 		avg_order_value: number;
@@ -94,6 +106,11 @@ interface QuickMetrics {
 	};
 	year_to_date: {
 		sales: number;
+		gross_revenue: number;
+		net_revenue: number;
+		subtotal: number;
+		tips: number;
+		discounts: number;
 		orders: number;
 		items: number;
 		avg_order_value: number;
@@ -289,10 +306,26 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 								</div>
 								<div className="grid gap-2">
 									<div className="flex items-center justify-between">
-										<span className="text-2xl font-bold">
-											${quickMetrics.today.sales.toLocaleString()}
-										</span>
-										<span className="text-sm text-muted-foreground">Sales</span>
+										<RevenueTooltip type="gross_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-2xl font-bold text-blue-600">
+													${quickMetrics.today.gross_revenue?.toLocaleString() || "0"}
+												</span>
+												<HelpCircle className="h-4 w-4 text-blue-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Gross Revenue</span>
+									</div>
+									<div className="flex items-center justify-between">
+										<RevenueTooltip type="net_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-lg font-bold text-green-600">
+													${quickMetrics.today.net_revenue?.toLocaleString() || quickMetrics.today.sales.toLocaleString()}
+												</span>
+												<HelpCircle className="h-4 w-4 text-green-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Net Revenue</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<span className="text-lg font-medium">
@@ -328,10 +361,26 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 								</div>
 								<div className="grid gap-2">
 									<div className="flex items-center justify-between">
-										<span className="text-2xl font-bold">
-											${quickMetrics.month_to_date.sales.toLocaleString()}
-										</span>
-										<span className="text-sm text-muted-foreground">Sales</span>
+										<RevenueTooltip type="gross_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-2xl font-bold text-blue-600">
+													${quickMetrics.month_to_date.gross_revenue?.toLocaleString() || "0"}
+												</span>
+												<HelpCircle className="h-4 w-4 text-blue-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Gross Revenue</span>
+									</div>
+									<div className="flex items-center justify-between">
+										<RevenueTooltip type="net_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-lg font-bold text-green-600">
+													${quickMetrics.month_to_date.net_revenue?.toLocaleString() || quickMetrics.month_to_date.sales.toLocaleString()}
+												</span>
+												<HelpCircle className="h-4 w-4 text-green-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Net Revenue</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<span className="text-lg font-medium">
@@ -367,10 +416,26 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 								</div>
 								<div className="grid gap-2">
 									<div className="flex items-center justify-between">
-										<span className="text-2xl font-bold">
-											${quickMetrics.year_to_date.sales.toLocaleString()}
-										</span>
-										<span className="text-sm text-muted-foreground">Sales</span>
+										<RevenueTooltip type="gross_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-2xl font-bold text-blue-600">
+													${quickMetrics.year_to_date.gross_revenue?.toLocaleString() || "0"}
+												</span>
+												<HelpCircle className="h-4 w-4 text-blue-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Gross Revenue</span>
+									</div>
+									<div className="flex items-center justify-between">
+										<RevenueTooltip type="net_revenue">
+											<div className="flex items-center gap-1 cursor-help">
+												<span className="text-lg font-bold text-green-600">
+													${quickMetrics.year_to_date.net_revenue?.toLocaleString() || quickMetrics.year_to_date.sales.toLocaleString()}
+												</span>
+												<HelpCircle className="h-4 w-4 text-green-500" />
+											</div>
+										</RevenueTooltip>
+										<span className="text-sm text-muted-foreground">Net Revenue</span>
 									</div>
 									<div className="flex items-center justify-between">
 										<span className="text-lg font-medium">
