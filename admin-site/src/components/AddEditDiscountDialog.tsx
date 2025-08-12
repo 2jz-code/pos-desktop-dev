@@ -173,7 +173,7 @@ export default function AddEditDiscountDialog({
 			label: p.name,
 		})) || [];
 	const categoryOptions =
-		categories?.data.map((c: { id: number; name: string }) => ({
+		categories?.data.results.map((c: { id: number; name: string }) => ({
 			value: c.id,
 			label: c.name,
 		})) || [];
