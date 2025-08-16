@@ -267,6 +267,14 @@ class PaymentTransaction(models.Model):
         ordering = ["-created_at"]
         verbose_name = _("Payment Transaction")
         verbose_name_plural = _("Payment Transactions")
+        indexes = [
+            models.Index(fields=['payment']),
+            models.Index(fields=['method']),
+            models.Index(fields=['status']),
+            models.Index(fields=['transaction_id']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['payment', 'status'])
+        ]
 
     def save(self, *args, **kwargs):
         # Auto-set created_at if not provided (like auto_now_add but allows override)
@@ -345,6 +353,9 @@ class GiftCard(models.Model):
         indexes = [
             models.Index(fields=["code"]),
             models.Index(fields=["status"]),
+            models.Index(fields=['current_balance']),
+            models.Index(fields=['expiry_date']),
+            models.Index(fields=['status', 'current_balance']),
         ]
 
     def __str__(self):

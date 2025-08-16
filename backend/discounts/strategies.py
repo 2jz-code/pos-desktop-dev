@@ -80,7 +80,8 @@ class ProductPercentageDiscountStrategy(DiscountStrategy):
         if not applicable_products_ids:
             return total_discount
 
-        for item in order.items.all():
+        # FIX: Use select_related to prevent N+1 queries when accessing item.product.name
+        for item in order.items.select_related('product').all():
             print(
                 f"[Strategy Log]   - Checking item: '{item.product.name}' (Product ID: {item.product.id})"
             )
@@ -111,7 +112,8 @@ class CategoryPercentageDiscountStrategy(DiscountStrategy):
         if not applicable_category_ids:
             return total_discount
 
-        for item in order.items.all():
+        # FIX: Use select_related to prevent N+1 queries when accessing item.product.name and item.product.category_id
+        for item in order.items.select_related('product', 'product__category').all():
             print(
                 f"[Strategy Log]   - Checking item: '{item.product.name}' (Category ID: {item.product.category_id})"
             )
@@ -137,7 +139,8 @@ class ProductFixedAmountDiscountStrategy(DiscountStrategy):
         )
         if not applicable_products_ids:
             return total_discount
-        for item in order.items.filter(product_id__in=applicable_products_ids):
+        # FIX: Add select_related to prevent N+1 queries
+        for item in order.items.filter(product_id__in=applicable_products_ids).select_related('product'):
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
         return total_discount.quantize(Decimal("0.01"))
@@ -152,9 +155,10 @@ class CategoryFixedAmountDiscountStrategy(DiscountStrategy):
         )
         if not applicable_category_ids:
             return total_discount
+        # FIX: Add select_related to prevent N+1 queries
         for item in order.items.filter(
             product__category_id__in=applicable_category_ids
-        ):
+        ).select_related('product', 'product__category'):
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
         return total_discount.quantize(Decimal("0.01"))
@@ -189,7 +193,8 @@ class BuyXGetYDiscountStrategy(DiscountStrategy):
 
         # Create a flat list of all eligible items in the cart, respecting their quantities
         eligible_items_prices = []
-        for item in order.items.filter(product_id__in=applicable_product_ids):
+        # FIX: Add select_related to prevent N+1 queries when accessing item.price_at_sale
+        for item in order.items.filter(product_id__in=applicable_product_ids).select_related('product'):
             for _ in range(item.quantity):
                 eligible_items_prices.append(item.price_at_sale)
 

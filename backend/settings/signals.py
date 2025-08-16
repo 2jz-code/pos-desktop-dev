@@ -27,8 +27,14 @@ def reload_app_settings(sender, instance, **kwargs):
     app_settings.reload()
     print(f"Configuration cache updated: {app_settings}")
     
-    # Invalidate settings cache
-    invalidate_cache_pattern('global_settings')
+    # Invalidate comprehensive settings caches
+    invalidate_cache_pattern('*global_settings*')
+    invalidate_cache_pattern('*get_cached_business_hours*')
+    invalidate_cache_pattern('*get_cached_payment_config*')
+    invalidate_cache_pattern('*get_cached_store_branding*')
+    
+    # Warm cache with new values
+    app_settings.warm_settings_cache()
 
     # Recalculate all in-progress orders to apply new rates immediately
     try:
@@ -133,7 +139,8 @@ def handle_store_location_change(sender, instance, created, **kwargs):
     print(f"Store location {'created' if created else 'updated'}: {instance.name}")
     
     # Invalidate store locations cache
-    invalidate_cache_pattern('store_locations')
+    invalidate_cache_pattern('*store_locations*')
+    invalidate_cache_pattern('*get_store_locations*')
 
 
 @receiver(post_save, sender=PrinterConfiguration)
@@ -145,8 +152,9 @@ def handle_printer_config_change(sender, instance, **kwargs):
     from .config import app_settings
     app_settings.reload()
     
-    # Invalidate global settings cache
-    invalidate_cache_pattern('global_settings')
+    # Invalidate printer-related caches
+    invalidate_cache_pattern('*global_settings*')
+    invalidate_cache_pattern('*get_cached_global_settings*')
 
 
 @receiver(post_save, sender=WebOrderSettings)
@@ -158,5 +166,6 @@ def handle_web_order_settings_change(sender, instance, **kwargs):
     from .config import app_settings
     app_settings.reload()
     
-    # Invalidate global settings cache
-    invalidate_cache_pattern('global_settings')
+    # Invalidate web order related caches
+    invalidate_cache_pattern('*global_settings*')
+    invalidate_cache_pattern('*get_cached_global_settings*')

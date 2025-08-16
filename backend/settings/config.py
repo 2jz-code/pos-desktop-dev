@@ -237,6 +237,87 @@ class AppSettings:
         """Cache store locations - changes infrequently"""
         from .models import StoreLocation
         return list(StoreLocation.objects.all())
+    
+    def warm_settings_cache(self):
+        """Pre-load critical settings into cache for better startup performance"""
+        try:
+            print("🔥 Warming settings cache...")
+            
+            # Pre-load core settings that are frequently accessed
+            critical_settings = [
+                'tax_rate',
+                'surcharge_percentage', 
+                'currency',
+                'store_name',
+                'opening_time',
+                'closing_time',
+                'timezone',
+                'active_terminal_provider'
+            ]
+            
+            # Access each setting to trigger cache loading
+            for setting_name in critical_settings:
+                if hasattr(self, setting_name):
+                    getattr(self, setting_name)
+            
+            # Pre-load cached methods
+            self.get_cached_global_settings()
+            self.get_store_locations()
+            
+            # Pre-load configuration dictionaries
+            self.get_store_info()
+            self.get_financial_settings()
+            self.get_receipt_config()
+            self.get_web_order_config()
+            self.get_printer_config()
+            
+            print("✅ Settings cache warmed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to warm settings cache: {e}")
+            return False
+    
+    @cache_static_data(timeout=3600*4)  # 4 hours in static cache
+    def get_cached_business_hours(self):
+        """Cache business hours configuration for frequent access"""
+        if not self._initialized:
+            self._setup()
+            
+        return {
+            'opening_time': self.opening_time.isoformat() if self.opening_time else None,
+            'closing_time': self.closing_time.isoformat() if self.closing_time else None,
+            'timezone': self.timezone,
+            'is_24_hours': self.opening_time is None or self.closing_time is None
+        }
+    
+    @cache_static_data(timeout=3600*6)  # 6 hours in static cache  
+    def get_cached_payment_config(self):
+        """Cache payment configuration for POS systems"""
+        if not self._initialized:
+            self._setup()
+            
+        return {
+            'active_terminal_provider': self.active_terminal_provider,
+            'currency': self.currency,
+            'surcharge_percentage': float(self.surcharge_percentage),
+            'allow_discount_stacking': self.allow_discount_stacking
+        }
+    
+    @cache_static_data(timeout=3600*12)  # 12 hours in static cache
+    def get_cached_store_branding(self):
+        """Cache store branding information for receipts and displays"""
+        if not self._initialized:
+            self._setup()
+            
+        return {
+            'store_name': self.store_name,
+            'store_address': self.store_address,
+            'store_phone': self.store_phone,
+            'store_email': self.store_email,
+            'receipt_header': self.receipt_header,
+            'receipt_footer': self.receipt_footer
+        }
 
     def get_store_info(self) -> dict:
         """

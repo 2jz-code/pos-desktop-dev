@@ -152,14 +152,17 @@ class Order(models.Model):
         verbose_name = _("Order")
         verbose_name_plural = _("Orders")
         indexes = [
-            models.Index(fields=['status'], name='order_status_idx'),
+            models.Index(fields=['status'], name='order_stat_idx'),
             models.Index(fields=['order_type'], name='order_type_idx'),
-            models.Index(fields=['payment_status'], name='order_payment_status_idx'),
-            models.Index(fields=['created_at'], name='order_created_at_idx'),
-            models.Index(fields=['customer', 'status'], name='order_customer_status_idx'),
-            models.Index(fields=['guest_id', 'status'], name='order_guest_status_idx'),
+            models.Index(fields=['payment_status'], name='order_pay_stat_idx'),
+            models.Index(fields=['created_at'], name='order_created_idx'),
+            models.Index(fields=['customer', 'status'], name='order_cust_stat_idx'),
+            models.Index(fields=['guest_id', 'status'], name='order_guest_stat_idx'),
             models.Index(fields=['cashier'], name='order_cashier_idx'),
-            models.Index(fields=['order_number'], name='order_number_idx'),
+            models.Index(fields=['order_number'], name='order_num_idx'),
+            # Performance-critical compound indexes
+            models.Index(fields=['status', 'created_at'], name='order_stat_dt_idx'),
+            models.Index(fields=['payment_status', 'status'], name='order_pay_st_st_idx'),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -413,6 +416,13 @@ class OrderItem(models.Model):
         verbose_name = _("Order Item")
         verbose_name_plural = _("Order Items")
         ordering = ['variation_group', 'item_sequence']
+        indexes = [
+            models.Index(fields=['order'], name='item_order_idx'),
+            models.Index(fields=['product'], name='item_product_idx'),
+            models.Index(fields=['status'], name='item_stat_idx'),
+            models.Index(fields=['kitchen_printed_at'], name='item_kitchen_dt_idx'),
+            models.Index(fields=['variation_group', 'item_sequence'], name='item_var_seq_idx'),
+        ]
 
     def __str__(self):
         base_str = f"{self.quantity} of {self.product.name}"

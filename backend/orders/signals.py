@@ -111,6 +111,25 @@ def handle_web_order_notifications(sender, instance, created, **kwargs):
     )
 
 # Cache invalidation signal handlers for Phase 3B
+@receiver([post_save, post_delete], sender=Order)
+def handle_order_changes_for_reports(sender, instance=None, **kwargs):
+    """Invalidate report caches when orders change"""
+    try:
+        # Invalidate report caches that depend on order data
+        invalidate_cache_pattern('*get_cached_business_kpis*')
+        invalidate_cache_pattern('*sales_report*')
+        invalidate_cache_pattern('*summary_report*')
+        invalidate_cache_pattern('*payment_report*')
+        invalidate_cache_pattern('*operations_report*')
+        
+        # Also invalidate ReportCache entries in the database
+        _invalidate_report_cache_entries()
+        
+        logger.debug(f"Invalidated report caches after order change: {instance.order_number if instance else 'unknown'}")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate report caches: {e}")
+
 @receiver([post_save, post_delete], sender=OrderItem)
 def handle_order_item_changes(sender, instance=None, **kwargs):
     """Invalidate order calculation caches when order items change"""
@@ -118,7 +137,12 @@ def handle_order_item_changes(sender, instance=None, **kwargs):
         # Invalidate session-level calculation caches
         invalidate_cache_pattern('get_cached_order_totals')
         
-        # Note: We don't invalidate tax matrix as it's static data
+        # Also invalidate report caches since order totals affect reports
+        invalidate_cache_pattern('*get_cached_business_kpis*')
+        invalidate_cache_pattern('*sales_report*')
+        
+        # Invalidate database report cache entries
+        _invalidate_report_cache_entries()
         
         logger.debug(f"Invalidated order calculation caches after item change")
         
@@ -132,7 +156,31 @@ def handle_order_discount_changes(sender, instance=None, **kwargs):
         # Invalidate session-level calculation caches
         invalidate_cache_pattern('get_cached_order_totals')
         
+        # Also invalidate report caches since discounts affect totals
+        invalidate_cache_pattern('*get_cached_business_kpis*')
+        invalidate_cache_pattern('*sales_report*')
+        
+        # Invalidate database report cache entries
+        _invalidate_report_cache_entries()
+        
         logger.debug(f"Invalidated order calculation caches after discount change")
         
     except Exception as e:
         logger.error(f"Failed to invalidate order discount caches: {e}")
+
+def _invalidate_report_cache_entries():
+    """Helper function to invalidate database report cache entries"""
+    try:
+        from reports.models import ReportCache
+        from django.utils import timezone
+        
+        # Mark recent report cache entries as expired
+        one_hour_ago = timezone.now() - timezone.timedelta(hours=1)
+        ReportCache.objects.filter(
+            created_at__gte=one_hour_ago
+        ).update(expires_at=timezone.now())
+        
+        logger.debug("Invalidated recent database report cache entries")
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate database report cache entries: {e}")

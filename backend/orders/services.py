@@ -288,6 +288,8 @@ class OrderService:
         Returns dict with group_name -> list of items
         """
         grouped = {}
+        # FIX: This method expects order_items to already have select_related('product')
+        # applied by the caller to prevent N+1 queries
         for item in order_items:
             group_key = item.variation_group or item.product.name.lower().replace(' ', '_')
             if group_key not in grouped:
@@ -305,7 +307,9 @@ class OrderService:
         """
         Generate kitchen-optimized receipt format
         """
-        grouped_items = OrderService.group_items_for_kitchen(order.items.all())
+        # FIX: Add select_related to prevent N+1 queries when accessing item.product.name
+        items_with_product = order.items.select_related('product').all()
+        grouped_items = OrderService.group_items_for_kitchen(items_with_product)
         
         receipt_lines = []
         receipt_lines.append(f"ORDER #{order.order_number}")
@@ -315,6 +319,7 @@ class OrderService:
         receipt_lines.append("")
         
         for group_name, items in grouped_items.items():
+            # Access pre-fetched product name (no additional query needed)
             product_name = items[0].product.name.upper()
             
             if len(items) > 1:
@@ -424,12 +429,13 @@ class OrderService:
         )
 
         # Copy items from the source order to the new one
+        # FIX: Access already pre-fetched product data (no additional queries needed)
         for item in source_order.items.all():
             OrderItem.objects.create(
                 order=new_order,
                 product=item.product,
                 quantity=item.quantity,
-                price_at_sale=item.product.price,  # Use current price
+                price_at_sale=item.product.price,  # Use current price from pre-fetched data
                 notes=item.notes,
             )
 
@@ -546,12 +552,17 @@ class OrderService:
         from settings.config import app_settings
 
         # Re-fetch the full order context to ensure data is fresh
+        # FIX: Add select_related for product to prevent N+1 queries when accessing item.product.price
         order = Order.objects.prefetch_related(
             "items__product__taxes", "applied_discounts__discount"
-        ).get(id=order.id)
+        ).select_related().get(id=order.id)
+        
+        # Pre-fetch items with related data to prevent N+1 queries
+        items = order.items.select_related('product').prefetch_related('product__taxes').all()
 
         # 1. Calculate the pre-discount subtotal from all items
-        order.subtotal = sum(item.total_price for item in order.items.all())
+        # FIX: Use pre-fetched items to prevent additional queries
+        order.subtotal = sum(item.total_price for item in items)
 
         # 2. Recalculate the value of all applied discounts based on the fresh subtotal
         total_discount_amount = Decimal("0.00")
@@ -578,11 +589,13 @@ class OrderService:
         tax_total = Decimal("0.00")
         if order.subtotal > 0:
             proportional_discount_rate = order.total_discounts_amount / order.subtotal
-            for item in order.items.all():
+            # FIX: Use pre-fetched items to prevent N+1 queries when accessing item.product.taxes
+            for item in items:
                 discounted_item_price = item.total_price * (
                     Decimal("1.0") - proportional_discount_rate
                 )
 
+                # Access pre-fetched taxes to prevent additional queries
                 product_taxes = item.product.taxes.all()
                 if product_taxes:
                     for tax in product_taxes:

@@ -251,6 +251,109 @@ class ProductService:
             }
 
     @staticmethod
+    @cache_static_data(timeout=3600)  # 1-hour cache for category-specific product lists
+    def get_cached_products_by_category(category_id=None, is_active=True):
+        """Cache product retrieval with category filtering for faster category browsing"""
+        from django.db import models
+        
+        queryset = Product.objects.select_related(
+            "category", "category__parent", "product_type"
+        ).prefetch_related(
+            "taxes",
+            "modifier_sets",
+            "product_modifier_sets__modifier_set__options",
+            "product_modifier_sets__hidden_options", 
+            "product_modifier_sets__extra_options"
+        )
+        
+        # Apply category filter if specified
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+            
+        # Apply active filter
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active)
+            
+        return list(queryset.annotate(
+            # Calculate parent order for hierarchical sorting
+            parent_order=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.F('category__order')),
+                default=models.F('category__parent__order'),
+                output_field=models.IntegerField()
+            ),
+            # Mark category level (0 for parent, 1 for child)
+            category_level=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField()
+            )
+        ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name'))
+    
+    @staticmethod
+    @cache_static_data(timeout=1800)  # 30-minute cache for inventory-aware product data
+    def get_cached_products_with_inventory_status(location_id=None):
+        """Cache products with current inventory status for POS interfaces"""
+        try:
+            # Get all active products
+            products = ProductService.get_cached_active_products_list()
+            
+            # Get inventory status
+            from inventory.services import InventoryService
+            
+            if location_id:
+                availability = InventoryService.get_inventory_availability_for_location(location_id)
+            else:
+                availability = InventoryService.get_inventory_availability_status()
+            
+            # Enhance products with inventory data
+            enhanced_products = []
+            for product in products:
+                product_id = product.id if hasattr(product, 'id') else product['id']
+                inventory_info = availability.get(product_id, {
+                    'status': 'unknown',
+                    'stock_level': 0,
+                    'can_make': False
+                })
+                
+                # Create enhanced product dict
+                enhanced_product = {
+                    'id': product_id,
+                    'name': product.name if hasattr(product, 'name') else product['name'],
+                    'price': float(product.price if hasattr(product, 'price') else product['price']),
+                    'category_id': product.category_id if hasattr(product, 'category_id') else product.get('category_id'),
+                    'is_active': product.is_active if hasattr(product, 'is_active') else product.get('is_active', True),
+                    'track_inventory': product.track_inventory if hasattr(product, 'track_inventory') else product.get('track_inventory', False),
+                    'inventory': inventory_info
+                }
+                enhanced_products.append(enhanced_product)
+            
+            return enhanced_products
+            
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to generate products with inventory status: {e}")
+            # Return basic product list on error
+            return ProductService.get_cached_active_products_list()
+    
+    @staticmethod
+    def invalidate_product_cache(product_id):
+        """Invalidate product-related caches when products change"""
+        from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+        
+        cache_patterns = [
+            f'*product_{product_id}*',
+            '*get_cached_products_list*',
+            '*get_cached_active_products_list*',
+            '*get_cached_products_by_category*',
+            '*get_cached_products_with_inventory_status*',
+            '*get_pos_menu_layout*',
+            '*get_cached_category_tree*'
+        ]
+        
+        for pattern in cache_patterns:
+            invalidate_cache_pattern(pattern)
+    
+    @staticmethod
     def get_structured_modifier_groups_for_product(product, context=None):
         """
         Get structured modifier groups for a product.

@@ -127,6 +127,10 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=['role', 'is_pos_staff']),  # For POS staff filtering
             models.Index(fields=['is_active', 'role']),     # For active user queries
             models.Index(fields=['email']),  # For email lookups (if not already indexed)
+            models.Index(fields=['username']),
+            models.Index(fields=['phone_number']),
+            models.Index(fields=['first_name', 'last_name']),
+            models.Index(fields=['api_key']),
         ]
 
     def __str__(self):

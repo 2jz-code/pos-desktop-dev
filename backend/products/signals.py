@@ -83,10 +83,16 @@ def process_product_image(sender, instance, created, **kwargs):
     action = "created" if created else "updated"
     broadcast_entity_change("products", instance.id, action)
     
-    # Invalidate product caches using broader patterns
-    invalidate_cache_pattern('*get_cached_products_list*')
-    invalidate_cache_pattern('*get_cached_active_products_list*')
-    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
+    # Use centralized cache invalidation from ProductService
+    from .services import ProductService
+    ProductService.invalidate_product_cache(instance.id)
+    
+    # Proactively warm product caches in background
+    try:
+        from celery import current_app
+        current_app.send_task('core_backend.infrastructure.tasks.warm_product_caches')
+    except Exception as e:
+        logger.warning(f"Failed to queue product cache warming: {e}")
 
 
 @receiver(post_delete, sender=Product)
@@ -98,10 +104,16 @@ def handle_product_delete(sender, instance, **kwargs):
     ImageService.delete_image_file(instance.image)
     broadcast_entity_change("products", instance.id, "deleted")
     
-    # Invalidate product caches using broader patterns
-    invalidate_cache_pattern('*get_cached_products_list*')
-    invalidate_cache_pattern('*get_cached_active_products_list*')
-    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
+    # Use centralized cache invalidation from ProductService
+    from .services import ProductService
+    ProductService.invalidate_product_cache(instance.id)
+    
+    # Proactively warm product caches in background
+    try:
+        from celery import current_app
+        current_app.send_task('core_backend.infrastructure.tasks.warm_product_caches')
+    except Exception as e:
+        logger.warning(f"Failed to queue product cache warming: {e}")
 
 
 # Note: Product save/delete signals are handled by process_product_image and handle_product_delete above
@@ -122,6 +134,13 @@ def handle_category_change(sender, instance, created, **kwargs):
     invalidate_cache_pattern('*get_cached_products_list*')
     invalidate_cache_pattern('*get_cached_active_products_list*')
     invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
+    
+    # Proactively warm product caches in background
+    try:
+        from celery import current_app
+        current_app.send_task('core_backend.infrastructure.tasks.warm_product_caches')
+    except Exception as e:
+        logger.warning(f"Failed to queue category cache warming: {e}")
 
 
 @receiver(post_delete, sender=Category)
@@ -134,6 +153,13 @@ def handle_category_delete(sender, instance, **kwargs):
     invalidate_cache_pattern('*get_cached_products_list*')
     invalidate_cache_pattern('*get_cached_active_products_list*')
     invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
+    
+    # Proactively warm product caches in background
+    try:
+        from celery import current_app
+        current_app.send_task('core_backend.infrastructure.tasks.warm_product_caches')
+    except Exception as e:
+        logger.warning(f"Failed to queue category cache warming: {e}")
 
 
 # === PRODUCT TYPE SIGNALS ===

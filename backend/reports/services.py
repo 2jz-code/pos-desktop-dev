@@ -397,13 +397,277 @@ class ReportService:
 
         except Exception as e:
             logger.error(f"Failed to generate payment analytics: {e}")
+    
+    @staticmethod
+    @cache_static_data(timeout=900)  # 15-minute cache for expensive report calculations
+    def generate_sales_report_cached(start_date: datetime, end_date: datetime, group_by: str = "day"):
+        """Cache expensive sales report calculations for better performance"""
+        try:
+            # Import PaymentTransaction at function scope
+            from payments.models import PaymentTransaction
+            
+            logger.info(f"Generating cached sales report for {start_date} to {end_date}")
+            
+            # Base queryset with optimization
+            orders_queryset = Order.objects.filter(
+                status=Order.OrderStatus.COMPLETED,
+                created_at__range=(start_date, end_date),
+                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
+            ).select_related("cashier", "customer").prefetch_related(
+                "items__product", "payments__transactions"
+            )
+            
+            # Calculate aggregates efficiently
+            sales_aggregates = orders_queryset.aggregate(
+                total_revenue=Sum("grand_total"),
+                total_subtotal=Sum("subtotal"),
+                total_tax=Sum("tax_amount"),
+                total_tips=Sum("tips_amount"),
+                total_discounts=Sum("discount_amount"),
+                order_count=Count("id"),
+                avg_order_value=Avg("grand_total")
+            )
+            
+            # Time-based grouping for trends
+            if group_by == "hour":
+                time_groups = orders_queryset.annotate(
+                    period=TruncHour("created_at")
+                ).values("period").annotate(
+                    count=Count("id"),
+                    revenue=Sum("grand_total")
+                ).order_by("period")
+                
+            elif group_by == "week":
+                time_groups = orders_queryset.annotate(
+                    period=TruncWeek("created_at")
+                ).values("period").annotate(
+                    count=Count("id"), 
+                    revenue=Sum("grand_total")
+                ).order_by("period")
+                
+            elif group_by == "month":
+                time_groups = orders_queryset.annotate(
+                    period=TruncMonth("created_at")
+                ).values("period").annotate(
+                    count=Count("id"),
+                    revenue=Sum("grand_total")
+                ).order_by("period")
+                
+            else:  # default to "day"
+                time_groups = orders_queryset.annotate(
+                    period=TruncDate("created_at")
+                ).values("period").annotate(
+                    count=Count("id"),
+                    revenue=Sum("grand_total")
+                ).order_by("period")
+            
+            # Top products analysis
+            top_products = OrderItem.objects.filter(
+                order__in=orders_queryset
+            ).values(
+                "product_id", "product__name"
+            ).annotate(
+                total_quantity=Sum("quantity"),
+                total_revenue=Sum(F("quantity") * F("price_at_sale"))
+            ).order_by("-total_revenue")[:20]
+            
+            # Payment method breakdown
+            payment_methods = PaymentTransaction.objects.filter(
+                payment__order__in=orders_queryset,
+                status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+            ).values("method").annotate(
+                count=Count("id"),
+                total_amount=Sum("amount")
+            ).order_by("-total_amount")
+            
+            cached_report = {
+                "report_type": "sales_cached",
+                "period": {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "group_by": group_by
+                },
+                "summary": {
+                    "total_revenue": float(sales_aggregates["total_revenue"] or 0),
+                    "total_subtotal": float(sales_aggregates["total_subtotal"] or 0),
+                    "total_tax": float(sales_aggregates["total_tax"] or 0),
+                    "total_tips": float(sales_aggregates["total_tips"] or 0),
+                    "total_discounts": float(sales_aggregates["total_discounts"] or 0),
+                    "order_count": sales_aggregates["order_count"],
+                    "average_order_value": float(sales_aggregates["avg_order_value"] or 0)
+                },
+                "time_series": list(time_groups),
+                "top_products": list(top_products),
+                "payment_methods": list(payment_methods),
+                "cache_info": {
+                    "cached_at": timezone.now().isoformat(),
+                    "cache_duration": "15 minutes"
+                }
+            }
+            
+            logger.info(f"Cached sales report generated successfully")
+            return cached_report
+            
+        except Exception as e:
+            logger.error(f"Failed to generate cached sales report: {e}")
             return {
-                "error": f"Failed to generate payment analytics: {str(e)}",
-                "payment_methods": [],
-                "daily_trends": [],
-                "failed_payments": [],
-                "processing_times": {},
-                "total_processed": 0,
+                "error": f"Failed to generate cached sales report: {str(e)}",
+                "report_type": "sales_cached",
+                "summary": {"total_revenue": 0, "order_count": 0},
+                "time_series": [],
+                "top_products": [],
+                "payment_methods": []
+            }
+    
+    @staticmethod  
+    @cache_static_data(timeout=1800)  # 30-minute cache for product performance analysis
+    def get_cached_product_performance_analysis():
+        """Cache expensive product performance calculations"""
+        try:
+            # Last 30 days product analysis
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            
+            # Product performance metrics
+            product_performance = OrderItem.objects.filter(
+                order__created_at__gte=thirty_days_ago,
+                order__status=Order.OrderStatus.COMPLETED
+            ).values(
+                "product_id", 
+                "product__name",
+                "product__category__name"
+            ).annotate(
+                total_quantity=Sum("quantity"),
+                total_revenue=Sum(F("quantity") * F("price_at_sale")),
+                order_count=Count("order", distinct=True),
+                avg_price=Avg("price_at_sale")
+            ).order_by("-total_revenue")
+            
+            # Category performance 
+            category_performance = OrderItem.objects.filter(
+                order__created_at__gte=thirty_days_ago,
+                order__status=Order.OrderStatus.COMPLETED
+            ).values(
+                "product__category_id",
+                "product__category__name"
+            ).annotate(
+                total_quantity=Sum("quantity"),
+                total_revenue=Sum(F("quantity") * F("price_at_sale")),
+                unique_products=Count("product", distinct=True)
+            ).order_by("-total_revenue")
+            
+            # Calculate total metrics for percentage calculations
+            total_revenue = sum(item["total_revenue"] for item in product_performance)
+            total_quantity = sum(item["total_quantity"] for item in product_performance)
+            
+            # Add percentage calculations
+            enhanced_products = []
+            for item in product_performance:
+                item["revenue_percentage"] = (
+                    (item["total_revenue"] / total_revenue * 100) if total_revenue > 0 else 0
+                )
+                item["quantity_percentage"] = (
+                    (item["total_quantity"] / total_quantity * 100) if total_quantity > 0 else 0
+                )
+                enhanced_products.append(item)
+            
+            return {
+                "product_performance": enhanced_products[:50],  # Top 50 products
+                "category_performance": list(category_performance),
+                "summary": {
+                    "total_products_sold": len(enhanced_products),
+                    "total_revenue": float(total_revenue),
+                    "total_quantity": total_quantity,
+                    "analysis_period": thirty_days_ago.isoformat()
+                },
+                "cache_info": {
+                    "cached_at": timezone.now().isoformat(),
+                    "cache_duration": "30 minutes"
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate product performance analysis: {e}")
+            return {
+                "error": f"Failed to generate product performance: {str(e)}",
+                "product_performance": [],
+                "category_performance": [],
+                "summary": {"total_products_sold": 0, "total_revenue": 0}
+            }
+    
+    @staticmethod
+    @cache_dynamic_data(timeout=600)  # 10-minute cache for operational metrics
+    def get_cached_operational_metrics():
+        """Cache operational performance metrics for management dashboards"""
+        try:
+            # Last 7 days operational data
+            seven_days_ago = timezone.now() - timedelta(days=7)
+            
+            # Order timing analysis
+            orders = Order.objects.filter(
+                created_at__gte=seven_days_ago,
+                status=Order.OrderStatus.COMPLETED
+            )
+            
+            # Peak hours analysis
+            hourly_performance = orders.annotate(
+                hour=Extract("created_at", "hour")
+            ).values("hour").annotate(
+                order_count=Count("id"),
+                avg_revenue=Avg("grand_total")
+            ).order_by("hour")
+            
+            # Daily performance
+            daily_performance = orders.annotate(
+                day=TruncDate("created_at")
+            ).values("day").annotate(
+                order_count=Count("id"),
+                total_revenue=Sum("grand_total"),
+                avg_order_value=Avg("grand_total")
+            ).order_by("day")
+            
+            # Staff performance (if cashier data available)
+            staff_performance = orders.exclude(
+                cashier__isnull=True
+            ).values(
+                "cashier_id", 
+                "cashier__first_name", 
+                "cashier__last_name"
+            ).annotate(
+                order_count=Count("id"),
+                total_revenue=Sum("grand_total"),
+                avg_order_value=Avg("grand_total")
+            ).order_by("-total_revenue")[:10]
+            
+            # Order type breakdown
+            order_type_breakdown = orders.values("order_type").annotate(
+                count=Count("id"),
+                revenue=Sum("grand_total")
+            ).order_by("-revenue")
+            
+            return {
+                "hourly_performance": list(hourly_performance),
+                "daily_performance": list(daily_performance),
+                "staff_performance": list(staff_performance),
+                "order_type_breakdown": list(order_type_breakdown),
+                "summary": {
+                    "total_orders": orders.count(),
+                    "total_revenue": float(orders.aggregate(total=Sum("grand_total"))["total"] or 0),
+                    "analysis_period": seven_days_ago.isoformat()
+                },
+                "cache_info": {
+                    "cached_at": timezone.now().isoformat(),
+                    "cache_duration": "10 minutes"
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate operational metrics: {e}")
+            return {
+                "error": f"Failed to generate operational metrics: {str(e)}",
+                "hourly_performance": [],
+                "daily_performance": [],
+                "staff_performance": [],
+                "summary": {"total_orders": 0, "total_revenue": 0}
             }
 
     @staticmethod

@@ -233,6 +233,12 @@ class Product(SoftDeleteMixin):
             models.Index(fields=['track_inventory'], name='product_track_inventory_idx'),
             models.Index(fields=['category'], name='product_category_idx'),
             models.Index(fields=['barcode'], name='product_barcode_idx'),
+            # Performance-critical indexes
+            models.Index(fields=['category', 'is_active'], name='product_category_active_idx'),
+            models.Index(fields=['name'], name='product_name_idx'),
+            models.Index(fields=['product_type']),
+            models.Index(fields=['price']),
+            models.Index(fields=['created_at']),
         ]
 
     def __str__(self):

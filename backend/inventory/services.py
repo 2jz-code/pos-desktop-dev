@@ -20,7 +20,10 @@ class InventoryService:
     def get_recipe_ingredients_map():
         """Cache recipe-to-ingredients mapping for menu items"""
         recipes = {}
-        for recipe in Recipe.objects.prefetch_related('recipeitem_set__product'):
+        # FIX: Add select_related to prevent N+1 queries when accessing product.name and product.product_type.name
+        for recipe in Recipe.objects.prefetch_related(
+            'recipeitem_set__product__product_type'
+        ).select_related('product'):
             recipes[recipe.product_id] = [
                 {
                     'product_id': item.product_id, 
@@ -396,9 +399,10 @@ class InventoryService:
         logger = logging.getLogger(__name__)
         
         # Find all items below threshold that haven't been notified
+        # FIX: Add select_related for product__product_type to prevent N+1 queries
         low_stock_items = InventoryStock.objects.filter(
             low_stock_notified=False
-        ).select_related('product', 'location')
+        ).select_related('product', 'location', 'product__product_type')
         
         # Filter to only items actually below their threshold
         items_to_notify = []
@@ -657,8 +661,9 @@ class InventoryService:
         
         try:
             # Get all stock records across all locations
+            # FIX: Add product__product_type to prevent N+1 queries in reporting
             all_stock_records = InventoryStock.objects.select_related(
-                "product", "location"
+                "product", "location", "product__product_type"
             ).filter(archived_at__isnull=True)
             
             # Aggregate total quantities per product across all locations

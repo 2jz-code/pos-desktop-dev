@@ -75,7 +75,7 @@ INSTALLED_APPS = [
     "integrations",
     "notifications",
     "reports",
-    "core_backend",
+    "core_backend.apps.CoreBackendConfig",
 ]
 
 MIDDLEWARE = [
@@ -611,6 +611,36 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 # Result settings
 CELERY_RESULT_EXPIRES = 3600  # 1 hour
 
+# ==============================================================================
+# CACHE WARMING SETTINGS
+# ==============================================================================
+
+# Cache warming configuration
+CACHE_WARMING_ENABLED = os.getenv("CACHE_WARMING_ENABLED", "True").lower() == "true"
+CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", str(not DEBUG)).lower() == "true"
+
+# Cache warming intervals (in seconds)
+CACHE_WARMING_INTERVAL = int(os.getenv("CACHE_WARMING_INTERVAL", "10800"))  # 3 hours default
+CACHE_WARMING_STALE_CHECK_INTERVAL = int(os.getenv("CACHE_WARMING_STALE_CHECK_INTERVAL", "1800"))  # 30 minutes
+CACHE_WARMING_PRODUCT_INTERVAL = int(os.getenv("CACHE_WARMING_PRODUCT_INTERVAL", "7200"))  # 2 hours
+CACHE_WARMING_SETTINGS_INTERVAL = int(os.getenv("CACHE_WARMING_SETTINGS_INTERVAL", "14400"))  # 4 hours
+CACHE_WARMING_REPORT_INTERVAL = int(os.getenv("CACHE_WARMING_REPORT_INTERVAL", "3600"))  # 1 hour
+CACHE_WARMING_INVENTORY_INTERVAL = int(os.getenv("CACHE_WARMING_INVENTORY_INTERVAL", "7200"))  # 2 hours
+
+# Cache warming failure tolerance
+CACHE_WARMING_FAILURE_TOLERANCE = os.getenv("CACHE_WARMING_FAILURE_TOLERANCE", "True").lower() == "true"
+CACHE_WARMING_LOG_LEVEL = os.getenv("CACHE_WARMING_LOG_LEVEL", "INFO").upper()
+
+# Environment-specific cache warming behavior
+if DEBUG:
+    # In development, be less aggressive with cache warming
+    CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", "False").lower() == "true"
+    CACHE_WARMING_INTERVAL = int(os.getenv("CACHE_WARMING_INTERVAL", "21600"))  # 6 hours in dev
+else:
+    # In production, enable all cache warming features
+    CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", "True").lower() == "true"
+    CACHE_WARMING_ENABLED = True
+
 # Task routing (optional - for organizing tasks)
 CELERY_TASK_ROUTES = {
     "reports.tasks.generate_report_async": {"queue": "reports"},
@@ -626,6 +656,15 @@ CELERY_TASK_ROUTES = {
     # Inventory tasks
     "inventory.tasks.daily_low_stock_sweep": {"queue": "maintenance"},
     "inventory.tasks.reset_low_stock_notifications": {"queue": "maintenance"},
+    # Cache warming tasks
+    "core_backend.infrastructure.tasks.warm_critical_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_product_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_settings_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_report_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_inventory_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.refresh_stale_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.cache_health_check": {"queue": "monitoring"},
+    "core_backend.infrastructure.tasks.clear_expired_cache_locks": {"queue": "maintenance"},
 }
 
 # Beat schedule for periodic tasks
@@ -664,18 +703,70 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=5, minute=0, day_of_week=0),  # Every Sunday at 2:00 AM
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
-    # Cache warming tasks
+    # ========================================================================
+    # COMPREHENSIVE CACHE WARMING TASKS
+    # ========================================================================
+    
+    # Critical cache warming - comprehensive
     "warm-critical-caches": {
         "task": "core_backend.infrastructure.tasks.warm_critical_caches",
-        "schedule": crontab(hour=7, minute=0),  # 7 AM daily
+        "schedule": CACHE_WARMING_INTERVAL,  # Use configurable interval
+        "options": {"expires": CACHE_WARMING_INTERVAL // 2},
+    },
+    
+    # Product-specific cache warming
+    "warm-product-caches": {
+        "task": "core_backend.infrastructure.tasks.warm_product_caches",
+        "schedule": CACHE_WARMING_PRODUCT_INTERVAL,  # Every 2 hours by default
+        "options": {"expires": CACHE_WARMING_PRODUCT_INTERVAL // 2},
+    },
+    
+    # Settings cache warming
+    "warm-settings-caches": {
+        "task": "core_backend.infrastructure.tasks.warm_settings_caches", 
+        "schedule": CACHE_WARMING_SETTINGS_INTERVAL,  # Every 4 hours by default
+        "options": {"expires": CACHE_WARMING_SETTINGS_INTERVAL // 2},
+    },
+    
+    # Report cache warming
+    "warm-report-caches": {
+        "task": "core_backend.infrastructure.tasks.warm_report_caches",
+        "schedule": CACHE_WARMING_REPORT_INTERVAL,  # Every hour by default  
+        "options": {"expires": CACHE_WARMING_REPORT_INTERVAL // 2},
+    },
+    
+    # Inventory cache warming
+    "warm-inventory-caches": {
+        "task": "core_backend.infrastructure.tasks.warm_inventory_caches",
+        "schedule": CACHE_WARMING_INVENTORY_INTERVAL,  # Every 2 hours by default
+        "options": {"expires": CACHE_WARMING_INVENTORY_INTERVAL // 2},
+    },
+    
+    # Stale cache refresh
+    "refresh-stale-caches": {
+        "task": "core_backend.infrastructure.tasks.refresh_stale_caches",
+        "schedule": CACHE_WARMING_STALE_CHECK_INTERVAL,  # Every 30 minutes by default
+        "options": {"expires": CACHE_WARMING_STALE_CHECK_INTERVAL // 2},
+    },
+    
+    # Early morning comprehensive cache warming (production-ready start)
+    "morning-cache-warming": {
+        "task": "core_backend.infrastructure.tasks.warm_critical_caches",
+        "schedule": crontab(hour=6, minute=30),  # 6:30 AM daily
         "options": {"expires": 3600},
     },
+    
+    # ========================================================================
+    # CACHE MAINTENANCE TASKS
+    # ========================================================================
+    
     # Cache health monitoring
     "cache-health-check": {
         "task": "core_backend.infrastructure.tasks.cache_health_check",
         "schedule": 300.0,  # Every 5 minutes
         "options": {"expires": 240},
     },
+    
     # Clear expired cache locks
     "clear-expired-locks": {
         "task": "core_backend.infrastructure.tasks.clear_expired_cache_locks",

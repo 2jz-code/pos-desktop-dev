@@ -104,7 +104,8 @@ class EmailService:
                                 "total": float(item.total_price),
                                 "notes": item.notes or "",
                             }
-                            for item in order.items.all()
+                            # FIX: Add select_related to prevent N+1 queries when accessing item.product.name
+                            for item in order.items.select_related('product').all()
                         ],
                         "subtotal": float(order.subtotal),
                         "discounts": float(order.total_discounts_amount),
@@ -133,7 +134,8 @@ class EmailService:
                                 "total": float(item.total_price),
                                 "notes": item.notes or "",
                             }
-                            for item in order.items.all()
+                            # FIX: Add select_related to prevent N+1 queries when accessing item.product.name
+                            for item in order.items.select_related('product').all()
                         ],
                         "subtotal": float(order.subtotal),
                         "discounts": float(order.total_discounts_amount),
@@ -273,6 +275,8 @@ class EmailService:
             template_name = "emails/daily_low_stock_summary.html"
             
             # Prepare item data for template
+            # FIX: N+1 queries are already prevented since low_stock_items should be pre-fetched
+            # with select_related('product', 'location') in the calling code
             items_data = []
             for item in low_stock_items:
                 items_data.append({
