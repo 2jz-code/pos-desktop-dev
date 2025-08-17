@@ -5,6 +5,11 @@ This command provides advanced cache warming capabilities beyond the basic warm_
 
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from core_backend.infrastructure.cache import (
+    CacheWarmingManager,
+    CacheMonitor
+)
+# Backward compatibility import
 from core_backend.infrastructure.cache_utils import (
     warm_critical_caches,
     get_cache_performance_stats,
@@ -22,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Comprehensive cache warming for production deployment with advanced options'
+    help = 'Comprehensive cache warming for production deployment with advanced options. Use --basic for simple warming (replaces warm_cache command).'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -37,6 +42,11 @@ class Command(BaseCommand):
             choices=['critical', 'products', 'settings', 'reports', 'inventory', 'all'],
             default=['all'],
             help='Specific cache areas to warm',
+        )
+        parser.add_argument(
+            '--basic',
+            action='store_true',
+            help='Simple cache warming (equivalent to basic warm_cache command)',
         )
         parser.add_argument(
             '--clear-stats',
@@ -82,8 +92,11 @@ class Command(BaseCommand):
             clear_cache_performance_stats()
             self.stdout.write(self.style.SUCCESS('📊 Cache performance stats cleared'))
         
+        # Handle basic mode (simple cache warming like warm_cache command)
+        if options['basic']:
+            self._basic_warming()
         # Handle production-ready mode
-        if options['production_ready']:
+        elif options['production_ready']:
             self._production_ready_warming()
         else:
             # Handle specific warming based on options
@@ -119,6 +132,26 @@ class Command(BaseCommand):
             )
         
         return True
+
+    def _basic_warming(self):
+        """Basic cache warming equivalent to the simple warm_cache command"""
+        self.stdout.write(self.style.SUCCESS('⚡ Basic cache warming (equivalent to warm_cache command)...'))
+        
+        # Use the simple critical cache warming function
+        warmed_caches = warm_critical_caches()
+        
+        if warmed_caches:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f'✅ Successfully warmed {len(warmed_caches)} cache types: {", ".join(warmed_caches)}'
+                )
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING(
+                    '⚠️  No caches were warmed. This may indicate configuration issues.'
+                )
+            )
 
     def _production_ready_warming(self):
         """Production-ready cache warming with all areas and both sync + async"""

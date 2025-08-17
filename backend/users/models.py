@@ -8,6 +8,8 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.hashers import make_password, check_password
 import secrets
+import hashlib
+import hmac
 
 
 class UserManager(BaseUserManager):
@@ -107,14 +109,25 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The user ID from the old system.")
 
-    # API key for sync service authentication
+    # API key for sync service authentication (DEPRECATED - use api_key_hash)
     api_key = models.CharField(
         _("API key"),
         max_length=64,
         blank=True,
         null=True,
         unique=True,
-        help_text=_("API key for programmatic access (e.g., sync service)"),
+        help_text=_("DEPRECATED: API key for programmatic access (use api_key_hash)"),
+    )
+    
+    # Hashed API key for secure storage
+    api_key_hash = models.CharField(
+        _("API key hash"),
+        max_length=64,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text=_("SHA-256 hash of API key for secure storage"),
+        db_index=True,
     )
 
     objects = UserManager()
@@ -130,7 +143,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=['username']),
             models.Index(fields=['phone_number']),
             models.Index(fields=['first_name', 'last_name']),
-            models.Index(fields=['api_key']),
+            models.Index(fields=['api_key']),  # Keep for migration compatibility
+            models.Index(fields=['api_key_hash']),  # New secure index
         ]
 
     def __str__(self):
@@ -145,13 +159,61 @@ class User(AbstractBaseUser, PermissionsMixin):
             return False
         return check_password(str(raw_pin), self.pin)
 
+    @staticmethod
+    def _hash_api_key(raw_key):
+        """
+        Hash an API key using SHA-256.
+        Uses constant-time comparison safe hashing.
+        """
+        if not raw_key:
+            return None
+        return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+
     def generate_api_key(self):
-        """Generate a new API key for this user"""
-        self.api_key = secrets.token_urlsafe(48)
-        self.save(update_fields=["api_key"])
-        return self.api_key
+        """
+        Generate a new secure API key for this user.
+        Returns the raw key (this is the only time it's available in plaintext).
+        Stores only the hash in the database.
+        """
+        # Generate a cryptographically secure API key
+        raw_key = secrets.token_urlsafe(48)  # 256-bit entropy
+        
+        # Hash the key for storage
+        self.api_key_hash = self._hash_api_key(raw_key)
+        
+        # Clear old plaintext key (deprecated field)
+        self.api_key = None
+        
+        self.save(update_fields=["api_key_hash", "api_key"])
+        return raw_key
+
+    def verify_api_key(self, raw_key):
+        """
+        Verify a raw API key against the stored hash.
+        Uses constant-time comparison to prevent timing attacks.
+        """
+        if not raw_key or not self.api_key_hash:
+            return False
+        
+        provided_hash = self._hash_api_key(raw_key)
+        return hmac.compare_digest(self.api_key_hash, provided_hash)
+
+    def has_api_key(self):
+        """Check if user has an API key set (either old or new format)"""
+        return bool(self.api_key_hash or self.api_key)
 
     def revoke_api_key(self):
-        """Revoke the current API key"""
+        """Revoke the current API key (both old and new formats)"""
         self.api_key = None
-        self.save(update_fields=["api_key"])
+        self.api_key_hash = None
+        self.save(update_fields=["api_key", "api_key_hash"])
+
+    def migrate_api_key_to_hash(self):
+        """
+        Migrate existing plaintext API key to hashed format.
+        This is a one-time migration method.
+        """
+        if self.api_key and not self.api_key_hash:
+            self.api_key_hash = self._hash_api_key(self.api_key)
+            # Keep the old key during transition period
+            self.save(update_fields=["api_key_hash"])

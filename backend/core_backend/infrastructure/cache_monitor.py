@@ -79,6 +79,7 @@ def clear_cache_pattern(request, pattern):
         return JsonResponse({'error': 'Unauthorized'}, status=403)
         
     try:
+        # Use consolidated cache utilities
         from .cache_utils import invalidate_cache_pattern
         invalidate_cache_pattern(pattern)
         return JsonResponse({

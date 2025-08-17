@@ -47,8 +47,8 @@ class CustomerCookieJWTAuthentication(JWTAuthentication):
 
 class APIKeyAuthentication(BaseAuthentication):
     """
-    Authentication for the sync service using API keys.
-    Used by the Electron app's sync service for programmatic API access.
+    Secure API key authentication for sync service and programmatic access.
+    Supports both hashed (new) and plaintext (legacy) API keys during transition.
     """
 
     def authenticate(self, request):
@@ -60,32 +60,91 @@ class APIKeyAuthentication(BaseAuthentication):
         client_ip = self.get_client_ip(request)
         cache_key = f"api_auth_attempts:{client_ip}"
         
-        # Check rate limiting (5 attempts per minute)
+        # Check rate limiting (10 attempts per 5 minutes, more lenient during transition)
         attempts = cache.get(cache_key, 0)
-        if attempts >= 5:
+        if attempts >= 10:
             raise AuthenticationFailed("Too many authentication attempts. Try again later.")
         
-        # Hash the API key for lookup (we'll need to update storage later)
-        api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        # Log authentication attempt start time for timing attack prevention
+        start_time = time.time()
         
         try:
-            # For now, still use plain text lookup (we'll migrate in Phase 4)
-            user = User.objects.select_related().get(api_key=api_key, is_active=True)
-            
-            # Reset rate limiting on successful auth
-            cache.delete(cache_key)
-            return (user, None)
-            
+            user = self._authenticate_with_api_key(api_key)
+            if user:
+                # Reset rate limiting on successful auth
+                cache.delete(cache_key)
+                
+                # Ensure constant time for security (minimum 50ms)
+                self._ensure_constant_time(start_time, min_time=0.05)
+                return (user, None)
+            else:
+                raise User.DoesNotExist("Invalid API key")
+                
         except User.DoesNotExist:
+            # Ensure constant time even for failures
+            self._ensure_constant_time(start_time, min_time=0.05)
+            
             # Increment failed attempts
-            cache.set(cache_key, attempts + 1, timeout=60)  # 1 minute timeout
+            cache.set(cache_key, attempts + 1, timeout=300)  # 5 minute timeout
             raise AuthenticationFailed("Invalid API key")
 
+    def _authenticate_with_api_key(self, api_key):
+        """
+        Authenticate using API key with support for both hashed and plaintext keys.
+        Prioritizes hashed keys for security.
+        """
+        # Step 1: Try to find user by hashed API key (new secure method)
+        api_key_hash = hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+        
+        try:
+            user = User.objects.select_related().get(
+                api_key_hash=api_key_hash, 
+                is_active=True
+            )
+            # Found user with hashed key - most secure path
+            return user
+        except User.DoesNotExist:
+            pass
+        
+        # Step 2: Fallback to plaintext lookup for backward compatibility
+        # This will be removed in a future version
+        try:
+            user = User.objects.select_related().get(
+                api_key=api_key, 
+                is_active=True
+            )
+            # Found user with plaintext key - schedule for migration
+            self._schedule_key_migration(user)
+            return user
+        except User.DoesNotExist:
+            pass
+        
+        return None
+
+    def _schedule_key_migration(self, user):
+        """
+        Schedule migration of plaintext API key to hashed format.
+        This is done asynchronously to avoid blocking authentication.
+        """
+        # For now, just log that migration is needed
+        # In production, this could trigger a background task
+        cache_key = f"api_key_migration_needed:{user.id}"
+        cache.set(cache_key, True, timeout=86400)  # 24 hours
+
+    def _ensure_constant_time(self, start_time, min_time=0.05):
+        """
+        Ensure authentication takes at least min_time seconds to prevent timing attacks.
+        """
+        elapsed = time.time() - start_time
+        if elapsed < min_time:
+            time.sleep(min_time - elapsed)
+
     def get_client_ip(self, request):
-        """Get client IP address"""
+        """Get client IP address with proper header handling"""
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
+            # Take the first IP in the chain
+            ip = x_forwarded_for.split(',')[0].strip()
         else:
-            ip = request.META.get('REMOTE_ADDR')
+            ip = request.META.get('REMOTE_ADDR', 'unknown')
         return ip
