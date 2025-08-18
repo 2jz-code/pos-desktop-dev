@@ -140,7 +140,7 @@ const ProductList = ({
 			}
 		});
 
-		// Sort categories by their backend order field, then alphabetically
+		// Sort categories hierarchically: parents first, then their children
 		const orderedCategories = Object.keys(groupedByCategory).sort((a, b) => {
 			const categoryA = allCategories.find((cat) => cat.name === a);
 			const categoryB = allCategories.find((cat) => cat.name === b);
@@ -150,12 +150,26 @@ const ProductList = ({
 				return a.localeCompare(b);
 			}
 
-			// First, sort by order field
-			if (categoryA.order !== categoryB.order) {
-				return categoryA.order - categoryB.order;
+			// Calculate hierarchical order: parent order + 0.1 + (child order * 0.01)
+			const getHierarchicalOrder = (category) => {
+				if (!category.parent) {
+					// Parent category: use its own order
+					return category.order;
+				} else {
+					// Child category: parent order + 0.1 + (child order * 0.01)
+					return category.parent.order + 0.1 + (category.order * 0.01);
+				}
+			};
+
+			const orderA = getHierarchicalOrder(categoryA);
+			const orderB = getHierarchicalOrder(categoryB);
+
+			// Sort by hierarchical order
+			if (orderA !== orderB) {
+				return orderA - orderB;
 			}
 
-			// If order is the same, sort alphabetically by name
+			// If hierarchical order is the same, sort alphabetically by name
 			return a.localeCompare(b);
 		});
 

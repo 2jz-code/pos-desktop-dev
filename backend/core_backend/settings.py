@@ -177,19 +177,6 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
-STATIC_URL = "/static/"  # URL prefix for static files
-
-# Directory where manage.py collectstatic will copy files for deployment
-STATIC_ROOT = BASE_DIR / "staticfiles"  # <--- This is the crucial setting
-
-# --- Media files (User-uploaded content) ---
-MEDIA_URL = "/media/"
-# For local storage (development or simple deployments):
-MEDIA_ROOT = BASE_DIR / "media"
-
 # AWS S3 Configuration
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -198,38 +185,52 @@ AWS_BACKUP_BUCKET_NAME = os.getenv("AWS_BACKUP_BUCKET_NAME")  # Separate bucket 
 AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
 AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
-# Use S3 for media files if AWS credentials are provided
+# Use S3 for files if AWS credentials are provided
 USE_S3 = bool(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME)
 
-if USE_S3:
-    # S3 Media files configuration
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-    # S3 settings
+if USE_S3:
+    # AWS S3 Configuration for Static and Media Files
+    from storages.backends.s3boto3 import S3Boto3Storage
+
+    # Common S3 settings
     AWS_S3_OBJECT_PARAMETERS = {
         "CacheControl": "max-age=86400",
     }
     AWS_DEFAULT_ACL = None  # Don't set ACLs, use bucket policy instead
     AWS_S3_FILE_OVERWRITE = False
-    AWS_MEDIA_LOCATION = "media"
-
-    # Use a custom storage class for media files
-    from storages.backends.s3boto3 import S3Boto3Storage
-
+    
+    # Static files storage
+    class StaticStorage(S3Boto3Storage):
+        location = "static"
+        default_acl = None
+        file_overwrite = False
+    
+    # Media files storage
     class MediaStorage(S3Boto3Storage):
-        location = AWS_MEDIA_LOCATION
-        default_acl = AWS_DEFAULT_ACL  # None - no ACL
-        file_overwrite = AWS_S3_FILE_OVERWRITE
+        location = "media"
+        default_acl = None
+        file_overwrite = False
 
+    # Configure storage backends
+    STATICFILES_STORAGE = "core_backend.settings.StaticStorage"
     DEFAULT_FILE_STORAGE = "core_backend.settings.MediaStorage"
-
+    
+    # URLs for S3
+    STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+    
+    logger.info(f"Using S3 for static files: {STATIC_URL}")
     logger.info(f"Using S3 for media files: {MEDIA_URL}")
 else:
     # Local storage fallback
+    STATIC_URL = "/static/"
+    STATIC_ROOT = BASE_DIR / "staticfiles"
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
-    logger.info("Using local storage for media files")
+    logger.info("Using local storage for static and media files")
 
 # Base URL for building absolute URLs when no request context is available
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8001")

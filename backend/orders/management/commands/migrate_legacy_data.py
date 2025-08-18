@@ -39,6 +39,8 @@ class Command(BaseCommand):
         super().__init__(*args, **kwargs)
         # This dictionary will store the original signal receivers
         self.signal_receivers_backup = {}
+        # Store products that need image processing after migration
+        self.products_needing_image_processing = []
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -135,6 +137,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("✓ Signals reconnected successfully."))
         # Clear the backup
         self.signal_receivers_backup = {}
+        
+        # Process images for products that need it (now that signals are reconnected)
+        if hasattr(self, 'products_needing_image_processing') and self.products_needing_image_processing:
+            self.process_migrated_product_images()
 
     def run_all_migrations(self):
         """Run all migration steps in correct order"""
@@ -329,6 +335,7 @@ class Command(BaseCommand):
         query = """
         SELECT p.id, p.name, p.price, p.description, p.barcode, 
                p.inventory_quantity, p.is_grocery_item, p.category_id,
+               p.image,
                c.name as category_name
         FROM legacy.products_product p
         LEFT JOIN legacy.products_category c ON c.id = p.category_id
@@ -342,6 +349,7 @@ class Command(BaseCommand):
         with transaction.atomic():
             products_to_create = []
             inventory_stocks_to_create = []
+            products_with_images = 0
 
             for prod_data in legacy_products:
                 # Find matching category by name
@@ -356,6 +364,19 @@ class Command(BaseCommand):
                             )
                         )
 
+                # Handle image path migration
+                image_path = prod_data.get("image")
+                if image_path and image_path.strip():
+                    # Remove any leading slash if present to ensure relative path
+                    if image_path.startswith('/'):
+                        image_path = image_path[1:]
+                    # Remove 'media/' prefix if it exists since Django's ImageField handles upload_to
+                    if image_path.startswith('media/'):
+                        image_path = image_path[6:]
+                    products_with_images += 1
+                else:
+                    image_path = None
+
                 product = Product(
                     product_type=product_type,
                     name=prod_data["name"],
@@ -366,26 +387,35 @@ class Command(BaseCommand):
                     is_public=True,
                     barcode=prod_data["barcode"],
                     track_inventory=prod_data["is_grocery_item"],
+                    image=image_path,  # Migrate the image path
+                    original_filename=None,  # Set to None so signal condition is met
                     legacy_id=prod_data["id"],
                     created_at=timezone.now(),
                     updated_at=timezone.now(),
                 )
                 products_to_create.append(product)
 
-            # Create products first
+            # Create products using bulk_create (signals are disconnected anyway)
             Product.objects.bulk_create(products_to_create, batch_size=self.batch_size)
+            created_products = Product.objects.filter(legacy_id__isnull=False)
+            
             self.stdout.write(f"Migrated {len(products_to_create)} products")
+            self.stdout.write(f"Products with images: {products_with_images}")
+            
+            # Store products with images for later processing
+            self.products_needing_image_processing = [
+                product for product in products_to_create if product.image
+            ]
 
             # Now create inventory stock records for all migrated products
-            created_products = Product.objects.filter(legacy_id__isnull=False)
-            for product in created_products:
-                # Find the corresponding legacy data to get inventory quantity
-                legacy_product = next(
-                    (p for p in legacy_products if p["id"] == product.legacy_id), None
-                )
-                inventory_quantity = (
-                    legacy_product["inventory_quantity"] if legacy_product else 0
-                )
+            for product_data in legacy_products:
+                # Find the corresponding created product
+                try:
+                    product = Product.objects.get(legacy_id=product_data["id"])
+                except Product.DoesNotExist:
+                    continue
+                
+                inventory_quantity = product_data.get("inventory_quantity", 0)
 
                 # Create inventory stock record (set negative quantities to 0)
                 final_quantity = max(0, inventory_quantity or 0)
@@ -1035,6 +1065,35 @@ class Command(BaseCommand):
             self.stdout.write("✓ All payment records were already in sync.")
 
         self.stdout.write("✓ Post-migration cleanup completed.")
+
+    def process_migrated_product_images(self):
+        """Process images for migrated products after signals are reconnected"""
+        if not self.products_needing_image_processing:
+            return
+            
+        self.stdout.write(f"\n--- Processing Images for {len(self.products_needing_image_processing)} Products ---")
+        
+        for i, product_data in enumerate(self.products_needing_image_processing, 1):
+            try:
+                # Get the actual product from the database
+                product = Product.objects.get(legacy_id=product_data.legacy_id)
+                self.stdout.write(f"Processing image {i}/{len(self.products_needing_image_processing)}: {product.name}")
+                
+                # Save the product to trigger image processing signals
+                # The signal will detect that image.name != original_filename and process it
+                product.save()
+                
+            except Product.DoesNotExist:
+                self.stdout.write(
+                    self.style.WARNING(f"Product with legacy_id {product_data.legacy_id} not found")
+                )
+            except Exception as e:
+                self.stdout.write(
+                    self.style.ERROR(f"Error processing image for product {product_data.name}: {e}")
+                )
+        
+        self.stdout.write(self.style.SUCCESS(f"✓ Queued image processing for {len(self.products_needing_image_processing)} products"))
+        self.stdout.write("Note: Images will be processed asynchronously by Celery workers")
 
     def create_missing_inventory_stocks(self):
         """Create inventory stock records for products that don't have them"""

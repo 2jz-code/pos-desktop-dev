@@ -377,7 +377,7 @@ class POSProductSerializer(BaseModelSerializer):
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups']
+        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups', 'image']
         select_related_fields = ['category']
         prefetch_related_fields = [
             'product_modifier_sets__modifier_set__options',

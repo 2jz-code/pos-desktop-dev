@@ -232,6 +232,16 @@ class ProductViewSet(BaseViewSet):
     filterset_class = ProductFilter
     search_fields = ["name", "description", "barcode"]
 
+    @property
+    def paginator(self):
+        """
+        Disable pagination for website requests
+        """
+        is_for_website = self.request.query_params.get("for_website") == "true"
+        if is_for_website:
+            return None
+        return super().paginator
+
     def get_queryset(self):
         """
         Get queryset using ProductSearchService for business logic.
@@ -368,6 +378,17 @@ class CategoryViewSet(BaseViewSet):
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
+    ordering = ['order', 'name']  # Override BaseViewSet default ordering
+
+    @property
+    def paginator(self):
+        """
+        Disable pagination for website requests
+        """
+        is_for_website = self.request.query_params.get("for_website") == "true"
+        if is_for_website:
+            return None
+        return super().paginator
 
     def get_queryset(self):
         # Get queryset with archiving logic applied by parent classes (ArchivingViewSetMixin)
@@ -396,9 +417,19 @@ class CategoryViewSet(BaseViewSet):
             else:
                 # Show subcategories of specific parent, ordered by their order field
                 queryset = queryset.filter(parent_id=parent_id).order_by('order', 'name')
+        elif is_for_website:
+            # Website: Hierarchical ordering - parents first, then children grouped under parents
+            queryset = queryset.annotate(
+                # For parent categories, use their own order
+                # For child categories, use parent's order as primary sort + 0.1 + child order as secondary
+                hierarchical_order=models.Case(
+                    models.When(parent__isnull=True, then=models.F('order')),
+                    default=models.F('parent__order') + 0.1 + (models.F('order') * 0.01),
+                    output_field=models.FloatField()
+                )
+            ).order_by('hierarchical_order', 'name')
         else:
-            # When no parent filter is applied, use simple ordering by order field
-            # This is suitable for management interfaces that show a flat list
+            # Admin/POS: Simple flat ordering by order field
             queryset = queryset.order_by('order', 'name')
 
         return queryset
