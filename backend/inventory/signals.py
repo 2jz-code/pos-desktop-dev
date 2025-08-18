@@ -20,7 +20,7 @@ def handle_inventory_stock_changes(sender, instance=None, **kwargs):
         # Invalidate POS menu layout since it includes availability
         invalidate_cache_pattern('get_pos_menu_layout')
         
-        logger.info(f"Invalidated inventory caches after stock change for product: {instance.product.name if instance and instance.product else 'unknown'}")
+        logger.info(f"Invalidated inventory caches after stock change for product_id: {instance.product.id if instance and instance.product else 'unknown'}")
         
     except Exception as e:
         logger.error(f"Failed to invalidate inventory caches: {e}")
@@ -38,7 +38,7 @@ def handle_recipe_changes(sender, instance=None, **kwargs):
         # Invalidate POS menu layout
         invalidate_cache_pattern('get_pos_menu_layout')
         
-        logger.info(f"Invalidated recipe caches after change to recipe for product: {instance.product.name if instance and instance.product else 'unknown'}")
+        logger.info(f"Invalidated recipe caches after change to recipe for product_id: {instance.product.id if instance and instance.product else 'unknown'}")
         
     except Exception as e:
         logger.error(f"Failed to invalidate recipe caches: {e}")
@@ -56,7 +56,7 @@ def handle_recipe_item_changes(sender, instance=None, **kwargs):
         # Invalidate POS menu layout
         invalidate_cache_pattern('get_pos_menu_layout')
         
-        logger.info(f"Invalidated recipe caches after recipe item change: {instance.product.name if instance and instance.product else 'unknown'}")
+        logger.info(f"Invalidated recipe caches after recipe item change: product_id {instance.product.id if instance and instance.product else 'unknown'}")
         
     except Exception as e:
         logger.error(f"Failed to invalidate recipe item caches: {e}")

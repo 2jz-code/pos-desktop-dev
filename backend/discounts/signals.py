@@ -16,7 +16,7 @@ def handle_discount_changes(sender, instance=None, **kwargs):
         # Invalidate discount eligibility cache patterns
         invalidate_cache_pattern('get_discount_eligibility_for_order_type')
         
-        logger.info(f"Invalidated discount caches after change to discount: {instance.name if instance else 'unknown'}")
+        logger.info(f"Invalidated discount caches after change to discount_id: {instance.id if instance else 'unknown'}")
         
     except Exception as e:
         logger.error(f"Failed to invalidate discount caches: {e}")

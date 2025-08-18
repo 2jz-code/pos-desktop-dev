@@ -42,7 +42,7 @@ class ImageService:
         if image_field and image_field.name:
             if os.path.isfile(image_field.path):
                 os.remove(image_field.path)
-                print(f"Deleted old image file: {image_field.path}")
+                logger.info(f"Deleted old image file: {image_field.path}")
 
     @staticmethod
     def process_image_sync(image_path):
@@ -65,7 +65,9 @@ class ImageService:
             img.save(output_buffer, format="WEBP", quality=80, optimize=True)
             output_buffer.seek(0)
             
-            filename = f"processed_image.webp"
+            # Extract original filename without extension for WebP naming
+            original_name = os.path.splitext(os.path.basename(image_path))[0]
+            filename = f"{original_name}.webp"
             return ContentFile(output_buffer.getvalue(), name=filename)
             
         except Exception as e:

@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from orders.models import Order
 from .models import Discount
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DiscountStrategy(ABC):
@@ -26,9 +29,7 @@ class OrderPercentageDiscountStrategy(DiscountStrategy):
             discount.min_purchase_amount
             and order.subtotal < discount.min_purchase_amount
         ):
-            print(
-                f"[Strategy Log] Order subtotal {order.subtotal} is less than minimum {discount.min_purchase_amount}"
-            )
+            logger.debug("Order subtotal below discount minimum threshold")
             return Decimal("0.00")
 
         subtotal = Decimal(order.subtotal)
@@ -49,9 +50,7 @@ class OrderFixedAmountDiscountStrategy(DiscountStrategy):
             discount.min_purchase_amount
             and order.subtotal < discount.min_purchase_amount
         ):
-            print(
-                f"[Strategy Log] Order subtotal {order.subtotal} is less than minimum {discount.min_purchase_amount}"
-            )
+            logger.debug("Order subtotal below discount minimum threshold")
             return Decimal("0.00")
 
         subtotal = Decimal(order.subtotal)
@@ -72,25 +71,18 @@ class ProductPercentageDiscountStrategy(DiscountStrategy):
         )
 
         # --- DIAGNOSTIC LOGGING ---
-        print(f"[Strategy Log] Checking for Product Discount: '{discount.name}'")
-        print(
-            f"[Strategy Log] Discount applies to product IDs: {applicable_products_ids}"
-        )
+        logger.debug(f"Checking product discount for discount_id: {discount.id}")
 
         if not applicable_products_ids:
             return total_discount
 
         # FIX: Use select_related to prevent N+1 queries when accessing item.product.name
         for item in order.items.select_related('product').all():
-            print(
-                f"[Strategy Log]   - Checking item: '{item.product.name}' (Product ID: {item.product.id})"
-            )
             if item.product.id in applicable_products_ids:
-                print(f"[Strategy Log]     ✅ MATCH FOUND! Applying discount.")
                 discount_percentage = Decimal(discount.value) / Decimal("100")
                 total_discount += item.total_price * discount_percentage
 
-        print(f"[Strategy Log] Total calculated product discount: {total_discount}")
+        logger.debug("Product discount calculation completed")
         return total_discount.quantize(Decimal("0.01"))
 
 
@@ -104,25 +96,18 @@ class CategoryPercentageDiscountStrategy(DiscountStrategy):
         )
 
         # --- DIAGNOSTIC LOGGING ---
-        print(f"[Strategy Log] Checking for Category Discount: '{discount.name}'")
-        print(
-            f"[Strategy Log] Discount applies to category IDs: {applicable_category_ids}"
-        )
+        logger.debug(f"Checking category discount for discount_id: {discount.id}")
 
         if not applicable_category_ids:
             return total_discount
 
         # FIX: Use select_related to prevent N+1 queries when accessing item.product.name and item.product.category_id
         for item in order.items.select_related('product', 'product__category').all():
-            print(
-                f"[Strategy Log]   - Checking item: '{item.product.name}' (Category ID: {item.product.category_id})"
-            )
             if item.product.category_id in applicable_category_ids:
-                print(f"[Strategy Log]     ✅ MATCH FOUND! Applying discount.")
                 discount_percentage = Decimal(discount.value) / Decimal("100")
                 total_discount += item.total_price * discount_percentage
 
-        print(f"[Strategy Log] Total calculated category discount: {total_discount}")
+        logger.debug("Category discount calculation completed")
         return total_discount.quantize(Decimal("0.01"))
 
 

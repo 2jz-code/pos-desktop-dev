@@ -15,6 +15,9 @@ import os  # <-- Import the os module
 from dotenv import load_dotenv  # <-- Add this import
 import stripe
 from celery.schedules import crontab
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -191,6 +194,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+AWS_BACKUP_BUCKET_NAME = os.getenv("AWS_BACKUP_BUCKET_NAME")  # Separate bucket for backups
 AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
 AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
@@ -206,7 +210,7 @@ if USE_S3:
     AWS_S3_OBJECT_PARAMETERS = {
         "CacheControl": "max-age=86400",
     }
-    AWS_DEFAULT_ACL = "public-read"
+    AWS_DEFAULT_ACL = None  # Don't set ACLs, use bucket policy instead
     AWS_S3_FILE_OVERWRITE = False
     AWS_MEDIA_LOCATION = "media"
 
@@ -215,17 +219,17 @@ if USE_S3:
 
     class MediaStorage(S3Boto3Storage):
         location = AWS_MEDIA_LOCATION
-        default_acl = AWS_DEFAULT_ACL
+        default_acl = AWS_DEFAULT_ACL  # None - no ACL
         file_overwrite = AWS_S3_FILE_OVERWRITE
 
     DEFAULT_FILE_STORAGE = "core_backend.settings.MediaStorage"
 
-    print(f"Using S3 for media files: {MEDIA_URL}")
+    logger.info(f"Using S3 for media files: {MEDIA_URL}")
 else:
     # Local storage fallback
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
-    print("Using local storage for media files")
+    logger.info("Using local storage for media files")
 
 # Base URL for building absolute URLs when no request context is available
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8001")
@@ -665,6 +669,7 @@ CELERY_TASK_ROUTES = {
     "core_backend.infrastructure.tasks.refresh_stale_caches": {"queue": "cache_warming"},
     "core_backend.infrastructure.tasks.cache_health_check": {"queue": "monitoring"},
     "core_backend.infrastructure.tasks.clear_expired_cache_locks": {"queue": "maintenance"},
+    "core_backend.infrastructure.tasks.backup_database": {"queue": "maintenance"},
 }
 
 # Beat schedule for periodic tasks
@@ -772,5 +777,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "core_backend.infrastructure.tasks.clear_expired_cache_locks",
         "schedule": 3600.0,  # Every hour
         "options": {"expires": 1800},
+    },
+    
+    # ========================================================================
+    # DATABASE BACKUP TASKS
+    # ========================================================================
+    
+    # Daily database backup
+    "daily-database-backup": {
+        "task": "core_backend.infrastructure.tasks.backup_database",
+        "schedule": crontab(hour=2, minute=0),  # Every day at 2:00 AM
+        "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
 }

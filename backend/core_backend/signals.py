@@ -41,7 +41,7 @@ def warm_product_caches_on_product_change(sender, instance, created, **kwargs):
     try:
         # Only warm if the product affects cached data
         if created or instance.is_active:
-            logger.debug(f"Product {'created' if created else 'updated'}: {instance.name} - warming product caches")
+            logger.debug(f"Product {'created' if created else 'updated'}: product_id {instance.id} - warming product caches")
             queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
             
     except Exception as e:
@@ -52,7 +52,7 @@ def warm_product_caches_on_product_change(sender, instance, created, **kwargs):
 def warm_product_caches_on_product_delete(sender, instance, **kwargs):
     """Warm product caches when a product is deleted"""
     try:
-        logger.debug(f"Product deleted: {instance.name} - warming product caches")
+        logger.debug(f"Product deleted: product_id {instance.id} - warming product caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
     except Exception as e:
@@ -63,7 +63,7 @@ def warm_product_caches_on_product_delete(sender, instance, **kwargs):
 def warm_category_caches_on_category_change(sender, instance, created, **kwargs):
     """Warm category caches when a category is created or updated"""
     try:
-        logger.debug(f"Category {'created' if created else 'updated'}: {instance.name} - warming product caches")
+        logger.debug(f"Category {'created' if created else 'updated'}: category_id {instance.id} - warming product caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
     except Exception as e:
@@ -74,7 +74,7 @@ def warm_category_caches_on_category_change(sender, instance, created, **kwargs)
 def warm_category_caches_on_category_delete(sender, instance, **kwargs):
     """Warm category caches when a category is deleted"""
     try:
-        logger.debug(f"Category deleted: {instance.name} - warming product caches")
+        logger.debug(f"Category deleted: category_id {instance.id} - warming product caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
     except Exception as e:
@@ -85,7 +85,7 @@ def warm_category_caches_on_category_delete(sender, instance, **kwargs):
 def warm_tax_caches_on_tax_change(sender, instance, created, **kwargs):
     """Warm tax caches when a tax is created or updated"""
     try:
-        logger.debug(f"Tax {'created' if created else 'updated'}: {instance.name} - warming product caches")
+        logger.debug(f"Tax {'created' if created else 'updated'}: tax_id {instance.id} - warming product caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
     except Exception as e:
@@ -96,7 +96,7 @@ def warm_tax_caches_on_tax_change(sender, instance, created, **kwargs):
 def warm_product_type_caches_on_type_change(sender, instance, created, **kwargs):
     """Warm product type caches when a product type is created or updated"""
     try:
-        logger.debug(f"ProductType {'created' if created else 'updated'}: {instance.name} - warming product caches")
+        logger.debug(f"ProductType {'created' if created else 'updated'}: type_id {instance.id} - warming product caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
     except Exception as e:
@@ -122,7 +122,7 @@ def warm_settings_caches_on_global_settings_change(sender, instance, **kwargs):
 def warm_settings_caches_on_store_location_change(sender, instance, created, **kwargs):
     """Warm settings caches when store location changes"""
     try:
-        logger.debug(f"Store location {'created' if created else 'updated'}: {instance.name} - warming settings caches")
+        logger.debug(f"Store location {'created' if created else 'updated'}: location_id {instance.id} - warming settings caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_settings_caches')
         
     except Exception as e:
@@ -137,7 +137,7 @@ def warm_settings_caches_on_store_location_change(sender, instance, created, **k
 def warm_inventory_caches_on_location_change(sender, instance, created, **kwargs):
     """Warm inventory caches when a location is created or updated"""
     try:
-        logger.debug(f"Inventory location {'created' if created else 'updated'}: {instance.name} - warming inventory caches")
+        logger.debug(f"Inventory location {'created' if created else 'updated'}: location_id {instance.id} - warming inventory caches")
         queue_cache_warming_task('core_backend.infrastructure.tasks.warm_inventory_caches')
         
     except Exception as e:
@@ -153,7 +153,7 @@ def warm_discount_caches_on_discount_change(sender, instance, created, **kwargs)
     """Warm discount-related caches when a discount changes"""
     try:
         if instance.is_active:
-            logger.debug(f"Discount {'created' if created else 'updated'}: {instance.name} - warming related caches")
+            logger.debug(f"Discount {'created' if created else 'updated'}: discount_id {instance.id} - warming related caches")
             # Discounts can affect product pricing, so warm product caches
             queue_cache_warming_task('core_backend.infrastructure.tasks.warm_product_caches')
         
@@ -171,7 +171,7 @@ def warm_user_caches_on_user_change(sender, instance, created, **kwargs):
     try:
         # Only warm for staff users or significant changes
         if instance.is_staff or created:
-            logger.debug(f"User {'created' if created else 'updated'}: {instance.email} - warming relevant caches")
+            logger.debug(f"User {'created' if created else 'updated'}: user_id {instance.id} - warming relevant caches")
             # Users can affect reports and other cached data
             queue_cache_warming_task('core_backend.infrastructure.tasks.warm_report_caches')
         

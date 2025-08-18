@@ -3,6 +3,9 @@ from .models import InventoryStock, Location, Recipe
 from products.models import Product
 from decimal import Decimal
 from core_backend.infrastructure.cache_utils import cache_dynamic_data, cache_static_data
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class InventoryService:
@@ -248,7 +251,7 @@ class InventoryService:
             # For menu items, allow cook-to-order even with some missing ingredients
             # Only log warnings for tracking purposes
             if missing_ingredients:
-                print(f"Warning: Menu item '{menu_item.name}' has low/missing ingredients: {', '.join(missing_ingredients)}. Allowing cook-to-order.")
+                logger.warning(f"Menu item_id {menu_item.id} has low/missing ingredients: {len(missing_ingredients)} items. Allowing cook-to-order.")
             
             return True  # Always allow menu items (cook to order)
             
@@ -275,7 +278,7 @@ class InventoryService:
                     InventoryService.decrement_stock(recipe_item.product, location, total_needed)
                 except ValueError as e:
                     # Ingredient insufficient - log but don't block (cook to order)
-                    print(f"Cook-to-order: Used more {recipe_item.product.name} than in stock for {menu_item.name}. {e}")
+                    logger.info(f"Cook-to-order: Used more than in stock for product_id {recipe_item.product.id}. {e}")
                     
                     # Set stock to 0 if it exists, or create a negative stock record for tracking
                     try:
@@ -285,7 +288,7 @@ class InventoryService:
                         used_from_stock = stock.quantity
                         stock.quantity = Decimal('0')
                         stock.save()
-                        print(f"Used {used_from_stock} from stock, prepared {total_needed - used_from_stock} fresh")
+                        logger.info(f"Used {used_from_stock} from stock, prepared {total_needed - used_from_stock} fresh")
                     except InventoryStock.DoesNotExist:
                         # No stock record - create one with 0 (all prepared fresh)
                         InventoryStock.objects.create(
@@ -293,11 +296,11 @@ class InventoryService:
                             location=location,
                             quantity=Decimal('0')
                         )
-                        print(f"Prepared {total_needed} {recipe_item.product.name} fresh for {menu_item.name}")
+                        logger.info(f"Prepared {total_needed} units fresh for product_id {recipe_item.product.id}")
                         
         except Recipe.DoesNotExist:
             # Menu item has no recipe - no deduction needed for cook-to-order items
-            print(f"Menu item {menu_item.name} has no recipe - prepared fresh to order")
+            logger.info(f"Menu item_id {menu_item.id} has no recipe - prepared fresh to order")
 
     @staticmethod
     @transaction.atomic
@@ -324,7 +327,7 @@ class InventoryService:
                     )
             except ValueError as e:
                 # Log inventory deduction failures but don't block order completion
-                print(f"Inventory deduction warning for order {order.id}: {e}")
+                logger.warning(f"Inventory deduction warning for order {order.id}: {e}")
 
     @staticmethod
     def get_stock_level(product: Product, location: Location) -> Decimal:
@@ -379,7 +382,7 @@ class InventoryService:
                     stock.effective_low_stock_threshold
                 )
             except Exception as e:
-                logger.error(f"Failed to send low stock alert to {owner_email}: {e}")
+                logger.error(f"Failed to send low stock alert: {type(e).__name__}")
                 # Continue sending to other owners even if one fails
         
         # Mark as notified
@@ -430,7 +433,7 @@ class InventoryService:
             try:
                 email_service.send_daily_low_stock_summary(owner_email, items_to_notify)
             except Exception as e:
-                logger.error(f"Failed to send daily low stock summary to {owner_email}: {e}")
+                logger.error(f"Failed to send daily low stock summary: {type(e).__name__}")
         
         # Mark all items as notified
         for item in items_to_notify:
@@ -782,7 +785,7 @@ class InventoryService:
                     pass
             
             logger.info(log_message)
-            print(log_message)  # Console log for immediate visibility
+            logger.info(log_message)  # Log for immediate visibility
             
             return {
                 "success": True,

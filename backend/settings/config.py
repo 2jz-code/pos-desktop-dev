@@ -8,6 +8,9 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from django.core.exceptions import ImproperlyConfigured
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AppSettings:
@@ -105,7 +108,7 @@ class AppSettings:
             self.default_expiration_threshold: int = settings_obj.default_expiration_threshold
 
             if created:
-                print("Created default GlobalSettings instance")
+                logger.info("Created default GlobalSettings instance")
 
             # Load extended configurations from their own singleton models
             self._load_printer_config()
@@ -128,10 +131,10 @@ class AppSettings:
             )
             self.kitchen_zones: List[Dict[str, Any]] = printer_config.kitchen_zones
             if created:
-                print("Created default PrinterConfiguration instance")
+                logger.info("Created default PrinterConfiguration instance")
         except Exception as e:
             # If loading fails, default to empty lists to prevent crashes
-            print(f"Warning: Failed to load printer configuration: {e}")
+            logger.warning(f"Failed to load printer configuration: {e}")
             self.receipt_printers = []
             self.kitchen_printers = []
             self.kitchen_zones = []
@@ -148,9 +151,9 @@ class AppSettings:
             self.web_order_auto_print_receipt: bool = web_settings.auto_print_receipt
             self.web_order_auto_print_kitchen: bool = web_settings.auto_print_kitchen
             if created:
-                print("Created default WebOrderSettings instance")
+                logger.info("Created default WebOrderSettings instance")
         except Exception as e:
-            print(f"Warning: Failed to load web order configuration: {e}")
+            logger.warning(f"Failed to load web order configuration: {e}")
             # Set sensible defaults to prevent crashes
             self.enable_web_order_notifications = False
             self.web_order_notification_sound = False
@@ -163,7 +166,7 @@ class AppSettings:
         This method is called when settings are updated to refresh the cache.
         """
         self.load_settings()
-        print("AppSettings cache reloaded")
+        logger.info("AppSettings cache reloaded")
 
     def get_default_inventory_location(self):
         """
@@ -189,7 +192,7 @@ class AppSettings:
             self.default_inventory_location = default_location
 
             if created:
-                print("Created default inventory location: Main Store")
+                logger.info("Created default inventory location: Main Store")
 
         return self.default_inventory_location
 
@@ -214,7 +217,7 @@ class AppSettings:
             self.default_store_location = default_location
 
             if created:
-                print("Created default store location: Main Location")
+                logger.info("Created default store location: Main Location")
 
         return self.default_store_location
 
@@ -241,7 +244,7 @@ class AppSettings:
     def warm_settings_cache(self):
         """Pre-load critical settings into cache for better startup performance"""
         try:
-            print("🔥 Warming settings cache...")
+            logger.info("Warming settings cache...")
             
             # Pre-load core settings that are frequently accessed
             critical_settings = [
@@ -271,11 +274,11 @@ class AppSettings:
             self.get_web_order_config()
             self.get_printer_config()
             
-            print("✅ Settings cache warmed successfully")
+            logger.info("Settings cache warmed successfully")
             return True
             
         except Exception as e:
-            print(f"⚠️  Warning: Failed to warm settings cache: {e}")
+            logger.warning(f"Failed to warm settings cache: {e}")
             return False
     
     @cache_static_data(timeout=3600*4)  # 4 hours in static cache

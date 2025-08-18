@@ -1253,8 +1253,8 @@ class ReportService:
         
         # Debug: Log transaction counts for diagnosis
         total_transactions_debug = all_order_transactions.count()
-        logger.info(f"=== SALES REPORT TRANSACTION DEBUG ===")
-        logger.info(f"Total transactions found: {total_transactions_debug}")
+        logger.debug("Sales report transaction query starting")
+        logger.debug("Transaction query completed")
         logger.info(f"Date range: {start_date} to {end_date}")
         
         payment_reconciliation = all_order_transactions.aggregate(
@@ -1280,12 +1280,8 @@ class ReportService:
             canceled_count=Count("id", filter=Q(status=PaymentTransaction.TransactionStatus.CANCELED))
         )
         
-        # Debug: Log individual payment status totals
-        logger.info(f"Successful payments: ${payment_reconciliation['successful_payments']} (count: {payment_reconciliation['successful_count']})")
-        logger.info(f"Refunded payments: ${payment_reconciliation['refunded_payments']} (count: {payment_reconciliation['refunded_count']})")
-        logger.info(f"Failed payments: ${payment_reconciliation['failed_payments']} (count: {payment_reconciliation['failed_count']})")
-        logger.info(f"Canceled payments: ${payment_reconciliation['canceled_payments']} (count: {payment_reconciliation['canceled_count']})")
-        logger.info(f"=== END TRANSACTION DEBUG ===")
+        # Payment reconciliation calculated
+        logger.debug("Payment reconciliation by status calculated")
         
         # Calculate voided orders total separately
         voided_orders_total = Order.objects.filter(
@@ -1817,15 +1813,7 @@ class ReportService:
         total_processing_issues = total_refunds + total_failed + total_canceled
 
         # Temporary diagnostic logging to compare with diagnostic script
-        logger.info(f"=== PAYMENT TOTALS BREAKDOWN ===")
-        logger.info(f"Successful transactions: ${total_processed_from_transactions}")
-        logger.info(f"Refunded transactions: ${total_refunds}")
-        logger.info(f"Failed transactions: ${total_failed}")
-        logger.info(f"Canceled transactions: ${total_canceled}")
-        logger.info(f"TOTAL ATTEMPTED: ${total_attempted}")
-        logger.info(f"Expected from diagnostic: $16771.24")
-        logger.info(f"Difference: ${16771.24 - total_attempted}")
-        logger.info(f"=== END BREAKDOWN ===")
+        logger.debug("Payment totals breakdown calculated")
 
         # Order totals for comparison
         completed_orders = Order.objects.filter(

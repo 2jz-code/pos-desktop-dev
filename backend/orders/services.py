@@ -8,6 +8,9 @@ from discounts.models import Discount
 from products.services import ModifierValidationService
 from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 class OrderService:
     
@@ -131,7 +134,7 @@ class OrderService:
             )
 
         selected_modifiers = selected_modifiers or []
-        print(f"DEBUG: add_item_to_order called with product: {product.name}, selected_modifiers: {selected_modifiers}")
+        logger.debug(f"add_item_to_order called with product_id: {product.id}, modifier_count: {len(selected_modifiers)}")
         
         # Skip validation if force_add is True
         if not force_add:
@@ -261,11 +264,11 @@ class OrderService:
             for modifier_data in selected_modifiers:
                 option_id = modifier_data.get('option_id')
                 mod_quantity = modifier_data.get('quantity', 1)
-                print(f"DEBUG: Processing modifier - option_id: {option_id}, quantity: {mod_quantity}")
+                logger.debug(f"Processing modifier - option_id: {option_id}, quantity: {mod_quantity}")
                 if option_id:
                     try:
                         modifier_option = ModifierOption.objects.select_related('modifier_set').get(id=option_id)
-                        print(f"DEBUG: Found modifier option: {modifier_option.name}")
+                        logger.debug(f"Found modifier option_id: {modifier_option.id}")
                         created_modifier = OrderItemModifier.objects.create(
                             order_item=item,
                             modifier_set_name=modifier_option.modifier_set.name,
@@ -273,9 +276,9 @@ class OrderService:
                             price_at_sale=modifier_option.price_delta,
                             quantity=mod_quantity
                         )
-                        print(f"DEBUG: Created OrderItemModifier: {created_modifier}")
+                        logger.debug(f"Created OrderItemModifier: {created_modifier}")
                     except ModifierOption.DoesNotExist:
-                        print(f"DEBUG: ModifierOption with id {option_id} not found")
+                        logger.warning(f"ModifierOption with id {option_id} not found")
                         continue
 
         OrderService.recalculate_order_totals(order)
@@ -677,11 +680,9 @@ class OrderService:
 
             if old_grand_total != new_grand_total:
                 count += 1
-                print(
-                    f"Order #{order.id}: Grand total updated from ${old_grand_total} to ${new_grand_total}"
-                )
+                logger.info(f"Order #{order.id}: Grand total updated due to configuration change")
 
-        print(f"Recalculated {count} in-progress orders due to configuration change")
+        logger.info(f"Recalculated {count} in-progress orders due to configuration change")
         return count
 
     @staticmethod
@@ -996,9 +997,7 @@ class WebOrderNotificationService:
         # Determine the target store location for the notification.
         target_location = self._determine_target_location(order)
         if not target_location:
-            print(
-                f"Warning: Could not determine target location for web order {order.id}. No notification sent."
-            )
+            logger.warning(f"Could not determine target location for web order {order.id}. No notification sent.")
             return
 
         # Broadcast a real-time notification to all terminals at the target location.
@@ -1023,9 +1022,7 @@ class WebOrderNotificationService:
 
         channel_layer = get_channel_layer()
         if not channel_layer:
-            print(
-                "Warning: Channel layer not available. Cannot send web order notification."
-            )
+            logger.warning("Channel layer not available. Cannot send web order notification.")
             return
 
         # The group name is based on the primary key of the StoreLocation.
@@ -1049,7 +1046,7 @@ class WebOrderNotificationService:
             },
         }
 
-        print(f"Broadcasting to group: {group_name}")
+        logger.debug(f"Broadcasting to group: {group_name}")
         async_to_sync(channel_layer.group_send)(group_name, payload)
 
     def _trigger_auto_printing(self, order, target_location, config):
@@ -1067,11 +1064,11 @@ class WebOrderNotificationService:
 
         channel_layer = get_channel_layer()
         if not channel_layer:
-            print("Warning: Channel layer not available. Cannot send auto-print jobs.")
+            logger.warning("Channel layer not available. Cannot send auto-print jobs.")
             return
 
         group_name = f"location_{target_location.id}_printing"
-        print(f"Sending print jobs to group: {group_name}")
+        logger.debug(f"Sending print jobs to group: {group_name}")
 
         async_to_sync(channel_layer.group_send)(
             group_name,

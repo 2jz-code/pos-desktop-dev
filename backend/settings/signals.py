@@ -9,6 +9,9 @@ from .models import GlobalSettings, StoreLocation, PrinterConfiguration, WebOrde
 from django.utils import timezone
 from django.db import transaction
 from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=GlobalSettings)
@@ -25,7 +28,7 @@ def reload_app_settings(sender, instance, **kwargs):
     from .config import app_settings
 
     app_settings.reload()
-    print(f"Configuration cache updated: {app_settings}")
+    logger.info(f"Configuration cache updated: {app_settings}")
     
     # Invalidate comprehensive settings caches
     invalidate_cache_pattern('*global_settings*')
@@ -42,16 +45,14 @@ def reload_app_settings(sender, instance, **kwargs):
         from orders.models import Order
 
         recalculated_count = OrderService.recalculate_in_progress_orders()
-        print(
-            f"Applied configuration changes to {recalculated_count} in-progress orders"
-        )
+        logger.info(f"Applied configuration changes to {recalculated_count} in-progress orders")
 
         # Use transaction.on_commit to ensure WebSocket notifications are sent
         # AFTER all database changes are fully committed to prevent race conditions
         transaction.on_commit(lambda: _notify_frontend_of_config_changes())
 
     except Exception as e:
-        print(f"Warning: Failed to recalculate in-progress orders: {e}")
+        logger.warning(f"Failed to recalculate in-progress orders: {e}")
 
 
 def _notify_frontend_of_config_changes():
@@ -72,7 +73,7 @@ def _notify_frontend_of_config_changes():
 
         channel_layer = get_channel_layer()
         if not channel_layer:
-            print("Warning: No channel layer configured for WebSocket notifications")
+            logger.warning("No channel layer configured for WebSocket notifications")
             return
 
         # Send a general configuration update to a global group (if implemented)
@@ -91,11 +92,9 @@ def _notify_frontend_of_config_changes():
                     },
                 },
             )
-            print("Sent global configuration update notification")
+            logger.info("Sent global configuration update notification")
         except Exception as e:
-            print(
-                f"Note: Global configuration notification failed (group may not exist): {e}"
-            )
+            logger.debug(f"Global configuration notification failed (group may not exist): {e}")
 
         # Get all in-progress orders that might have active WebSocket connections
         # Fetch fresh data from database to ensure we have the latest calculated totals
@@ -123,20 +122,18 @@ def _notify_frontend_of_config_changes():
                 )
                 notification_count += 1
             except Exception as e:
-                print(
-                    f"Warning: Failed to send WebSocket notification for order {order.id}: {e}"
-                )
+                logger.warning(f"Failed to send WebSocket notification for order {order.id}: {e}")
 
-        print(f"Sent WebSocket notifications to {notification_count} order groups")
+        logger.info(f"Sent WebSocket notifications to {notification_count} order groups")
 
     except Exception as e:
-        print(f"Warning: Failed to send WebSocket notifications: {e}")
+        logger.warning(f"Failed to send WebSocket notifications: {e}")
 
 
 @receiver(post_save, sender=StoreLocation)
 def handle_store_location_change(sender, instance, created, **kwargs):
     """Handle store location create/update events"""
-    print(f"Store location {'created' if created else 'updated'}: {instance.name}")
+    logger.info(f"Store location {'created' if created else 'updated'}: location_id {instance.id}")
     
     # Invalidate store locations cache
     invalidate_cache_pattern('*store_locations*')
@@ -146,7 +143,7 @@ def handle_store_location_change(sender, instance, created, **kwargs):
 @receiver(post_save, sender=PrinterConfiguration)
 def handle_printer_config_change(sender, instance, **kwargs):
     """Handle printer configuration updates"""
-    print("Printer configuration updated")
+    logger.info("Printer configuration updated")
     
     # Reload app settings to refresh printer config
     from .config import app_settings
@@ -160,7 +157,7 @@ def handle_printer_config_change(sender, instance, **kwargs):
 @receiver(post_save, sender=WebOrderSettings)
 def handle_web_order_settings_change(sender, instance, **kwargs):
     """Handle web order settings updates"""
-    print("Web order settings updated")
+    logger.info("Web order settings updated")
     
     # Reload app settings to refresh web order config
     from .config import app_settings

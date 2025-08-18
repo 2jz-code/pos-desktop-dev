@@ -50,7 +50,7 @@ class EmailService:
             # Determine recipient email
             recipient_email = order.customer_email
             if not recipient_email:
-                logger.warning(f"No email address found for order {order.order_number}")
+                logger.warning(f"No email address found for order_id {order.id}")
                 return False
 
             # Calculate estimated pickup time
@@ -239,7 +239,7 @@ class EmailService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send low stock alert for {product.name}: {e}")
+            logger.error(f"Failed to send low stock alert for product_id {product.id}: {type(e).__name__}")
             return False
 
     def _get_store_info(self):

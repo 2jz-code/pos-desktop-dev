@@ -309,3 +309,51 @@ def refresh_stale_caches():
             'status': 'failed',
             'error': str(e)
         }
+
+# ============================================================================
+# DATABASE BACKUP TASKS
+# ============================================================================
+
+@shared_task
+def backup_database():
+    """Automated database backup task"""
+    try:
+        logger.info("💾 Starting automated database backup...")
+        
+        from django.core.management import call_command
+        from io import StringIO
+        from datetime import datetime, timezone
+        
+        # Capture command output
+        stdout = StringIO()
+        stderr = StringIO()
+        
+        # Run backup command
+        call_command(
+            'backup_database',
+            verbosity=1,
+            stdout=stdout,
+            stderr=stderr
+        )
+        
+        output = stdout.getvalue()
+        error_output = stderr.getvalue()
+        
+        if error_output:
+            logger.warning(f"Backup command warnings: {error_output}")
+        
+        logger.info("✅ Automated database backup completed successfully")
+        return {
+            'status': 'completed',
+            'output': output,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'backup_type': 'postgresql_s3'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Automated database backup failed: {e}")
+        return {
+            'status': 'failed',
+            'error': str(e),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }

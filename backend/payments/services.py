@@ -12,6 +12,9 @@ from django.shortcuts import get_object_or_404
 import stripe
 import uuid
 from .signals import payment_completed
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentService:
@@ -100,9 +103,7 @@ class PaymentService:
         payment.status = target_status
         payment.save(update_fields=["status", "updated_at"])
 
-        print(
-            f"Payment {payment.id}: Status transition {old_status} -> {target_status}"
-        )
+        logger.info(f"Payment {payment.id}: Status transition {old_status} -> {target_status}")
         return payment
 
     @staticmethod
@@ -168,9 +169,7 @@ class PaymentService:
 
         # Idempotency Check: If the payment is already fully paid, do nothing further.
         if payment.status == Payment.PaymentStatus.PAID:
-            print(
-                f"Payment {payment.id} is already marked as PAID. Skipping confirmation."
-            )
+            logger.info(f"Payment {payment.id} is already marked as PAID. Skipping confirmation.")
             return payment
 
         # Mark the transaction as successful

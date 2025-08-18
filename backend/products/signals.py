@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import logging
+import os
 from django.utils import timezone  # Add this import
 from django.conf import settings
 
@@ -67,8 +68,21 @@ def process_product_image(sender, instance, created, **kwargs):
 
         # Store the path to the originally uploaded file if it exists
         original_image_path = None
-        if not created and instance.image.path and os.path.exists(instance.image.path):
-            original_image_path = instance.image.path
+        if not created and instance.image.name:
+            # For S3 storage, we can't use .path or os.path.exists
+            # Instead, check if the file has a name (exists in storage)
+            try:
+                # Check if we can access the file (works for both local and S3)
+                if hasattr(instance.image.storage, 'path'):
+                    # Local storage - use traditional path check
+                    if os.path.exists(instance.image.path):
+                        original_image_path = instance.image.path
+                else:
+                    # S3 storage - just use the name since we can't get local path
+                    original_image_path = instance.image.name
+            except (AttributeError, NotImplementedError):
+                # S3 or other remote storage - just use the file name
+                original_image_path = instance.image.name
 
         try:
             # Process the image asynchronously

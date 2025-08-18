@@ -610,7 +610,7 @@ class GiftCardPaymentStrategy(PaymentStrategy):
             return transaction
             
         except GiftCard.DoesNotExist:
-            logger.error(f"Gift card not found for refund: {gift_card_code}")
+            logger.error("Gift card not found for refund")
             raise ValueError(f"Gift card {gift_card_code} not found for refund")
             
         except Exception as e:

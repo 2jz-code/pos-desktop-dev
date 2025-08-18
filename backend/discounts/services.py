@@ -3,6 +3,7 @@
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
+import logging
 
 # --- FIX: Corrected Imports ---
 from .models import Discount
@@ -12,6 +13,8 @@ from orders.models import Order, OrderDiscount
 
 from .factories import DiscountStrategyFactory
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
+
+logger = logging.getLogger(__name__)
 
 
 class DiscountService:
@@ -78,15 +81,13 @@ class DiscountService:
         if not allow_stacking:
             if order.applied_discounts.exists():
                 order.applied_discounts.all().delete()
-                print("Removed existing discounts as stacking is disabled.")
+                logger.debug("Removed existing discounts as stacking is disabled.")
         # --- END: Discount Stacking Logic ---
 
         # Get the appropriate calculation strategy for the given discount
         strategy = DiscountStrategyFactory.get_strategy(discount)
         if not strategy:
-            print(
-                f"Warning: No discount strategy found for discount type {discount.type}"
-            )
+            logger.warning(f"No discount strategy found for discount type {discount.type}")
             return
 
         # Calculate the potential discount amount using the strategy
@@ -98,13 +99,11 @@ class DiscountService:
             OrderDiscount.objects.update_or_create(
                 order=order, discount=discount, defaults={"amount": calculated_amount}
             )
-            print(
-                f"Discount '{discount.name}' applied with amount {calculated_amount}."
-            )
+            logger.info(f"Discount applied: discount_id {discount.id}")
         else:
             # If an invalid discount was somehow still linked, remove it.
             OrderDiscount.objects.filter(order=order, discount=discount).delete()
-            print(f"Discount '{discount.name}' is not applicable to this order.")
+            logger.debug(f"Discount_id {discount.id} is not applicable to this order.")
 
         # IMPORTANT: After any change, we must trigger a full recalculation of the order's totals.
         # We emit a signal instead of directly calling OrderService to avoid circular dependencies.
@@ -124,7 +123,7 @@ class DiscountService:
         ).delete()
 
         if items_deleted > 0:
-            print(f"Discount '{discount.name}' removed from the order.")
+            logger.info(f"Discount_id {discount.id} removed from order.")
 
         # IMPORTANT: Always recalculate totals after removing a discount.
         # We emit a signal instead of directly calling OrderService to avoid circular dependencies.

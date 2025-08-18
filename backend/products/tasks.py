@@ -25,8 +25,13 @@ def process_product_image_async(self, product_id, image_path):
             # Set a flag to prevent signal recursion
             product._skip_image_processing = True
             
+            # Get original filename without extension for WebP naming
+            import os
+            original_name = os.path.splitext(os.path.basename(product.image.name))[0]
+            webp_filename = f"{original_name}.webp"
+            
             product.image.save(
-                f"processed_{product.id}.webp",
+                webp_filename,
                 processed_image,
                 save=False  # Don't auto-save yet
             )

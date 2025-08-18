@@ -2,6 +2,9 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from core_backend.utils.archiving import SoftDeleteMixin
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # === CHOICES ===
@@ -180,7 +183,7 @@ class GlobalSettings(models.Model):
 
         except Exception as e:
             # If timezone calculation fails, default to open
-            print(f"Business hours check failed: {e}")
+            logger.error(f"Business hours check failed: {e}")
             return True
 
     class Meta:
