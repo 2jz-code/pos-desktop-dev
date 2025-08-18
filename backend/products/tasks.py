@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
-def process_product_image_async(self, product_id, image_path):
+def process_product_image_async(self, product_id, image_path, original_filename=None):
     """
     Process product image in background
     """
@@ -18,20 +18,16 @@ def process_product_image_async(self, product_id, image_path):
         product = Product.objects.get(id=product_id)
         
         # Process the image
-        processed_image = ImageService.process_image_sync(image_path)
+        processed_image = ImageService.process_image_sync(image_path, original_filename)
         
         # Save to product without triggering signals
         if processed_image:
             # Set a flag to prevent signal recursion
             product._skip_image_processing = True
             
-            # Get original filename without extension for WebP naming
-            import os
-            original_name = os.path.splitext(os.path.basename(product.image.name))[0]
-            webp_filename = f"{original_name}.webp"
-            
+            # Use the filename from the processed image (which preserves original name)
             product.image.save(
-                webp_filename,
+                processed_image.name,
                 processed_image,
                 save=False  # Don't auto-save yet
             )

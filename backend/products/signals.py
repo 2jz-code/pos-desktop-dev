@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -51,6 +51,35 @@ def broadcast_entity_change(entity_type, entity_id, action="changed"):
 
 
 # === PRODUCT SIGNALS ===
+
+
+@receiver(pre_save, sender=Product)
+def handle_product_image_change(sender, instance, **kwargs):
+    """
+    Handle image changes/deletions before saving.
+    This detects when an image field is cleared and deletes the old image file.
+    """
+    if instance.pk:  # Only for existing products
+        try:
+            # Get the existing product from database
+            old_product = Product.objects.get(pk=instance.pk)
+            
+            # Check if image was cleared (old had image, new doesn't)
+            if old_product.image and not instance.image:
+                logger.info(f"Image cleared for product {instance.pk}, current: '{old_product.image.name}', original: '{old_product.original_filename}'")
+                ImageService.delete_image_file(old_product.image, old_product.original_filename)
+                
+            # Check if image was changed (different filename)
+            elif (old_product.image and instance.image and 
+                  old_product.image.name != instance.image.name):
+                logger.info(f"Image changed for product {instance.pk}, old: '{old_product.image.name}', original: '{old_product.original_filename}'")
+                ImageService.delete_image_file(old_product.image, old_product.original_filename)
+                
+        except Product.DoesNotExist:
+            # Product is new, no old image to delete
+            pass
+        except Exception as e:
+            logger.error(f"Error handling image change for product {instance.pk}: {e}")
 
 
 @receiver(post_save, sender=Product)
@@ -114,8 +143,8 @@ def handle_product_delete(sender, instance, **kwargs):
     """
     Handle product delete events: broadcast change and delete associated image file.
     """
-    # Delete the image file when the product is deleted
-    ImageService.delete_image_file(instance.image)
+    # Delete all image files when the product is deleted
+    ImageService.delete_product_images(instance)
     broadcast_entity_change("products", instance.id, "deleted")
     
     # Use centralized cache invalidation from ProductService
