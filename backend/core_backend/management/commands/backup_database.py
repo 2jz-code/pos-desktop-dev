@@ -91,7 +91,7 @@ class Command(BaseCommand):
         """Create PostgreSQL dump file"""
         # Generate timestamp-based filename
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-        filename = f"pos_backup_{timestamp}.sql"
+        filename = f"pos_backup_{timestamp}.dump"
         
         # Create temporary file
         temp_dir = tempfile.gettempdir()
@@ -115,8 +115,14 @@ class Command(BaseCommand):
             '--dbname', db_url['NAME'],
             '--no-password',
             '--verbose',
-            '--clean',  # Add DROP statements
-            '--if-exists',  # Don't error if objects don't exist
+            '--format=custom',     # Custom format (.dump)
+            '--compress=9',        # Maximum compression
+            '--clean',             # Add DROP statements
+            '--if-exists',         # Don't error if objects don't exist
+            '--create',            # Include CREATE DATABASE statement
+            '--blobs',             # Include large objects
+            '--no-privileges',     # Don't dump privileges (cleaner for restore)
+            '--no-owner',          # Don't dump ownership commands
             '--file', backup_file
         ]
         

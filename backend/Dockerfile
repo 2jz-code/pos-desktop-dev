@@ -34,15 +34,22 @@ ENV DJANGO_SETTINGS_MODULE=core_backend.settings
 # Create the application non-root user and group
 RUN groupadd -r app_group && useradd --no-log-init -r -g app_group app_user
 
-# Install Nginx, Supervisor, PostgreSQL client, Redis server, and runtime dependencies
+# Install Nginx, Supervisor, PostgreSQL 16 client, Redis server, and runtime dependencies
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        wget \
+        gnupg \
+    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    && echo "deb http://apt.postgresql.org/pub/repos/apt/ bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
         supervisor \
         libpq5 \
         libjpeg62-turbo \
         zlib1g \
-        postgresql-client \
+        postgresql-client-16 \
         redis-server \
         curl \ 
     && apt-get clean && \
