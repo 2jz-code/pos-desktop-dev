@@ -10,6 +10,7 @@ import DraggableList from "@/components/ui/draggable-list";
 import ModifierQuickCreate from "./ModifierQuickCreate";
 import ModifierLibraryDrawer from "./ModifierLibraryDrawer";
 import ModifierGroupCard from "./ModifierGroupCard";
+import ProductSpecificOptionForm from "./ProductSpecificOptionForm";
 
 interface ModifierOption {
   id: string | number;
@@ -46,6 +47,17 @@ const ModifierSectionManager: React.FC<ModifierSectionManagerProps> = ({
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string | number>>(new Set());
   const [optimisticHiddenOptions, setOptimisticHiddenOptions] = useState<Map<string | number, Set<string | number>>>(new Map());
+  const [productOptionForm, setProductOptionForm] = useState<{
+    open: boolean;
+    modifierSetId: string | number | null;
+    modifierSetName: string;
+    existingOptionNames: string[];
+  }>({
+    open: false,
+    modifierSetId: null,
+    modifierSetName: '',
+    existingOptionNames: []
+  });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -200,6 +212,111 @@ const ModifierSectionManager: React.FC<ModifierSectionManagerProps> = ({
     }
   };
 
+  const handleReorderOptions = async (modifierSetId: string | number, reorderedOptions: ModifierOption[]) => {
+    // Optimistically update the UI
+    setModifierGroups(prevGroups => 
+      prevGroups.map(group => {
+        const groupModifierSetId = group.modifier_set_id || group.modifier_set || group.id;
+        if (groupModifierSetId === modifierSetId) {
+          return { ...group, options: reorderedOptions };
+        }
+        return group;
+      })
+    );
+
+    try {
+      const ordering = reorderedOptions.map((option, index) => ({
+        option_id: Number(option.id),
+        display_order: index
+      }));
+      
+      await modifierService.updateOptionOrdering(Number(productId), Number(modifierSetId), ordering);
+      
+      onModifierChange?.();
+    } catch (error) {
+      console.error('Error updating option order:', error);
+      // Revert on error
+      fetchProductModifiers();
+      toast({
+        title: "Error",
+        description: "Failed to update option order.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddProductOption = async (modifierSetId: string | number) => {
+    // Find the modifier group to get its name and existing options
+    const group = modifierGroups.find(g => {
+      const groupModifierSetId = g.modifier_set_id || g.modifier_set || g.id;
+      return groupModifierSetId === modifierSetId;
+    });
+
+    if (!group) {
+      toast({
+        title: "Error",
+        description: "Modifier group not found.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingOptionNames = group.options?.map(opt => opt.name) || [];
+
+    setProductOptionForm({
+      open: true,
+      modifierSetId,
+      modifierSetName: group.name,
+      existingOptionNames
+    });
+  };
+
+  const handleRemoveProductOption = async (modifierSetId: string | number, optionId: string | number) => {
+    try {
+      await modifierService.removeProductSpecificOption(Number(productId), Number(modifierSetId), Number(optionId));
+      
+      // Refresh the data
+      await fetchProductModifiers();
+      onModifierChange?.();
+      
+      toast({
+        title: "Success",
+        description: "Product-specific option removed.",
+      });
+    } catch (error) {
+      console.error('Error removing product-specific option:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove product-specific option.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleProductOptionSuccess = async (optionData: { name: string; price_delta: number }) => {
+    if (!productOptionForm.modifierSetId) return;
+
+    try {
+      await modifierService.addProductSpecificOption(
+        Number(productId),
+        Number(productOptionForm.modifierSetId),
+        {
+          name: optionData.name,
+          price_delta: optionData.price_delta,
+          display_order: productOptionForm.existingOptionNames.length
+        }
+      );
+
+      // Refresh the data
+      await fetchProductModifiers();
+      onModifierChange?.();
+
+    } catch (error) {
+      console.error('Error adding product-specific option:', error);
+      throw error; // Re-throw so the form can handle the error
+    }
+  };
+
   const toggleGroupExpansion = (groupId: string | number) => {
     const newExpanded = new Set(expandedGroups);
     if (newExpanded.has(groupId)) {
@@ -314,6 +431,9 @@ const ModifierSectionManager: React.FC<ModifierSectionManagerProps> = ({
                     onRemove={handleRemoveModifierSet}
                     onDuplicate={() => {/* Handle duplicate */}}
                     onOptionToggle={handleOptionToggle}
+                    onReorderOptions={handleReorderOptions}
+                    onAddProductOption={handleAddProductOption}
+                    onRemoveProductOption={handleRemoveProductOption}
                     hiddenOptionIds={Array.from(optimisticHiddenOptions.get(modifierSetId) || [])}
                     className="flex-1 border-0 shadow-none bg-transparent"
                   />
@@ -339,6 +459,15 @@ const ModifierSectionManager: React.FC<ModifierSectionManagerProps> = ({
         onSuccess={handleQuickCreateSuccess}
         productId={productId}
         autoAddToProduct={true}
+      />
+
+      {/* Product Specific Option Form */}
+      <ProductSpecificOptionForm
+        open={productOptionForm.open}
+        onOpenChange={(open) => setProductOptionForm(prev => ({ ...prev, open }))}
+        onSuccess={handleProductOptionSuccess}
+        modifierSetName={productOptionForm.modifierSetName}
+        existingOptionNames={productOptionForm.existingOptionNames}
       />
     </div>
   );

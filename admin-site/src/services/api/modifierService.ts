@@ -39,6 +39,7 @@ export interface ProductModifierRelationship {
 	product: number;
 	modifier_set: number;
 	modifier_set_id?: number;
+	relationship_id?: number;
 	display_order: number;
 	hidden_options: number[];
 }
@@ -92,7 +93,22 @@ export const getProductModifierRelationships = async (
 		const response = await apiClient.get(
 			`/products/${productId}/modifier-sets/`
 		);
-		return response.data;
+		
+		// Handle different response structures
+		let data = response.data;
+		
+		// If the response has a 'results' property (paginated), use that
+		if (data && typeof data === 'object' && 'results' in data) {
+			data = data.results;
+		}
+		
+		// Ensure we have an array
+		if (!Array.isArray(data)) {
+			console.error("API response is not an array:", data);
+			return [];
+		}
+		
+		return data;
 	} catch (error) {
 		console.error("Error fetching product modifier relationships:", error);
 		throw error;
@@ -311,17 +327,23 @@ export const addProductSpecificOption = async (
 	// First, find the ProductModifierSet relationship
 	const relationships = await getProductModifierRelationships(productId);
 	const relationship = relationships.find(
-		(rel) => (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+		(rel) => rel.id === modifierSetId || rel.id === parseInt(modifierSetId.toString())
 	);
 
 	if (!relationship) {
-		throw new Error("Product modifier set relationship not found");
+		console.error('Available relationships:', relationships.map(r => ({
+			id: r.id,
+			modifier_set: r.modifier_set,
+			modifier_set_id: r.modifier_set_id
+		})));
+		throw new Error(`Product modifier set relationship not found for modifierSetId: ${modifierSetId}`);
 	}
 
 	// Use the proper endpoint for adding product-specific options
+	const relationshipId = (relationship as any).relationship_id || relationship.id;
 	const urlPatterns = [
-		`/products/${productId}/modifier-sets/${relationship.id}/add-product-specific-option/`,
-		`/products/products/${productId}/modifier-sets/${relationship.id}/add-product-specific-option/`,
+		`/products/${productId}/modifier-sets/${relationshipId}/add-product-specific-option/`,
+		`/products/products/${productId}/modifier-sets/${relationshipId}/add-product-specific-option/`,
 	];
 
 	for (const urlPattern of urlPatterns) {
@@ -355,17 +377,23 @@ export const removeProductSpecificOption = async (
 	// First, find the ProductModifierSet relationship
 	const relationships = await getProductModifierRelationships(productId);
 	const relationship = relationships.find(
-		(rel) => (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+		(rel) => rel.id === modifierSetId || rel.id === parseInt(modifierSetId.toString())
 	);
 
 	if (!relationship) {
-		throw new Error("Product modifier set relationship not found");
+		console.error('Available relationships:', relationships.map(r => ({
+			id: r.id,
+			modifier_set: r.modifier_set,
+			modifier_set_id: r.modifier_set_id
+		})));
+		throw new Error(`Product modifier set relationship not found for modifierSetId: ${modifierSetId}`);
 	}
 
 	// Use the proper endpoint for removing product-specific options
+	const relationshipId = (relationship as any).relationship_id || relationship.id;
 	const urlPatterns = [
-		`/products/${productId}/modifier-sets/${relationship.id}/remove-product-specific-option/${optionId}/`,
-		`/products/products/${productId}/modifier-sets/${relationship.id}/remove-product-specific-option/${optionId}/`,
+		`/products/${productId}/modifier-sets/${relationshipId}/remove-product-specific-option/${optionId}/`,
+		`/products/products/${productId}/modifier-sets/${relationshipId}/remove-product-specific-option/${optionId}/`,
 	];
 
 	for (const urlPattern of urlPatterns) {
@@ -485,6 +513,64 @@ export const reorderModifierOptions = (
 			ordering: optionOrdering,
 		}
 	);
+};
+
+/**
+ * Update option display order for a modifier set within a product context
+ * @param {number} productId - The product ID
+ * @param {number} modifierSetId - The modifier set ID
+ * @param {Array} ordering - Array of objects with option_id and display_order
+ */
+export const updateOptionOrdering = async (
+	productId: number,
+	modifierSetId: number,
+	ordering: Array<{ option_id: number; display_order: number }>
+) => {
+	// First, find the ProductModifierSet relationship
+	const relationships = await getProductModifierRelationships(productId);
+	
+	// Add debugging info
+	console.log('Relationships:', relationships);
+	console.log('Looking for modifierSetId:', modifierSetId);
+	
+	if (!Array.isArray(relationships)) {
+		console.error('Relationships is not an array:', relationships);
+		throw new Error("Invalid relationships data structure");
+	}
+	
+	const relationship = relationships.find(
+		(rel) => rel.id === modifierSetId || rel.id === parseInt(modifierSetId.toString())
+	);
+
+	if (!relationship) {
+		console.error('Available relationships:', relationships.map(r => ({
+			id: r.id,
+			modifier_set: r.modifier_set,
+			modifier_set_id: r.modifier_set_id
+		})));
+		throw new Error(`Product modifier set relationship not found for modifierSetId: ${modifierSetId}`);
+	}
+
+	// Use the proper endpoint for reordering options with product context
+	const relationshipId = (relationship as any).relationship_id || relationship.id;
+	const urlPatterns = [
+		`/products/${productId}/modifier-sets/${relationshipId}/reorder-options/`,
+		`/products/products/${productId}/modifier-sets/${relationshipId}/reorder-options/`,
+	];
+
+	for (const urlPattern of urlPatterns) {
+		try {
+			const response = await apiClient.patch(urlPattern, { ordering });
+			return response.data;
+		} catch (error: any) {
+			if (error.response?.status === 404) {
+				continue; // Try next pattern
+			}
+			throw error; // Other errors should be thrown
+		}
+	}
+
+	throw new Error("No working URL pattern found for reordering options");
 };
 
 /**

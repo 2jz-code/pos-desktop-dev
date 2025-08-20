@@ -49,7 +49,10 @@ const DraggableList: React.FC<DraggableListProps> = ({
 	showEmptyState = true,
 	emptyStateMessage = "No items yet",
 }) => {
-	const handleDragEnd = (result) => {
+	const handleDragEnd = (result: any) => {
+		// Cleanup
+		document.body.style.userSelect = '';
+		
 		if (!result.destination) return;
 
 		const reorderedItems = Array.from(items);
@@ -59,9 +62,18 @@ const DraggableList: React.FC<DraggableListProps> = ({
 		onReorder?.(reorderedItems, result.source.index, result.destination.index);
 	};
 
-	const getDefaultItemId = (item, index) => {
-		if (getItemId) return getItemId(item, index);
-		return item.id || item._id || index.toString();
+	const handleDragStart = (start: any) => {
+		// Prevent text selection during drag
+		document.body.style.userSelect = 'none';
+	};
+
+	const handleDragUpdate = (update: any) => {
+		// Additional drag event handling if needed
+	};
+
+	const getDefaultItemId = (item: any, index: number): string => {
+		if (getItemId) return getItemId(item, index).toString();
+		return (item.id || item._id || index).toString();
 	};
 
 	if (loading && loadingState) {
@@ -104,111 +116,133 @@ const DraggableList: React.FC<DraggableListProps> = ({
 					</div>
 				)}
 
-				<DragDropContext onDragEnd={handleDragEnd}>
-					<Droppable
-						droppableId={droppableId}
-						renderClone={(provided, snapshot, rubric) => {
-							const item = items[rubric.source.index];
-							return (
-								<div
-									{...provided.draggableProps}
-									{...provided.dragHandleProps}
-									ref={provided.innerRef}
-									className="bg-white shadow-lg border border-blue-300 rounded-lg"
-									style={provided.draggableProps.style}
-								>
-									{renderItem({
-										item,
-										index: rubric.source.index,
-										isDragging: true,
-										dragHandleProps: provided.dragHandleProps,
-										isClone: true,
-										dragHandle: (
-											<div className="cursor-grabbing p-1 rounded bg-blue-100">
-												<GripVertical className="h-4 w-4 text-blue-600" />
-											</div>
-										),
-									})}
-								</div>
-							);
-						}}
+				<div 
+					onMouseDown={(e) => e.stopPropagation()}
+					onMouseUp={(e) => e.stopPropagation()}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<DragDropContext 
+						onDragEnd={handleDragEnd}
+						onDragStart={handleDragStart}
+						onDragUpdate={handleDragUpdate}
 					>
-						{(provided, snapshot) => (
-							<div
-								{...provided.droppableProps}
-								ref={provided.innerRef}
-								className={`border border-gray-200 ${
-									showHeaders && items.length > 0
-										? "rounded-b-lg border-t-0"
-										: "rounded-lg"
-								} ${snapshot.isDraggingOver ? "bg-blue-50" : "bg-white"}`}
-							>
-								{items.length === 0 && (
-									<div className="text-center py-8 text-gray-500">
-										<div className="mb-2">
-											<GripVertical className="h-8 w-8 mx-auto text-gray-300" />
-										</div>
-										<p className="text-sm">{emptyStateMessage}</p>
-										<p className="text-xs text-gray-400">
-											Drag items here to reorder
-										</p>
-									</div>
-								)}
-
-								{items.map((item, index) => {
-									const itemId = getDefaultItemId(item, index);
-									return (
-										<Draggable
-											key={itemId}
-											draggableId={itemId.toString()}
-											index={index}
-										>
-											{(provided, snapshot) => (
+						<Droppable 
+							droppableId={droppableId}
+							direction="vertical"
+							renderClone={(provided, snapshot, rubric) => {
+								const item = items[rubric.source.index];
+								const itemId = getDefaultItemId(item, rubric.source.index);
+								
+								// Get the container width to constrain the clone
+								const container = document.querySelector(`[data-rbd-droppable-id="${droppableId}"]`);
+								const containerWidth = container ? container.offsetWidth - 20 : 400; // Subtract some padding
+								
+								return (
+									<div
+										{...provided.draggableProps}
+										{...provided.dragHandleProps}
+										ref={provided.innerRef}
+										className="bg-white border border-gray-200"
+										style={{
+											...provided.draggableProps.style,
+											width: containerWidth,
+											maxWidth: containerWidth,
+											zIndex: 9999,
+											pointerEvents: 'none',
+											boxShadow: 'none',
+											overflow: 'hidden',
+										}}
+										onMouseDown={(e) => e.stopPropagation()}
+										onMouseUp={(e) => e.stopPropagation()}
+										onClick={(e) => e.stopPropagation()}
+									>
+										{renderItem({
+											item,
+											index: rubric.source.index,
+											isDragging: true,
+											dragHandleProps: provided.dragHandleProps,
+											dragHandle: (
 												<div
-													ref={provided.innerRef}
-													{...provided.draggableProps}
-													className={`${
-														index !== items.length - 1
-															? "border-b border-gray-200"
-															: ""
-													} ${
-														snapshot.isDragging
-															? "bg-blue-50 opacity-80"
-															: "hover:bg-gray-50"
-													}`}
+													{...provided.dragHandleProps}
+													className="cursor-grabbing p-1 rounded"
 												>
-													{renderItem({
-														item,
-														index,
-														isDragging: snapshot.isDragging,
-														dragHandleProps: provided.dragHandleProps,
-														dragHandle: (
-															<div
-																{...provided.dragHandleProps}
-																className={`cursor-grab hover:bg-gray-200 active:cursor-grabbing p-1 rounded ${
-																	snapshot.isDragging ? "bg-blue-100" : ""
-																}`}
-															>
-																<GripVertical
-																	className={`h-4 w-4 ${
-																		snapshot.isDragging
-																			? "text-blue-600"
-																			: "text-gray-400"
-																	}`}
-																/>
-															</div>
-														),
-													})}
+													<GripVertical className="h-4 w-4 text-gray-400" />
 												</div>
-											)}
-										</Draggable>
-									);
-								})}
-								{provided.placeholder}
-							</div>
-						)}
-					</Droppable>
-				</DragDropContext>
+											),
+										})}
+									</div>
+								);
+							}}
+						>
+							{(provided, snapshot) => (
+								<div
+									{...provided.droppableProps}
+									ref={provided.innerRef}
+									className={`border border-gray-200 ${
+										showHeaders && items.length > 0
+											? "rounded-b-lg border-t-0"
+											: "rounded-lg"
+									} ${snapshot.isDraggingOver ? "bg-blue-50" : "bg-white"}`}
+								>
+									{items.length === 0 && (
+										<div className="text-center py-8 text-gray-500">
+											<div className="mb-2">
+												<GripVertical className="h-8 w-8 mx-auto text-gray-300" />
+											</div>
+											<p className="text-sm">{emptyStateMessage}</p>
+											<p className="text-xs text-gray-400">
+												Drag items here to reorder
+											</p>
+										</div>
+									)}
+
+									{items.map((item, index) => {
+										const itemId = getDefaultItemId(item, index);
+										return (
+											<Draggable
+												key={itemId}
+												draggableId={itemId.toString()}
+												index={index}
+											>
+												{(provided, snapshot) => (
+													<div
+														ref={provided.innerRef}
+														{...provided.draggableProps}
+														className={`${
+															index !== items.length - 1
+																? "border-b border-gray-200"
+																: ""
+														} ${
+															snapshot.isDragging
+																? "bg-blue-50"
+																: "hover:bg-gray-50"
+														}`}
+													>
+														{renderItem({
+															item,
+															index,
+															isDragging: snapshot.isDragging,
+															dragHandleProps: provided.dragHandleProps,
+															dragHandle: (
+																<div
+																	{...provided.dragHandleProps}
+																	className="cursor-grab hover:bg-gray-200 active:cursor-grabbing p-1 rounded"
+																>
+																	<GripVertical className="h-4 w-4 text-gray-400" />
+																</div>
+															),
+														})}
+													</div>
+												)}
+											</Draggable>
+										);
+									})}
+									{provided.placeholder}
+								</div>
+							)}
+						</Droppable>
+					</DragDropContext>
+				</div>
 			</div>
 		);
 	}

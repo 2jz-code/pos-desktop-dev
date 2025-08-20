@@ -43,6 +43,9 @@ interface ModifierGroupCardProps {
   onRemove?: (modifierSetId: string | number) => void;
   onDuplicate?: (group: ModifierGroup) => void;
   onOptionToggle?: (modifierSetId: string | number, optionId: string | number, shouldHide: boolean) => void;
+  onReorderOptions?: (modifierSetId: string | number, reorderedOptions: ModifierOption[]) => void;
+  onAddProductOption?: (modifierSetId: string | number) => void;
+  onRemoveProductOption?: (modifierSetId: string | number, optionId: string | number) => void;
   hiddenOptionIds?: (string | number)[];
   className?: string;
 }
@@ -55,6 +58,9 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
   onRemove,
   onDuplicate,
   onOptionToggle,
+  onReorderOptions,
+  onAddProductOption,
+  onRemoveProductOption,
   hiddenOptionIds = [],
   className = ""
 }) => {
@@ -155,6 +161,9 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
                 options={group.options || []}
                 hiddenOptionIds={hiddenOptionIds}
                 onToggle={onOptionToggle}
+                onReorderOptions={onReorderOptions}
+                onAddProductOption={onAddProductOption}
+                onRemoveProductOption={onRemoveProductOption}
                 modifierSetId={modifierSetId}
               />
             </div>
