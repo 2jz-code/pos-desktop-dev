@@ -64,6 +64,7 @@ class ModifierSetSerializer(BaseModelSerializer):
 class ProductModifierSetSerializer(BaseModelSerializer):
     # Include the full modifier set data instead of just the ID
     id = serializers.IntegerField(source="modifier_set.id", read_only=True)
+    relationship_id = serializers.IntegerField(source="id", read_only=True)
     name = serializers.CharField(source="modifier_set.name", read_only=True)
     internal_name = serializers.CharField(
         source="modifier_set.internal_name", read_only=True
@@ -90,6 +91,7 @@ class ProductModifierSetSerializer(BaseModelSerializer):
         model = ProductModifierSet
         fields = [
             "id",
+            "relationship_id",
             "name",
             "internal_name",
             "selection_type",

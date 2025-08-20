@@ -30,7 +30,7 @@ export const getProductModifiers = async (productId, includeAll = false) => {
 export const getProductModifierRelationships = async (productId) => {
   try {
     const response = await apiClient.get(`/products/${productId}/modifier-sets/`);
-    return response.data;
+    return response.data.results || response.data;
   } catch (error) {
     console.error('Error fetching product modifier relationships:', error);
     throw error;
@@ -45,7 +45,7 @@ export const addModifierSetToProduct = async (productId, modifierSetId) => {
   try {
     const existingRelationships = await getProductModifierRelationships(productId);
     const alreadyExists = existingRelationships.some(rel => 
-      (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+      rel.id === modifierSetId || rel.id === parseInt(modifierSetId)
     );
     
     if (alreadyExists) {
@@ -100,17 +100,20 @@ export const removeModifierSetFromProduct = async (productId, modifierSetId) => 
   // First, get the current relationships to find the relationship ID
   const relationships = await getProductModifierRelationships(productId);
   const relationship = relationships.find(rel => 
-    (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+    rel.id === modifierSetId || rel.id === parseInt(modifierSetId)
   );
   
   if (!relationship) {
     throw new Error('Modifier set relationship not found');
   }
   
+  // Use the relationship_id for deletion, fallback to id if not available
+  const relationshipId = relationship.relationship_id || relationship.id;
+
   // Try different URL patterns for deletion
   const urlPatterns = [
-    `/products/${productId}/modifier-sets/${relationship.id}/`,
-    `/products/products/${productId}/modifier-sets/${relationship.id}/`,
+    `/products/${productId}/modifier-sets/${relationshipId}/`,
+    `/products/products/${productId}/modifier-sets/${relationshipId}/`,
   ];
   
   for (const urlPattern of urlPatterns) {
@@ -155,11 +158,12 @@ export const updateModifierOrdering = async (productId, modifierSetOrdering) => 
   // Update each relationship's display_order individually
   for (const orderItem of modifierSetOrdering) {
     const relationship = relationships.find(rel => 
-      (rel.modifier_set_id || rel.modifier_set) === orderItem.modifier_set_id
+      rel.id === orderItem.modifier_set_id || rel.id === parseInt(orderItem.modifier_set_id)
     );
     
     if (relationship) {
-      await apiClient.patch(`/products/${productId}/modifier-sets/${relationship.id}/`, {
+      const relationshipId = relationship.relationship_id || relationship.id;
+      await apiClient.patch(`/products/${productId}/modifier-sets/${relationshipId}/`, {
         display_order: orderItem.display_order
       });
     }
@@ -176,13 +180,13 @@ export const updateHiddenOptions = async (productId, modifierSetId, hiddenOption
   const relationships = await getProductModifierRelationships(productId);
   
   const relationship = relationships.find(rel => {
-    const relModifierSetId = rel.modifier_set_id || rel.modifier_set;
     // Convert both to strings for comparison to handle type mismatches
-    return String(relModifierSetId) === String(modifierSetId);
+    return String(rel.id) === String(modifierSetId);
   });
   
   if (relationship) {
-    const response = await apiClient.patch(`/products/${productId}/modifier-sets/${relationship.id}/`, {
+    const relationshipId = relationship.relationship_id || relationship.id;
+    const response = await apiClient.patch(`/products/${productId}/modifier-sets/${relationshipId}/`, {
       hidden_options: hiddenOptionIds
     });
     return response;
@@ -201,7 +205,7 @@ export const addProductSpecificOption = async (productId, modifierSetId, optionD
   // First, find the ProductModifierSet relationship
   const relationships = await getProductModifierRelationships(productId);
   const relationship = relationships.find(rel => 
-    (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+    rel.id === modifierSetId || rel.id === parseInt(modifierSetId)
   );
   
   if (!relationship) {
@@ -209,9 +213,10 @@ export const addProductSpecificOption = async (productId, modifierSetId, optionD
   }
 
   // Use the proper endpoint for adding product-specific options
+  const relationshipId = relationship.relationship_id || relationship.id;
   const urlPatterns = [
-    `/products/${productId}/modifier-sets/${relationship.id}/add-product-specific-option/`,
-    `/products/products/${productId}/modifier-sets/${relationship.id}/add-product-specific-option/`,
+    `/products/${productId}/modifier-sets/${relationshipId}/add-product-specific-option/`,
+    `/products/products/${productId}/modifier-sets/${relationshipId}/add-product-specific-option/`,
   ];
   
   for (const urlPattern of urlPatterns) {
@@ -239,7 +244,7 @@ export const removeProductSpecificOption = async (productId, modifierSetId, opti
   // First, find the ProductModifierSet relationship
   const relationships = await getProductModifierRelationships(productId);
   const relationship = relationships.find(rel => 
-    (rel.modifier_set_id || rel.modifier_set) === modifierSetId
+    rel.id === modifierSetId || rel.id === parseInt(modifierSetId)
   );
   
   if (!relationship) {
@@ -247,9 +252,10 @@ export const removeProductSpecificOption = async (productId, modifierSetId, opti
   }
 
   // Use the proper endpoint for removing product-specific options
+  const relationshipId = relationship.relationship_id || relationship.id;
   const urlPatterns = [
-    `/products/${productId}/modifier-sets/${relationship.id}/remove-product-specific-option/${optionId}/`,
-    `/products/products/${productId}/modifier-sets/${relationship.id}/remove-product-specific-option/${optionId}/`,
+    `/products/${productId}/modifier-sets/${relationshipId}/remove-product-specific-option/${optionId}/`,
+    `/products/products/${productId}/modifier-sets/${relationshipId}/remove-product-specific-option/${optionId}/`,
   ];
   
   for (const urlPattern of urlPatterns) {

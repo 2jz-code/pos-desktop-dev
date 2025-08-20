@@ -14,6 +14,7 @@ from django.db.models import Prefetch
 class OrderItemProductSerializer(BaseModelSerializer):
     """Lightweight product serializer for use within OrderItemSerializer"""
     modifier_groups = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -26,6 +27,7 @@ class OrderItemProductSerializer(BaseModelSerializer):
             "barcode",
             "track_inventory",
             "modifier_groups",
+            "image_url",
         ]
         prefetch_related_fields = [
             "product_modifier_sets__modifier_set__options",
@@ -61,6 +63,14 @@ class OrderItemProductSerializer(BaseModelSerializer):
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to get modifier groups for product {obj.id}: {e}")
             return []
+
+    def get_image_url(self, obj):
+        """
+        Get image URL using ProductImageService.
+        Business logic extracted to service layer.
+        """
+        from products.services import ProductImageService
+        return ProductImageService.get_image_url(obj, self.context.get("request"))
 
 
 class OrderItemModifierSerializer(BaseModelSerializer):

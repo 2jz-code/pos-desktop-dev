@@ -279,7 +279,6 @@ const ModifierSectionManager = ({ productId, onModifierChange, className }) => {
             showHeaders={true}
             headers={[
               { label: "Modifier Group", className: "flex-1" },
-              { label: "Required", className: "w-20 text-center" },
               { label: "Actions", className: "w-24 text-center" }
             ]}
             emptyStateMessage="No modifier groups yet"

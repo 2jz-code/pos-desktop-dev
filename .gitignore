@@ -17,3 +17,4 @@ legacy_schema.sql
 production_dump.dump
 certs/
 revision.json
+load_testing/
