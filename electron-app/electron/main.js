@@ -18,6 +18,9 @@ import sound from "sound-play";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Environment-based configuration
+const isDev = process.env.NODE_ENV === 'development';
+
 process.env.DIST = path.join(__dirname, "../dist");
 process.env.PUBLIC = app.isPackaged
 	? process.env.DIST
@@ -44,8 +47,21 @@ function createMainWindow() {
 			nodeIntegration: false,
 			contextIsolation: true,
 			enableRemoteModule: false,
-			allowRunningInsecureContent: true,
-			webSecurity: false,
+			
+			// ===========================================
+			// DEVELOPMENT SETTINGS (Comment out for production)
+			// ===========================================
+			...(isDev && {
+				allowRunningInsecureContent: true,
+				webSecurity: false,
+			}),
+			
+			// ===========================================
+			// PRODUCTION SETTINGS (Uncomment for production)
+			// ===========================================
+			// allowRunningInsecureContent: false,
+			// webSecurity: true,
+			
 			experimentalFeatures: false,
 		},
 	});
@@ -476,9 +492,25 @@ ipcMain.on("shutdown-app", () => {
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
 
-	// Allow secure cookies over HTTP in development
-	app.commandLine.appendSwitch("--ignore-certificate-errors");
-	app.commandLine.appendSwitch("--allow-running-insecure-content");
+	// ===========================================
+	// DEVELOPMENT COMMAND LINE SWITCHES (Comment out for production)
+	// ===========================================
+	if (isDev) {
+		// Allow secure cookies over HTTP in development
+		app.commandLine.appendSwitch("--ignore-certificate-errors");
+		app.commandLine.appendSwitch("--allow-running-insecure-content");
+		console.log("[Main Process] Development mode - security switches enabled");
+	}
+	
+	// ===========================================
+	// PRODUCTION COMMAND LINE SWITCHES (Uncomment for production)
+	// ===========================================
+	// if (!isDev) {
+	// 	// Enable security features for production
+	// 	app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
+	// 	app.commandLine.appendSwitch("--force-color-profile", "srgb");
+	// 	console.log("[Main Process] Production mode - security features enabled");
+	// }
 
 	createMainWindow();
 	createCustomerWindow();

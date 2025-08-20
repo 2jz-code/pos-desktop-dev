@@ -16,3 +16,4 @@ old-docker-setup/
 legacy_schema.sql
 production_dump.dump
 certs/
+revision.json

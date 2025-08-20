@@ -359,6 +359,7 @@ const { machineIdSync } = nodeMachineId;
 const require2 = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const isDev = process$1.env.NODE_ENV === "development";
 process$1.env.DIST = path.join(__dirname, "../dist");
 process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
 let mainWindow;
@@ -379,8 +380,18 @@ function createMainWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      allowRunningInsecureContent: true,
-      webSecurity: false,
+      // ===========================================
+      // DEVELOPMENT SETTINGS (Comment out for production)
+      // ===========================================
+      ...isDev && {
+        allowRunningInsecureContent: true,
+        webSecurity: false
+      },
+      // ===========================================
+      // PRODUCTION SETTINGS (Uncomment for production)
+      // ===========================================
+      // allowRunningInsecureContent: false,
+      // webSecurity: true,
       experimentalFeatures: false
     }
   });
