@@ -726,8 +726,11 @@ ipcMain.on("shutdown-app", () => {
 });
 app.whenReady().then(async () => {
   console.log("[Main Process] Starting Electron app - online-only mode");
-  app.commandLine.appendSwitch("--ignore-certificate-errors");
-  app.commandLine.appendSwitch("--allow-running-insecure-content");
+  if (isDev) {
+    app.commandLine.appendSwitch("--ignore-certificate-errors");
+    app.commandLine.appendSwitch("--allow-running-insecure-content");
+    console.log("[Main Process] Development mode - security switches enabled");
+  }
   createMainWindow();
   createCustomerWindow();
 });

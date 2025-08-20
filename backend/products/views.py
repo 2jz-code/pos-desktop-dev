@@ -76,6 +76,9 @@ class ProductModifierSetViewSet(BaseViewSet):
                     modifier_option=modifier_option,
                 )
 
+                # Invalidate product cache to ensure the new option appears in API responses
+                ProductService.invalidate_product_cache(product_pk)
+
                 return Response(
                     {
                         "success": True,
@@ -120,6 +123,9 @@ class ProductModifierSetViewSet(BaseViewSet):
             modifier_option = product_specific_option.modifier_option
             modifier_option.delete()
 
+            # Invalidate product cache to ensure the removed option disappears from API responses
+            ProductService.invalidate_product_cache(product_pk)
+
             return Response(
                 {
                     "success": True,
@@ -133,6 +139,54 @@ class ProductModifierSetViewSet(BaseViewSet):
                 {"success": False, "error": "Product-specific option not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["patch"], url_path="reorder-options")
+    def reorder_options(self, request, product_pk=None, pk=None):
+        """
+        Reorder options within a modifier set for this product.
+        Updates display_order for multiple options and invalidates product cache.
+        """
+        try:
+            product_modifier_set = self.get_object()
+            ordering = request.data.get("ordering", [])
+
+            if not ordering:
+                return Response(
+                    {"success": False, "error": "Ordering data is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Update each option's display_order
+            for order_item in ordering:
+                option_id = order_item.get("option_id")
+                display_order = order_item.get("display_order")
+                
+                if option_id is None or display_order is None:
+                    continue
+                    
+                try:
+                    modifier_option = ModifierOption.objects.get(id=option_id)
+                    modifier_option.display_order = display_order
+                    modifier_option.save(update_fields=['display_order'])
+                except ModifierOption.DoesNotExist:
+                    continue
+
+            # Invalidate product cache to ensure the reordered options appear in API responses
+            ProductService.invalidate_product_cache(product_pk)
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Option order updated successfully",
+                },
+                status=status.HTTP_200_OK,
+            )
+
         except Exception as e:
             return Response(
                 {"success": False, "error": str(e)},
@@ -154,8 +208,10 @@ class ModifierSetViewSet(BaseViewSet):
         try:
             modifier_set = self.get_object()
             from .services import ProductAnalyticsService
-            
-            usage_data = ProductAnalyticsService.get_modifier_set_usage_analytics(modifier_set)
+
+            usage_data = ProductAnalyticsService.get_modifier_set_usage_analytics(
+                modifier_set
+            )
             return Response(usage_data, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -172,8 +228,10 @@ class ModifierSetViewSet(BaseViewSet):
         try:
             modifier_set = self.get_object()
             from .services import ProductAnalyticsService
-            
-            products_data = ProductAnalyticsService.get_products_using_modifier_set(modifier_set)
+
+            products_data = ProductAnalyticsService.get_products_using_modifier_set(
+                modifier_set
+            )
             return Response(products_data, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -189,7 +247,7 @@ class ModifierSetViewSet(BaseViewSet):
         """
         try:
             from .services import ProductAnalyticsService
-            
+
             summary_data = ProductAnalyticsService.get_modifier_sets_analytics_summary()
             return Response(summary_data, status=status.HTTP_200_OK)
 
@@ -197,7 +255,6 @@ class ModifierSetViewSet(BaseViewSet):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 
 class ModifierOptionViewSet(BaseViewSet):
@@ -211,20 +268,33 @@ class ModifierOptionViewSet(BaseViewSet):
 
 class ProductViewSet(BaseViewSet):
     # Products ordered hierarchically by category (parent categories first, then subcategories)
-    queryset = Product.objects.with_archived().select_related('category', 'category__parent').annotate(
-        # Calculate parent order for hierarchical sorting
-        parent_order=models.Case(
-            models.When(category__parent_id__isnull=True, then=models.F('category__order')),
-            default=models.F('category__parent__order'),
-            output_field=models.IntegerField()
-        ),
-        # Mark category level (0 for parent, 1 for child)
-        category_level=models.Case(
-            models.When(category__parent_id__isnull=True, then=models.Value(0)),
-            default=models.Value(1),
-            output_field=models.IntegerField()
+    queryset = (
+        Product.objects.with_archived()
+        .select_related("category", "category__parent")
+        .annotate(
+            # Calculate parent order for hierarchical sorting
+            parent_order=models.Case(
+                models.When(
+                    category__parent_id__isnull=True, then=models.F("category__order")
+                ),
+                default=models.F("category__parent__order"),
+                output_field=models.IntegerField(),
+            ),
+            # Mark category level (0 for parent, 1 for child)
+            category_level=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField(),
+            ),
         )
-    ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name')
+        .order_by(
+            "parent_order",
+            "category_level",
+            "category__order",
+            "category__name",
+            "name",
+        )
+    )
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -248,23 +318,27 @@ class ProductViewSet(BaseViewSet):
         Extracted filtering logic (30+ lines) to service layer.
         """
         from .services import ProductSearchService
-        
+
         is_for_website = self.request.query_params.get("for_website") == "true"
-        
+
         if is_for_website:
             # Use service for website-specific filtering
             queryset = ProductSearchService.get_products_for_website()
         else:
             # Use hierarchical ordering for POS and other non-website requests
             queryset = super().get_queryset()
-        
+
         # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:
-            modified_queryset = ProductSearchService.get_products_modified_since(modified_since)
+            modified_queryset = ProductSearchService.get_products_modified_since(
+                modified_since
+            )
             if modified_queryset is not None:
-                queryset = queryset.filter(id__in=modified_queryset.values_list('id', flat=True))
-        
+                queryset = queryset.filter(
+                    id__in=modified_queryset.values_list("id", flat=True)
+                )
+
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -295,7 +369,7 @@ class ProductViewSet(BaseViewSet):
 
         # Check if this is for the customer website - use full serializer with description
         is_for_website = self.request.query_params.get("for_website") == "true"
-        
+
         if self.action == "list":
             if is_for_website:
                 return ProductSerializer  # Full serializer with description for customer site
@@ -344,14 +418,14 @@ def barcode_lookup(request, barcode):
     """
     from .services import ProductSearchService
     from rest_framework.exceptions import ValidationError as DRFValidationError
-    
+
     try:
         product = ProductSearchService.search_products_by_barcode(
             barcode, include_inactive=False
         )
-        
+
         if product:
-            serializer = ProductSerializer(product, context={'request': request})
+            serializer = ProductSerializer(product, context={"request": request})
             return Response({"success": True, "product": serializer.data})
         else:
             return Response(
@@ -378,7 +452,7 @@ class CategoryViewSet(BaseViewSet):
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
-    ordering = ['order', 'name']  # Override BaseViewSet default ordering
+    ordering = ["order", "name"]  # Override BaseViewSet default ordering
 
     @property
     def paginator(self):
@@ -413,24 +487,30 @@ class CategoryViewSet(BaseViewSet):
         if parent_id is not None:
             if parent_id == "null":
                 # Show only parent categories, ordered by their order field
-                queryset = queryset.filter(parent__isnull=True).order_by('order', 'name')
+                queryset = queryset.filter(parent__isnull=True).order_by(
+                    "order", "name"
+                )
             else:
                 # Show subcategories of specific parent, ordered by their order field
-                queryset = queryset.filter(parent_id=parent_id).order_by('order', 'name')
+                queryset = queryset.filter(parent_id=parent_id).order_by(
+                    "order", "name"
+                )
         elif is_for_website:
             # Website: Hierarchical ordering - parents first, then children grouped under parents
             queryset = queryset.annotate(
                 # For parent categories, use their own order
                 # For child categories, use parent's order as primary sort + 0.1 + child order as secondary
                 hierarchical_order=models.Case(
-                    models.When(parent__isnull=True, then=models.F('order')),
-                    default=models.F('parent__order') + 0.1 + (models.F('order') * 0.01),
-                    output_field=models.FloatField()
+                    models.When(parent__isnull=True, then=models.F("order")),
+                    default=models.F("parent__order")
+                    + 0.1
+                    + (models.F("order") * 0.01),
+                    output_field=models.FloatField(),
                 )
-            ).order_by('hierarchical_order', 'name')
+            ).order_by("hierarchical_order", "name")
         else:
             # Admin/POS: Simple flat ordering by order field
-            queryset = queryset.order_by('order', 'name')
+            queryset = queryset.order_by("order", "name")
 
         return queryset
 
@@ -455,7 +535,7 @@ class CategoryViewSet(BaseViewSet):
         """
         Bulk update multiple categories in a single API call.
         Follows the established architecture: lean views, service layer business logic.
-        
+
         Payload:
         {
             "updates": [
@@ -465,18 +545,14 @@ class CategoryViewSet(BaseViewSet):
         }
         """
         serializer = CategoryBulkUpdateSerializer(
-            data=request.data, 
-            context={"request": request}
+            data=request.data, context={"request": request}
         )
-        
+
         if serializer.is_valid():
             result = serializer.save()
             return Response(result, status=status.HTTP_200_OK)
-        
-        return Response(
-            serializer.errors, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TaxViewSet(BaseViewSet):
@@ -489,5 +565,3 @@ class ProductTypeViewSet(BaseViewSet):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]
-
-    

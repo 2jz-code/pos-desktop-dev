@@ -128,6 +128,7 @@ class ProductModifierSetSerializer(BaseModelSerializer):
                     "price_delta": str(option.price_delta),
                     "display_order": option.display_order,
                     "is_hidden": False,
+                    "is_product_specific": option.is_product_specific,
                 }
                 visible_options.append(option_data)
 
@@ -152,6 +153,7 @@ class FinalModifierOptionSerializer(BaseModelSerializer):
             "display_order",
             "triggered_sets",
             "is_hidden",
+            "is_product_specific",
         ]
 
     def get_triggered_sets(self, obj):

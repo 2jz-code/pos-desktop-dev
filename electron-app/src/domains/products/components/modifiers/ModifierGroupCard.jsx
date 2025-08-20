@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   Zap,
+  Plus,
 } from "lucide-react";
 import OptionToggleGrid from "./OptionToggleGrid";
 
@@ -31,6 +32,9 @@ const ModifierGroupCard = ({
   onRemove,
   onDuplicate,
   onOptionToggle,
+  onAddProductOption,
+  onRemoveProductOption,
+  onReorderOptions,
   hiddenOptionIds = [],
   className = ""
 }) => {
@@ -106,6 +110,12 @@ const ModifierGroupCard = ({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
+                  onClick={() => onAddProductOption?.(modifierSetId)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Product Option
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => onDuplicate?.(group)}
                 >
                   <Copy className="mr-2 h-4 w-4" />
@@ -131,6 +141,9 @@ const ModifierGroupCard = ({
                 options={group.options || []}
                 hiddenOptionIds={hiddenOptionIds}
                 onToggle={onOptionToggle}
+                onAddProductOption={onAddProductOption}
+                onRemoveProductOption={onRemoveProductOption}
+                onReorderOptions={onReorderOptions}
                 modifierSetId={modifierSetId}
               />
             </div>

@@ -353,6 +353,45 @@ export const reorderModifierOptions = (modifierSetId, optionOrdering) => {
   });
 };
 
+/**
+ * Update option display order for a modifier set within a product context
+ * @param {string|number} productId - The product ID
+ * @param {string|number} modifierSetId - The modifier set ID
+ * @param {Array} ordering - Array of objects with option_id and display_order
+ */
+export const updateOptionOrdering = async (productId, modifierSetId, ordering) => {
+  // First, find the ProductModifierSet relationship
+  const relationships = await getProductModifierRelationships(productId);
+  const relationship = relationships.find(rel => 
+    rel.id === modifierSetId || rel.id === parseInt(modifierSetId)
+  );
+  
+  if (!relationship) {
+    throw new Error('Product modifier set relationship not found');
+  }
+
+  // Use the proper endpoint for reordering options with product context
+  const relationshipId = relationship.relationship_id || relationship.id;
+  const urlPatterns = [
+    `/products/${productId}/modifier-sets/${relationshipId}/reorder-options/`,
+    `/products/products/${productId}/modifier-sets/${relationshipId}/reorder-options/`,
+  ];
+  
+  for (const urlPattern of urlPatterns) {
+    try {
+      const response = await apiClient.patch(urlPattern, { ordering });
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        continue; // Try next pattern
+      }
+      throw error; // Other errors should be thrown
+    }
+  }
+  
+  throw new Error('No working URL pattern found for reordering options');
+};
+
 // ==========================================
 // SMART SUGGESTIONS & TEMPLATES
 // ==========================================

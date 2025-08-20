@@ -389,8 +389,11 @@ class ProductService:
 
         # Extract parameters from context
         request = context.get('request') if context else None
-        visible_only = request and request.query_params.get('visible_only', '').lower() == 'true'
-        include_all_modifiers = request and request.query_params.get('include_all_modifiers', '').lower() == 'true'
+        
+        # Handle both DRF Request (has query_params) and Django WSGIRequest (has GET)
+        query_params = getattr(request, 'query_params', getattr(request, 'GET', {})) if request else {}
+        visible_only = query_params.get('visible_only', '').lower() == 'true'
+        include_all_modifiers = query_params.get('include_all_modifiers', '').lower() == 'true'
         
         # For cart/order contexts, always include all modifiers if the product has any
         if not include_all_modifiers and product_modifier_sets:

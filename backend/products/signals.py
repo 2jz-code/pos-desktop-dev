@@ -7,7 +7,7 @@ import os
 from django.utils import timezone  # Add this import
 from django.conf import settings
 
-from .models import Product, Category, ProductType, Tax, ModifierSet
+from .models import Product, Category, ProductType, Tax, ModifierSet, ProductModifierSet, ModifierOption
 from .image_service import ImageService  # Import ImageService
 from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
 import os  # Import os
@@ -273,3 +273,47 @@ def handle_modifier_set_delete(sender, instance, **kwargs):
     # Invalidate modifier set cache using broader patterns
     invalidate_cache_pattern('*get_cached_modifier_sets*')
     invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
+
+
+# === PRODUCT MODIFIER SET SIGNALS ===
+
+@receiver(post_delete, sender=ProductModifierSet)
+def cleanup_product_specific_options(sender, instance, **kwargs):
+    """
+    Clean up product-specific modifier options when a ProductModifierSet is deleted.
+    
+    This ensures that product-specific options created for this product-modifier set
+    relationship are properly cleaned up to prevent unique constraint violations
+    when the same modifier set is re-added to the product later.
+    """
+    try:
+        # Find product-specific options that were created for this relationship
+        # These are options that:
+        # 1. Belong to the same modifier set
+        # 2. Are marked as product-specific
+        # 3. Are no longer referenced by any ProductModifierSet relationships
+        
+        # Get all product-specific options for this modifier set
+        product_specific_options = ModifierOption.objects.filter(
+            modifier_set=instance.modifier_set,
+            is_product_specific=True
+        )
+        
+        # Check which of these options are now orphaned (not used by other ProductModifierSet relationships)
+        for option in product_specific_options:
+            # Check if this option is still referenced by other ProductModifierSet instances
+            # through the extra_options relationship
+            other_usage = ProductModifierSet.objects.filter(
+                modifier_set=instance.modifier_set,
+                extra_options=option
+            ).exclude(pk=instance.pk).exists()
+            
+            if not other_usage:
+                logger.info(f"Cleaning up orphaned product-specific option: {option.name} (ID: {option.id}) from modifier set {instance.modifier_set.name}")
+                option.delete()
+        
+        logger.info(f"Cleanup completed for ProductModifierSet {instance.id} (Product: {instance.product.name}, ModifierSet: {instance.modifier_set.name})")
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up product-specific options for ProductModifierSet {instance.id}: {e}")
+        # Don't raise the exception to prevent the deletion from failing
