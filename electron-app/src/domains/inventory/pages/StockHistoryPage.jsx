@@ -104,40 +104,10 @@ const StockHistoryPage = () => {
 	const [dateRange, setDateRange] = useState("all");
 	const [activeTab, setActiveTab] = useState("all");
 
-	const debouncedSearchQuery = useDebounce(searchQuery, 300);
-
-	const historyQueryFilters = useMemo(
-		() => ({
-			search: debouncedSearchQuery,
-			location: selectedLocation,
-			operation_type: selectedOperationType,
-			user: selectedUser,
-			date_range: dateRange,
-			tab: activeTab,
-		}),
-		[
-			debouncedSearchQuery,
-			selectedLocation,
-			selectedOperationType,
-			selectedUser,
-			dateRange,
-			activeTab,
-		]
-	);
-
-	// Data fetching
-	const { data: historyData, isLoading: historyLoading } = useQuery({
-		queryKey: [
-			"stock-history",
-			debouncedSearchQuery,
-			selectedLocation,
-			selectedOperationType,
-			selectedUser,
-			dateRange,
-			activeTab,
-		],
-		queryFn: () => inventoryService.getStockHistory(historyQueryFilters),
-		keepPreviousData: true,
+	// Data fetching - get all records once
+	const { data: allHistoryData, isLoading: historyLoading } = useQuery({
+		queryKey: ["stock-history"],
+		queryFn: () => inventoryService.getStockHistory({}),
 		staleTime: 30000, // Consider data fresh for 30 seconds
 		cacheTime: 300000, // Keep in cache for 5 minutes
 	});
@@ -148,12 +118,61 @@ const StockHistoryPage = () => {
 		select: (data) => data.results,
 	});
 
+	// Client-side filtering
+	const filteredHistoryData = useMemo(() => {
+		if (!allHistoryData) return [];
+
+		let filtered = allHistoryData;
+
+		// Filter by search query
+		if (searchQuery.trim()) {
+			const query = searchQuery.toLowerCase();
+			filtered = filtered.filter((entry) =>
+				entry.product.name.toLowerCase().includes(query) ||
+				entry.product.barcode?.toLowerCase().includes(query) ||
+				entry.reason?.toLowerCase().includes(query) ||
+				entry.notes?.toLowerCase().includes(query) ||
+				entry.reference_id?.toLowerCase().includes(query)
+			);
+		}
+
+		// Filter by location
+		if (selectedLocation) {
+			filtered = filtered.filter((entry) => entry.location.id.toString() === selectedLocation);
+		}
+
+		// Filter by operation type
+		if (selectedOperationType) {
+			filtered = filtered.filter((entry) => entry.operation_type === selectedOperationType);
+		}
+
+		// Filter by user
+		if (selectedUser) {
+			filtered = filtered.filter((entry) => entry.user?.id.toString() === selectedUser);
+		}
+
+		// Filter by tab
+		if (activeTab === "adjustments") {
+			filtered = filtered.filter((entry) =>
+				["ADJUSTED_ADD", "ADJUSTED_SUBTRACT", "CREATED"].includes(
+					entry.operation_type
+				)
+			);
+		} else if (activeTab === "transfers") {
+			filtered = filtered.filter((entry) =>
+				["TRANSFER_FROM", "TRANSFER_TO"].includes(entry.operation_type)
+			);
+		}
+
+		return filtered;
+	}, [allHistoryData, searchQuery, selectedLocation, selectedOperationType, selectedUser, activeTab]);
+
 	// Calculate summary statistics
 	const summaryStats = useMemo(() => {
-		if (!historyData)
+		if (!filteredHistoryData)
 			return { total: 0, creations: 0, adjustments: 0, transfers: 0 };
 
-		const stats = historyData.reduce(
+		const stats = filteredHistoryData.reduce(
 			(acc, entry) => {
 				acc.total++;
 				switch (entry.operation_type) {
@@ -175,7 +194,7 @@ const StockHistoryPage = () => {
 		);
 
 		return stats;
-	}, [historyData]);
+	}, [filteredHistoryData]);
 
 	const getOperationTypeInfo = (operationType) => {
 		return (
@@ -195,27 +214,6 @@ const StockHistoryPage = () => {
 	const formatTimestamp = (timestamp) => {
 		return new Date(timestamp).toLocaleString();
 	};
-
-	const filteredHistoryData = useMemo(() => {
-		if (!historyData) return [];
-
-		let filtered = historyData;
-
-		// Filter by tab
-		if (activeTab === "adjustments") {
-			filtered = filtered.filter((entry) =>
-				["ADJUSTED_ADD", "ADJUSTED_SUBTRACT", "CREATED"].includes(
-					entry.operation_type
-				)
-			);
-		} else if (activeTab === "transfers") {
-			filtered = filtered.filter((entry) =>
-				["TRANSFER_FROM", "TRANSFER_TO"].includes(entry.operation_type)
-			);
-		}
-
-		return filtered;
-	}, [historyData, activeTab]);
 
 	const isLoading = historyLoading || locationsLoading;
 

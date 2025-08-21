@@ -23,6 +23,8 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -206,7 +208,7 @@ export const InventoryPage = () => {
 	};
 
 	const handleDeleteLocation = async (locationId: number) => {
-		const locationToDelete = locations?.find(loc => loc.id === locationId);
+		const locationToDelete = locations?.find((loc) => loc.id === locationId);
 		if (!locationToDelete) return;
 
 		confirmation.show({
@@ -216,7 +218,7 @@ export const InventoryPage = () => {
 			confirmText: "Delete",
 			onConfirm: () => {
 				deleteLocationMutation.mutate(locationId);
-			}
+			},
 		});
 	};
 
@@ -269,44 +271,48 @@ export const InventoryPage = () => {
 						<RefreshCw className="h-4 w-4 mr-2" />
 						Refresh Data
 					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate('/settings?tab=inventory')}
-					>
-						<Settings className="h-4 w-4 mr-2" />
-						Configure Defaults
-					</Button>
 
-					<Button
-						size="sm"
-						onClick={() => handleStockTransferDialog(true)}
-					>
-						<ArrowUpDown className="h-4 w-4 mr-2" />
-						Transfer Stock
-					</Button>
-					<Button
-						size="sm"
-						onClick={() => handleStockAdjustmentDialog(true)}
-					>
-						<Plus className="h-4 w-4 mr-2" />
-						New Adjustment
-					</Button>
-					<Button
-						size="sm"
-						onClick={() => navigate('/inventory/bulk-operations')}
-					>
-						<Warehouse className="h-4 w-4 mr-2" />
-						Bulk Operations
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate('/inventory/stock-history')}
-					>
-						<Clock className="h-4 w-4 mr-2" />
-						Stock History
-					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button size="sm">
+								<Settings className="mr-2 h-4 w-4" />
+								Actions
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
+							<DropdownMenuItem
+								onClick={() => handleStockAdjustmentDialog(true)}
+							>
+								<Plus className="mr-2 h-4 w-4" />
+								New Adjustment
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
+								<ArrowUpDown className="mr-2 h-4 w-4" />
+								Transfer Stock
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								onClick={() => navigate("/inventory/bulk-operations")}
+							>
+								<Warehouse className="mr-2 h-4 w-4" />
+								Bulk Operations
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={() => navigate("/inventory/stock-history")}
+							>
+								<Clock className="mr-2 h-4 w-4" />
+								Stock History
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								onClick={() => navigate("/settings?tab=inventory")}
+							>
+								<Settings className="mr-2 h-4 w-4" />
+								Configure Defaults
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</header>
 
@@ -339,9 +345,7 @@ export const InventoryPage = () => {
 				</Card>
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Expiring Soon
-						</CardTitle>
+						<CardTitle className="text-sm font-medium">Expiring Soon</CardTitle>
 						<Clock className="h-4 w-4 text-orange-500" />
 					</CardHeader>
 					<CardContent>
@@ -574,7 +578,9 @@ export const InventoryPage = () => {
 										<SelectContent>
 											<SelectItem value="all">All Items</SelectItem>
 											<SelectItem value="low_stock">Low Stock</SelectItem>
-											<SelectItem value="expiring_soon">Expiring Soon</SelectItem>
+											<SelectItem value="expiring_soon">
+												Expiring Soon
+											</SelectItem>
 										</SelectContent>
 									</Select>
 								</div>
@@ -600,13 +606,18 @@ export const InventoryPage = () => {
 										</div>
 									) : stockData && stockData.length > 0 ? (
 										stockData.map((item) => {
-											const isHighlighted = highlightedProductId === item.product.id;
+											const isHighlighted =
+												highlightedProductId === item.product.id;
 											const isLowStock = item.is_low_stock;
 											const isExpiringSoon = item.is_expiring_soon;
 											const isOutOfStock = Number(item.quantity) <= 0;
 
 											// Determine status priority: Out of Stock > Expiring Soon > Low Stock > In Stock
-											let statusVariant: "default" | "secondary" | "destructive" | "outline" = "default";
+											let statusVariant:
+												| "default"
+												| "secondary"
+												| "destructive"
+												| "outline" = "default";
 											let statusText = "In Stock";
 
 											if (isOutOfStock) {
@@ -624,36 +635,75 @@ export const InventoryPage = () => {
 												<div
 													key={item.id}
 													className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
-														isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""
+														isHighlighted
+															? "bg-blue-50 dark:bg-blue-900/50"
+															: ""
 													}`}
 												>
-													<div className={`col-span-3 font-medium ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-3 font-medium ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														{item.product.name}
 													</div>
-													<div className={`col-span-2 text-muted-foreground flex items-center ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-2 text-muted-foreground flex items-center ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														<MapPin className="h-4 w-4 mr-2" />
 														{item.location.name}
 													</div>
-													<div className={`col-span-2 text-right ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-2 text-right ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														{Number(item.quantity).toFixed(2)}
 													</div>
-													<div className={`col-span-2 ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-2 ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														<div className="text-center">
 															{item.expiration_date ? (
 																<div className="text-sm">
-																	<div>{new Date(item.expiration_date).toLocaleDateString()}</div>
+																	<div>
+																		{new Date(
+																			item.expiration_date
+																		).toLocaleDateString()}
+																	</div>
 																	{isExpiringSoon && (
 																		<div className="text-xs text-orange-600 dark:text-orange-400">
-																			{item.effective_expiration_threshold} day threshold
+																			{item.effective_expiration_threshold} day
+																			threshold
 																		</div>
 																	)}
 																</div>
 															) : (
-																<span className="text-muted-foreground text-sm">No expiration</span>
+																<span className="text-muted-foreground text-sm">
+																	No expiration
+																</span>
 															)}
 														</div>
 													</div>
-													<div className={`col-span-2 ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-2 ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														<div className="text-center space-y-1">
 															<div>
 																<Badge
@@ -668,16 +718,27 @@ export const InventoryPage = () => {
 																</Badge>
 															</div>
 															{/* Show additional status if item has multiple issues */}
-															{isExpiringSoon && isLowStock && !isOutOfStock && (
-																<div>
-																	<Badge variant="secondary" className="text-xs">
-																		Low Stock
-																	</Badge>
-																</div>
-															)}
+															{isExpiringSoon &&
+																isLowStock &&
+																!isOutOfStock && (
+																	<div>
+																		<Badge
+																			variant="secondary"
+																			className="text-xs"
+																		>
+																			Low Stock
+																		</Badge>
+																	</div>
+																)}
 														</div>
 													</div>
-													<div className={`col-span-1 flex justify-end ${isHighlighted ? "bg-blue-50 dark:bg-blue-900/50" : ""}`}>
+													<div
+														className={`col-span-1 flex justify-end ${
+															isHighlighted
+																? "bg-blue-50 dark:bg-blue-900/50"
+																: ""
+														}`}
+													>
 														<DropdownMenu>
 															<DropdownMenuTrigger asChild>
 																<Button
@@ -701,7 +762,10 @@ export const InventoryPage = () => {
 																</DropdownMenuItem>
 																<DropdownMenuItem
 																	onClick={() =>
-																		handleStockTransferDialog(true, item.product)
+																		handleStockTransferDialog(
+																			true,
+																			item.product
+																		)
 																	}
 																>
 																	<ArrowUpDown className="mr-2 h-4 w-4" />

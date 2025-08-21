@@ -23,6 +23,8 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import {
@@ -404,37 +406,36 @@ const InventoryPage = () => {
 						<RefreshCw className="h-4 w-4 mr-2" />
 						Refresh Data
 					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate('/settings?tab=inventory')}
-					>
-						<Settings className="h-4 w-4 mr-2" />
-						Configure Defaults
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate('/inventory/history')}
-					>
-						<History className="h-4 w-4 mr-2" />
-						Stock History
-					</Button>
 
-					<Button
-						size="sm"
-						onClick={() => handleStockTransferDialog(true)}
-					>
-						<ArrowUpDown className="h-4 w-4 mr-2" />
-						Transfer Stock
-					</Button>
-					<Button
-						size="sm"
-						onClick={() => handleStockAdjustmentDialog(true)}
-					>
-						<Plus className="h-4 w-4 mr-2" />
-						New Adjustment
-					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button size="sm">
+								<Settings className="mr-2 h-4 w-4" />
+								Actions
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
+							<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
+								<Plus className="mr-2 h-4 w-4" />
+								New Adjustment
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
+								<ArrowUpDown className="mr-2 h-4 w-4" />
+								Transfer Stock
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
+								<History className="mr-2 h-4 w-4" />
+								Stock History
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={() => navigate('/settings?tab=inventory')}>
+								<Settings className="mr-2 h-4 w-4" />
+								Configure Defaults
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</header>
 

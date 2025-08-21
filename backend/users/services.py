@@ -52,7 +52,7 @@ class UserService:
             # Find user in cached data
             cached_user_data = None
             for user_data in cached_staff:
-                if user_data['username'].lower() == username.lower():
+                if user_data['username'] and user_data['username'].lower() == username.lower():
                     cached_user_data = user_data
                     break
             
