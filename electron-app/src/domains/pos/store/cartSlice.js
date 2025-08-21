@@ -54,6 +54,7 @@ export const defaultCartState = {
 	addingItemId: null,
 	updatingItems: [],
 	appliedDiscounts: [],
+	customerFirstName: "",
 	stockOverrideDialog: {
 		show: false,
 		productId: null,
@@ -111,9 +112,17 @@ export const createCartSlice = (set, get) => {
 				let orderId = get().orderId;
 
 				if (!orderId) {
-					const orderRes = await orderService.createOrder({
+					const orderData = {
 						order_type: "POS",
-					});
+					};
+					
+					// Include customer name if provided
+					const { customerFirstName } = get();
+					if (customerFirstName) {
+						orderData.guest_first_name = customerFirstName;
+					}
+					
+					const orderRes = await orderService.createOrder(orderData);
 					orderId = orderRes.data.id;
 					set({
 						orderId: orderId,
@@ -217,9 +226,17 @@ export const createCartSlice = (set, get) => {
 				let orderId = get().orderId;
 
 				if (!orderId) {
-					const orderRes = await orderService.createOrder({
+					const orderData = {
 						order_type: "POS",
-					});
+					};
+					
+					// Include customer name if provided
+					const { customerFirstName } = get();
+					if (customerFirstName) {
+						orderData.guest_first_name = customerFirstName;
+					}
+					
+					const orderRes = await orderService.createOrder(orderData);
 					orderId = orderRes.data.id;
 					set({
 						orderId: orderId,
@@ -596,6 +613,11 @@ export const createCartSlice = (set, get) => {
 				socketConnected: false,
 			});
 			get().initializeCartSocket(); // Connect to the new order's socket
+		},
+
+		// Customer name actions
+		setCustomerFirstName: (firstName) => {
+			set({ customerFirstName: firstName });
 		},
 	};
 };
