@@ -49,7 +49,8 @@ class Order(models.Model):
         POS = "POS", _("Point of Sale")
         WEB = "WEB", _("Website")
         APP = "APP", _("Customer App")
-        DELIVERY = "DELIVERY", _("Delivery Platform")
+        DOORDASH = "DOORDASH", _("DoorDash")
+        UBER_EATS = "UBER_EATS", _("Uber Eats")
 
     class PaymentStatus(models.TextChoices):
         UNPAID = "UNPAID", _("Unpaid")

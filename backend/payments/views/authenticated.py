@@ -521,6 +521,52 @@ class GiftCardListView(generics.ListAPIView):
         return GiftCard.objects.none()
 
 
+class DeliveryPaymentView(BasePaymentView):
+    """
+    Creates a delivery payment for manual entry of delivery platform orders.
+    Marks the order as paid and completed.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        """
+        Process a delivery payment for an order.
+        """
+        order_id = request.data.get("order_id")
+        platform_id = request.data.get("platform_id")
+
+        if not all([order_id, platform_id]):
+            return self.create_error_response("order_id and platform_id are required.")
+
+        # Validate platform_id
+        from ..models import PaymentTransaction
+        valid_platforms = [PaymentTransaction.PaymentMethod.DOORDASH, PaymentTransaction.PaymentMethod.UBER_EATS]
+        if platform_id not in valid_platforms:
+            return self.create_error_response(f"Invalid platform_id. Must be one of {valid_platforms}")
+
+        try:
+            order = self.get_order_or_404(order_id)
+            
+            # Create delivery payment using the service
+            from ..services import PaymentService
+            payment = PaymentService.create_delivery_payment(order, platform_id)
+
+            # Return the payment details
+            from ..serializers import PaymentSerializer
+            payment_serializer = PaymentSerializer(payment)
+            return Response(payment_serializer.data, status=status.HTTP_201_CREATED)
+
+        except ValueError as e:
+            return self.create_error_response(str(e), status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Delivery payment error for order {order_id}: {e}")
+            return self.create_error_response(
+                "An error occurred while processing the delivery payment",
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 # Export all authenticated views
 __all__ = [
     "PaymentViewSet",
@@ -532,5 +578,6 @@ __all__ = [
     "GiftCardValidationView",
     "GiftCardPaymentView",
     "GiftCardListView",
+    "DeliveryPaymentView",
     "AuthenticatedOrderAccessMixin",
 ]

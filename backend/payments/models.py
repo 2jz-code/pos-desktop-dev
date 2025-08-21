@@ -194,6 +194,8 @@ class PaymentTransaction(models.Model):
         CARD_TERMINAL = "CARD_TERMINAL", _("Card Terminal")
         CARD_ONLINE = "CARD_ONLINE", _("Card Online")
         GIFT_CARD = "GIFT_CARD", _("Gift Card")
+        DOORDASH = "DOORDASH", _("DoorDash")
+        UBER_EATS = "UBER_EATS", _("Uber Eats")
         # Specific providers like Stripe, Clover, etc., will be handled by the strategy, not named here.
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

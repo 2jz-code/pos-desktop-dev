@@ -299,7 +299,8 @@ export default function OrdersPage() {
 					<SelectItem value="POS">Point of Sale</SelectItem>
 					<SelectItem value="WEB">Website</SelectItem>
 					<SelectItem value="APP">Customer App</SelectItem>
-					<SelectItem value="DELIVERY">Delivery</SelectItem>
+					<SelectItem value="DOORDASH">DoorDash</SelectItem>
+					<SelectItem value="UBER_EATS">Uber Eats</SelectItem>
 				</SelectContent>
 			</Select>
 		</>

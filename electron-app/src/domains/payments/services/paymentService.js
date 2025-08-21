@@ -123,3 +123,23 @@ export const calculateSurcharge = async (amount) => {
 		throw error;
 	}
 };
+
+/**
+ * Creates a delivery payment for manual entry of delivery platform orders.
+ * This marks the order as paid and completed with proper payment records.
+ * @param {string} orderId - The order ID to create payment for
+ * @param {string} platformId - The delivery platform ID ("DOORDASH" or "UBER_EATS")
+ * @returns {Promise<Object>} The payment response data from the API
+ */
+export const createDeliveryPayment = async (orderId, platformId) => {
+	try {
+		const response = await apiClient.post("/payments/delivery/", {
+			order_id: orderId,
+			platform_id: platformId,
+		});
+		return response.data;
+	} catch (error) {
+		console.error("Error creating delivery payment:", error);
+		throw error;
+	}
+};

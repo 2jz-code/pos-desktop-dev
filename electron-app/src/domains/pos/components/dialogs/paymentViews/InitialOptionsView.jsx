@@ -1,6 +1,6 @@
 import { Button } from "@/shared/components/ui/button";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { CreditCard, DollarSign, Gift } from "lucide-react";
+import { CreditCard, DollarSign, Gift, Truck } from "lucide-react";
 
 /**
  * @description
@@ -50,6 +50,14 @@ const InitialOptionsView = ({ onSelect }) => {
 			>
 				<Gift className="h-5 w-5" />
 				Gift Card
+			</Button>
+			<Button
+				variant="outline"
+				className="w-full py-6 text-lg flex items-center justify-center gap-3 border-orange-200 text-orange-700 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-300 dark:hover:bg-orange-950/20"
+				onClick={() => handleSelect("DELIVERY")}
+			>
+				<Truck className="h-5 w-5" />
+				Delivery
 			</Button>
 			<Button
 				variant="default"

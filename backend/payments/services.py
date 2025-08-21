@@ -762,3 +762,80 @@ class PaymentService:
 
         surcharge = amount * app_settings.surcharge_percentage
         return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    @transaction.atomic
+    def create_delivery_payment(order: Order, platform_id: str) -> Payment:
+        """
+        Creates a complete payment record for delivery platform orders.
+        This marks the order as paid and completed for manual delivery entry.
+
+        Args:
+            order: Order to create payment for
+            platform_id: Delivery platform ID ("DOORDASH" or "UBER_EATS")
+
+        Returns:
+            Payment object with successful transaction
+
+        Raises:
+            ValueError: If platform_id is invalid or order is already paid
+        """
+        # Validate platform_id
+        valid_platforms = [PaymentTransaction.PaymentMethod.DOORDASH, PaymentTransaction.PaymentMethod.UBER_EATS]
+        if platform_id not in valid_platforms:
+            raise ValueError(f"Invalid platform_id: {platform_id}. Must be one of {valid_platforms}")
+
+        # Check if order already has a payment
+        if hasattr(order, 'payment_details') and order.payment_details:
+            existing_payment = order.payment_details
+            if existing_payment.status == Payment.PaymentStatus.PAID:
+                raise ValueError(f"Order {order.order_number} is already paid")
+
+        # Create or get payment record
+        payment, created = Payment.objects.get_or_create(
+            order=order,
+            defaults={
+                "total_amount_due": order.grand_total,
+                "amount_paid": order.grand_total,
+                "status": Payment.PaymentStatus.PAID,
+            },
+        )
+
+        # If payment exists but isn't paid, update it
+        if not created and payment.status != Payment.PaymentStatus.PAID:
+            payment.total_amount_due = order.grand_total
+            payment.amount_paid = order.grand_total
+            payment.status = Payment.PaymentStatus.PAID
+            payment.save()
+
+        # Create successful payment transaction
+        transaction_obj = PaymentTransaction.objects.create(
+            payment=payment,
+            amount=order.grand_total,
+            tip=Decimal("0.00"),
+            surcharge=Decimal("0.00"),
+            method=platform_id,
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
+            provider_response={
+                "manual_entry": True,
+                "platform": platform_id,
+                "timestamp": payment.created_at.isoformat()
+            },
+        )
+
+        # Update order status
+        order.status = Order.OrderStatus.COMPLETED
+        order.payment_status = Order.PaymentStatus.PAID
+        order.order_type = platform_id
+        order.save(update_fields=['status', 'payment_status', 'order_type'])
+
+        # Emit payment completed signal
+        payment_completed.send(
+            sender=PaymentService,
+            payment=payment,
+            order=order
+        )
+
+        logger.info(f"Delivery payment created for order {order.order_number} via {platform_id}")
+        
+        return payment

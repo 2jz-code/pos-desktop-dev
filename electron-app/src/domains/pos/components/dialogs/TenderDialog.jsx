@@ -19,6 +19,7 @@ import CashPaymentView from "./paymentViews/CashPaymentView";
 import CompletionView from "./paymentViews/CompletionView";
 import SplitPaymentView from "./paymentViews/SplitPaymentView";
 import GiftCardPaymentView from "./paymentViews/GiftCardPaymentView";
+import DeliveryPaymentView from "./paymentViews/DeliveryPaymentView";
 
 const ProcessingView = ({ message = "Processing Payment..." }) => (
 	<div className="flex flex-col items-center justify-center p-8 space-y-4">
@@ -59,6 +60,7 @@ const TenderDialog = () => {
 		selectPaymentMethod,
 		applyCashPayment,
 		applyGiftCardPayment,
+		selectDeliveryPlatform,
 		closeTender,
 		goBack,
 		retryFailedPayment, // <-- Select the new action
@@ -76,6 +78,7 @@ const TenderDialog = () => {
 			selectPaymentMethod: state.selectPaymentMethod,
 			applyCashPayment: state.applyCashPayment,
 			applyGiftCardPayment: state.applyGiftCardPayment,
+			selectDeliveryPlatform: state.selectDeliveryPlatform,
 			closeTender: state.closeTender,
 			goBack: state.goBack,
 			retryFailedPayment: state.retryFailedPayment, // <-- Select the new action
@@ -95,6 +98,8 @@ const TenderDialog = () => {
 				return <CashPaymentView onProcessPayment={applyCashPayment} />;
 			case "awaitingGiftCard":
 				return <GiftCardPaymentView onProcessPayment={applyGiftCardPayment} />;
+			case "awaitingDeliveryPlatform":
+				return <DeliveryPaymentView onSelectPlatform={selectDeliveryPlatform} />;
 			case "splittingPayment":
 				return <SplitPaymentView />;
 			case "initializingTerminal":
@@ -128,6 +133,7 @@ const TenderDialog = () => {
 	const canGoBack =
 		tenderState === "awaitingCashAmount" ||
 		tenderState === "awaitingGiftCard" ||
+		tenderState === "awaitingDeliveryPlatform" ||
 		tenderState === "awaitingTip" ||
 		tenderState === "paymentError" ||
 		tenderState === "splittingPayment";

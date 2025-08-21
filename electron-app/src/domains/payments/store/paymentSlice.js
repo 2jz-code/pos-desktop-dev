@@ -134,6 +134,10 @@ export const createPaymentSlice = (set, get) => ({
 			set({ tenderState: "awaitingGiftCard" });
 			return;
 		}
+		if (method === "DELIVERY") {
+			set({ tenderState: "awaitingDeliveryPlatform" });
+			return;
+		}
 		if (method === "SPLIT") {
 			set({
 				tenderState: "splittingPayment",
@@ -395,6 +399,39 @@ export const createPaymentSlice = (set, get) => ({
 			set({
 				tenderState: "paymentError",
 				error: error.message || "Gift card payment failed",
+			});
+		}
+	},
+
+	// Handle delivery platform selection - complete order with proper payment records
+	selectDeliveryPlatform: async (platformId) => {
+		set({ tenderState: "processingPayment" });
+		const state = get();
+
+		try {
+			// Import the payment service locally to avoid circular dependencies
+			const { createDeliveryPayment } = await import("@/domains/payments/services/paymentService");
+			
+			// Create proper payment record with Payment + PaymentTransaction
+			const paymentResponse = await createDeliveryPayment(state.order.id, platformId);
+
+			// The payment service returns the complete payment object with order details
+			const completedOrder = paymentResponse.order;
+
+			// Mark payment as complete for delivery orders
+			set({
+				lastCompletedOrder: completedOrder,
+				tenderState: "complete",
+				balanceDue: 0,
+				partialAmount: 0,
+				surchargeAmount: 0,
+			});
+
+		} catch (error) {
+			console.error("Delivery platform selection error:", error);
+			set({
+				tenderState: "paymentError",
+				error: error.message || "Failed to process delivery payment",
 			});
 		}
 	},

@@ -11,6 +11,7 @@ from .views.authenticated import (
     GiftCardValidationView,
     GiftCardPaymentView,
     GiftCardListView,
+    DeliveryPaymentView,
 )
 from .views.terminal import (
     CreateTerminalIntentView,
@@ -75,6 +76,12 @@ urlpatterns = [
         "complete-payment/",
         CompleteUserPaymentView.as_view(),
         name="complete-payment",
+    ),
+    # Delivery payment endpoint
+    path(
+        "delivery/",
+        DeliveryPaymentView.as_view(),
+        name="delivery-payment",
     ),
     # Terminal payment endpoints
     path(
