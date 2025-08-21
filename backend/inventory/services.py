@@ -1,14 +1,52 @@
 from django.db import transaction
-from .models import InventoryStock, Location, Recipe
+from .models import InventoryStock, Location, Recipe, StockHistoryEntry
 from products.models import Product
 from decimal import Decimal
 from core_backend.infrastructure.cache_utils import cache_dynamic_data, cache_static_data
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
 
 class InventoryService:
+    
+    @staticmethod
+    def _log_stock_operation(
+        product: Product,
+        location: Location,
+        operation_type: str,
+        quantity_change: Decimal,
+        previous_quantity: Decimal,
+        new_quantity: Decimal,
+        user=None,
+        reason: str = "",
+        notes: str = "",
+        reference_id: str = "",
+        ip_address: str = None,
+        user_agent: str = ""
+    ):
+        """
+        Helper method to log stock operations to StockHistoryEntry.
+        """
+        try:
+            StockHistoryEntry.objects.create(
+                product=product,
+                location=location,
+                user=user,
+                operation_type=operation_type,
+                quantity_change=quantity_change,
+                previous_quantity=previous_quantity,
+                new_quantity=new_quantity,
+                reason=reason,
+                notes=notes,
+                reference_id=reference_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception as e:
+            # Log the error but don't fail the stock operation
+            logger.error(f"Failed to log stock operation for {product.name} at {location.name}: {e}")
     
     @staticmethod
     @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
@@ -107,7 +145,7 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def add_stock(product: Product, location: Location, quantity):
+    def add_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id=""):
         """
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
@@ -116,9 +154,10 @@ class InventoryService:
             product=product, location=location, defaults={"quantity": Decimal("0.0")}
         )
         
-        # Track previous quantity for notification logic
+        # Track previous quantity for notification logic and history
         previous_quantity = stock.quantity
-        stock.quantity += Decimal(str(quantity))
+        quantity_decimal = Decimal(str(quantity))
+        stock.quantity += quantity_decimal
         
         # Check if stock crossed back above threshold (reset notification flag)
         threshold = stock.effective_low_stock_threshold
@@ -128,11 +167,26 @@ class InventoryService:
             stock.low_stock_notified = False
         
         stock.save()
+        
+        # Log the stock operation
+        operation_type = 'CREATED' if created else 'ADJUSTED_ADD'
+        InventoryService._log_stock_operation(
+            product=product,
+            location=location,
+            operation_type=operation_type,
+            quantity_change=quantity_decimal,
+            previous_quantity=previous_quantity,
+            new_quantity=stock.quantity,
+            user=user,
+            reason=reason,
+            reference_id=reference_id
+        )
+        
         return stock
 
     @staticmethod
     @transaction.atomic
-    def decrement_stock(product: Product, location: Location, quantity):
+    def decrement_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id=""):
         """
         Decrements a specified quantity of a product from a specific inventory location.
         Raises ValueError if sufficient stock is not available.
@@ -152,7 +206,7 @@ class InventoryService:
                 f"Insufficient stock for {product.name} at {location.name}. Required: {quantity_decimal}, Available: {stock.quantity}"
             )
 
-        # Track previous quantity for notification logic
+        # Track previous quantity for notification logic and history
         previous_quantity = stock.quantity
         stock.quantity -= quantity_decimal
         
@@ -164,12 +218,26 @@ class InventoryService:
             InventoryService._send_low_stock_notification(stock)
         
         stock.save()
+        
+        # Log the stock operation
+        InventoryService._log_stock_operation(
+            product=product,
+            location=location,
+            operation_type='ADJUSTED_SUBTRACT',
+            quantity_change=-quantity_decimal,  # Negative for subtraction
+            previous_quantity=previous_quantity,
+            new_quantity=stock.quantity,
+            user=user,
+            reason=reason,
+            reference_id=reference_id
+        )
+        
         return stock
 
     @staticmethod
     @transaction.atomic
     def transfer_stock(
-        product: Product, from_location: Location, to_location: Location, quantity
+        product: Product, from_location: Location, to_location: Location, quantity, user=None, reason="", notes=""
     ):
         """
         Transfers a specified quantity of a product from one location to another.
@@ -178,15 +246,58 @@ class InventoryService:
             raise ValueError("Source and destination locations cannot be the same.")
 
         quantity_decimal = Decimal(str(quantity))
+        
+        # Generate a unique reference ID to link the two transfer operations
+        transfer_ref = f"transfer_{uuid.uuid4().hex[:12]}"
 
-        # Decrement from the source location
+        # Get current stock levels for logging
+        try:
+            from_stock = InventoryStock.objects.get(product=product, location=from_location)
+            from_previous_qty = from_stock.quantity
+        except InventoryStock.DoesNotExist:
+            raise ValueError(f"No stock found for {product.name} at {from_location.name}")
+
+        try:
+            to_stock = InventoryStock.objects.get(product=product, location=to_location)
+            to_previous_qty = to_stock.quantity
+        except InventoryStock.DoesNotExist:
+            to_previous_qty = Decimal('0.0')
+
+        # Decrement from the source location (but don't use the logging from decrement_stock)
         source_stock = InventoryService.decrement_stock(
-            product, from_location, quantity_decimal
+            product, from_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref
         )
 
-        # Add to the destination location
+        # Add to the destination location (but don't use the logging from add_stock)
         destination_stock = InventoryService.add_stock(
-            product, to_location, quantity_decimal
+            product, to_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref
+        )
+
+        # Log the transfer operations with proper types
+        InventoryService._log_stock_operation(
+            product=product,
+            location=from_location,
+            operation_type='TRANSFER_FROM',
+            quantity_change=-quantity_decimal,
+            previous_quantity=from_previous_qty,
+            new_quantity=source_stock.quantity,
+            user=user,
+            reason=reason,
+            notes=notes,
+            reference_id=transfer_ref
+        )
+        
+        InventoryService._log_stock_operation(
+            product=product,
+            location=to_location,
+            operation_type='TRANSFER_TO',
+            quantity_change=quantity_decimal,
+            previous_quantity=to_previous_qty,
+            new_quantity=destination_stock.quantity,
+            user=user,
+            reason=reason,
+            notes=notes,
+            reference_id=transfer_ref
         )
 
         return source_stock, destination_stock
@@ -859,20 +970,25 @@ class InventoryService:
         except User.DoesNotExist:
             raise ValueError(f"User with id {user_id} not found")
 
+        # Generate a unique reference ID for this bulk operation
+        bulk_ref = f"bulk_adj_{uuid.uuid4().hex[:12]}"
+        
         results = []
         for item in adjustments_data:
             product = Product.objects.get(id=item['product_id'])
             location = Location.objects.get(id=item['location_id'])
             quantity = Decimal(item['quantity'])
-            reason = item['reason']
+            reason = item.get('reason', '')
             adjustment_type = item['adjustment_type']
 
             if adjustment_type == "Add":
-                stock = InventoryService.add_stock(product, location, quantity)
+                stock = InventoryService.add_stock(
+                    product, location, quantity, user=user, reason=reason, reference_id=bulk_ref
+                )
             else:
-                stock = InventoryService.decrement_stock(product, location, quantity)
-            
-            # TODO: Create a StockAdjustment record for auditing
+                stock = InventoryService.decrement_stock(
+                    product, location, quantity, user=user, reason=reason, reference_id=bulk_ref
+                )
 
             results.append({
                 'product_id': product.id,
@@ -891,6 +1007,9 @@ class InventoryService:
         except User.DoesNotExist:
             raise ValueError(f"User with id {user_id} not found")
 
+        # Generate a unique reference ID for this bulk operation
+        bulk_ref = f"bulk_xfer_{uuid.uuid4().hex[:12]}"
+        
         results = []
         for item in transfers_data:
             product = Product.objects.get(id=item['product_id'])
@@ -899,10 +1018,8 @@ class InventoryService:
             quantity = Decimal(item['quantity'])
 
             source_stock, destination_stock = InventoryService.transfer_stock(
-                product, from_location, to_location, quantity
+                product, from_location, to_location, quantity, user=user, reason="Bulk transfer", notes=notes
             )
-
-            # TODO: Create a StockTransfer record for auditing
 
             results.append({
                 'product_id': product.id,

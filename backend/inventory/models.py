@@ -232,3 +232,114 @@ class RecipeItem(SoftDeleteMixin):
         return (
             f"{self.quantity} {self.unit} of {self.product.name} for {self.recipe.name}"
         )
+
+
+class StockHistoryEntry(models.Model):
+    """
+    Tracks all stock operations for audit trail and history purposes.
+    """
+    
+    OPERATION_CHOICES = [
+        ('CREATED', _('Stock Created')),
+        ('ADJUSTED_ADD', _('Stock Added')),
+        ('ADJUSTED_SUBTRACT', _('Stock Subtracted')),
+        ('TRANSFER_FROM', _('Transfer Out')),
+        ('TRANSFER_TO', _('Transfer In')),
+        ('ORDER_DEDUCTION', _('Order Deduction')),
+        ('BULK_ADJUSTMENT', _('Bulk Adjustment')),
+        ('BULK_TRANSFER', _('Bulk Transfer')),
+    ]
+
+    product = models.ForeignKey(
+        Product, 
+        on_delete=models.PROTECT, 
+        related_name="stock_history",
+        help_text=_("Product involved in the stock operation")
+    )
+    location = models.ForeignKey(
+        Location, 
+        on_delete=models.PROTECT, 
+        related_name="stock_history",
+        help_text=_("Location where the stock operation occurred")
+    )
+    user = models.ForeignKey(
+        'users.User', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="stock_operations",
+        help_text=_("User who performed the operation")
+    )
+    
+    operation_type = models.CharField(
+        max_length=20,
+        choices=OPERATION_CHOICES,
+        help_text=_("Type of stock operation performed")
+    )
+    quantity_change = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text=_("Change in quantity (positive for additions, negative for subtractions)")
+    )
+    previous_quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text=_("Quantity before the operation")
+    )
+    new_quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text=_("Quantity after the operation")
+    )
+    
+    reason = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=_("Reason for the stock operation")
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text=_("Additional notes about the operation")
+    )
+    reference_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text=_("Reference ID to link related operations (e.g., transfer operations, bulk operations)")
+    )
+    
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        help_text=_("When the operation was performed")
+    )
+    
+    # Additional metadata
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text=_("IP address where the operation was initiated")
+    )
+    user_agent = models.TextField(
+        blank=True,
+        help_text=_("User agent information")
+    )
+
+    class Meta:
+        verbose_name = _("Stock History Entry")
+        verbose_name_plural = _("Stock History Entries")
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['product', 'timestamp'], name='stock_hist_prod_time_idx'),
+            models.Index(fields=['location', 'timestamp'], name='stock_hist_loc_time_idx'),
+            models.Index(fields=['user', 'timestamp'], name='stock_hist_user_time_idx'),
+            models.Index(fields=['operation_type'], name='stock_hist_operation_idx'),
+            models.Index(fields=['timestamp'], name='stock_hist_timestamp_idx'),
+            models.Index(fields=['reference_id'], name='stock_hist_reference_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.operation_type}: {self.product.name} at {self.location.name} ({self.quantity_change:+.2f}) - {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+    @property
+    def operation_display(self):
+        """Returns human-readable operation type."""
+        return dict(self.OPERATION_CHOICES).get(self.operation_type, self.operation_type)

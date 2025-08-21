@@ -299,6 +299,14 @@ export const InventoryPage = () => {
 						<Warehouse className="h-4 w-4 mr-2" />
 						Bulk Operations
 					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => navigate('/inventory/stock-history')}
+					>
+						<Clock className="h-4 w-4 mr-2" />
+						Stock History
+					</Button>
 				</div>
 			</header>
 

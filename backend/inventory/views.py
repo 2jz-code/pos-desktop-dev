@@ -6,7 +6,7 @@ from rest_framework import generics, permissions, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from .models import Location, InventoryStock, Recipe, RecipeItem
+from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from .serializers import (
     LocationSerializer,
     FullInventoryStockSerializer,
@@ -16,6 +16,7 @@ from .serializers import (
     StockTransferSerializer,
     BulkStockAdjustmentSerializer,
     BulkStockTransferSerializer,
+    StockHistoryEntrySerializer,
 )
 from .services import InventoryService
 from products.models import Product
@@ -327,3 +328,67 @@ class InventoryDefaultsView(APIView):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# --- Stock History Views ---
+
+class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
+    """
+    List all stock history entries with filtering and pagination support.
+    """
+    serializer_class = StockHistoryEntrySerializer
+    permission_classes = [permissions.IsAdminUser]
+    
+    def get_queryset(self):
+        queryset = StockHistoryEntry.objects.all()
+        
+        # Apply filters
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(product__name__icontains=search) |
+                Q(product__barcode__icontains=search) |
+                Q(reason__icontains=search) |
+                Q(notes__icontains=search)
+            )
+        
+        location = self.request.query_params.get('location')
+        if location:
+            queryset = queryset.filter(location_id=location)
+        
+        operation_type = self.request.query_params.get('operation_type')
+        if operation_type:
+            queryset = queryset.filter(operation_type=operation_type)
+        
+        user = self.request.query_params.get('user')
+        if user:
+            queryset = queryset.filter(user_id=user)
+        
+        date_range = self.request.query_params.get('date_range')
+        if date_range:
+            now = timezone.now()
+            if date_range == 'today':
+                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                queryset = queryset.filter(timestamp__gte=start_date)
+            elif date_range == 'week':
+                start_date = now - timedelta(days=7)
+                queryset = queryset.filter(timestamp__gte=start_date)
+            elif date_range == 'month':
+                start_date = now - timedelta(days=30)
+                queryset = queryset.filter(timestamp__gte=start_date)
+            elif date_range == 'quarter':
+                start_date = now - timedelta(days=90)
+                queryset = queryset.filter(timestamp__gte=start_date)
+        
+        # Filter by tab
+        tab = self.request.query_params.get('tab')
+        if tab == 'adjustments':
+            queryset = queryset.filter(
+                operation_type__in=['CREATED', 'ADJUSTED_ADD', 'ADJUSTED_SUBTRACT', 'BULK_ADJUSTMENT']
+            )
+        elif tab == 'transfers':
+            queryset = queryset.filter(
+                operation_type__in=['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']
+            )
+        
+        return queryset.order_by('-timestamp')

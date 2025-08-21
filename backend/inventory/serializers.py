@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Location, InventoryStock, Recipe, RecipeItem
+from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from products.models import Product
 from products.serializers import ProductSerializer
 from .services import InventoryService
@@ -293,3 +293,42 @@ class BulkStockTransferSerializer(serializers.Serializer):
         user_id = self.validated_data["user_id"]
         notes = self.validated_data.get("notes", "")
         return InventoryService.perform_bulk_stock_transfer(transfers_data, user_id, notes)
+
+
+# --- Stock History Serializers ---
+
+class StockHistoryUserSerializer(serializers.Serializer):
+    """Lightweight user serializer for stock history"""
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    username = serializers.CharField()
+
+
+class StockHistoryEntrySerializer(BaseModelSerializer):
+    """
+    Serializer for stock history entries with optimized queries.
+    """
+    product = OptimizedProductSerializer(read_only=True)
+    location = LocationSerializer(read_only=True)
+    user = StockHistoryUserSerializer(read_only=True)
+    operation_display = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = StockHistoryEntry
+        fields = [
+            'id',
+            'product',
+            'location', 
+            'user',
+            'operation_type',
+            'operation_display',
+            'quantity_change',
+            'previous_quantity',
+            'new_quantity',
+            'reason',
+            'notes',
+            'reference_id',
+            'timestamp',
+        ]
+        select_related_fields = ['product__category', 'product__product_type', 'location', 'user']

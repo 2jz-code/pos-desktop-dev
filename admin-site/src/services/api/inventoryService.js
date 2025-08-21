@@ -394,6 +394,29 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get stock history with optional filters
+	 * @param {Object} filters - Filter options {search, location, operation_type, user, date_range, tab}
+	 * @returns {Promise} API response with stock history entries
+	 */
+	async getStockHistory(filters = {}) {
+		try {
+			const params = new URLSearchParams();
+			if (filters.search) params.append("search", filters.search);
+			if (filters.location) params.append("location", filters.location);
+			if (filters.operation_type) params.append("operation_type", filters.operation_type);
+			if (filters.user) params.append("user", filters.user);
+			if (filters.date_range) params.append("date_range", filters.date_range);
+			if (filters.tab) params.append("tab", filters.tab);
+			
+			const response = await apiClient.get("/inventory/stock-history/", { params });
+			return response.data.results || response.data;
+		} catch (error) {
+			console.error("Failed to get stock history:", error);
+			throw error;
+		}
+	}
 }
 
 export default new InventoryService();

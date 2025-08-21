@@ -15,6 +15,7 @@ from .views import (
     InventoryDefaultsView,
     BulkAdjustStockView,
     BulkTransferStockView,
+    StockHistoryListView,
     barcode_stock_lookup,
     barcode_stock_adjustment,
 )
@@ -70,4 +71,6 @@ urlpatterns = [
     ),
     # Global defaults
     path("defaults/", InventoryDefaultsView.as_view(), name="inventory-defaults"),
+    # Stock History
+    path("stock-history/", StockHistoryListView.as_view(), name="stock-history"),
 ]

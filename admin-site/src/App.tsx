@@ -17,6 +17,7 @@ import ModifierManagementPage from "@/pages/products/ModifierManagementPage";
 import { UsersPage } from "@/pages/users/UsersPage";
 import { InventoryPage } from "@/pages/inventory/InventoryPage";
 import { BulkOperationsPage } from "@/pages/inventory/BulkOperationsPage";
+import { StockHistoryPage } from "@/pages/inventory/StockHistoryPage";
 import ReportsPage from "@/pages/reports/ReportsPage";
 import { AuditPage } from "@/pages/audit/AuditPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -189,6 +190,20 @@ const AppRoutes = () => {
 								requiredPermission={(p: any) => p.canAccessInventory()}
 							>
 								<BulkOperationsPage />
+							</RoleProtectedRoute>
+						</Layout>
+					</ProtectedRoute>
+				}
+			/>
+			<Route
+				path="/inventory/stock-history"
+				element={
+					<ProtectedRoute>
+						<Layout>
+							<RoleProtectedRoute
+								requiredPermission={(p: any) => p.canAccessInventory()}
+							>
+								<StockHistoryPage />
 							</RoleProtectedRoute>
 						</Layout>
 					</ProtectedRoute>
