@@ -16,6 +16,11 @@ class GlobalNotificationService extends EventEmitter {
 		this.notifications = [];
 		this.deviceId = null;
 		this.isInitialized = false;
+		this.reconnectAttempts = 0;
+		this.maxReconnectAttempts = 10;
+		this.reconnectTimeout = null;
+		this.baseReconnectDelay = 1000; // Start with 1 second
+		this.maxReconnectDelay = 30000; // Max 30 seconds
 	}
 
 	async initialize() {
@@ -56,6 +61,8 @@ class GlobalNotificationService extends EventEmitter {
 		this.socket.onopen = () => {
 			console.log("GlobalNotificationService: Connected successfully");
 			this.setStatus("connected");
+			this.reconnectAttempts = 0; // Reset reconnection attempts on successful connection
+			this.clearReconnectTimeout();
 		};
 
 		this.socket.onmessage = (event) => {
@@ -82,16 +89,56 @@ class GlobalNotificationService extends EventEmitter {
 				event.reason
 			);
 			this.setStatus("disconnected");
-			// Optional: implement retry logic here
+			
+			// Only attempt reconnection if it wasn't a manual disconnect (code 1000)
+			if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+				this.scheduleReconnect();
+			} else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+				console.warn("GlobalNotificationService: Max reconnection attempts reached");
+			}
 		};
 	}
 
 	disconnect() {
 		if (this.socket) {
+			this.clearReconnectTimeout(); // Clear any pending reconnection
 			this.socket.close(1000, "User requested disconnect");
 			this.socket = null;
 			this.setStatus("disconnected");
 		}
+	}
+
+	scheduleReconnect() {
+		this.reconnectAttempts++;
+		
+		// Calculate delay with exponential backoff
+		const delay = Math.min(
+			this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+			this.maxReconnectDelay
+		);
+		
+		console.log(
+			`GlobalNotificationService: Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+		);
+		
+		this.reconnectTimeout = setTimeout(() => {
+			console.log(`GlobalNotificationService: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+			this.connect();
+		}, delay);
+	}
+
+	clearReconnectTimeout() {
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = null;
+		}
+	}
+
+	// Public method to manually trigger reconnection (used by retry button)
+	reconnect() {
+		this.reconnectAttempts = 0; // Reset attempts for manual reconnection
+		this.clearReconnectTimeout();
+		this.connect();
 	}
 
 	// --- State Management and Emitters ---

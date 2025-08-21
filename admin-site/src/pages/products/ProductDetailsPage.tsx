@@ -162,18 +162,15 @@ export const ProductDetailsPage = () => {
 					{/* Product Image */}
 					<div className="lg:col-span-1">
 						<Card>
-							<CardHeader>
-								<CardTitle>Product Image</CardTitle>
-							</CardHeader>
-							<CardContent>
+							<CardContent className="p-0">
 								{product.image ? (
 									<img
 										src={product.image}
 										alt={product.name}
-										className="w-full h-64 object-cover rounded-lg border"
+										className="w-full max-h-96 object-contain rounded-lg bg-gray-50"
 									/>
 								) : (
-									<div className="w-full h-64 bg-muted rounded-lg border flex items-center justify-center">
+									<div className="w-full h-64 bg-muted rounded-lg flex items-center justify-center">
 										<div className="text-center">
 											<Package className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
 											<p className="text-sm text-muted-foreground">No image available</p>

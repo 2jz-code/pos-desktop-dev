@@ -58,7 +58,7 @@ export const useNotificationManager = () => {
 		dismissNotification,
 		clearAllNotifications,
 		handleViewOrder,
-		reconnect: () => globalNotificationService.connect(),
+		reconnect: () => globalNotificationService.reconnect(),
 		disconnect: () => globalNotificationService.disconnect(), // Keep for manual control if needed
 		isConnected: connectionStatus === "connected",
 		isConnecting: connectionStatus === "connecting",

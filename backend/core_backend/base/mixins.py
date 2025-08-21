@@ -139,7 +139,7 @@ class ArchivingViewSetMixin(ViewSetMixin):
         
         return queryset
     
-    @action(detail=True, methods=['post'], permission_classes=[CanArchiveRecords])
+    @action(detail=True, methods=['post', 'patch'], permission_classes=[CanArchiveRecords])
     def archive(self, request, pk=None):
         """
         Archive a single record.
@@ -165,7 +165,7 @@ class ArchivingViewSetMixin(ViewSetMixin):
             status=status.HTTP_200_OK
         )
     
-    @action(detail=True, methods=['post'], permission_classes=[CanUnarchiveRecords])
+    @action(detail=True, methods=['post', 'patch'], permission_classes=[CanUnarchiveRecords])
     def unarchive(self, request, pk=None):
         """
         Unarchive a single record.
