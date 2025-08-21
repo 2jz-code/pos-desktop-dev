@@ -44,6 +44,7 @@ import {
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
 import { useDebounce } from "@/hooks/useDebounce";
+import { ReasonBadge } from "@/components/inventory/ReasonBadge";
 
 interface Product {
 	id: number;
@@ -65,27 +66,57 @@ interface User {
 	username: string;
 }
 
+interface ReasonCategoryDisplay {
+	label: string;
+	color: string;
+	description: string;
+}
+
 interface StockHistoryEntry {
 	id: number;
 	product: Product;
 	location: Location;
 	user: User;
 	operation_type: string;
+	operation_display: string;
 	quantity_change: number;
 	previous_quantity: number;
 	new_quantity: number;
 	reason?: string;
 	notes?: string;
+	reason_category: string;
+	reason_category_display: ReasonCategoryDisplay;
+	truncated_reason?: string;
 	timestamp: string;
 	reference_id?: string;
 }
 
 const OPERATION_TYPES = {
-	CREATED: { label: "Created", color: "bg-green-100 text-green-800", icon: Plus },
-	ADJUSTED_ADD: { label: "Added", color: "bg-blue-100 text-blue-800", icon: Plus },
-	ADJUSTED_SUBTRACT: { label: "Subtracted", color: "bg-orange-100 text-orange-800", icon: Minus },
-	TRANSFER_FROM: { label: "Transfer Out", color: "bg-red-100 text-red-800", icon: ArrowUpDown },
-	TRANSFER_TO: { label: "Transfer In", color: "bg-purple-100 text-purple-800", icon: ArrowUpDown },
+	CREATED: {
+		label: "Created",
+		color: "bg-green-100 text-green-800",
+		icon: Plus,
+	},
+	ADJUSTED_ADD: {
+		label: "Added",
+		color: "bg-blue-100 text-blue-800",
+		icon: Plus,
+	},
+	ADJUSTED_SUBTRACT: {
+		label: "Subtracted",
+		color: "bg-orange-100 text-orange-800",
+		icon: Minus,
+	},
+	TRANSFER_FROM: {
+		label: "Transfer Out",
+		color: "bg-red-100 text-red-800",
+		icon: ArrowUpDown,
+	},
+	TRANSFER_TO: {
+		label: "Transfer In",
+		color: "bg-purple-100 text-purple-800",
+		icon: ArrowUpDown,
+	},
 } as const;
 
 export const StockHistoryPage = () => {
@@ -94,7 +125,9 @@ export const StockHistoryPage = () => {
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-	const [selectedOperationType, setSelectedOperationType] = useState<string | null>(null);
+	const [selectedOperationType, setSelectedOperationType] = useState<
+		string | null
+	>(null);
 	const [selectedUser, setSelectedUser] = useState<string | null>(null);
 	const [dateRange, setDateRange] = useState<string>("all");
 	const [activeTab, setActiveTab] = useState("all");
@@ -110,24 +143,47 @@ export const StockHistoryPage = () => {
 			date_range: dateRange,
 			tab: activeTab,
 		}),
-		[debouncedSearchQuery, selectedLocation, selectedOperationType, selectedUser, dateRange, activeTab]
+		[
+			debouncedSearchQuery,
+			selectedLocation,
+			selectedOperationType,
+			selectedUser,
+			dateRange,
+			activeTab,
+		]
 	);
 
 	// Data fetching
-	const { data: historyData, isLoading: historyLoading } = useQuery<StockHistoryEntry[]>({
-		queryKey: ["stock-history", historyQueryFilters],
+	const { data: historyData, isLoading: historyLoading } = useQuery<
+		StockHistoryEntry[]
+	>({
+		queryKey: [
+			"stock-history",
+			debouncedSearchQuery,
+			selectedLocation,
+			selectedOperationType,
+			selectedUser,
+			dateRange,
+			activeTab,
+		],
 		queryFn: () => inventoryService.getStockHistory(historyQueryFilters),
+		keepPreviousData: true,
+		staleTime: 30000, // Consider data fresh for 30 seconds
+		cacheTime: 300000, // Keep in cache for 5 minutes
 	});
 
-	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>({
-		queryKey: ["inventory-locations"],
-		queryFn: inventoryService.getLocations,
-		select: (data) => data.results,
-	});
+	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>(
+		{
+			queryKey: ["inventory-locations"],
+			queryFn: inventoryService.getLocations,
+			select: (data) => data.results,
+		}
+	);
 
 	// Calculate summary statistics
 	const summaryStats = useMemo(() => {
-		if (!historyData) return { total: 0, creations: 0, adjustments: 0, transfers: 0 };
+		if (!historyData)
+			return { total: 0, creations: 0, adjustments: 0, transfers: 0 };
 
 		const stats = historyData.reduce(
 			(acc, entry) => {
@@ -154,11 +210,13 @@ export const StockHistoryPage = () => {
 	}, [historyData]);
 
 	const getOperationTypeInfo = (operationType: string) => {
-		return OPERATION_TYPES[operationType as keyof typeof OPERATION_TYPES] || {
-			label: operationType,
-			color: "bg-gray-100 text-gray-800",
-			icon: Clock,
-		};
+		return (
+			OPERATION_TYPES[operationType as keyof typeof OPERATION_TYPES] || {
+				label: operationType,
+				color: "bg-gray-100 text-gray-800",
+				icon: Clock,
+			}
+		);
 	};
 
 	const formatQuantityChange = (change: number, operationType: string) => {
@@ -172,16 +230,18 @@ export const StockHistoryPage = () => {
 
 	const filteredHistoryData = useMemo(() => {
 		if (!historyData) return [];
-		
+
 		let filtered = historyData;
 
 		// Filter by tab
 		if (activeTab === "adjustments") {
-			filtered = filtered.filter(entry => 
-				["ADJUSTED_ADD", "ADJUSTED_SUBTRACT", "CREATED"].includes(entry.operation_type)
+			filtered = filtered.filter((entry) =>
+				["ADJUSTED_ADD", "ADJUSTED_SUBTRACT", "CREATED"].includes(
+					entry.operation_type
+				)
 			);
 		} else if (activeTab === "transfers") {
-			filtered = filtered.filter(entry => 
+			filtered = filtered.filter((entry) =>
 				["TRANSFER_FROM", "TRANSFER_TO"].includes(entry.operation_type)
 			);
 		}
@@ -215,7 +275,8 @@ export const StockHistoryPage = () => {
 						Stock History
 					</h1>
 					<p className="text-sm text-muted-foreground">
-						View all stock creations, adjustments, and transfers across your inventory
+						View all stock creations, adjustments, and transfers across your
+						inventory
 					</p>
 				</div>
 				<div className="flex items-center space-x-2">
@@ -255,40 +316,36 @@ export const StockHistoryPage = () => {
 						<Plus className="h-4 w-4 text-green-600" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-green-600">{summaryStats.creations}</div>
-						<p className="text-xs text-muted-foreground">
-							New stock entries
-						</p>
+						<div className="text-2xl font-bold text-green-600">
+							{summaryStats.creations}
+						</div>
+						<p className="text-xs text-muted-foreground">New stock entries</p>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Adjustments
-						</CardTitle>
+						<CardTitle className="text-sm font-medium">Adjustments</CardTitle>
 						<Clock className="h-4 w-4 text-blue-600" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-blue-600">{summaryStats.adjustments}</div>
-						<p className="text-xs text-muted-foreground">
-							Stock modifications
-						</p>
+						<div className="text-2xl font-bold text-blue-600">
+							{summaryStats.adjustments}
+						</div>
+						<p className="text-xs text-muted-foreground">Stock modifications</p>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Transfers
-						</CardTitle>
+						<CardTitle className="text-sm font-medium">Transfers</CardTitle>
 						<ArrowUpDown className="h-4 w-4 text-purple-600" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-purple-600">{summaryStats.transfers}</div>
-						<p className="text-xs text-muted-foreground">
-							Location movements
-						</p>
+						<div className="text-2xl font-bold text-purple-600">
+							{summaryStats.transfers}
+						</div>
+						<p className="text-xs text-muted-foreground">Location movements</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -322,8 +379,8 @@ export const StockHistoryPage = () => {
 										<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 										<Input
 											type="search"
-											placeholder="Search products..."
-											className="w-full appearance-none bg-background pl-8 shadow-none md:w-[200px]"
+											placeholder="Search products, reference IDs, reasons..."
+											className="w-full appearance-none bg-background pl-8 shadow-none md:w-[300px]"
 											value={searchQuery}
 											onChange={(e) => setSearchQuery(e.target.value)}
 										/>
@@ -362,8 +419,12 @@ export const StockHistoryPage = () => {
 											<SelectItem value="all">All Types</SelectItem>
 											<SelectItem value="CREATED">Created</SelectItem>
 											<SelectItem value="ADJUSTED_ADD">Added</SelectItem>
-											<SelectItem value="ADJUSTED_SUBTRACT">Subtracted</SelectItem>
-											<SelectItem value="TRANSFER_FROM">Transfer Out</SelectItem>
+											<SelectItem value="ADJUSTED_SUBTRACT">
+												Subtracted
+											</SelectItem>
+											<SelectItem value="TRANSFER_FROM">
+												Transfer Out
+											</SelectItem>
 											<SelectItem value="TRANSFER_TO">Transfer In</SelectItem>
 										</SelectContent>
 									</Select>
@@ -403,7 +464,9 @@ export const StockHistoryPage = () => {
 										</TableHeader>
 										<TableBody>
 											{filteredHistoryData.map((entry) => {
-												const operationInfo = getOperationTypeInfo(entry.operation_type);
+												const operationInfo = getOperationTypeInfo(
+													entry.operation_type
+												);
 												const Icon = operationInfo.icon;
 
 												return (
@@ -435,7 +498,9 @@ export const StockHistoryPage = () => {
 														<TableCell>
 															<div className="flex items-center gap-2">
 																<User className="h-4 w-4 text-muted-foreground" />
-																{entry.user ? `${entry.user.first_name} ${entry.user.last_name}` : 'System'}
+																{entry.user
+																	? `${entry.user.first_name} ${entry.user.last_name}`
+																	: "System"}
 															</div>
 														</TableCell>
 														<TableCell className="text-right font-mono">
@@ -446,14 +511,22 @@ export const StockHistoryPage = () => {
 																		: "text-red-600"
 																}
 															>
-																{formatQuantityChange(entry.quantity_change, entry.operation_type)}
+																{formatQuantityChange(
+																	entry.quantity_change,
+																	entry.operation_type
+																)}
 															</span>
 														</TableCell>
 														<TableCell className="text-right font-mono">
 															{entry.new_quantity}
 														</TableCell>
-														<TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-															{entry.reason || entry.notes || "-"}
+														<TableCell>
+															<ReasonBadge
+																entry={entry}
+																onFilterByReferenceId={(referenceId) =>
+																	setSearchQuery(referenceId)
+																}
+															/>
 														</TableCell>
 													</TableRow>
 												);
@@ -467,7 +540,8 @@ export const StockHistoryPage = () => {
 											No stock history found
 										</h3>
 										<p className="mt-2 text-sm text-muted-foreground">
-											No stock operations have been recorded yet, or try adjusting your filters.
+											No stock operations have been recorded yet, or try
+											adjusting your filters.
 										</p>
 									</div>
 								)}

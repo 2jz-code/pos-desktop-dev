@@ -343,3 +343,72 @@ class StockHistoryEntry(models.Model):
     def operation_display(self):
         """Returns human-readable operation type."""
         return dict(self.OPERATION_CHOICES).get(self.operation_type, self.operation_type)
+    
+    @property
+    def reason_category(self):
+        """Categorizes the reason based on operation type and reason text."""
+        # System-generated operations
+        if self.operation_type in ['ORDER_DEDUCTION']:
+            return 'SYSTEM'
+        
+        # Transfer operations
+        if self.operation_type in ['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']:
+            return 'TRANSFER'
+        
+        # Bulk operations
+        if self.operation_type in ['BULK_ADJUSTMENT']:
+            return 'BULK'
+        
+        # Check reason text for common patterns
+        if self.reason:
+            reason_lower = self.reason.lower()
+            
+            # Corrections/fixes
+            if any(word in reason_lower for word in ['error', 'mistake', 'correction', 'fix', 'wrong']):
+                return 'CORRECTION'
+            
+            # Inventory counts
+            if any(word in reason_lower for word in ['count', 'inventory', 'audit', 'recount']):
+                return 'INVENTORY'
+            
+            # Waste/shrinkage
+            if any(word in reason_lower for word in ['waste', 'expired', 'damaged', 'shrinkage', 'spoiled']):
+                return 'WASTE'
+            
+            # Restocking
+            if any(word in reason_lower for word in ['restock', 'delivery', 'shipment', 'received']):
+                return 'RESTOCK'
+        
+        # Default for manual adjustments
+        if self.operation_type in ['CREATED', 'ADJUSTED_ADD', 'ADJUSTED_SUBTRACT']:
+            return 'MANUAL'
+        
+        return 'OTHER'
+    
+    @property
+    def reason_category_display(self):
+        """Returns display information for reason category."""
+        categories = {
+            'SYSTEM': {'label': 'System', 'color': 'gray', 'description': 'Automatic system operation'},
+            'MANUAL': {'label': 'Manual', 'color': 'blue', 'description': 'Manual adjustment'},
+            'TRANSFER': {'label': 'Transfer', 'color': 'purple', 'description': 'Location transfer'},
+            'CORRECTION': {'label': 'Correction', 'color': 'orange', 'description': 'Error correction'},
+            'INVENTORY': {'label': 'Inventory', 'color': 'green', 'description': 'Inventory count'},
+            'WASTE': {'label': 'Waste', 'color': 'red', 'description': 'Waste/shrinkage'},
+            'RESTOCK': {'label': 'Restock', 'color': 'emerald', 'description': 'Incoming stock'},
+            'BULK': {'label': 'Bulk', 'color': 'indigo', 'description': 'Bulk operation'},
+            'OTHER': {'label': 'Other', 'color': 'slate', 'description': 'Other operation'},
+        }
+        return categories.get(self.reason_category, categories['OTHER'])
+    
+    @property
+    def truncated_reason(self):
+        """Returns truncated reason text for table display."""
+        if not self.reason and not self.notes:
+            return None
+        
+        full_text = self.reason or self.notes or ""
+        if len(full_text) <= 30:
+            return full_text
+        
+        return full_text[:30] + "..."

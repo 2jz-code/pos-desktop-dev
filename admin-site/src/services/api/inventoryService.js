@@ -417,6 +417,21 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get related stock operations by reference ID
+	 * @param {string} referenceId - The reference ID to search for
+	 * @returns {Promise} API response with related operations
+	 */
+	async getRelatedStockOperations(referenceId) {
+		try {
+			const response = await apiClient.get(`/inventory/stock-history/related/${encodeURIComponent(referenceId)}/`);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to get related stock operations:", error);
+			throw error;
+		}
+	}
 }
 
 export default new InventoryService();

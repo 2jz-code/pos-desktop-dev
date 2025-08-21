@@ -380,6 +380,21 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get related stock operations by reference ID
+	 * @param {string} referenceId - The reference ID to search for
+	 * @returns {Promise} API response with related operations
+	 */
+	async getRelatedStockOperations(referenceId) {
+		try {
+			const response = await apiClient.get(`/inventory/stock-history/related/${encodeURIComponent(referenceId)}/`);
+			return response.data;
+		} catch (error) {
+			console.error('Failed to get related stock operations:', error);
+			throw error;
+		}
+	}
 }
 
 const inventoryService = new InventoryService();
@@ -406,3 +421,4 @@ export const updateRecipe = (recipeId, recipeData) => inventoryService.updateRec
 export const deleteRecipe = (recipeId) => inventoryService.deleteRecipe(recipeId);
 export const getInventoryDefaults = () => inventoryService.getInventoryDefaults();
 export const getStockHistory = (filters) => inventoryService.getStockHistory(filters);
+export const getRelatedStockOperations = (referenceId) => inventoryService.getRelatedStockOperations(referenceId);

@@ -333,6 +333,9 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
     location = OptimizedLocationSerializer(read_only=True)
     user = StockHistoryUserSerializer(read_only=True)
     operation_display = serializers.ReadOnlyField()
+    reason_category = serializers.ReadOnlyField()
+    reason_category_display = serializers.ReadOnlyField()
+    truncated_reason = serializers.ReadOnlyField()
     
     class Meta:
         model = StockHistoryEntry
@@ -348,6 +351,9 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
             'new_quantity',
             'reason',
             'notes',
+            'reason_category',
+            'reason_category_display',
+            'truncated_reason',
             'reference_id',
             'timestamp',
         ]

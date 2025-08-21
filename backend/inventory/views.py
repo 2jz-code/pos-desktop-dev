@@ -352,7 +352,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
-    search_fields = ['product__name', 'product__barcode', 'reason', 'notes']
+    search_fields = ['product__name', 'product__barcode', 'reason', 'notes', 'reference_id']
     ordering = ['-timestamp']
     
     def get_queryset(self):
@@ -371,6 +371,8 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
         user = self.request.query_params.get('user')
         if user:
             queryset = queryset.filter(user_id=user)
+        
+        # Note: reference_id filtering is now handled by the unified search field
         
         # Apply custom date range filtering
         date_range = self.request.query_params.get('date_range')
@@ -401,3 +403,37 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
             )
         
         return queryset
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAdminUser])
+def get_related_stock_operations(request, reference_id):
+    """
+    Get all stock operations that share the same reference_id.
+    Useful for viewing grouped operations like bulk transfers or corrections.
+    """
+    if not reference_id or not reference_id.strip():
+        return Response(
+            {"error": "Reference ID is required"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get all operations with the same reference_id
+    related_operations = StockHistoryEntry.objects.select_related(
+        'product__category', 'product__product_type', 'location', 'user'
+    ).filter(
+        reference_id__iexact=reference_id.strip()
+    ).order_by('-timestamp')
+    
+    if not related_operations.exists():
+        return Response(
+            {"error": "No operations found with this reference ID"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = StockHistoryEntrySerializer(related_operations, many=True)
+    return Response({
+        "reference_id": reference_id,
+        "count": related_operations.count(),
+        "operations": serializer.data
+    })

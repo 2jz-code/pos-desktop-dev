@@ -18,6 +18,7 @@ from .views import (
     StockHistoryListView,
     barcode_stock_lookup,
     barcode_stock_adjustment,
+    get_related_stock_operations,
 )
 
 # Create router and register viewsets
@@ -73,4 +74,5 @@ urlpatterns = [
     path("defaults/", InventoryDefaultsView.as_view(), name="inventory-defaults"),
     # Stock History
     path("stock-history/", StockHistoryListView.as_view(), name="stock-history"),
+    path("stock-history/related/<str:reference_id>/", get_related_stock_operations, name="related-stock-operations"),
 ]
