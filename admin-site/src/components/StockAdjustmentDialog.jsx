@@ -89,7 +89,7 @@ const StockAdjustmentDialog = ({
 		setLoadingData(true);
 		try {
 			const [productsResponse, locationsResponse, defaultsResponse] = await Promise.all([
-				productService.getProducts({ limit: 1000 }), // Fetch more products
+				productService.getAllActiveProducts(), // Fetch all active products
 				inventoryService.getLocations(),
 				inventoryService.getInventoryDefaults(),
 			]);

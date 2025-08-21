@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -7,18 +7,18 @@ import {
 	CardDescription,
 	CardHeader,
 	CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+} from "@/shared/components/ui/card";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@/shared/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
 	Table,
 	TableBody,
@@ -26,7 +26,7 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow,
-} from "@/components/ui/table";
+} from "@/shared/components/ui/table";
 import {
 	History,
 	RefreshCw,
@@ -41,44 +41,8 @@ import {
 	MapPin,
 	Calendar,
 } from "lucide-react";
-// @ts-expect-error - No types for JS file
-import inventoryService from "@/services/api/inventoryService";
-import { useDebounce } from "@/hooks/useDebounce";
-
-interface Product {
-	id: number;
-	name: string;
-	sku?: string;
-	barcode?: string;
-}
-
-interface Location {
-	id: number;
-	name: string;
-	description?: string;
-}
-
-interface User {
-	id: number;
-	first_name: string;
-	last_name: string;
-	username: string;
-}
-
-interface StockHistoryEntry {
-	id: number;
-	product: Product;
-	location: Location;
-	user: User;
-	operation_type: string;
-	quantity_change: number;
-	previous_quantity: number;
-	new_quantity: number;
-	reason?: string;
-	notes?: string;
-	timestamp: string;
-	reference_id?: string;
-}
+import inventoryService from "../services/inventoryService";
+import { useDebounce } from "@/shared/hooks/useDebounce";
 
 const OPERATION_TYPES = {
 	CREATED: { label: "Created", color: "bg-green-100 text-green-800", icon: Plus },
@@ -86,17 +50,20 @@ const OPERATION_TYPES = {
 	ADJUSTED_SUBTRACT: { label: "Subtracted", color: "bg-orange-100 text-orange-800", icon: Minus },
 	TRANSFER_FROM: { label: "Transfer Out", color: "bg-red-100 text-red-800", icon: ArrowUpDown },
 	TRANSFER_TO: { label: "Transfer In", color: "bg-purple-100 text-purple-800", icon: ArrowUpDown },
-} as const;
+	ORDER_DEDUCTION: { label: "Order Deduction", color: "bg-yellow-100 text-yellow-800", icon: Minus },
+	BULK_ADJUSTMENT: { label: "Bulk Adjustment", color: "bg-indigo-100 text-indigo-800", icon: Package },
+	BULK_TRANSFER: { label: "Bulk Transfer", color: "bg-pink-100 text-pink-800", icon: ArrowUpDown },
+};
 
-export const StockHistoryPage = () => {
+const StockHistoryPage = () => {
 	const navigate = useNavigate();
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
-	const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-	const [selectedOperationType, setSelectedOperationType] = useState<string | null>(null);
-	const [selectedUser, setSelectedUser] = useState<string | null>(null);
-	const [dateRange, setDateRange] = useState<string>("all");
+	const [selectedLocation, setSelectedLocation] = useState(null);
+	const [selectedOperationType, setSelectedOperationType] = useState(null);
+	const [selectedUser, setSelectedUser] = useState(null);
+	const [dateRange, setDateRange] = useState("all");
 	const [activeTab, setActiveTab] = useState("all");
 
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -114,12 +81,12 @@ export const StockHistoryPage = () => {
 	);
 
 	// Data fetching
-	const { data: historyData, isLoading: historyLoading } = useQuery<StockHistoryEntry[]>({
+	const { data: historyData, isLoading: historyLoading } = useQuery({
 		queryKey: ["stock-history", historyQueryFilters],
 		queryFn: () => inventoryService.getStockHistory(historyQueryFilters),
 	});
 
-	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>({
+	const { data: locations, isLoading: locationsLoading } = useQuery({
 		queryKey: ["inventory-locations"],
 		queryFn: inventoryService.getLocations,
 		select: (data) => data.results,
@@ -153,20 +120,20 @@ export const StockHistoryPage = () => {
 		return stats;
 	}, [historyData]);
 
-	const getOperationTypeInfo = (operationType: string) => {
-		return OPERATION_TYPES[operationType as keyof typeof OPERATION_TYPES] || {
+	const getOperationTypeInfo = (operationType) => {
+		return OPERATION_TYPES[operationType] || {
 			label: operationType,
 			color: "bg-gray-100 text-gray-800",
 			icon: Clock,
 		};
 	};
 
-	const formatQuantityChange = (change: number, operationType: string) => {
+	const formatQuantityChange = (change, operationType) => {
 		const sign = change >= 0 ? "+" : "";
 		return `${sign}${change}`;
 	};
 
-	const formatTimestamp = (timestamp: string) => {
+	const formatTimestamp = (timestamp) => {
 		return new Date(timestamp).toLocaleString();
 	};
 
@@ -479,3 +446,5 @@ export const StockHistoryPage = () => {
 		</div>
 	);
 };
+
+export default StockHistoryPage;

@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
-from rest_framework import generics, permissions, status, viewsets
+from rest_framework import generics, permissions, status, viewsets, filters
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
@@ -21,7 +21,7 @@ from .serializers import (
 from .services import InventoryService
 from products.models import Product
 from settings.config import app_settings
-from core_backend.base.viewsets import BaseViewSet
+from core_backend.base.viewsets import BaseViewSet, ReadOnlyBaseViewSet
 from core_backend.base import SerializerOptimizedMixin
 
 # Create your views here.
@@ -115,7 +115,9 @@ def barcode_stock_adjustment(request, barcode):
     result = InventoryService.perform_barcode_stock_adjustment(
         barcode=barcode,
         quantity=quantity,
-        adjustment_type=adjustment_type
+        adjustment_type=adjustment_type,
+        user=request.user,
+        reason=request.data.get("reason", "Barcode stock adjustment")
     )
     
     if result["success"]:
@@ -138,7 +140,9 @@ class AdjustStockView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, *args, **kwargs):
-        serializer = StockAdjustmentSerializer(data=request.data)
+        mutable_data = request.data.copy()
+        mutable_data['user_id'] = request.user.id
+        serializer = StockAdjustmentSerializer(data=mutable_data)
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -162,7 +166,9 @@ class TransferStockView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, *args, **kwargs):
-        serializer = StockTransferSerializer(data=request.data)
+        mutable_data = request.data.copy()
+        mutable_data['user_id'] = request.user.id
+        serializer = StockTransferSerializer(data=mutable_data)
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -335,23 +341,25 @@ class InventoryDefaultsView(APIView):
 class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     """
     List all stock history entries with filtering and pagination support.
+    Uses SerializerOptimizedMixin for automatic query optimization.
     """
+    queryset = StockHistoryEntry.objects.all()
     serializer_class = StockHistoryEntrySerializer
     permission_classes = [permissions.IsAdminUser]
     
+    # Enable search and filtering via filter backends
+    filter_backends = [
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    search_fields = ['product__name', 'product__barcode', 'reason', 'notes']
+    ordering = ['-timestamp']
+    
     def get_queryset(self):
-        queryset = StockHistoryEntry.objects.all()
+        # Get the optimized queryset from SerializerOptimizedMixin
+        queryset = super().get_queryset()
         
-        # Apply filters
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(product__name__icontains=search) |
-                Q(product__barcode__icontains=search) |
-                Q(reason__icontains=search) |
-                Q(notes__icontains=search)
-            )
-        
+        # Apply manual filtering for query parameters that aren't handled by filter backends
         location = self.request.query_params.get('location')
         if location:
             queryset = queryset.filter(location_id=location)
@@ -364,6 +372,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
         if user:
             queryset = queryset.filter(user_id=user)
         
+        # Apply custom date range filtering
         date_range = self.request.query_params.get('date_range')
         if date_range:
             now = timezone.now()
@@ -380,7 +389,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
                 start_date = now - timedelta(days=90)
                 queryset = queryset.filter(timestamp__gte=start_date)
         
-        # Filter by tab
+        # Filter by tab (operation type groups)
         tab = self.request.query_params.get('tab')
         if tab == 'adjustments':
             queryset = queryset.filter(
@@ -391,4 +400,4 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
                 operation_type__in=['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']
             )
         
-        return queryset.order_by('-timestamp')
+        return queryset

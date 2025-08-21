@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	Card,
 	CardContent,
@@ -42,6 +42,7 @@ import {
 	Search,
 	Clock,
 	Settings,
+	History,
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
 import { useInventoryBarcode, useScrollToScannedItem } from "@/shared/hooks";
@@ -410,6 +411,14 @@ const InventoryPage = () => {
 					>
 						<Settings className="h-4 w-4 mr-2" />
 						Configure Defaults
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => navigate('/inventory/history')}
+					>
+						<History className="h-4 w-4 mr-2" />
+						Stock History
 					</Button>
 
 					<Button

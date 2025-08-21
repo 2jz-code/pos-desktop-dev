@@ -340,6 +340,46 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get stock history entries with filtering and pagination
+	 * @param {Object} filters - Optional filters {search, location, operation_type, user, date_range, tab}
+	 * @returns {Promise} API response with stock history entries
+	 */
+	async getStockHistory(filters = {}) {
+		try {
+			const params = new URLSearchParams();
+			
+			// Add filters if provided
+			if (filters.search) {
+				params.append('search', filters.search);
+			}
+			if (filters.location) {
+				params.append('location', filters.location);
+			}
+			if (filters.operation_type) {
+				params.append('operation_type', filters.operation_type);
+			}
+			if (filters.user) {
+				params.append('user', filters.user);
+			}
+			if (filters.date_range) {
+				params.append('date_range', filters.date_range);
+			}
+			if (filters.tab) {
+				params.append('tab', filters.tab);
+			}
+			
+			const queryString = params.toString();
+			const url = queryString ? `/inventory/stock-history/?${queryString}` : "/inventory/stock-history/";
+			
+			const response = await apiClient.get(url);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to get stock history:", error);
+			throw error;
+		}
+	}
 }
 
 const inventoryService = new InventoryService();
@@ -365,3 +405,4 @@ export const createRecipe = (recipeData) => inventoryService.createRecipe(recipe
 export const updateRecipe = (recipeId, recipeData) => inventoryService.updateRecipe(recipeId, recipeData);
 export const deleteRecipe = (recipeId) => inventoryService.deleteRecipe(recipeId);
 export const getInventoryDefaults = () => inventoryService.getInventoryDefaults();
+export const getStockHistory = (filters) => inventoryService.getStockHistory(filters);

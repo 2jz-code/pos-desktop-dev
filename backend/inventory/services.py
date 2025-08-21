@@ -145,7 +145,7 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def add_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id=""):
+    def add_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id="", skip_logging=False):
         """
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
@@ -168,25 +168,26 @@ class InventoryService:
         
         stock.save()
         
-        # Log the stock operation
-        operation_type = 'CREATED' if created else 'ADJUSTED_ADD'
-        InventoryService._log_stock_operation(
-            product=product,
-            location=location,
-            operation_type=operation_type,
-            quantity_change=quantity_decimal,
-            previous_quantity=previous_quantity,
-            new_quantity=stock.quantity,
-            user=user,
-            reason=reason,
-            reference_id=reference_id
-        )
+        # Log the stock operation (unless skipped for transfers)
+        if not skip_logging:
+            operation_type = 'CREATED' if created else 'ADJUSTED_ADD'
+            InventoryService._log_stock_operation(
+                product=product,
+                location=location,
+                operation_type=operation_type,
+                quantity_change=quantity_decimal,
+                previous_quantity=previous_quantity,
+                new_quantity=stock.quantity,
+                user=user,
+                reason=reason,
+                reference_id=reference_id
+            )
         
         return stock
 
     @staticmethod
     @transaction.atomic
-    def decrement_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id=""):
+    def decrement_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id="", skip_logging=False):
         """
         Decrements a specified quantity of a product from a specific inventory location.
         Raises ValueError if sufficient stock is not available.
@@ -219,18 +220,19 @@ class InventoryService:
         
         stock.save()
         
-        # Log the stock operation
-        InventoryService._log_stock_operation(
-            product=product,
-            location=location,
-            operation_type='ADJUSTED_SUBTRACT',
-            quantity_change=-quantity_decimal,  # Negative for subtraction
-            previous_quantity=previous_quantity,
-            new_quantity=stock.quantity,
-            user=user,
-            reason=reason,
-            reference_id=reference_id
-        )
+        # Log the stock operation (unless skipped for transfers)
+        if not skip_logging:
+            InventoryService._log_stock_operation(
+                product=product,
+                location=location,
+                operation_type='ADJUSTED_SUBTRACT',
+                quantity_change=-quantity_decimal,  # Negative for subtraction
+                previous_quantity=previous_quantity,
+                new_quantity=stock.quantity,
+                user=user,
+                reason=reason,
+                reference_id=reference_id
+            )
         
         return stock
 
@@ -263,14 +265,14 @@ class InventoryService:
         except InventoryStock.DoesNotExist:
             to_previous_qty = Decimal('0.0')
 
-        # Decrement from the source location (but don't use the logging from decrement_stock)
+        # Decrement from the source location (skip logging to avoid duplicate records)
         source_stock = InventoryService.decrement_stock(
-            product, from_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref
+            product, from_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref, skip_logging=True
         )
 
-        # Add to the destination location (but don't use the logging from add_stock)
+        # Add to the destination location (skip logging to avoid duplicate records)
         destination_stock = InventoryService.add_stock(
-            product, to_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref
+            product, to_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref, skip_logging=True
         )
 
         # Log the transfer operations with proper types
@@ -652,7 +654,7 @@ class InventoryService:
     
     @staticmethod
     @transaction.atomic
-    def perform_barcode_stock_adjustment(barcode: str, quantity: float, adjustment_type: str = "add", location_id: int = None) -> dict:
+    def perform_barcode_stock_adjustment(barcode: str, quantity: float, adjustment_type: str = "add", location_id: int = None, user=None, reason: str = "") -> dict:
         """Extract barcode stock adjustment logic from barcode_stock_adjustment view"""
         from products.models import Product
         from settings.config import app_settings
@@ -686,9 +688,9 @@ class InventoryService:
             
             # Perform stock adjustment using existing service methods
             if quantity > 0:
-                InventoryService.add_stock(product, location, quantity)
+                InventoryService.add_stock(product, location, quantity, user=user, reason=reason)
             else:
-                InventoryService.decrement_stock(product, location, abs(quantity))
+                InventoryService.decrement_stock(product, location, abs(quantity), user=user, reason=reason)
             
             # Get updated stock level
             new_stock_level = InventoryService.get_stock_level(product, location)

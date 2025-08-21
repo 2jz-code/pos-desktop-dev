@@ -3,6 +3,7 @@
 
 // Pages
 export { default as InventoryPage } from "./pages/InventoryPage.jsx";
+export { default as StockHistoryPage } from "./pages/StockHistoryPage.jsx";
 
 // Services
 export * as inventoryService from "./services/inventoryService.js";

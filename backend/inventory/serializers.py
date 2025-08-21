@@ -183,6 +183,8 @@ class StockAdjustmentSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, required=False
     )
     expiration_threshold = serializers.IntegerField(required=False)
+    user_id = serializers.IntegerField(required=False)
+    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
     def save(self):
         product = Product.objects.get(id=self.validated_data["product_id"])
@@ -191,12 +193,20 @@ class StockAdjustmentSerializer(serializers.Serializer):
         expiration_date = self.validated_data.get("expiration_date")
         low_stock_threshold = self.validated_data.get("low_stock_threshold")
         expiration_threshold = self.validated_data.get("expiration_threshold")
+        user_id = self.validated_data.get("user_id")
+        reason = self.validated_data.get("reason", "")
+        
+        # Get user object if user_id provided
+        user = None
+        if user_id:
+            from users.models import User
+            user = User.objects.get(id=user_id)
 
         # A positive quantity adds stock, a negative quantity decrements stock
         if quantity > 0:
-            stock = InventoryService.add_stock(product, location, quantity)
+            stock = InventoryService.add_stock(product, location, quantity, user=user, reason=reason)
         else:
-            stock = InventoryService.decrement_stock(product, location, abs(quantity))
+            stock = InventoryService.decrement_stock(product, location, abs(quantity), user=user, reason=reason)
 
         # Update additional fields if provided
         if expiration_date is not None:
@@ -223,6 +233,8 @@ class StockTransferSerializer(serializers.Serializer):
     from_location_id = serializers.IntegerField()
     to_location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+    user_id = serializers.IntegerField(required=False)
+    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
     def validate(self, data):
         if data["from_location_id"] == data["to_location_id"]:
@@ -240,9 +252,17 @@ class StockTransferSerializer(serializers.Serializer):
         from_location = Location.objects.get(id=self.validated_data["from_location_id"])
         to_location = Location.objects.get(id=self.validated_data["to_location_id"])
         quantity = self.validated_data["quantity"]
+        user_id = self.validated_data.get("user_id")
+        reason = self.validated_data.get("reason", "")
+        
+        # Get user object if user_id provided
+        user = None
+        if user_id:
+            from users.models import User
+            user = User.objects.get(id=user_id)
 
         return InventoryService.transfer_stock(
-            product, from_location, to_location, quantity
+            product, from_location, to_location, quantity, user=user, reason=reason
         )
 
 
@@ -310,7 +330,7 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
     Serializer for stock history entries with optimized queries.
     """
     product = OptimizedProductSerializer(read_only=True)
-    location = LocationSerializer(read_only=True)
+    location = OptimizedLocationSerializer(read_only=True)
     user = StockHistoryUserSerializer(read_only=True)
     operation_display = serializers.ReadOnlyField()
     

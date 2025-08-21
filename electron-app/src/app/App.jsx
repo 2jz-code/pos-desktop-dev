@@ -27,7 +27,7 @@ import { OrdersPage, OrderDetailsPage } from "@/domains/orders";
 import { PaymentsPage, PaymentDetailsPage } from "@/domains/payments";
 import { UsersPage } from "@/domains/users";
 import { ProductsPage, ProductDetailsPage, ModifierManagementPage } from "@/domains/products";
-import { InventoryPage } from "@/domains/inventory";
+import { InventoryPage, StockHistoryPage } from "@/domains/inventory";
 import { DiscountsPage } from "@/domains/discounts";
 import { SettingsPage } from "@/domains/settings";
 
@@ -202,6 +202,16 @@ function AppRoutes() {
 							requiredPermission={(p) => p.canAccessInventory()}
 						>
 							<InventoryPage />
+						</RoleProtectedRoute>
+					}
+				/>
+				<Route
+					path="inventory/history"
+					element={
+						<RoleProtectedRoute
+							requiredPermission={(p) => p.canAccessInventory()}
+						>
+							<StockHistoryPage />
 						</RoleProtectedRoute>
 					}
 				/>
