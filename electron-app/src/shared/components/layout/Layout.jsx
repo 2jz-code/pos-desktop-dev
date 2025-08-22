@@ -3,21 +3,14 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
+import { useNavigationRoutes } from "@/shared/hooks/useNavigationRoutes";
+import { NavigationItem } from "@/shared/components/navigation/NavigationItem";
 import {
-	Home,
-	Users,
 	LogOut,
 	PanelLeft,
 	Menu,
 	PanelLeftClose,
 	PanelLeftOpen,
-	Package,
-	ShoppingCart,
-	ClipboardList,
-	Percent,
-	Settings,
-	CreditCard,
-	Warehouse,
 	Bell,
 	Wifi,
 	WifiOff,
@@ -54,38 +47,11 @@ import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
 import WebOrderNotification from "@/shared/components/notifications/WebOrderNotification";
 import { NotificationRetryButton } from "@/components/NotificationRetryButton";
 
-//eslint-disable-next-line
-function NavLink({ to, icon: Icon, children, isCollapsed }) {
-	const location = useLocation();
-	const isActive = location.pathname.startsWith(to) && to !== "/";
-	const isDashboard = location.pathname === "/" && to === "/";
-
-	return (
-		<Link
-			to={to}
-			className={cn(
-				"flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-				(isActive || isDashboard) &&
-					"bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium",
-				isCollapsed && "justify-center px-2"
-			)}
-		>
-			<Icon className="h-4 w-4 flex-shrink-0" />
-			{!isCollapsed && <span className="truncate">{children}</span>}
-		</Link>
-	);
-}
-
-NavLink.propTypes = {
-	to: PropTypes.string.isRequired,
-	icon: PropTypes.elementType.isRequired,
-	children: PropTypes.node.isRequired,
-	isCollapsed: PropTypes.bool.isRequired,
-};
 
 export function Layout({ children }) {
 	const { user, logout } = useAuth();
 	const permissions = useRolePermissions();
+	const navigationRoutes = useNavigationRoutes();
 	const [isCollapsed, setIsCollapsed] = useState(
 		JSON.parse(localStorage.getItem("sidebar-collapsed")) || false
 	);
@@ -134,81 +100,14 @@ export function Layout({ children }) {
 					{/* Navigation */}
 					<div className="flex-1 overflow-auto py-4">
 						<nav className="grid items-start px-3 text-sm font-medium gap-1">
-							{permissions.canAccessDashboard() && (
-								<NavLink
-									to="/"
-									icon={Home}
+							{navigationRoutes.map((route) => (
+								<NavigationItem
+									key={route.path}
+									route={route}
 									isCollapsed={isCollapsed}
-								>
-									Dashboard
-								</NavLink>
-							)}
-							<NavLink
-								to="/pos"
-								icon={ShoppingCart}
-								isCollapsed={isCollapsed}
-							>
-								POS
-							</NavLink>
-							<NavLink
-								to="/orders"
-								icon={ClipboardList}
-								isCollapsed={isCollapsed}
-							>
-								Orders
-							</NavLink>
-							{permissions.canAccessPayments() && (
-								<NavLink
-									to="/payments"
-									icon={CreditCard}
-									isCollapsed={isCollapsed}
-								>
-									Payments
-								</NavLink>
-							)}
-							{permissions.canAccessUsers() && (
-								<NavLink
-									to="/users"
-									icon={Users}
-									isCollapsed={isCollapsed}
-								>
-									Users
-								</NavLink>
-							)}
-							<NavLink
-								to="/products"
-								icon={Package}
-								isCollapsed={isCollapsed}
-							>
-								Products
-							</NavLink>
-							{permissions.canAccessInventory() && (
-								<NavLink
-									to="/inventory"
-									icon={Warehouse}
-									isCollapsed={isCollapsed}
-								>
-									Inventory
-								</NavLink>
-							)}
-							{permissions.canAccessDiscounts() && (
-								<NavLink
-									to="/discounts"
-									icon={Percent}
-									isCollapsed={isCollapsed}
-								>
-									Discounts
-								</NavLink>
-							)}
-							{permissions.canAccessSettings() && (
-								<NavLink
-									to="/settings"
-									icon={Settings}
-									isCollapsed={isCollapsed}
-								>
-									Settings
-								</NavLink>
-							)}
+									permissions={permissions}
+								/>
+							))}
 						</nav>
 					</div>
 
@@ -284,81 +183,15 @@ export function Layout({ children }) {
 									<span>Ajeen POS</span>
 								</Link>
 
-								{permissions.canAccessDashboard() && (
-									<NavLink
-										to="/"
-										icon={Home}
+								{navigationRoutes.map((route) => (
+									<NavigationItem
+										key={route.path}
+										route={route}
 										isCollapsed={false}
-									>
-										Dashboard
-									</NavLink>
-								)}
-								<NavLink
-									to="/pos"
-									icon={ShoppingCart}
-									isCollapsed={false}
-								>
-									POS
-								</NavLink>
-								<NavLink
-									to="/orders"
-									icon={ClipboardList}
-									isCollapsed={false}
-								>
-									Orders
-								</NavLink>
-								{permissions.canAccessPayments() && (
-									<NavLink
-										to="/payments"
-										icon={CreditCard}
-										isCollapsed={false}
-									>
-										Payments
-									</NavLink>
-								)}
-								{permissions.canAccessUsers() && (
-									<NavLink
-										to="/users"
-										icon={Users}
-										isCollapsed={false}
-									>
-										Users
-									</NavLink>
-								)}
-								<NavLink
-									to="/products"
-									icon={Package}
-									isCollapsed={false}
-								>
-									Products
-								</NavLink>
-								{permissions.canAccessInventory() && (
-									<NavLink
-										to="/inventory"
-										icon={Warehouse}
-										isCollapsed={false}
-									>
-										Inventory
-									</NavLink>
-								)}
-								{permissions.canAccessDiscounts() && (
-									<NavLink
-										to="/discounts"
-										icon={Percent}
-										isCollapsed={false}
-									>
-										Discounts
-									</NavLink>
-								)}
-								{permissions.canAccessSettings() && (
-									<NavLink
-										to="/settings"
-										icon={Settings}
-										isCollapsed={false}
-									>
-										Settings
-									</NavLink>
-								)}
+										isMobile={true}
+										permissions={permissions}
+									/>
+								))}
 							</nav>
 							<div className="mt-auto p-4">
 								<button

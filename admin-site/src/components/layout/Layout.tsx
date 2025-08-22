@@ -1,23 +1,15 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-	Home,
-	Users,
 	LogOut,
 	PanelLeft,
 	Menu,
 	PanelLeftClose,
 	PanelLeftOpen,
-	Package,
-	ClipboardList,
-	Percent,
-	Settings,
-	CreditCard,
-	Warehouse,
-	FileText,
-	Shield,
 } from "lucide-react";
+import { useNavigationRoutes } from "@/hooks/useNavigationRoutes";
+import { NavigationItem } from "@/components/navigation/NavigationItem";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -31,40 +23,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
-interface NavLinkProps {
-	to: string;
-	icon: React.ComponentType<{ className?: string }>;
-	children: React.ReactNode;
-	isCollapsed: boolean;
-}
-
-function NavLink({ to, icon: Icon, children, isCollapsed }: NavLinkProps) {
-	const location = useLocation();
-	const isActive = location.pathname.startsWith(to) && to !== "/";
-	const isDashboard = location.pathname === "/" && to === "/";
-
-	return (
-		<Link
-			to={to}
-			className={cn(
-				"flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-				(isActive || isDashboard) &&
-					"bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium",
-				isCollapsed && "justify-center px-2"
-			)}
-		>
-			<Icon className="h-4 w-4 flex-shrink-0" />
-			{!isCollapsed && <span className="truncate">{children}</span>}
-		</Link>
-	);
-}
-
 interface LayoutProps {
 	children: React.ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
 	const { user, logout } = useAuth();
+	const navigationRoutes = useNavigationRoutes();
 	const [isCollapsed, setIsCollapsed] = useState(
 		JSON.parse(localStorage.getItem("sidebar-collapsed") || "false")
 	);
@@ -99,76 +64,13 @@ export function Layout({ children }: LayoutProps) {
 					{/* Navigation */}
 					<div className="flex-1 overflow-auto py-4">
 						<nav className="grid items-start px-3 text-sm font-medium gap-1">
-							<NavLink
-								to="/dashboard"
-								icon={Home}
-								isCollapsed={isCollapsed}
-							>
-								Dashboard
-							</NavLink>
-							<NavLink
-								to="/orders"
-								icon={ClipboardList}
-								isCollapsed={isCollapsed}
-							>
-								Orders
-							</NavLink>
-							<NavLink
-								to="/payments"
-								icon={CreditCard}
-								isCollapsed={isCollapsed}
-							>
-								Payments
-							</NavLink>
-							<NavLink
-								to="/users"
-								icon={Users}
-								isCollapsed={isCollapsed}
-							>
-								Users
-							</NavLink>
-							<NavLink
-								to="/products"
-								icon={Package}
-								isCollapsed={isCollapsed}
-							>
-								Products
-							</NavLink>
-							<NavLink
-								to="/inventory"
-								icon={Warehouse}
-								isCollapsed={isCollapsed}
-							>
-								Inventory
-							</NavLink>
-							<NavLink
-								to="/discounts"
-								icon={Percent}
-								isCollapsed={isCollapsed}
-							>
-								Discounts
-							</NavLink>
-							<NavLink
-								to="/reports"
-								icon={FileText}
-								isCollapsed={isCollapsed}
-							>
-								Reports
-							</NavLink>
-							<NavLink
-								to="/audit"
-								icon={Shield}
-								isCollapsed={isCollapsed}
-							>
-								Audit
-							</NavLink>
-							<NavLink
-								to="/settings"
-								icon={Settings}
-								isCollapsed={isCollapsed}
-							>
-								Settings
-							</NavLink>
+							{navigationRoutes.map((route) => (
+								<NavigationItem
+									key={route.path}
+									route={route}
+									isCollapsed={isCollapsed}
+								/>
+							))}
 						</nav>
 					</div>
 
@@ -234,76 +136,14 @@ export function Layout({ children }: LayoutProps) {
 									<span>Ajeen Admin</span>
 								</Link>
 
-								<NavLink
-									to="/dashboard"
-									icon={Home}
-									isCollapsed={false}
-								>
-									Dashboard
-								</NavLink>
-								<NavLink
-									to="/orders"
-									icon={ClipboardList}
-									isCollapsed={false}
-								>
-									Orders
-								</NavLink>
-								<NavLink
-									to="/payments"
-									icon={CreditCard}
-									isCollapsed={false}
-								>
-									Payments
-								</NavLink>
-								<NavLink
-									to="/users"
-									icon={Users}
-									isCollapsed={false}
-								>
-									Users
-								</NavLink>
-								<NavLink
-									to="/products"
-									icon={Package}
-									isCollapsed={false}
-								>
-									Products
-								</NavLink>
-								<NavLink
-									to="/inventory"
-									icon={Warehouse}
-									isCollapsed={false}
-								>
-									Inventory
-								</NavLink>
-								<NavLink
-									to="/discounts"
-									icon={Percent}
-									isCollapsed={false}
-								>
-									Discounts
-								</NavLink>
-								<NavLink
-									to="/reports"
-									icon={FileText}
-									isCollapsed={false}
-								>
-									Reports
-								</NavLink>
-								<NavLink
-									to="/audit"
-									icon={Shield}
-									isCollapsed={false}
-								>
-									Audit
-								</NavLink>
-								<NavLink
-									to="/settings"
-									icon={Settings}
-									isCollapsed={false}
-								>
-									Settings
-								</NavLink>
+								{navigationRoutes.map((route) => (
+									<NavigationItem
+										key={route.path}
+										route={route}
+										isCollapsed={false}
+										isMobile={true}
+									/>
+								))}
 							</nav>
 							<div className="mt-auto p-4">
 								<button
