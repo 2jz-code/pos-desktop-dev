@@ -236,7 +236,6 @@ export function StoreInfoSettings() {
 						<Button
 							type="submit"
 							disabled={mutation.isPending || !form.formState.isDirty}
-							className="w-full sm:w-auto"
 						>
 							{mutation.isPending ? "Saving..." : "Save Changes"}
 						</Button>

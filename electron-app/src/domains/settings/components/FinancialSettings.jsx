@@ -19,7 +19,15 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { Switch } from "@/shared/components/ui/switch";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/shared/components/ui/card";
 import { toast } from "sonner";
+import { DollarSign } from "lucide-react";
 
 const formSchema = z.object({
 	tax_rate: z.coerce
@@ -72,15 +80,45 @@ export function FinancialSettings() {
 	};
 
 	if (isLoading) {
-		return <div>Loading financial settings...</div>;
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<DollarSign className="h-5 w-5" />
+						Financial Settings
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="flex items-center justify-center py-8">
+						<div className="text-center">
+							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Loading financial settings...
+							</p>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+		);
 	}
 
 	return (
-		<Form {...form}>
-			<form
-				onSubmit={form.handleSubmit(onSubmit)}
-				className="space-y-8"
-			>
+		<Card>
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<DollarSign className="h-5 w-5" />
+					Financial Settings
+				</CardTitle>
+				<CardDescription>
+					Configure tax rates, surcharges, and discount policies for your business
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit(onSubmit)}
+						className="space-y-6"
+					>
 				<FormField
 					control={form.control}
 					name="tax_rate"
@@ -166,13 +204,15 @@ export function FinancialSettings() {
 						</FormItem>
 					)}
 				/>
-				<Button
-					type="submit"
-					disabled={form.formState.isSubmitting || !form.formState.isDirty}
-				>
-					{form.formState.isSubmitting ? "Saving..." : "Save Changes"}
-				</Button>
-			</form>
-		</Form>
+						<Button
+							type="submit"
+							disabled={mutation.isPending || !form.formState.isDirty}
+						>
+							{mutation.isPending ? "Saving..." : "Save Changes"}
+						</Button>
+					</form>
+				</Form>
+			</CardContent>
+		</Card>
 	);
 }

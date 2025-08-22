@@ -15,7 +15,15 @@ import {
 	FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { toast } from "sonner";
+import { Receipt } from "lucide-react";
 
 const formSchema = z.object({
 	receipt_header: z.string().optional(),
@@ -55,15 +63,45 @@ export function ReceiptSettings() {
 	};
 
 	if (isLoading) {
-		return <div>Loading receipt settings...</div>;
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<Receipt className="h-5 w-5" />
+						Receipt Settings
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="flex items-center justify-center py-8">
+						<div className="text-center">
+							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Loading receipt settings...
+							</p>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+		);
 	}
 
 	return (
-		<Form {...form}>
-			<form
-				onSubmit={form.handleSubmit(onSubmit)}
-				className="space-y-8"
-			>
+		<Card>
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<Receipt className="h-5 w-5" />
+					Receipt Settings
+				</CardTitle>
+				<CardDescription>
+					Customize the header and footer text that appears on customer receipts
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit(onSubmit)}
+						className="space-y-6"
+					>
 				<FormField
 					control={form.control}
 					name="receipt_header"
@@ -102,13 +140,15 @@ export function ReceiptSettings() {
 						</FormItem>
 					)}
 				/>
-				<Button
-					type="submit"
-					disabled={form.formState.isSubmitting || !form.formState.isDirty}
-				>
-					{form.formState.isSubmitting ? "Saving..." : "Save Changes"}
-				</Button>
-			</form>
-		</Form>
+						<Button
+							type="submit"
+							disabled={mutation.isPending || !form.formState.isDirty}
+						>
+							{mutation.isPending ? "Saving..." : "Save Changes"}
+						</Button>
+					</form>
+				</Form>
+			</CardContent>
+		</Card>
 	);
 }

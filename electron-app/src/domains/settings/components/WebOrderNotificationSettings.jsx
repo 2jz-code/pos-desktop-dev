@@ -337,10 +337,9 @@ export function WebOrderNotificationSettings() {
 					<Button
 						type="submit"
 						disabled={isUpdating}
-						className="w-full md:w-auto"
 					>
 						{isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						Save All Settings
+						Save Changes
 					</Button>
 				</form>
 			</Form>

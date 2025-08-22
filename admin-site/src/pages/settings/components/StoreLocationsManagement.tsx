@@ -9,7 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { PlusCircle, Edit, Trash2, Home, Phone, Mail, Star } from "lucide-react";
+import { PlusCircle, Edit, Trash2, Home, Phone, Mail, Star, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import StoreLocationFormDialog from "./StoreLocationFormDialog";
 import {
@@ -106,15 +106,25 @@ export function StoreLocationsManagement() {
 	if (isError) return <div>Error fetching locations: {error.message}</div>;
 
 	return (
-		<div>
-			<div className="flex justify-end mb-4">
-				<Button onClick={handleAddNew}>
-					<PlusCircle className="mr-2 h-4 w-4" />
-					Add New Location
-				</Button>
-			</div>
+		<Card>
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<MapPin className="h-5 w-5" />
+					Store Locations
+				</CardTitle>
+				<CardDescription>
+					Manage your physical store locations and terminal configurations
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<div className="flex justify-end mb-4">
+					<Button onClick={handleAddNew}>
+						<PlusCircle className="mr-2 h-4 w-4" />
+						Add New Location
+					</Button>
+				</div>
 
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{locations?.map((location) => (
 					<Card key={location.id}>
 						<CardHeader>
@@ -180,38 +190,39 @@ export function StoreLocationsManagement() {
 						</div>
 					</Card>
 				))}
-			</div>
+				</div>
 
-			<StoreLocationFormDialog
-				isOpen={isFormOpen}
-				setIsOpen={setIsFormOpen}
-				locationData={selectedLocation}
-			/>
+				<StoreLocationFormDialog
+					isOpen={isFormOpen}
+					setIsOpen={setIsFormOpen}
+					locationData={selectedLocation}
+				/>
 
-			<AlertDialog
-				open={isConfirmDeleteDialogOpen}
-				onOpenChange={setIsConfirmDeleteDialogOpen}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This action cannot be undone. This will permanently delete the
-							<span className="font-bold"> {locationToDelete?.name} </span>
-							location. Any terminals assigned here will need to be reassigned.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleConfirmDelete}
-							disabled={deleteMutation.isPending}
-						>
-							{deleteMutation.isPending ? "Deleting..." : "Continue"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
+				<AlertDialog
+					open={isConfirmDeleteDialogOpen}
+					onOpenChange={setIsConfirmDeleteDialogOpen}
+				>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+							<AlertDialogDescription>
+								This action cannot be undone. This will permanently delete the
+								<span className="font-bold"> {locationToDelete?.name} </span>
+								location. Any terminals assigned here will need to be reassigned.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={handleConfirmDelete}
+								disabled={deleteMutation.isPending}
+							>
+								{deleteMutation.isPending ? "Deleting..." : "Continue"}
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</CardContent>
+		</Card>
 	);
 }

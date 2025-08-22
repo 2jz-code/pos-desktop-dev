@@ -265,14 +265,46 @@ export function PrinterSettings() {
 		})),
 	];
 
-	if (isLoading) return <div>Loading...</div>;
+	if (isLoading) {
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2">
+						<Wifi className="h-5 w-5" />
+						Printer & Kitchen Settings
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="flex items-center justify-center py-8">
+						<div className="text-center">
+							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Loading printer settings...
+							</p>
+						</div>
+					</div>
+				</CardContent>
+			</Card>
+		);
+	}
 
 	return (
-		<Form {...form}>
-			<form
-				onSubmit={form.handleSubmit(onSubmit)}
-				className="space-y-8"
-			>
+		<Card>
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<Wifi className="h-5 w-5" />
+					Printer & Kitchen Settings
+				</CardTitle>
+				<CardDescription>
+					Configure receipt printers and kitchen zone assignments for your terminal
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit(onSubmit)}
+						className="space-y-6"
+					>
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
@@ -525,10 +557,9 @@ export function PrinterSettings() {
 					</CardContent>
 				</Card>
 
-				<div className="flex justify-end">
 					<Button
 						type="submit"
-						disabled={mutation.isPending}
+						disabled={mutation.isPending || !form.formState.isDirty}
 						onClick={() => {
 							console.log("Save button clicked");
 							console.log("Form values:", form.getValues());
@@ -536,10 +567,11 @@ export function PrinterSettings() {
 							console.log("Form isValid:", form.formState.isValid);
 						}}
 					>
-						{mutation.isPending ? "Saving..." : "Save All Settings"}
+						{mutation.isPending ? "Saving..." : "Save Changes"}
 					</Button>
-				</div>
-			</form>
-		</Form>
+				</form>
+			</Form>
+			</CardContent>
+		</Card>
 	);
 }

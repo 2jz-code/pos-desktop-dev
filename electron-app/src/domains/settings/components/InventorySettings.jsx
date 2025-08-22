@@ -282,8 +282,7 @@ export function InventorySettings() {
 
 						<Button
 							type="submit"
-							disabled={mutation.isPending}
-							className="w-full sm:w-auto"
+							disabled={mutation.isPending || !form.formState.isDirty}
 						>
 							{mutation.isPending ? "Saving..." : "Save Changes"}
 						</Button>

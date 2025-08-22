@@ -1,11 +1,7 @@
-import React, { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "@/shared/components/ui/tabs";
+import React from "react";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
+import { Toaster } from "@/shared/components/ui/toaster";
+import { Separator } from "@/shared/components/ui/separator";
 import {
 	Card,
 	CardContent,
@@ -13,8 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/shared/components/ui/card";
-import { ScrollArea } from "@/shared/components/ui/scroll-area";
-import { Toaster } from "@/shared/components/ui/toaster";
+import { Bell } from "lucide-react";
 
 import { StoreLocationsManagement } from "../components/StoreLocationsManagement";
 import { FinancialSettings } from "../components/FinancialSettings";
@@ -28,16 +23,6 @@ import { StoreInfoSettings } from "../components/StoreInfoSettings";
 import { BusinessHoursSettings } from "../components/BusinessHoursSettings";
 
 export function SettingsPage() {
-	const [searchParams] = useSearchParams();
-	const [activeTab, setActiveTab] = React.useState("general");
-
-	// Handle URL tab parameter
-	useEffect(() => {
-		const tabParam = searchParams.get("tab");
-		if (tabParam) {
-			setActiveTab(tabParam);
-		}
-	}, [searchParams]);
 
 	return (
 		<>
@@ -50,93 +35,84 @@ export function SettingsPage() {
 					</div>
 				</div>
 
-				{/* Tabs Section - Scrollable */}
+				{/* Settings Content - Scrollable */}
 				<div className="flex flex-col flex-1 min-h-0 px-4 md:px-8 pb-4">
-					<Tabs
-						value={activeTab}
-						onValueChange={setActiveTab}
-						className="w-full flex flex-col h-full"
-					>
-						{/* Tabs List - Fixed */}
-						<TabsList className="flex-shrink-0 grid w-full grid-cols-1 md:grid-cols-5 lg:grid-cols-10 mb-4">
-							<TabsTrigger value="general">General</TabsTrigger>
-							<TabsTrigger value="store-info">Store Info</TabsTrigger>
-							<TabsTrigger value="business-hours">Hours</TabsTrigger>
-							<TabsTrigger value="locations">Locations</TabsTrigger>
-							<TabsTrigger value="financials">Financial</TabsTrigger>
-							<TabsTrigger value="inventory">Inventory</TabsTrigger>
-							<TabsTrigger value="receipts">Receipts</TabsTrigger>
-							<TabsTrigger value="device">This Device</TabsTrigger>
-							<TabsTrigger value="printers">Printers & Zones</TabsTrigger>
-							<TabsTrigger value="payments">Payments</TabsTrigger>
-						</TabsList>
-
-						{/* Tab Content - Scrollable */}
-						<div className="flex-1 min-h-0">
-							<ScrollArea className="h-full">
-								<TabsContent
-									value="general"
-									className="mt-0"
-								>
-									<WebOrderNotificationSettings />
-								</TabsContent>
-								<TabsContent
-									value="store-info"
-									className="mt-0"
-								>
+					<ScrollArea className="h-full">
+						<div className="space-y-8">
+							{/* Business Setup Section */}
+							<div className="space-y-6">
+								<div>
+									<h3 className="text-xl font-semibold tracking-tight">Business Setup</h3>
+									<p className="text-sm text-muted-foreground">Configure your store information, hours, and locations</p>
+								</div>
+								
+								<div className="space-y-6">
 									<StoreInfoSettings />
-								</TabsContent>
-								<TabsContent
-									value="business-hours"
-									className="mt-0"
-								>
 									<BusinessHoursSettings />
-								</TabsContent>
-								<TabsContent
-									value="locations"
-									className="mt-0"
-								>
 									<StoreLocationsManagement />
-								</TabsContent>
-								<TabsContent
-									value="financials"
-									className="mt-0"
-								>
+								</div>
+							</div>
+
+							<Separator />
+
+							{/* Operations & Finance Section */}
+							<div className="space-y-6">
+								<div>
+									<h3 className="text-xl font-semibold tracking-tight">Operations & Finance</h3>
+									<p className="text-sm text-muted-foreground">Manage financial settings and inventory</p>
+								</div>
+								
+								<div className="space-y-6">
 									<FinancialSettings />
-								</TabsContent>
-								<TabsContent
-									value="inventory"
-									className="mt-0"
-								>
 									<InventorySettings />
-								</TabsContent>
-								<TabsContent
-									value="receipts"
-									className="mt-0"
-								>
-									<ReceiptSettings />
-								</TabsContent>
-								<TabsContent
-									value="device"
-									className="mt-0"
-								>
+								</div>
+							</div>
+
+							<Separator />
+
+							{/* Device & Hardware Section */}
+							<div className="space-y-6">
+								<div>
+									<h3 className="text-xl font-semibold tracking-tight">Device & Hardware</h3>
+									<p className="text-sm text-muted-foreground">Configure this device, printers, and payment processing</p>
+								</div>
+								
+								<div className="space-y-6">
 									<DeviceSettings />
-								</TabsContent>
-								<TabsContent
-									value="printers"
-									className="mt-0"
-								>
 									<PrinterSettings />
-								</TabsContent>
-								<TabsContent
-									value="payments"
-									className="mt-0"
-								>
 									<PaymentSettings />
-								</TabsContent>
-							</ScrollArea>
+								</div>
+							</div>
+
+							<Separator />
+
+							{/* Customer Experience Section */}
+							<div className="space-y-6">
+								<div>
+									<h3 className="text-xl font-semibold tracking-tight">Customer Experience</h3>
+									<p className="text-sm text-muted-foreground">Configure receipts and order notifications</p>
+								</div>
+								
+								<div className="space-y-6">
+									<ReceiptSettings />
+									<Card>
+										<CardHeader>
+											<CardTitle className="flex items-center gap-2">
+												<Bell className="h-5 w-5" />
+												Web Order Notifications
+											</CardTitle>
+											<CardDescription>
+												Configure notifications and auto-printing for web orders
+											</CardDescription>
+										</CardHeader>
+										<CardContent>
+											<WebOrderNotificationSettings />
+										</CardContent>
+									</Card>
+								</div>
+							</div>
 						</div>
-					</Tabs>
+					</ScrollArea>
 				</div>
 			</div>
 		</>
