@@ -14,7 +14,7 @@ import OrderDetailsPage from "@/pages/orders/OrderDetailsPage";
 import { ProductsPage } from "@/pages/products/ProductsPage";
 import { ProductDetailsPage } from "@/pages/products/ProductDetailsPage";
 import ModifierManagementPage from "@/pages/products/ModifierManagementPage";
-import { UsersPage } from "@/pages/users/UsersPage";
+import { UsersPage } from "@/pages/users/UsersPage.tsx";
 import { InventoryPage } from "@/pages/inventory/InventoryPage";
 import { BulkOperationsPage } from "@/pages/inventory/BulkOperationsPage";
 import { StockHistoryPage } from "@/pages/inventory/StockHistoryPage";

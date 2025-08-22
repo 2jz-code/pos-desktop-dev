@@ -7,7 +7,7 @@ all models in the system, ensuring data integrity and audit trails.
 
 from django.db import models
 from django.utils import timezone
-from django.contrib.auth import get_user_model
+from django.conf import settings
 
 
 class SoftDeleteQuerySet(models.QuerySet):
@@ -99,7 +99,7 @@ class SoftDeleteMixin(models.Model):
     )
     
     archived_by = models.ForeignKey(
-        get_user_model(),
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

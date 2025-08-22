@@ -1,9 +1,10 @@
 from django.shortcuts import render
 # Removed: from django.utils.dateparse import parse_datetime (moved to service)
-from rest_framework import generics, permissions, status
-from core_backend.base import BaseViewSet
+from rest_framework import generics, permissions, status, viewsets
+from core_backend.base.viewsets import BaseViewSet
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
@@ -34,24 +35,72 @@ from .permissions import (
 
 # Create your views here.
 
-class UserRegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserRegistrationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
-
-class UserListView(generics.ListAPIView):
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Extract filtering logic to service
-        filters = dict(self.request.query_params)
-        return UserService.get_filtered_users(filters)
-
-class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+class UserViewSet(BaseViewSet):
+    """
+    ViewSet for managing users with archive/unarchive functionality.
+    Inherits from BaseViewSet which provides:
+    - Archive/unarchive actions
+    - ?include_archived query parameter support
+    - Automatic soft delete instead of hard delete
+    """
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated, CanEditUserDetails]
+    
+    # Search and filter configuration
+    search_fields = ['email', 'first_name', 'last_name', 'username']
+    filterset_fields = ['role', 'is_pos_staff', 'is_active']
+    ordering_fields = ['email', 'first_name', 'last_name', 'date_joined', 'role']
+    ordering = ['-date_joined']
+
+    def get_queryset(self):
+        """
+        Custom queryset with filtering logic from UserService.
+        """
+        queryset = super().get_queryset()
+        
+        # Apply additional filtering via service if needed
+        filters = dict(self.request.query_params)
+        return UserService.get_filtered_users(filters, base_queryset=queryset)
+
+    def get_permissions(self):
+        """
+        Different permissions for different actions.
+        """
+        if self.action == 'create':
+            # User creation requires manager or higher
+            permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
+        elif self.action in ['archive', 'unarchive', 'bulk_archive', 'bulk_unarchive']:
+            # Archive actions require manager or higher
+            permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
+        else:
+            permission_classes = self.permission_classes
+        
+        return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        """
+        Use different serializers for different actions.
+        """
+        if self.action == 'create':
+            return UserRegistrationSerializer
+        return self.serializer_class
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsManagerOrHigher])
+    def set_pin(self, request, pk=None):
+        """
+        Set PIN for a user.
+        """
+        user = self.get_object()
+        pin = request.data.get("pin")
+        
+        try:
+            result = UserService.set_user_pin(user.id, pin, request.user)
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as e:
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
 
 class SetPinView(generics.GenericAPIView):
     serializer_class = SetPinSerializer

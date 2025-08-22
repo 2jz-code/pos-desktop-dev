@@ -19,6 +19,7 @@ class UserSerializer(BaseModelSerializer):
             "phone_number",
             "role",
             "is_pos_staff",
+            "is_active",
         )
         read_only_fields = ("id",)
         # User model typically has no FK relationships to optimize

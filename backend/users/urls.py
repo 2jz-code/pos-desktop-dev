@@ -1,8 +1,7 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
-    UserRegisterView,
-    UserListView,
-    UserDetailView,
+    UserViewSet,
     SetPinView,
     POSLoginView,
     WebLoginView,
@@ -11,6 +10,10 @@ from .views import (
     CurrentUserView,
     DebugCookiesView,
 )
+
+# Create router for UserViewSet
+router = DefaultRouter()
+router.register(r'users', UserViewSet, basename='user')
 
 app_name = "users"
 
@@ -23,9 +26,8 @@ urlpatterns = [
     path("me/", CurrentUserView.as_view(), name="me"),
     # Debug
     path("debug/cookies/", DebugCookiesView.as_view(), name="debug-cookies"),
-    # User Management
-    path("register/", UserRegisterView.as_view(), name="register"),
-    path("", UserListView.as_view(), name="list"),
-    path("<int:pk>/", UserDetailView.as_view(), name="detail"),
-    path("<int:pk>/set-pin/", SetPinView.as_view(), name="set-pin"),
+    # User Management - ViewSet routes
+    path("", include(router.urls)),
+    # Legacy set-pin endpoint (can be moved to ViewSet action later if needed)
+    path("users/<int:pk>/set-pin/", SetPinView.as_view(), name="set-pin"),
 ]

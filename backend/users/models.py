@@ -7,9 +7,14 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.hashers import make_password, check_password
+from core_backend.utils.archiving import SoftDeleteMixin, SoftDeleteManager, SoftDeleteQuerySet
 
 
-class UserManager(BaseUserManager):
+class UserManager(SoftDeleteManager, BaseUserManager):
+    def get_queryset(self):
+        """Return only active users by default."""
+        return SoftDeleteQuerySet(self.model, using=self._db).active()
+
     def _create_user(self, email, password, **extra_fields):
         if not email:
             raise ValueError(_("The Email must be set"))
@@ -49,7 +54,7 @@ class UserManager(BaseUserManager):
         return self._create_user(email, password, **extra_fields)
 
 
-class User(AbstractBaseUser, PermissionsMixin):
+class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         OWNER = "OWNER", _("Owner")
         ADMIN = "ADMIN", _("Admin")
@@ -97,11 +102,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=False,
         help_text=_("Designates whether the user can log into this admin site."),
     )
-    is_active = models.BooleanField(
-        _("active"),
-        default=True,
-        help_text=_("Designates whether this user should be treated as active."),
-    )
     date_joined = models.DateTimeField(_("date joined"), default=timezone.now)
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The user ID from the old system.")
@@ -114,7 +114,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Meta:
         indexes = [
             models.Index(fields=['role', 'is_pos_staff']),  # For POS staff filtering
-            models.Index(fields=['is_active', 'role']),     # For active user queries
+            models.Index(fields=['is_active', 'role']),     # For active user queries (is_active from SoftDeleteMixin)
             models.Index(fields=['email']),  # For email lookups (if not already indexed)
             models.Index(fields=['username']),
             models.Index(fields=['phone_number']),

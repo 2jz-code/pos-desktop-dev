@@ -93,7 +93,7 @@ export const ProductsPage = () => {
 			}
 			
 			const response = await getProducts(params);
-			const fetchedProducts = response.data || [];
+			const fetchedProducts = response.data?.results || response.data || [];
 			setAllProducts(fetchedProducts); // Store complete list
 			applyFilters(fetchedProducts);
 			setError(null);

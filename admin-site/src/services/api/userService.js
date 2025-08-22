@@ -1,25 +1,35 @@
 import apiClient from "@/services/api/client";
 
-export const getUsers = () => {
-	return apiClient.get("/users/");
+// User API service
+export const getUsers = (params = {}) => {
+	return apiClient.get("/users/users/", { params });
 };
 
 export const getUserById = (id) => {
-	return apiClient.get(`/users/${id}/`);
+	return apiClient.get(`/users/users/${id}/`);
 };
 
 export const createUser = (userData) => {
-	return apiClient.post("/users/register/", userData);
+	return apiClient.post("/users/users/", userData);
 };
 
 export const updateUser = (id, userData) => {
-	return apiClient.put(`/users/${id}/`, userData);
+	return apiClient.put(`/users/users/${id}/`, userData);
 };
 
+// Temporary: Keep deleteUser for the .jsx file until we fully transition to archiving
 export const deleteUser = (id) => {
-	return apiClient.delete(`/users/${id}/`);
+	return apiClient.delete(`/users/users/${id}/`);
+};
+
+export const archiveUser = (id) => {
+	return apiClient.post(`/users/users/${id}/archive/`);
+};
+
+export const unarchiveUser = (id) => {
+	return apiClient.post(`/users/users/${id}/unarchive/`);
 };
 
 export const setPin = (userId, pinData) => {
-	return apiClient.post(`/users/${userId}/set-pin/`, pinData);
+	return apiClient.post(`/users/users/${userId}/set-pin/`, pinData);
 };

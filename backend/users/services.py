@@ -151,12 +151,15 @@ class UserService:
         return {"message": "PIN updated successfully.", "user_id": user.id}
 
     @staticmethod
-    def get_filtered_users(filters=None):
+    def get_filtered_users(filters=None, base_queryset=None):
         """
         Get filtered users based on query parameters.
         General method for user list filtering.
         """
-        queryset = User.objects.all().order_by("email")
+        if base_queryset is not None:
+            queryset = base_queryset
+        else:
+            queryset = User.objects.all().order_by("email")
         
         if not filters:
             return queryset
