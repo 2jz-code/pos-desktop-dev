@@ -590,6 +590,11 @@ class TerminalService:
             # Set new default
             location.is_default = True
             location.save(update_fields=['is_default'])
+            
+            # Update GlobalSettings to point to this location as default
+            global_settings = SettingsService.get_global_settings()
+            global_settings.default_store_location = location
+            global_settings.save(update_fields=['default_store_location'])
         
         return location
     

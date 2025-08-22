@@ -252,3 +252,10 @@ export const deleteDeviceReader = async (deviceId) => {
 export const setDefaultTerminalLocation = async (locationId) => {
 	return await setDefaultLocation(locationId);
 };
+
+export const setDefaultStoreLocation = async (locationId) => {
+	const response = await apiClient.post(
+		`/settings/store-locations/${locationId}/set-default/`
+	);
+	return response.data;
+};

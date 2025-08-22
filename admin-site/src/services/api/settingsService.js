@@ -59,3 +59,70 @@ export const updateStoreLocation = async (locationId, locationData) => {
 export const deleteStoreLocation = async (locationId) => {
 	await apiClient.delete(`settings/store-locations/${locationId}/`);
 };
+
+// Store Information Section
+export const getStoreInfo = async () => {
+	const response = await apiClient.get("/settings/global-settings/store-info/");
+	return response.data;
+};
+
+export const updateStoreInfo = async (storeData) => {
+	const response = await apiClient.patch(
+		"/settings/global-settings/store-info/",
+		storeData
+	);
+	return response.data;
+};
+
+// Financial Settings Section
+export const getFinancialSettings = async () => {
+	const response = await apiClient.get("/settings/global-settings/financial/");
+	return response.data;
+};
+
+export const updateFinancialSettings = async (financialData) => {
+	const response = await apiClient.patch(
+		"/settings/global-settings/financial/",
+		financialData
+	);
+	return response.data;
+};
+
+// Receipt Configuration Section
+export const getReceiptConfig = async () => {
+	const response = await apiClient.get(
+		"/settings/global-settings/receipt-config/"
+	);
+	return response.data;
+};
+
+export const updateReceiptConfig = async (receiptData) => {
+	const response = await apiClient.patch(
+		"/settings/global-settings/receipt-config/",
+		receiptData
+	);
+	return response.data;
+};
+
+// Business Hours Section
+export const getBusinessHours = async () => {
+	const response = await apiClient.get(
+		"/settings/global-settings/business-hours/"
+	);
+	return response.data;
+};
+
+export const updateBusinessHours = async (hoursData) => {
+	const response = await apiClient.patch(
+		"/settings/global-settings/business-hours/",
+		hoursData
+	);
+	return response.data;
+};
+
+export const setDefaultStoreLocation = async (locationId) => {
+	const response = await apiClient.post(
+		`/settings/store-locations/${locationId}/set-default/`
+	);
+	return response.data;
+};

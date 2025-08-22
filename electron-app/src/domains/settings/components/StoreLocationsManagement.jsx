@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	getStoreLocations,
 	deleteStoreLocation,
+	setDefaultStoreLocation,
 } from "../services/settingsService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -12,7 +13,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/shared/components/ui/card";
-import { PlusCircle, Edit, Trash2, Home, Phone, Mail } from "lucide-react";
+import { PlusCircle, Edit, Trash2, Home, Phone, Mail, Star } from "lucide-react";
 import { toast } from "sonner";
 import StoreLocationFormDialog from "./StoreLocationFormDialog";
 import {
@@ -64,6 +65,22 @@ export function StoreLocationsManagement() {
 		},
 	});
 
+	const setDefaultMutation = useMutation({
+		mutationFn: setDefaultStoreLocation,
+		onSuccess: (data) => {
+			queryClient.invalidateQueries({ queryKey: ["storeLocations"] });
+			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
+			toast.success(data.message || "Default location updated successfully!");
+		},
+		onError: (error) => {
+			toast.error(
+				`Failed to set default location: ${
+					error.response?.data?.detail || error.message
+				}`
+			);
+		},
+	});
+
 	const handleAddNew = () => {
 		setSelectedLocation(null);
 		setIsFormOpen(true);
@@ -83,6 +100,10 @@ export function StoreLocationsManagement() {
 		if (locationToDelete) {
 			deleteMutation.mutate(locationToDelete.id);
 		}
+	};
+
+	const handleSetDefault = (location) => {
+		setDefaultMutation.mutate(location.id);
 	};
 
 	if (isLoading) return <div>Loading locations...</div>;
@@ -105,7 +126,12 @@ export function StoreLocationsManagement() {
 								{location.name}
 							</CardTitle>
 							<CardDescription>
-								{location.is_default ? "(Default Inventory Location)" : ""}
+								{location.is_default && (
+									<span className="flex items-center text-amber-600 font-medium">
+										<Star className="h-4 w-4 mr-1 fill-current" />
+										Default Store Location
+									</span>
+								)}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -129,6 +155,17 @@ export function StoreLocationsManagement() {
 							)}
 						</CardContent>
 						<div className="p-4 border-t flex justify-end gap-2">
+							{!location.is_default && (
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => handleSetDefault(location)}
+									disabled={setDefaultMutation.isPending}
+								>
+									<Star className="mr-2 h-4 w-4" />
+									{setDefaultMutation.isPending ? "Setting..." : "Set Default"}
+								</Button>
+							)}
 							<Button
 								variant="outline"
 								size="sm"
@@ -140,6 +177,7 @@ export function StoreLocationsManagement() {
 								variant="destructive"
 								size="sm"
 								onClick={() => handleDeleteClick(location)}
+								disabled={location.is_default}
 							>
 								<Trash2 className="mr-2 h-4 w-4" /> Delete
 							</Button>

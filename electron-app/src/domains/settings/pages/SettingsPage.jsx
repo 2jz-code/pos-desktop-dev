@@ -24,6 +24,8 @@ import { PrinterSettings } from "../components/PrinterSettings";
 import { PaymentSettings } from "../components/PaymentSettings";
 import { WebOrderNotificationSettings } from "../components/WebOrderNotificationSettings";
 import { InventorySettings } from "../components/InventorySettings";
+import { StoreInfoSettings } from "../components/StoreInfoSettings";
+import { BusinessHoursSettings } from "../components/BusinessHoursSettings";
 
 export function SettingsPage() {
 	const [searchParams] = useSearchParams();
@@ -56,8 +58,10 @@ export function SettingsPage() {
 						className="w-full flex flex-col h-full"
 					>
 						{/* Tabs List - Fixed */}
-						<TabsList className="flex-shrink-0 grid w-full grid-cols-1 md:grid-cols-4 lg:grid-cols-8 mb-4">
+						<TabsList className="flex-shrink-0 grid w-full grid-cols-1 md:grid-cols-5 lg:grid-cols-10 mb-4">
 							<TabsTrigger value="general">General</TabsTrigger>
+							<TabsTrigger value="store-info">Store Info</TabsTrigger>
+							<TabsTrigger value="business-hours">Hours</TabsTrigger>
 							<TabsTrigger value="locations">Locations</TabsTrigger>
 							<TabsTrigger value="financials">Financial</TabsTrigger>
 							<TabsTrigger value="inventory">Inventory</TabsTrigger>
@@ -75,6 +79,18 @@ export function SettingsPage() {
 									className="mt-0"
 								>
 									<WebOrderNotificationSettings />
+								</TabsContent>
+								<TabsContent
+									value="store-info"
+									className="mt-0"
+								>
+									<StoreInfoSettings />
+								</TabsContent>
+								<TabsContent
+									value="business-hours"
+									className="mt-0"
+								>
+									<BusinessHoursSettings />
 								</TabsContent>
 								<TabsContent
 									value="locations"

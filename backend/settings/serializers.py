@@ -15,6 +15,9 @@ class GlobalSettingsSerializer(BaseModelSerializer):
         model = GlobalSettings
         fields = [
             "store_name",
+            "store_address",
+            "store_phone",
+            "store_email",
             "tax_rate",
             "surcharge_percentage",
             "currency",
@@ -24,11 +27,12 @@ class GlobalSettingsSerializer(BaseModelSerializer):
             "receipt_footer",
             "active_terminal_provider",
             "default_inventory_location",
+            "default_store_location",
             "allow_discount_stacking",
             "default_low_stock_threshold",
             "default_expiration_threshold",
         ]
-        select_related_fields = ["default_inventory_location"]
+        select_related_fields = ["default_inventory_location", "default_store_location"]
         prefetch_related_fields = []
 
 
