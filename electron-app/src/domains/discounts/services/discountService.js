@@ -46,6 +46,42 @@ export const deleteDiscount = (discountId) => {
 };
 
 /**
+ * Archives a discount by its ID.
+ * @param {number} discountId - The ID of the discount to archive.
+ * @returns {Promise<Object>} The response data from the API.
+ */
+export const archiveDiscount = (discountId) => {
+	return apiClient.post(`/discounts/${discountId}/archive/`);
+};
+
+/**
+ * Unarchives a discount by its ID.
+ * @param {number} discountId - The ID of the discount to unarchive.
+ * @returns {Promise<Object>} The response data from the API.
+ */
+export const unarchiveDiscount = (discountId) => {
+	return apiClient.post(`/discounts/${discountId}/unarchive/`);
+};
+
+/**
+ * Archives multiple discounts by their IDs.
+ * @param {number[]} discountIds - Array of discount IDs to archive.
+ * @returns {Promise<Object>} The response data from the API.
+ */
+export const bulkArchiveDiscounts = (discountIds) => {
+	return apiClient.post("/discounts/bulk_archive/", { ids: discountIds });
+};
+
+/**
+ * Unarchives multiple discounts by their IDs.
+ * @param {number[]} discountIds - Array of discount IDs to unarchive.
+ * @returns {Promise<Object>} The response data from the API.
+ */
+export const bulkUnarchiveDiscounts = (discountIds) => {
+	return apiClient.post("/discounts/bulk_unarchive/", { ids: discountIds });
+};
+
+/**
  * Applies a discount code to a specific order.
  * @param {string} orderId - The ID of the current order.
  * @param {string} code - The discount code to apply.

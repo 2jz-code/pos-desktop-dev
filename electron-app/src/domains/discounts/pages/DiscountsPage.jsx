@@ -3,7 +3,16 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { TableCell } from "@/shared/components/ui/table";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { MoreHorizontal, Plus, Trash2, Edit, Percent, AlertTriangle } from "lucide-react";
+import {
+	MoreHorizontal,
+	Plus,
+	Trash2,
+	Edit,
+	Percent,
+	AlertTriangle,
+	Archive,
+	ArchiveRestore,
+} from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -26,6 +35,8 @@ export default function DiscountsPage() {
 		updateDiscount,
 		createDiscount,
 		deleteDiscount,
+		archiveDiscount,
+		unarchiveDiscount,
 	} = usePosStore(
 		(state) => ({
 			discounts: state.discounts,
@@ -35,6 +46,8 @@ export default function DiscountsPage() {
 			updateDiscount: state.updateDiscount,
 			createDiscount: state.createDiscount,
 			deleteDiscount: state.deleteDiscount,
+			archiveDiscount: state.archiveDiscount,
+			unarchiveDiscount: state.unarchiveDiscount,
 		}),
 		shallow
 	);
@@ -43,6 +56,7 @@ export default function DiscountsPage() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [selectedDiscount, setSelectedDiscount] = useState(null);
 	const [filteredDiscounts, setFilteredDiscounts] = useState([]);
+	const [showArchivedDiscounts, setShowArchivedDiscounts] = useState(false);
 	const [filters, setFilters] = useState({
 		search: "",
 	});
@@ -53,10 +67,15 @@ export default function DiscountsPage() {
 
 	useEffect(() => {
 		applyFilters();
-	}, [discounts, filters.search]);
+	}, [discounts, filters.search, showArchivedDiscounts]);
 
 	const applyFilters = () => {
 		let filtered = [...(discounts || [])];
+
+		// Filter by archived status
+		filtered = filtered.filter((discount) =>
+			showArchivedDiscounts ? !discount.is_active : discount.is_active
+		);
 
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();
@@ -131,6 +150,40 @@ export default function DiscountsPage() {
 		});
 	};
 
+	const handleArchive = async (discountId) => {
+		try {
+			await archiveDiscount(discountId);
+			toast({
+				title: "Success",
+				description: "Discount archived successfully.",
+			});
+		} catch (err) {
+			console.error("Failed to archive discount:", err);
+			toast({
+				title: "Error",
+				description: "Failed to archive discount.",
+				variant: "destructive",
+			});
+		}
+	};
+
+	const handleUnarchive = async (discountId) => {
+		try {
+			await unarchiveDiscount(discountId);
+			toast({
+				title: "Success",
+				description: "Discount unarchived successfully.",
+			});
+		} catch (err) {
+			console.error("Failed to unarchive discount:", err);
+			toast({
+				title: "Error",
+				description: "Failed to unarchive discount.",
+				variant: "destructive",
+			});
+		}
+	};
+
 	const openAddDialog = () => {
 		setSelectedDiscount(null);
 		setIsDialogOpen(true);
@@ -178,8 +231,9 @@ export default function DiscountsPage() {
 			: null;
 		const endDate = discount.end_date ? new Date(discount.end_date) : null;
 
+		// Check if archived first
 		if (!discount.is_active) {
-			return <Badge variant="secondary">Disabled</Badge>;
+			return <Badge variant="secondary">Archived</Badge>;
 		}
 
 		if (startDate && now < startDate) {
@@ -246,13 +300,23 @@ export default function DiscountsPage() {
 							<Edit className="mr-2 h-4 w-4" />
 							Edit
 						</DropdownMenuItem>
-						<DropdownMenuItem
-							onClick={() => handleDelete(discount)}
-							className="text-destructive"
-						>
-							<Trash2 className="mr-2 h-4 w-4" />
-							Delete
-						</DropdownMenuItem>
+						{showArchivedDiscounts ? (
+							<DropdownMenuItem
+								onClick={() => handleUnarchive(discount.id)}
+								className="text-green-600"
+							>
+								<ArchiveRestore className="mr-2 h-4 w-4" />
+								Unarchive
+							</DropdownMenuItem>
+						) : (
+							<DropdownMenuItem
+								onClick={() => handleArchive(discount.id)}
+								className="text-orange-600"
+							>
+								<Archive className="mr-2 h-4 w-4" />
+								Archive
+							</DropdownMenuItem>
+						)}
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</TableCell>
@@ -260,10 +324,24 @@ export default function DiscountsPage() {
 	);
 
 	const headerActions = (
-		<Button onClick={openAddDialog}>
-			<Plus className="mr-2 h-4 w-4" />
-			Add Discount
-		</Button>
+		<div className="flex items-center gap-4">
+			<Button
+				variant={showArchivedDiscounts ? "default" : "outline"}
+				size="sm"
+				onClick={() => setShowArchivedDiscounts(!showArchivedDiscounts)}
+			>
+				{showArchivedDiscounts ? (
+					<ArchiveRestore className="mr-2 h-4 w-4" />
+				) : (
+					<Archive className="mr-2 h-4 w-4" />
+				)}
+				{showArchivedDiscounts ? "Show Active" : "Show Archived"}
+			</Button>
+			<Button onClick={openAddDialog}>
+				<Plus className="mr-2 h-4 w-4" />
+				Add Discount
+			</Button>
+		</div>
 	);
 
 	if (error) {
@@ -284,7 +362,7 @@ export default function DiscountsPage() {
 	return (
 		<>
 			<DomainPageLayout
-				pageTitle="Discount Management"
+				pageTitle={`${showArchivedDiscounts ? "Archived" : "Active"} Discounts`}
 				pageDescription="Create, manage, and schedule all promotional discounts."
 				pageIcon={Percent}
 				pageActions={headerActions}
@@ -297,7 +375,11 @@ export default function DiscountsPage() {
 					headers={headers}
 					data={filteredDiscounts}
 					loading={isLoading}
-					emptyMessage="No discounts found for the selected filters."
+					emptyMessage={
+						showArchivedDiscounts
+							? "No archived discounts found."
+							: "No active discounts found."
+					}
 					renderRow={renderDiscountRow}
 				/>
 			</DomainPageLayout>
@@ -308,7 +390,7 @@ export default function DiscountsPage() {
 				discount={selectedDiscount}
 				onSave={handleSave}
 			/>
-			
+
 			{/* Confirmation Dialog */}
 			{confirmation.dialog}
 		</>

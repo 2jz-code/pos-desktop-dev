@@ -17,7 +17,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { MoreHorizontal, Plus, Trash2, Edit, Search } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2, Edit, Search, Archive, ArchiveRestore } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 // @ts-expect-error - JS module with no types
@@ -68,6 +68,7 @@ export const DiscountsPage = () => {
 		null
 	);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [showArchivedDiscounts, setShowArchivedDiscounts] = useState(false);
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
 	const queryClient = useQueryClient();
@@ -78,9 +79,11 @@ export const DiscountsPage = () => {
 		isLoading,
 		error,
 	} = useQuery<{ results: Discount[] }, Error>({
-		queryKey: ["discounts", { search: debouncedSearchQuery }],
+		queryKey: ["discounts", { search: debouncedSearchQuery, includeArchived: showArchivedDiscounts }],
 		queryFn: () =>
-			discountService.getDiscounts({ search: debouncedSearchQuery }),
+			discountService.getDiscounts({ 
+				search: debouncedSearchQuery
+			}),
 	});
 
 	const mutationOptions = {
@@ -134,6 +137,32 @@ export const DiscountsPage = () => {
 		},
 	});
 
+	const archiveDiscountMutation = useMutation<void, Error, number>({
+		mutationFn: discountService.archiveDiscount,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["discounts"] });
+			toast.success("Discount archived successfully.");
+		},
+		onError: (err: Error) => {
+			toast.error("Failed to archive discount", {
+				description: err.message,
+			});
+		},
+	});
+
+	const unarchiveDiscountMutation = useMutation<void, Error, number>({
+		mutationFn: discountService.unarchiveDiscount,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["discounts"] });
+			toast.success("Discount unarchived successfully.");
+		},
+		onError: (err: Error) => {
+			toast.error("Failed to unarchive discount", {
+				description: err.message,
+			});
+		},
+	});
+
 	const handleSave = (data: DiscountFormData) => {
 		if (selectedDiscount) {
 			updateDiscountMutation.mutate({ id: selectedDiscount.id, data });
@@ -143,7 +172,7 @@ export const DiscountsPage = () => {
 	};
 
 	const handleDelete = (id: number) => {
-		const discountToDelete = discounts?.data.find((d) => d.id === id);
+		const discountToDelete = discounts?.results.find((d) => d.id === id);
 		if (!discountToDelete) return;
 
 		confirmation.show({
@@ -155,6 +184,14 @@ export const DiscountsPage = () => {
 				deleteDiscountMutation.mutate(id);
 			},
 		});
+	};
+
+	const handleArchive = (id: number) => {
+		archiveDiscountMutation.mutate(id);
+	};
+
+	const handleUnarchive = (id: number) => {
+		unarchiveDiscountMutation.mutate(id);
 	};
 
 	const openAddDialog = () => {
@@ -232,15 +269,31 @@ export const DiscountsPage = () => {
 						Create, manage, and schedule all promotional discounts.
 					</p>
 				</div>
-				<Button onClick={openAddDialog}>
-					<Plus className="mr-2 h-4 w-4" />
-					Add Discount
-				</Button>
+				<div className="flex items-center gap-4">
+					<Button
+						variant={showArchivedDiscounts ? "default" : "outline"}
+						size="sm"
+						onClick={() => setShowArchivedDiscounts(!showArchivedDiscounts)}
+					>
+						{showArchivedDiscounts ? (
+							<ArchiveRestore className="mr-2 h-4 w-4" />
+						) : (
+							<Archive className="mr-2 h-4 w-4" />
+						)}
+						{showArchivedDiscounts ? "Show Active" : "Show Archived"}
+					</Button>
+					<Button onClick={openAddDialog}>
+						<Plus className="mr-2 h-4 w-4" />
+						Add Discount
+					</Button>
+				</div>
 			</div>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>All Discounts</CardTitle>
+					<CardTitle>
+						{showArchivedDiscounts ? "Archived Discounts" : "Active Discounts"}
+					</CardTitle>
 					<CardDescription>
 						<div className="relative w-full max-w-sm">
 							<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -268,7 +321,7 @@ export const DiscountsPage = () => {
 									<th className="p-4 text-left font-medium">Value</th>
 									<th className="p-4 text-left font-medium">Start Date</th>
 									<th className="p-4 text-left font-medium">End Date</th>
-									<th className="p-4 text-left font-medium">Actions</th>
+									<th className="p-4 text-right font-medium">Actions</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -291,7 +344,9 @@ export const DiscountsPage = () => {
 										</td>
 									</tr>
 								) : (
-									discounts?.results.map((discount) => (
+									discounts?.results
+										?.filter((discount) => showArchivedDiscounts ? !discount.is_active : discount.is_active)
+										.map((discount) => (
 										<tr
 											key={discount.id}
 											className="border-b"
@@ -330,13 +385,23 @@ export const DiscountsPage = () => {
 															Edit
 														</DropdownMenuItem>
 														{/* @ts-expect-error - DropdownMenuItem typing issue */}
-														<DropdownMenuItem
-															onClick={() => handleDelete(discount.id)}
-															className="text-red-600"
-														>
-															<Trash2 className="mr-2 h-4 w-4" />
-															Delete
-														</DropdownMenuItem>
+														{showArchivedDiscounts ? (
+															<DropdownMenuItem
+																onClick={() => handleUnarchive(discount.id)}
+																className="text-green-600"
+															>
+																<ArchiveRestore className="mr-2 h-4 w-4" />
+																Unarchive
+															</DropdownMenuItem>
+														) : (
+															<DropdownMenuItem
+																onClick={() => handleArchive(discount.id)}
+																className="text-orange-600"
+															>
+																<Archive className="mr-2 h-4 w-4" />
+																Archive
+															</DropdownMenuItem>
+														)}
 													</DropdownMenuContent>
 												</DropdownMenu>
 											</td>

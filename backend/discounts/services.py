@@ -161,8 +161,8 @@ class DiscountValidationService:
             }
         
         try:
-            # Discount code lookup with case-insensitive search
-            discount = Discount.objects.get(code__iexact=code)
+            # Discount code lookup with case-insensitive search (only active/non-archived)
+            discount = Discount.objects.filter(is_active=True).get(code__iexact=code)
         except Discount.DoesNotExist:
             return {
                 "success": False,

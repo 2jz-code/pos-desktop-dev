@@ -92,7 +92,6 @@ export default function AddEditDiscountDialog({
 					type: "PERCENTAGE",
 					scope: "ORDER",
 					value: 0,
-					is_active: true,
 					start_date: null,
 					end_date: null,
 					usage_limit: null,
@@ -149,7 +148,6 @@ export default function AddEditDiscountDialog({
 			type: formData.type || "PERCENTAGE",
 			value: Number(formData.value) || 0,
 			scope: formData.scope || "ORDER",
-			is_active: formData.is_active ?? true,
 			start_date: formData.start_date
 				? new Date(formData.start_date).toISOString()
 				: null,
@@ -185,7 +183,7 @@ export default function AddEditDiscountDialog({
 			open={isOpen}
 			onOpenChange={onOpenChange}
 		>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="w-[90vw] max-w-4xl sm:max-w-6xl max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>
 						{discount ? "Edit Discount" : "Add New Discount"}
@@ -436,19 +434,6 @@ export default function AddEditDiscountDialog({
 							/>
 						</div>
 
-						<div className="grid grid-cols-4 items-center gap-4">
-							<Label
-								htmlFor="is_active"
-								className="text-right"
-							>
-								Active
-							</Label>
-							<Switch
-								id="is_active"
-								checked={formData.is_active}
-								onCheckedChange={(c) => handleSwitchChange("is_active", c)}
-							/>
-						</div>
 					</div>
 				)}
 

@@ -43,4 +43,22 @@ export const createDiscountSlice = (set, get) => ({
 			console.error("Failed to delete discount:", error);
 		}
 	},
+	archiveDiscount: async (id) => {
+		try {
+			await discountService.archiveDiscount(id);
+			get().fetchDiscounts();
+		} catch (error) {
+			console.error("Failed to archive discount:", error);
+			throw error;
+		}
+	},
+	unarchiveDiscount: async (id) => {
+		try {
+			await discountService.unarchiveDiscount(id);
+			get().fetchDiscounts();
+		} catch (error) {
+			console.error("Failed to unarchive discount:", error);
+			throw error;
+		}
+	},
 });

@@ -4,9 +4,10 @@ from django.db import models
 from decimal import Decimal
 from django.utils import timezone
 from products.models import Product, Category
+from core_backend.utils.archiving import SoftDeleteMixin
 
 
-class Discount(models.Model):
+class Discount(SoftDeleteMixin):
     class DiscountType(models.TextChoices):
         PERCENTAGE = "PERCENTAGE", "Percentage"
         FIXED_AMOUNT = "FIXED_AMOUNT", "Fixed Amount"
@@ -58,7 +59,6 @@ class Discount(models.Model):
     applicable_products = models.ManyToManyField(Product, blank=True)
     applicable_categories = models.ManyToManyField(Category, blank=True)
 
-    is_active = models.BooleanField(default=True)
     start_date = models.DateTimeField(
         null=True,
         blank=True,
@@ -69,8 +69,8 @@ class Discount(models.Model):
     )
 
     def is_currently_active(self):
-        """Checks if the discount is active and within its date range."""
-        if not self.is_active:
+        """Checks if the discount is active (not archived) and within its date range."""
+        if not self.is_active:  # This comes from SoftDeleteMixin
             return False
         now = timezone.now()
         if self.start_date and now < self.start_date:

@@ -42,6 +42,8 @@ class DiscountSerializer(BaseModelSerializer):
             "value",
             "min_purchase_amount",
             "is_active",
+            "archived_at",
+            "archived_by",
             "start_date",
             "end_date",
             "applicable_products",
@@ -97,6 +99,7 @@ class DiscountSyncSerializer(BaseModelSerializer):
             "buy_quantity",
             "get_quantity",
             "is_active",
+            "archived_at",
             "start_date",
             "end_date",
         ]
@@ -112,7 +115,7 @@ class DiscountApplySerializer(serializers.Serializer):
     """
 
     discount_id = serializers.PrimaryKeyRelatedField(
-        queryset=Discount.objects.filter(is_active=True),
+        queryset=Discount.objects.filter(is_active=True),  # Only active (non-archived) discounts
         help_text="The ID of the discount to apply.",
     )
 

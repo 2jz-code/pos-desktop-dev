@@ -58,7 +58,7 @@ class DiscountViewSet(BaseViewSet):
     Supports delta sync with modified_since parameter.
     """
 
-    queryset = Discount.objects.all()
+    queryset = Discount.objects.with_archived()
     serializer_class = DiscountSerializer
     filterset_class = DiscountFilter
     ordering = ['-start_date']
@@ -73,25 +73,27 @@ class DiscountViewSet(BaseViewSet):
         return DiscountSerializer
 
     def get_queryset(self):
-        # Extract filtering logic to service
-        filters = dict(self.request.query_params)
-        queryset = DiscountValidationService.get_filtered_discounts(filters)
-        
-        # Apply any additional filtering from parent class
-        # (This maintains compatibility with existing filterset_class)
+        # First get the base queryset with archiving support from parent
         base_queryset = super().get_queryset()
-        if hasattr(base_queryset, '_result_cache'):
-            # If base queryset has been evaluated, combine appropriately
-            return queryset.filter(id__in=base_queryset.values_list('id', flat=True))
         
-        return queryset
+        # Then apply any additional filtering from the service
+        filters = dict(self.request.query_params)
+        
+        # Apply service filtering on top of the base queryset (which includes archiving)
+        if filters:
+            # Get filtered queryset from service but starting from our base queryset
+            filtered_queryset = DiscountValidationService.get_filtered_discounts(filters)
+            # Combine with base queryset to maintain archiving logic
+            return base_queryset.filter(id__in=filtered_queryset.values_list('id', flat=True))
+        
+        return base_queryset
 
 class AvailableDiscountListView(ReadOnlyBaseViewSet):
     """
     Provides a read-only list of all currently active discounts.
     This view is optimized to prefetch related fields to avoid N+1 queries.
     """
-    queryset = Discount.objects.filter(is_active=True)
+    queryset = Discount.objects.filter(is_active=True)  # Only non-archived active discounts
     serializer_class = DiscountSerializer
 
 @api_view(['POST'])

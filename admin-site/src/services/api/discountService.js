@@ -15,6 +15,9 @@ const discountService = {
 		if (filters.search) {
 			params.append("search", filters.search);
 		}
+		if (filters.include_archived) {
+			params.append("include_archived", filters.include_archived);
+		}
 		const response = await apiClient.get("/discounts/", { params });
 		return response.data;
 	},
@@ -29,6 +32,32 @@ const discountService = {
 
 	deleteDiscount(id) {
 		return apiClient.delete(`/discounts/${id}/`);
+	},
+
+	// Archive operations
+	async archiveDiscount(id) {
+		const response = await apiClient.post(`/discounts/${id}/archive/`);
+		return response.data;
+	},
+
+	async unarchiveDiscount(id) {
+		const response = await apiClient.post(`/discounts/${id}/unarchive/`);
+		return response.data;
+	},
+
+	// Bulk archive operations
+	async bulkArchiveDiscounts(ids) {
+		const response = await apiClient.post("/discounts/bulk_archive/", {
+			ids: ids
+		});
+		return response.data;
+	},
+
+	async bulkUnarchiveDiscounts(ids) {
+		const response = await apiClient.post("/discounts/bulk_unarchive/", {
+			ids: ids
+		});
+		return response.data;
 	},
 };
 
