@@ -89,3 +89,36 @@ export const bulkUpdateCategories = (categoryUpdates) => {
 		updates: categoryUpdates
 	});
 };
+
+// Dependency validation and enhanced archiving
+export const validateCategoryArchiving = (id, force = false) => {
+	return apiClient.get(`/products/categories/${id}/validate-archive/`, {
+		params: { force: force.toString() }
+	});
+};
+
+export const archiveCategoryWithDependencies = (id, options = {}) => {
+	return apiClient.post(`/products/categories/${id}/archive/`, {
+		force: options.force || false,
+		handle_products: options.handle_products || 'set_null'
+	});
+};
+
+export const getAlternativeCategories = (excludeId = null) => {
+	const params = {};
+	if (excludeId) {
+		params.exclude_id = excludeId;
+	}
+	return apiClient.get("/products/categories/alternatives/", { params });
+};
+
+export const reassignProducts = (productIds, options = {}) => {
+	const payload = { product_ids: productIds };
+	if (options.new_category_id) {
+		payload.new_category_id = options.new_category_id;
+	}
+	if (options.new_product_type_id) {
+		payload.new_product_type_id = options.new_product_type_id;
+	}
+	return apiClient.post("/products/reassign-products/", payload);
+};

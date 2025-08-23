@@ -490,11 +490,20 @@ class CategoryViewSet(BaseViewSet):
                 queryset = queryset.filter(parent__isnull=True).order_by(
                     "order", "name"
                 )
+            elif parent_id == "uncategorized":
+                # "uncategorized" doesn't make sense for categories - return empty queryset
+                queryset = queryset.none()
             else:
                 # Show subcategories of specific parent, ordered by their order field
-                queryset = queryset.filter(parent_id=parent_id).order_by(
-                    "order", "name"
-                )
+                try:
+                    # Ensure parent_id is a valid integer
+                    int(parent_id)
+                    queryset = queryset.filter(parent_id=parent_id).order_by(
+                        "order", "name"
+                    )
+                except ValueError:
+                    # Invalid parent_id format, return empty queryset
+                    queryset = queryset.none()
         elif is_for_website:
             # Website: Hierarchical ordering - parents first, then children grouped under parents
             queryset = queryset.annotate(

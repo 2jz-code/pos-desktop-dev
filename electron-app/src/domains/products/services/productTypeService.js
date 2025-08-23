@@ -53,3 +53,25 @@ export const bulkArchiveProductTypes = (productTypeIds) => {
 export const bulkUnarchiveProductTypes = (productTypeIds) => {
 	return apiClient.post('/products/product-types/bulk_unarchive/', { ids: productTypeIds });
 };
+
+// Dependency validation and enhanced archiving
+export const validateProductTypeArchiving = (id, force = false) => {
+	return apiClient.get(`/products/product-types/${id}/validate-archive/`, {
+		params: { force: force.toString() }
+	});
+};
+
+export const archiveProductTypeWithDependencies = (id, options = {}) => {
+	return apiClient.post(`/products/product-types/${id}/archive/`, {
+		force: options.force || false,
+		handle_products: options.handle_products || 'archive'
+	});
+};
+
+export const getAlternativeProductTypes = (excludeId = null) => {
+	const params = {};
+	if (excludeId) {
+		params.exclude_id = excludeId;
+	}
+	return apiClient.get("/products/product-types/alternatives/", { params });
+};

@@ -5,7 +5,11 @@ import {
 	updateProductType,
 	archiveProductType,
 	unarchiveProductType,
+	validateProductTypeArchiving,
+	archiveProductTypeWithDependencies,
+	getAlternativeProductTypes,
 } from "@/domains/products/services/productTypeService";
+import { reassignProducts } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
 	Table,
@@ -28,6 +32,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { ArchiveDependencyDialog } from "@/shared/components/ui/ArchiveDependencyDialog";
 import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 export function ProductTypeManagementDialog({ open, onOpenChange }) {
@@ -37,6 +42,11 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 	const [editingType, setEditingType] = useState(null);
 	const [formData, setFormData] = useState({ name: "", description: "" });
 	const [dataChanged, setDataChanged] = useState(false);
+	
+	// Archive dialog state
+	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+	const [productTypeToArchive, setProductTypeToArchive] = useState(null);
+	
 	const { toast } = useToast();
 
 	useEffect(() => {
@@ -103,14 +113,11 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		try {
 			console.log('Archive toggle called for product type:', productType);
 			if (productType.is_active) {
-				console.log('Archiving product type with ID:', productType.id);
-				const response = await archiveProductType(productType.id);
-				console.log("Archive response:", response);
-				toast({
-					title: "Success",
-					description: "Product type archived successfully.",
-				});
+				// Use dependency-aware archiving for active product types
+				setProductTypeToArchive(productType);
+				setArchiveDialogOpen(true);
 			} else {
+				// Direct unarchive for inactive product types (no dependencies)
 				console.log('Unarchiving product type with ID:', productType.id);
 				const response = await unarchiveProductType(productType.id);
 				console.log("Unarchive response:", response);
@@ -118,9 +125,9 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 					title: "Success",
 					description: "Product type restored successfully.",
 				});
+				setDataChanged(true);
+				fetchProductTypes();
 			}
-			setDataChanged(true);
-			fetchProductTypes();
 		} catch (error) {
 			console.error("Archive/restore error:", error);
 			
@@ -142,6 +149,21 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 				variant: "destructive",
 			});
 		}
+	};
+
+	// Archive dialog handlers
+	const handleArchiveDialogOpenChange = (open) => {
+		if (!open) {
+			setProductTypeToArchive(null);
+		}
+		setArchiveDialogOpen(open);
+	};
+
+	const archiveWithCallback = async (id, options) => {
+		const result = await archiveProductTypeWithDependencies(id, options);
+		setDataChanged(true);
+		fetchProductTypes();
+		return result;
 	};
 
 	const handleFormSubmit = async (e) => {
@@ -342,6 +364,21 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 					</form>
 				</DialogContent>
 			</Dialog>
+			
+			{/* Archive Dependency Dialog */}
+			{productTypeToArchive && (
+				<ArchiveDependencyDialog
+					open={archiveDialogOpen}
+					onOpenChange={handleArchiveDialogOpenChange}
+					type="product-type"
+					itemId={productTypeToArchive.id}
+					itemName={productTypeToArchive.name}
+					onValidate={validateProductTypeArchiving}
+					onArchive={archiveWithCallback}
+					onGetAlternatives={getAlternativeProductTypes}
+					onReassignProducts={reassignProducts}
+				/>
+			)}
 
 		</Dialog>
 	);

@@ -191,6 +191,11 @@ export const ProductsPage = () => {
 				const category = product.category;
 				return category && category.id === parseInt(selectedParentCategory);
 			});
+		} else if (selectedParentCategory === "uncategorized") {
+			// Show only uncategorized products
+			filtered = filtered.filter((product: any) => {
+				return !product.category || product.is_uncategorized;
+			});
 		} else if (selectedParentCategory && selectedParentCategory !== "all") {
 			// Show all products under parent category (including child categories) - "All Subcategories"
 			filtered = filtered.filter((product: any) => {
@@ -319,11 +324,9 @@ export const ProductsPage = () => {
 			<>
 				<TableCell className="font-medium">{product.name}</TableCell>
 				<TableCell>
-					{product.category ? (
-						<Badge variant="outline">{product.category.name}</Badge>
-					) : (
-						<span className="text-muted-foreground">No Category</span>
-					)}
+					<Badge variant={product.category ? "outline" : "secondary"}>
+						{product.category_display_name || product.category?.name || "Uncategorized"}
+					</Badge>
 				</TableCell>
 				<TableCell className="text-right font-medium">
 					{formatCurrency(product.price)}
@@ -386,6 +389,7 @@ export const ProductsPage = () => {
 				</SelectTrigger>
 				<SelectContent>
 					<SelectItem value="all">All Categories</SelectItem>
+					<SelectItem value="uncategorized">Uncategorized</SelectItem>
 					{parentCategories && Array.isArray(parentCategories) && parentCategories.map((category) => (
 						<SelectItem
 							key={category.id}
@@ -398,6 +402,7 @@ export const ProductsPage = () => {
 			</Select>
 			{selectedParentCategory &&
 				selectedParentCategory !== "all" &&
+				selectedParentCategory !== "uncategorized" &&
 				childCategories.length > 0 && (
 					<Select
 						value={selectedChildCategory}

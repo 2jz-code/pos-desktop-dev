@@ -1,6 +1,7 @@
 from django.contrib import admin
 from mptt.admin import DraggableMPTTAdmin
 from core_backend.admin.mixins import ArchivingAdminMixin
+from .admin_mixins import CategoryDependencyAdminMixin, ProductTypeDependencyAdminMixin
 from .models import (
     Category, Tax, Product, ProductType, 
     ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption
@@ -24,7 +25,7 @@ class ProductModifierSetInline(admin.TabularInline):
     autocomplete_fields = ['modifier_set']
 
 @admin.register(ProductType)
-class ProductTypeAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "description", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name",)
@@ -39,7 +40,7 @@ class ProductTypeAdmin(ArchivingAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(Category)
-class CategoryAdmin(ArchivingAdminMixin, DraggableMPTTAdmin):
+class CategoryAdmin(CategoryDependencyAdminMixin, ArchivingAdminMixin, DraggableMPTTAdmin):
     list_display = (
         "tree_actions",
         "indented_title",

@@ -6,6 +6,10 @@ import {
 	archiveCategory,
 	unarchiveCategory,
 	bulkUpdateCategories,
+	validateCategoryArchiving,
+	archiveCategoryWithDependencies,
+	getAlternativeCategories,
+	reassignProducts,
 } from "@/services/api/categoryService";
 import { Button } from "@/components/ui/button";
 import DraggableList from "@/components/ui/draggable-list";
@@ -39,6 +43,7 @@ import {
 	Archive,
 	ArchiveRestore,
 } from "lucide-react";
+import { ArchiveDependencyDialog } from "./ArchiveDependencyDialog";
 
 export function CategoryManagementDialog({ open, onOpenChange }) {
 	const [categories, setCategories] = useState([]);
@@ -55,6 +60,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		is_public: true,
 	});
 	const [errors, setErrors] = useState({});
+	// Archive dependency dialog state
+	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+	const [categoryToArchive, setCategoryToArchive] = useState(null);
 	const { toast } = useToast();
 
 	useEffect(() => {
@@ -403,42 +411,41 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	};
 
 	const handleArchiveToggle = async (category) => {
-		try {
-			if (category.is_active) {
-				await archiveCategory(category.id);
-				toast({
-					title: "Success",
-					description: "Category archived successfully.",
-				});
-			} else {
+		if (category.is_active) {
+			// Use dependency-aware archiving for active categories
+			setCategoryToArchive(category);
+			setArchiveDialogOpen(true);
+		} else {
+			// Simple unarchive for inactive categories
+			try {
 				await unarchiveCategory(category.id);
 				toast({
 					title: "Success",
 					description: "Category restored successfully.",
 				});
-			}
-			setDataChanged(true);
-			fetchCategories();
-		} catch (error) {
-			console.error("Archive/restore error:", error);
+				setDataChanged(true);
+				fetchCategories();
+			} catch (error) {
+				console.error("Archive/restore error:", error);
 
-			// Better error handling - check for specific error messages
-			let errorMessage = "Failed to update category status.";
-			if (error.response?.status === 403) {
-				errorMessage = "You don't have permission to archive categories.";
-			} else if (error.response?.status === 401) {
-				errorMessage = "You need to be logged in to archive categories.";
-			} else if (error.response?.data?.error) {
-				errorMessage = error.response.data.error;
-			} else if (error.message) {
-				errorMessage = error.message;
-			}
+				// Better error handling - check for specific error messages
+				let errorMessage = "Failed to restore category.";
+				if (error.response?.status === 403) {
+					errorMessage = "You don't have permission to restore categories.";
+				} else if (error.response?.status === 401) {
+					errorMessage = "You need to be logged in to restore categories.";
+				} else if (error.response?.data?.error) {
+					errorMessage = error.response.data.error;
+				} else if (error.message) {
+					errorMessage = error.message;
+				}
 
-			toast({
-				title: "Error",
-				description: errorMessage,
-				variant: "destructive",
-			});
+				toast({
+					title: "Error",
+					description: errorMessage,
+					variant: "destructive",
+				});
+			}
 		}
 	};
 
@@ -447,6 +454,28 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			resetForm();
 		}
 		setIsFormDialogOpen(open);
+	};
+
+	// Archive dependency dialog callbacks
+	const handleArchiveDialogOpenChange = (open) => {
+		setArchiveDialogOpen(open);
+		if (!open) {
+			setCategoryToArchive(null);
+		}
+	};
+
+	const handleArchiveComplete = () => {
+		setDataChanged(true);
+		fetchCategories();
+		setArchiveDialogOpen(false);
+		setCategoryToArchive(null);
+	};
+
+	// Wrap archiveCategory to handle success callback
+	const archiveWithCallback = async (id, options) => {
+		const result = await archiveCategoryWithDependencies(id, options);
+		handleArchiveComplete();
+		return result;
 	};
 
 	return (
@@ -810,6 +839,21 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			
+			{/* Archive Dependency Dialog */}
+			{categoryToArchive && (
+				<ArchiveDependencyDialog
+					open={archiveDialogOpen}
+					onOpenChange={handleArchiveDialogOpenChange}
+					type="category"
+					itemId={categoryToArchive.id}
+					itemName={categoryToArchive.name}
+					onValidate={validateCategoryArchiving}
+					onArchive={archiveWithCallback}
+					onGetAlternatives={getAlternativeCategories}
+					onReassignProducts={reassignProducts}
+				/>
+			)}
 		</>
 	);
 }

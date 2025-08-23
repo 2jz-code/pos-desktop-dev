@@ -8,6 +8,10 @@ import {
 	archiveCategory,
 	unarchiveCategory,
 	bulkUpdateCategories,
+	validateCategoryArchiving,
+	archiveCategoryWithDependencies,
+	getAlternativeCategories,
+	reassignProducts,
 } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -31,6 +35,7 @@ import { Switch } from "@/shared/components/ui/switch";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
 import DraggableList from "@/shared/components/ui/draggable-list";
+import { ArchiveDependencyDialog } from "@/shared/components/ui/ArchiveDependencyDialog";
 import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 // Inline Order Editor Component
@@ -129,6 +134,11 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		is_public: true,
 	});
 	const [dataChanged, setDataChanged] = useState(false);
+	
+	// Archive dialog state
+	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+	const [categoryToArchive, setCategoryToArchive] = useState(null);
+	
 	const { toast } = useToast();
 
 	useEffect(() => {
@@ -381,22 +391,20 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const handleArchiveToggle = async (category) => {
 		try {
 			if (category.is_active) {
-				const response = await archiveCategory(category.id);
-				console.log("Archive response:", response);
-				toast({
-					title: "Success",
-					description: "Category archived successfully.",
-				});
+				// Use dependency-aware archiving for active categories
+				setCategoryToArchive(category);
+				setArchiveDialogOpen(true);
 			} else {
+				// Direct unarchive for inactive categories (no dependencies)
 				const response = await unarchiveCategory(category.id);
 				console.log("Unarchive response:", response);
 				toast({
 					title: "Success",
 					description: "Category restored successfully.",
 				});
+				setDataChanged(true);
+				fetchCategories();
 			}
-			setDataChanged(true);
-			fetchCategories();
 		} catch (error) {
 			console.error("Archive/restore error:", error);
 
@@ -418,6 +426,21 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				variant: "destructive",
 			});
 		}
+	};
+
+	// Archive dialog handlers
+	const handleArchiveDialogOpenChange = (open) => {
+		if (!open) {
+			setCategoryToArchive(null);
+		}
+		setArchiveDialogOpen(open);
+	};
+
+	const archiveWithCallback = async (id, options) => {
+		const result = await archiveCategoryWithDependencies(id, options);
+		setDataChanged(true);
+		fetchCategories();
+		return result;
 	};
 
 	const renderCategoryOptions = (parentId = null, level = 0) => {
@@ -732,6 +755,21 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					</form>
 				</DialogContent>
 			</Dialog>
+			
+			{/* Archive Dependency Dialog */}
+			{categoryToArchive && (
+				<ArchiveDependencyDialog
+					open={archiveDialogOpen}
+					onOpenChange={handleArchiveDialogOpenChange}
+					type="category"
+					itemId={categoryToArchive.id}
+					itemName={categoryToArchive.name}
+					onValidate={validateCategoryArchiving}
+					onArchive={archiveWithCallback}
+					onGetAlternatives={getAlternativeCategories}
+					onReassignProducts={reassignProducts}
+				/>
+			)}
 		</Dialog>
 	);
 }

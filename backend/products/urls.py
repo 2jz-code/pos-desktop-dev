@@ -11,6 +11,16 @@ from .views import (
     ProductModifierSetViewSet,
     barcode_lookup,
 )
+from .dependency_views import (
+    validate_category_archiving,
+    validate_product_type_archiving,
+    archive_category,
+    archive_product_type,
+    get_alternative_categories,
+    get_alternative_product_types,
+    BulkArchiveView,
+    ProductReassignmentView,
+)
 
 # Create main router
 router = DefaultRouter()
@@ -43,6 +53,23 @@ urlpatterns = [
     path("<int:pk>/unarchive/", ProductViewSet.as_view({'post': 'unarchive'}), name="product-unarchive"),
     path("bulk_archive/", ProductViewSet.as_view({'post': 'bulk_archive'}), name="product-bulk-archive"),
     path("bulk_unarchive/", ProductViewSet.as_view({'post': 'bulk_unarchive'}), name="product-bulk-unarchive"),
+    
+    # Dependency validation endpoints
+    path("categories/<int:category_id>/validate-archive/", validate_category_archiving, name="validate-category-archive"),
+    path("product-types/<int:product_type_id>/validate-archive/", validate_product_type_archiving, name="validate-product-type-archive"),
+    
+    # Dependency-aware archiving endpoints
+    path("categories/<int:category_id>/archive/", archive_category, name="category-archive"),
+    path("product-types/<int:product_type_id>/archive/", archive_product_type, name="product-type-archive"),
+    
+    # Alternative options endpoints
+    path("categories/alternatives/", get_alternative_categories, name="alternative-categories"),
+    path("product-types/alternatives/", get_alternative_product_types, name="alternative-product-types"),
+    
+    # Bulk operations endpoints
+    path("bulk-archive/", BulkArchiveView.as_view(), name="bulk-archive"),
+    path("reassign-products/", ProductReassignmentView.as_view(), name="reassign-products"),
+    
     # Include other routers (categories, modifier-sets, etc.) - these have explicit prefixes
     path("", include(router.urls)),
     # Include nested router for product modifier sets

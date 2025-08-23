@@ -70,13 +70,35 @@ class Category(MPTTModel):
     def __str__(self):
         return self.name
     
-    def archive(self, archived_by=None):
+    def archive(self, archived_by=None, force=False, handle_products='set_null'):
         """
         Archive (soft delete) this category.
         
         Args:
             archived_by: User instance who performed the archiving
+            force: Whether to bypass dependency validation
+            handle_products: How to handle dependent products ('set_null', 'archive')
+        
+        Raises:
+            ValueError: If category has dependent products and force=False
         """
+        from .dependency_service import DependencyValidationService
+        
+        if not force:
+            validation = DependencyValidationService.validate_category_archiving(self, force=False)
+            if not validation['can_archive']:
+                raise ValueError(f"Cannot archive category: {'; '.join(validation['warnings'])}")
+        
+        # Handle dependent products if specified
+        if handle_products == 'archive':
+            dependent_products = self.products.filter(is_active=True)
+            for product in dependent_products:
+                product.archive(archived_by=archived_by)
+        elif handle_products == 'set_null':
+            # Set category to None for all dependent products
+            self.products.filter(is_active=True).update(category=None)
+        # 'skip' means dependency handling was done externally
+        
         self.is_active = False
         self.archived_at = timezone.now()
         if archived_by:
@@ -147,6 +169,26 @@ class ProductType(SoftDeleteMixin):
 
     def __str__(self):
         return self.name
+    
+    def archive(self, archived_by=None, force=False):
+        """
+        Archive (soft delete) this product type.
+        
+        Args:
+            archived_by: User instance who performed the archiving
+            force: Whether to bypass dependency validation (currently not supported)
+        
+        Raises:
+            ValueError: If product type has dependent products
+        """
+        from .dependency_service import DependencyValidationService
+        
+        validation = DependencyValidationService.validate_product_type_archiving(self, force=force)
+        if not validation['can_archive']:
+            raise ValueError(f"Cannot archive product type: {'; '.join(validation['warnings'])}")
+        
+        # Call parent archive method
+        super().archive(archived_by=archived_by)
 
 
 class Product(SoftDeleteMixin):
@@ -172,6 +214,7 @@ class Product(SoftDeleteMixin):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        help_text=_("Product category. Leave blank for uncategorized products."),
     )
     taxes = models.ManyToManyField(
         Tax,
@@ -243,6 +286,16 @@ class Product(SoftDeleteMixin):
 
     def __str__(self):
         return self.name
+    
+    @property
+    def category_display_name(self):
+        """Return category name or 'Uncategorized' if category is None."""
+        return self.category.name if self.category else "Uncategorized"
+    
+    @property
+    def is_uncategorized(self):
+        """Return True if product has no category assigned."""
+        return self.category is None
 
 
 class ModifierSet(models.Model):

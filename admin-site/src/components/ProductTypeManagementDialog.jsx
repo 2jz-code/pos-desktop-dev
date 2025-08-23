@@ -4,7 +4,11 @@ import {
 	createProductType,
 	updateProductType,
 	deleteProductType,
+	validateProductTypeArchiving,
+	archiveProductTypeWithDependencies,
+	getAlternativeProductTypes,
 } from "@/services/api/productTypeService";
+import { reassignProducts } from "@/services/api/categoryService";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -35,7 +39,9 @@ import {
 	AlertCircle,
 	Tag,
 	Tags,
+	Archive,
 } from "lucide-react";
+import { ArchiveDependencyDialog } from "./ArchiveDependencyDialog";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -60,6 +66,9 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		description: "",
 	});
 	const [errors, setErrors] = useState({});
+	// Archive dependency dialog state
+	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+	const [typeToArchive, setTypeToArchive] = useState(null);
 	const { toast } = useToast();
 
 	useEffect(() => {
@@ -113,6 +122,11 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 	const openDeleteDialog = (type) => {
 		setTypeToDelete(type);
 		setIsDeleteDialogOpen(true);
+	};
+
+	const openArchiveDialog = (type) => {
+		setTypeToArchive(type);
+		setArchiveDialogOpen(true);
 	};
 
 	const validateForm = () => {
@@ -227,6 +241,28 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		setIsFormDialogOpen(open);
 	};
 
+	// Archive dependency dialog callbacks
+	const handleArchiveDialogOpenChange = (open) => {
+		setArchiveDialogOpen(open);
+		if (!open) {
+			setTypeToArchive(null);
+		}
+	};
+
+	const handleArchiveComplete = () => {
+		setDataChanged(true);
+		fetchProductTypes();
+		setArchiveDialogOpen(false);
+		setTypeToArchive(null);
+	};
+
+	// Wrap archiveProductType to handle success callback
+	const archiveWithCallback = async (id, options) => {
+		const result = await archiveProductTypeWithDependencies(id, options);
+		handleArchiveComplete();
+		return result;
+	};
+
 	return (
 		<>
 			<Dialog
@@ -310,8 +346,18 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 															<Button
 																variant="ghost"
 																size="sm"
+																onClick={() => openArchiveDialog(type)}
+																className="text-amber-600 hover:text-amber-700"
+																title="Archive product type"
+															>
+																<Archive className="h-4 w-4" />
+															</Button>
+															<Button
+																variant="ghost"
+																size="sm"
 																onClick={() => openDeleteDialog(type)}
 																className="text-destructive hover:text-destructive"
+																title="Permanently delete product type"
 															>
 																<Trash2 className="h-4 w-4" />
 															</Button>
@@ -458,6 +504,21 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+			
+			{/* Archive Dependency Dialog */}
+			{typeToArchive && (
+				<ArchiveDependencyDialog
+					open={archiveDialogOpen}
+					onOpenChange={handleArchiveDialogOpenChange}
+					type="product-type"
+					itemId={typeToArchive.id}
+					itemName={typeToArchive.name}
+					onValidate={validateProductTypeArchiving}
+					onArchive={archiveWithCallback}
+					onGetAlternatives={getAlternativeProductTypes}
+					onReassignProducts={reassignProducts}
+				/>
+			)}
 		</>
 	);
 }

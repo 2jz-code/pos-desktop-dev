@@ -1,0 +1,141 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}{% blocktrans with name=object|truncatechars:18 %}Confirm archive: {{ name }}{% endblocktrans %} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+     <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+     &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+     &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+     &rsaquo; <a href="{% url opts|admin_urlname:'change' object.pk|admin_urlquote %}">{{ object|truncatechars:18 }}</a>
+     &rsaquo; {% trans 'Archive' %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{% blocktrans with name=object %}Archive "{{ name }}"?{% endblocktrans %}</h1>
+
+<div class="module">
+    {% if not validation_data.can_archive %}
+        <div class="messagelist">
+            <div class="error">
+                <strong>Cannot Archive</strong>
+                <ul>
+                    {% for warning in validation_data.warnings %}
+                        <li>{{ warning }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        
+        <div class="submit-row">
+            <a href="{% url opts|admin_urlname:'changelist' %}" class="button default">
+                {% trans 'Back to list' %}
+            </a>
+        </div>
+    {% else %}
+        {% if validation_data.requires_confirmation %}
+            <div class="messagelist">
+                <div class="warning">
+                    <strong>Warning</strong>
+                    <p>This action will affect the following:</p>
+                    <ul>
+                        {% for warning in validation_data.warnings %}
+                            <li>{{ warning }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            {% if validation_data.dependencies %}
+                <fieldset class="module aligned">
+                    <h2>Affected Products</h2>
+                    
+                    {% if validation_data.dependencies.dependent_products %}
+                        <div class="form-row">
+                            <div class="readonly">
+                                <strong>{{ validation_data.dependencies.dependent_products_count }} products will be affected:</strong>
+                                <ul style="margin-top: 10px;">
+                                    {% for product in validation_data.dependencies.dependent_products %}
+                                        <li>
+                                            <a href="{% url 'admin:products_product_change' product.id %}">
+                                                {{ product.name }}
+                                            </a>
+                                            ({{ product.price_display|default:product.price }})
+                                        </li>
+                                    {% endfor %}
+                                    {% if validation_data.dependencies.has_more_products %}
+                                        <li><em>... and {{ validation_data.dependencies.dependent_products_count|add:"-10" }} more</em></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                    {% endif %}
+                </fieldset>
+                
+                {% if opts.model_name == 'category' %}
+                    <fieldset class="module aligned">
+                        <h2>Product Handling Options</h2>
+                        <div class="form-row">
+                            <div class="field-box">
+                                <input type="radio" name="handle_products" value="set_null" id="id_set_null" checked>
+                                <label for="id_set_null">Set category to None (products become uncategorized)</label>
+                            </div>
+                            <div class="field-box">
+                                <input type="radio" name="handle_products" value="archive" id="id_archive">
+                                <label for="id_archive">Archive all affected products as well</label>
+                            </div>
+                        </div>
+                    </fieldset>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+        
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="submit-row">
+                <input type="hidden" name="force" value="true">
+                
+                {% if validation_data.requires_confirmation %}
+                    <input type="submit" value="{% trans 'Yes, archive anyway' %}" class="button" 
+                           onclick="return confirm('Are you sure? This action cannot be easily undone.');">
+                {% else %}
+                    <input type="submit" value="{% trans 'Archive' %}" class="button default">
+                {% endif %}
+                
+                <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">
+                    {% trans 'Cancel' %}
+                </a>
+            </div>
+        </form>
+    {% endif %}
+</div>
+
+<script>
+// Handle product handling options for categories
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form[method="post"]');
+    const handleProductsRadios = document.querySelectorAll('input[name="handle_products"]');
+    
+    if (form && handleProductsRadios.length > 0) {
+        // Add hidden input for handle_products value
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'handle_products';
+        hiddenInput.value = 'set_null';
+        form.appendChild(hiddenInput);
+        
+        // Update hidden input when radio button changes
+        handleProductsRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    hiddenInput.value = this.value;
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

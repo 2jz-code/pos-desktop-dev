@@ -291,6 +291,8 @@ class TaxSerializer(BaseModelSerializer):
 class ProductSerializer(BaseModelSerializer):
     category = CategorySerializer(read_only=True)
     parent_category = CategorySerializer(source="category.parent", read_only=True)
+    category_display_name = serializers.ReadOnlyField()
+    is_uncategorized = serializers.ReadOnlyField()
     taxes = TaxSerializer(many=True, read_only=True)
     product_type = ProductTypeSerializer(read_only=True)
     image = ImageField(required=False)
@@ -307,6 +309,8 @@ class ProductSerializer(BaseModelSerializer):
             "price",
             "category",
             "parent_category",
+            "category_display_name",
+            "is_uncategorized",
             "taxes",
             "is_active",
             "is_public",
