@@ -56,8 +56,18 @@ export default function AddEditDiscountDialog({
 						productService.getProducts(),
 						categoryService.getCategories(),
 					]);
-					setProducts(productsRes.data);
-					setCategories(categoriesRes.data);
+					console.log("Raw products response:", productsRes.data);
+					console.log("Raw categories response:", categoriesRes.data);
+
+					// Handle different response structures
+					const productsData = Array.isArray(productsRes.data)
+						? productsRes.data
+						: productsRes.data.results || [];
+					const categoriesData = categoriesRes.data.results || [];
+					console.log("Loaded products:", productsData);
+					console.log("Loaded categories:", categoriesData);
+					setProducts(productsData);
+					setCategories(categoriesData);
 					//eslint-disable-next-line
 				} catch (error) {
 					toast({
@@ -102,7 +112,7 @@ export default function AddEditDiscountDialog({
 					// --- FIX: Initialize as empty arrays ---
 					applicable_products: [],
 					applicable_categories: [],
-                    code: "",
+					code: "",
 				};
 			}
 		};
@@ -182,12 +192,15 @@ export default function AddEditDiscountDialog({
 		label: c.name,
 	}));
 
+	console.log("Product options:", productOptions);
+	console.log("Category options:", categoryOptions);
+
 	return (
 		<Dialog
 			open={isOpen}
 			onOpenChange={onOpenChange}
 		>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="w-[90vw] max-w-4xl sm:max-w-6xl max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>
 						{discount ? "Edit Discount" : "Add New Discount"}
