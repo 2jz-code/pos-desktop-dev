@@ -34,7 +34,6 @@ export default function DiscountsPage() {
 		fetchDiscounts,
 		updateDiscount,
 		createDiscount,
-		deleteDiscount,
 		archiveDiscount,
 		unarchiveDiscount,
 	} = usePosStore(
@@ -121,33 +120,6 @@ export default function DiscountsPage() {
 				variant: "destructive",
 			});
 		}
-	};
-
-	const handleDelete = async (discountToDelete) => {
-		confirmation.show({
-			title: "Delete Discount",
-			description: `Are you sure you want to delete "${discountToDelete.name}"? This action cannot be undone.`,
-			confirmText: "Delete",
-			cancelText: "Cancel",
-			variant: "destructive",
-			icon: AlertTriangle,
-			onConfirm: async () => {
-				try {
-					await deleteDiscount(discountToDelete.id);
-					toast({
-						title: "Success",
-						description: "Discount deleted successfully.",
-					});
-				} catch (err) {
-					console.error("Failed to delete discount:", err);
-					toast({
-						title: "Error",
-						description: "Failed to delete discount.",
-						variant: "destructive",
-					});
-				}
-			},
-		});
 	};
 
 	const handleArchive = async (discountId) => {

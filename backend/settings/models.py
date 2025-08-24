@@ -3,11 +3,38 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 from core_backend.utils.archiving import SoftDeleteMixin
 import logging
+import zoneinfo
 
 logger = logging.getLogger(__name__)
 
 
 # === CHOICES ===
+
+class TimezoneChoices(models.TextChoices):
+    """Common timezone choices for business operations"""
+    UTC = "UTC", "UTC (Coordinated Universal Time)"
+    
+    # US Timezones
+    US_EASTERN = "America/New_York", "Eastern Time (US & Canada)"
+    US_CENTRAL = "America/Chicago", "Central Time (US & Canada)"
+    US_MOUNTAIN = "America/Denver", "Mountain Time (US & Canada)"
+    US_PACIFIC = "America/Los_Angeles", "Pacific Time (US & Canada)"
+    US_ALASKA = "America/Anchorage", "Alaska Time (US)"
+    US_HAWAII = "Pacific/Honolulu", "Hawaii Time (US)"
+    
+    # Canadian Timezones
+    CANADA_ATLANTIC = "America/Halifax", "Atlantic Time (Canada)"
+    CANADA_NEWFOUNDLAND = "America/St_Johns", "Newfoundland Time (Canada)"
+    
+    # European Timezones
+    UK_LONDON = "Europe/London", "Greenwich Mean Time (UK)"
+    EUROPE_PARIS = "Europe/Paris", "Central European Time"
+    EUROPE_BERLIN = "Europe/Berlin", "Central European Time (Germany)"
+    
+    # Other Common Timezones
+    AUSTRALIA_SYDNEY = "Australia/Sydney", "Australian Eastern Time"
+    ASIA_TOKYO = "Asia/Tokyo", "Japan Standard Time"
+    ASIA_SHANGHAI = "Asia/Shanghai", "China Standard Time"
 
 
 class TerminalProvider(models.TextChoices):
@@ -110,8 +137,9 @@ class GlobalSettings(models.Model):
     )
     timezone = models.CharField(
         max_length=50,
-        default="UTC",
-        help_text="Business timezone (e.g., 'America/New_York').",
+        choices=TimezoneChoices.choices,
+        default=TimezoneChoices.UTC,
+        help_text="Business timezone for reports and business hours. This affects how dates are displayed and interpreted in reports.",
     )
 
     # === INVENTORY & LOCATION DEFAULTS ===
@@ -146,10 +174,32 @@ class GlobalSettings(models.Model):
     def clean(self):
         if GlobalSettings.objects.exists() and not self.pk:
             raise ValidationError("There can only be one GlobalSettings instance.")
+        
+        # Validate timezone
+        if self.timezone:
+            try:
+                zoneinfo.ZoneInfo(self.timezone)
+            except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+                raise ValidationError(f"'{self.timezone}' is not a valid timezone.")
 
     def save(self, *args, **kwargs):
         self.clean()
+        
+        # Check if timezone changed to clear cache
+        timezone_changed = False
+        if self.pk:
+            try:
+                old_instance = GlobalSettings.objects.get(pk=self.pk)
+                timezone_changed = old_instance.timezone != self.timezone
+            except GlobalSettings.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+        
+        # Clear report cache if timezone changed
+        if timezone_changed:
+            from reports.services.cache import ReportCacheService
+            ReportCacheService.clear_all_cache()
 
     def __str__(self):
         return "Global Settings"

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import reverse
+from django.contrib import messages
 from .models import (
     GlobalSettings,
     StoreLocation,
@@ -45,13 +46,26 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Business Hours",
+            "Business Hours & Timezone",
             {
-                "fields": ("opening_time", "closing_time", "timezone"),
-                "classes": ("collapse",),
+                "fields": ("timezone", "opening_time", "closing_time"),
+                "description": "Configure your business timezone and operating hours. This affects report date ranges and business logic.",
             },
         ),
     )
+
+    actions = ['clear_report_cache']
+
+    def clear_report_cache(self, request, queryset):
+        """Clear all report cache when timezone settings change"""
+        from django.core.cache import cache
+        from reports.models import ReportCache
+        
+        cache.clear()
+        ReportCache.objects.all().delete()
+        
+        messages.success(request, "Report cache has been cleared. Reports will regenerate with the new timezone settings.")
+    clear_report_cache.short_description = "Clear report cache (use after changing timezone)"
 
     def has_add_permission(self, request):
         return self.model.objects.count() == 0
