@@ -27,7 +27,9 @@ from .serializers import (
     ExportQueueStatusSerializer,
     CustomTemplateSerializer,
 )
-from .services import ReportService
+# Import from the original services.py file and new modular services
+from .services import ReportService  # Original services.py file
+from .services_new.sales_service import SalesReportService  # New modular service
 from .advanced_exports import AdvancedExportService, ExportQueue
 from .tasks import create_bulk_export_async, process_export_queue
 
@@ -80,7 +82,7 @@ class ReportViewSet(viewsets.ViewSet):
             group_by = request.query_params.get("group_by", "day")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
-            report_data = ReportService.generate_sales_report(
+            report_data = SalesReportService.generate_sales_report(
                 start_date=start_date, end_date=end_date, group_by=group_by, use_cache=use_cache
             )
 
@@ -224,7 +226,7 @@ class ReportViewSet(viewsets.ViewSet):
             if report_type == "summary":
                 report_data = ReportService.generate_summary_report(start_date, end_date)
             elif report_type == "sales":
-                report_data = ReportService.generate_sales_report(start_date, end_date)
+                report_data = SalesReportService.generate_sales_report(start_date, end_date)
             elif report_type == "products":
                 category_id = parameters.get("category_id")
                 limit = parameters.get("limit", 10)
@@ -244,14 +246,20 @@ class ReportViewSet(viewsets.ViewSet):
             # Export to the requested format
             format_type = format_type.lower()
             if format_type == "csv":
-                file_data = ReportService.export_to_csv(report_data, report_type)
+                # Use specific service for sales reports, original service for others
+                if report_type == "sales":
+                    file_data = SalesReportService.export_sales_to_csv(report_data)
+                else:
+                    file_data = ReportService.export_to_csv(report_data, report_type)
                 content_type = "text/csv"
                 file_extension = "csv"
             elif format_type == "xlsx" or format_type == "excel":
+                # For now, still use original service for xlsx exports
                 file_data = ReportService.export_to_xlsx(report_data, report_type)
                 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 file_extension = "xlsx"
             elif format_type == "pdf":
+                # For now, still use original service for PDF exports
                 file_data = ReportService.export_to_pdf(report_data, report_type)
                 content_type = "application/pdf"
                 file_extension = "pdf"
@@ -386,7 +394,7 @@ class SavedReportViewSet(BaseViewSet):
                     start_date, end_date
                 )
             elif saved_report.report_type == "sales":
-                report_data = ReportService.generate_sales_report(start_date, end_date)
+                report_data = SalesReportService.generate_sales_report(start_date, end_date)
             elif saved_report.report_type == "products":
                 category_id = parameters.get("category_id")
                 limit = parameters.get("limit", 10)

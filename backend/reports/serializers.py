@@ -39,6 +39,23 @@ class ReportParameterSerializer(serializers.Serializer):
         if start_date > timezone.now():
             raise serializers.ValidationError("Start date cannot be in the future")
 
+        # Convert dates to business timezone
+        try:
+            from settings.config import AppSettings
+            from .services_new.timezone_utils import TimezoneUtils
+            
+            business_tz = TimezoneUtils.get_local_timezone()
+            
+            # Convert dates to business timezone
+            data["start_date"] = start_date.astimezone(business_tz)
+            data["end_date"] = end_date.astimezone(business_tz)
+            
+        except Exception as e:
+            # Log the error but don't fail validation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to convert dates to business timezone: {e}")
+
         return data
 
 

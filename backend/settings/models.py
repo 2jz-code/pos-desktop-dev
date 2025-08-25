@@ -198,8 +198,12 @@ class GlobalSettings(models.Model):
         
         # Clear report cache if timezone changed
         if timezone_changed:
-            from reports.services.cache import ReportCacheService
-            ReportCacheService.clear_all_cache()
+            from reports.services_new.base import BaseReportService
+            # Clear all report cache entries since timezone affects all reports
+            BaseReportService.cleanup_expired_cache()
+            # Also invalidate cache for all report types
+            for report_type in ['summary', 'sales', 'products', 'payments', 'operations']:
+                BaseReportService.invalidate_cache_for_report_type(report_type)
 
     def __str__(self):
         return "Global Settings"
