@@ -93,6 +93,17 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 	const orderDate = new Date(order.created_at).toLocaleString("en-US", {
 		timeZone: "America/Chicago",
 	});
+	
+	// Customer name: attempt to get from order or payment details
+	const customerName = order.customer_display_name || 
+		order.guest_first_name ||
+		(order.payment_details?.customer_name) || 
+		(order.customer?.full_name);
+	
+	// Only print customer name if one is actually provided
+	if (customerName) {
+		printer.println(`Customer: ${customerName}`);
+	}
 	printer.println(`Order #: ${orderId}`);
 	printer.println(`Date: ${orderDate}`);
 	
@@ -334,6 +345,17 @@ export function formatKitchenTicket(
 	printer.println(`Order #${order.order_number || order.id}`); // Use user-friendly number
 	printer.bold(false);
 	printer.setTextNormal(); // Reset text size
+
+	// Customer name: attempt to get from order or payment details
+	const customerName = order.customer_display_name || 
+		order.guest_first_name ||
+		(order.payment_details?.customer_name) || 
+		(order.customer?.full_name);
+	
+	// Only print customer name if one is actually provided
+	if (customerName) {
+		printer.println(`Customer: ${customerName}`);
+	}
 
 	const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
 		hour: "2-digit",

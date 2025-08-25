@@ -23,6 +23,7 @@ class GlobalSettingsSerializer(BaseModelSerializer):
             "currency",
             "opening_time",
             "closing_time",
+            "timezone",
             "receipt_header",
             "receipt_footer",
             "active_terminal_provider",

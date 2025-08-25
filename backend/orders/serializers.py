@@ -15,6 +15,8 @@ class OrderItemProductSerializer(BaseModelSerializer):
     """Lightweight product serializer for use within OrderItemSerializer"""
     modifier_groups = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    product_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -28,12 +30,35 @@ class OrderItemProductSerializer(BaseModelSerializer):
             "track_inventory",
             "modifier_groups",
             "image_url",
+            "category",
+            "product_type",
         ]
         prefetch_related_fields = [
             "product_modifier_sets__modifier_set__options",
             "product_modifier_sets__hidden_options",
             "product_modifier_sets__extra_options",
         ]
+        select_related_fields = ["category", "product_type"]
+
+    def get_category(self, obj):
+        """Return category details for order ticket"""
+        if obj.category:
+            return {
+                "id": obj.category.id,
+                "name": obj.category.name,
+                "order": obj.category.order
+            }
+        return None
+
+    def get_product_type(self, obj):
+        """Return product type details for order ticket"""
+        if obj.product_type:
+            return {
+                "id": obj.product_type.id,
+                "name": obj.product_type.name,
+                "description": obj.product_type.description
+            }
+        return None
 
     def get_modifier_groups(self, obj):
         """Get modifier groups using service layer - optimized for performance"""

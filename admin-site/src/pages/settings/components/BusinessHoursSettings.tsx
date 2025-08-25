@@ -98,15 +98,21 @@ export function BusinessHoursSettings() {
 	// Update form when data is loaded
 	React.useEffect(() => {
 		if (businessHours) {
+			console.log("BusinessHours data received:", businessHours);
+			console.log("Timezone from API:", businessHours.timezone);
+			
 			const hasBusinessHours =
 				businessHours.opening_time && businessHours.closing_time;
 
-			form.reset({
+			const resetValues = {
 				opening_time: businessHours.opening_time || "",
 				closing_time: businessHours.closing_time || "",
 				timezone: businessHours.timezone || "UTC",
 				enable_business_hours: hasBusinessHours,
-			});
+			};
+
+			console.log("Resetting form with values:", resetValues);
+			form.reset(resetValues);
 		}
 	}, [businessHours, form]);
 
@@ -176,7 +182,8 @@ export function BusinessHoursSettings() {
 									</FormLabel>
 									<Select
 										onValueChange={field.onChange}
-										value={field.value}
+										value={field.value || "UTC"}
+										key={field.value} // Force re-render when value changes
 									>
 										<FormControl>
 											<SelectTrigger>

@@ -16,7 +16,7 @@ function printLine(printer, left, right) {
   printer.leftRight(left, right);
 }
 async function formatReceipt(order, storeSettings = null, isTransaction = false) {
-  var _a, _b;
+  var _a, _b, _c, _d;
   let printer = new ThermalPrinter({
     type: PrinterTypes.EPSON,
     characterSet: "PC437_USA",
@@ -64,6 +64,10 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   const orderDate = new Date(order.created_at).toLocaleString("en-US", {
     timeZone: "America/Chicago"
   });
+  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
+  if (customerName) {
+    printer.println(`Customer: ${customerName}`);
+  }
   printer.println(`Order #: ${orderId}`);
   printer.println(`Date: ${orderDate}`);
   if (isTransaction) {
@@ -120,7 +124,7 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
     );
   }
   printLine(printer, "Tax:", `$${parseFloat(order.tax_total).toFixed(2)}`);
-  const tip = ((_a = order.payment_details) == null ? void 0 : _a.tip) ? parseFloat(order.payment_details.tip) : 0;
+  const tip = ((_c = order.payment_details) == null ? void 0 : _c.tip) ? parseFloat(order.payment_details.tip) : 0;
   if (tip > 0) {
     printLine(printer, "Tip:", `$${tip.toFixed(2)}`);
   }
@@ -133,7 +137,7 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   printer.bold(false);
   printer.println("");
   if (!isTransaction) {
-    const transactions = ((_b = order.payment_details) == null ? void 0 : _b.transactions) || [];
+    const transactions = ((_d = order.payment_details) == null ? void 0 : _d.transactions) || [];
     if (transactions.length > 0) {
       printer.bold(true);
       printer.println("Payment Details:");
@@ -191,15 +195,16 @@ function formatOpenCashDrawer() {
   return printerInstance.getBuffer();
 }
 function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
+  var _a, _b;
   let itemsToPrint = order.items || [];
   if (filterConfig) {
     itemsToPrint = itemsToPrint.filter((item) => {
-      var _a, _b;
+      var _a2, _b2;
       const product = item.product;
       if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
         if (!filterConfig.productTypes.includes("ALL")) {
           const productTypeMatch = filterConfig.productTypes.includes(
-            (_a = product.product_type) == null ? void 0 : _a.id
+            (_a2 = product.product_type) == null ? void 0 : _a2.id
           );
           if (!productTypeMatch) return false;
         }
@@ -207,7 +212,7 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
       if (filterConfig.categories && filterConfig.categories.length > 0) {
         if (!filterConfig.categories.includes("ALL")) {
           const categoryMatch = filterConfig.categories.includes(
-            (_b = product.category) == null ? void 0 : _b.id
+            (_b2 = product.category) == null ? void 0 : _b2.id
           );
           if (!categoryMatch) return false;
         }
@@ -239,6 +244,10 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   printer.println(`Order #${order.order_number || order.id}`);
   printer.bold(false);
   printer.setTextNormal();
+  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
+  if (customerName) {
+    printer.println(`Customer: ${customerName}`);
+  }
   const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -249,8 +258,8 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   printer.println(`Time: ${orderDate}`);
   printer.drawLine();
   const groupedItems = itemsToPrint.reduce((acc, item) => {
-    var _a;
-    const categoryName = ((_a = item.product.category) == null ? void 0 : _a.name) || "Miscellaneous";
+    var _a2;
+    const categoryName = ((_a2 = item.product.category) == null ? void 0 : _a2.name) || "Miscellaneous";
     if (!acc[categoryName]) {
       acc[categoryName] = [];
     }

@@ -34,7 +34,7 @@ export function CategoryMultiSelect({
 		staleTime: 5 * 60 * 1000, // 5 minutes
 	});
 
-	const categories = categoriesResponse?.data || [];
+	const categories = categoriesResponse?.data?.results || [];
 
 	// Convert value (array of IDs) to category objects on mount/value change
 	useEffect(() => {

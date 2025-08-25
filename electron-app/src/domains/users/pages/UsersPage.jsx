@@ -128,7 +128,9 @@ export function UsersPage() {
 	}, [users, filters.search]);
 
 	const applyFilters = () => {
-		let filtered = [...users];
+		// Ensure users is an array before spreading
+		const usersArray = Array.isArray(users) ? users : [];
+		let filtered = [...usersArray];
 
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();
@@ -155,7 +157,8 @@ export function UsersPage() {
 		try {
 			setLoading(true);
 			const response = await getUsers();
-			setUsers(response.data);
+			// Handle paginated response - users are in results field
+			setUsers(response.data?.results || response.data || []);
 			setError(null);
 		} catch (err) {
 			console.error("Failed to fetch users:", err);
