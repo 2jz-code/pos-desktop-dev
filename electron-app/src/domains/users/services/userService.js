@@ -1,7 +1,7 @@
 import apiClient from "@/shared/lib/apiClient";
 
-export const getUsers = () => {
-	return apiClient.get("/users/");
+export const getUsers = (params = {}) => {
+	return apiClient.get("/users/", { params });
 };
 
 export const getUserById = (id) => {
@@ -18,6 +18,14 @@ export const updateUser = (id, userData) => {
 
 export const deleteUser = (id) => {
 	return apiClient.delete(`/users/${id}/`);
+};
+
+export const archiveUser = (id) => {
+	return apiClient.post(`/users/${id}/archive/`);
+};
+
+export const unarchiveUser = (id) => {
+	return apiClient.post(`/users/${id}/unarchive/`);
 };
 
 export const setPin = (userId, pin) => {

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import {
 	getUsers,
-	deleteUser,
+	archiveUser,
+	unarchiveUser,
 	createUser,
 	updateUser,
 	setPin,
@@ -28,7 +29,15 @@ import {
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
-import { MoreHorizontal, UserPlus, KeyRound, Trash2, Edit, Users, AlertTriangle } from "lucide-react";
+import {
+	MoreHorizontal,
+	UserPlus,
+	KeyRound,
+	Archive,
+	ArchiveRestore,
+	Edit,
+	Users,
+} from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -38,6 +47,7 @@ import {
 } from "@/shared/components/ui/dropdown-menu";
 import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
 import { useAuth } from "@/context/AuthContext";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const ROLES = {
 	OWNER: "Owner",
@@ -62,17 +72,16 @@ const EDITABLE_ROLES = {
 
 export function UsersPage() {
 	const { user, isOwner, isManager, isCashier } = useAuth();
+	const queryClient = useQueryClient();
+	const { toast } = useToast();
+	const confirmation = useConfirmation();
 
-	// Note: Backend now filters users to only return POS staff (is_pos_staff=True)
-	// This prevents customer accounts from cluttering the POS interface
-	const [users, setUsers] = useState([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
-	const [filteredUsers, setFilteredUsers] = useState([]);
+	// State for dialogs and forms
 	const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
 	const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
 	const [editingUser, setEditingUser] = useState(null);
 	const [selectedUserForPin, setSelectedUserForPin] = useState(null);
+	const [showArchivedUsers, setShowArchivedUsers] = useState(false);
 	const [filters, setFilters] = useState({
 		search: "",
 	});
@@ -85,9 +94,8 @@ export function UsersPage() {
 		last_name: "",
 	});
 	const [pinData, setPinData] = useState({ pin: "" });
-	const { toast } = useToast();
-	const confirmation = useConfirmation();
 
+	// Permission checks
 	const canCreateUsers = isOwner || isManager;
 
 	const canEditUser = (targetUser) => {
@@ -99,7 +107,7 @@ export function UsersPage() {
 		return false;
 	};
 
-	const canDeleteUser = (targetUser) => {
+	const canArchiveUser = (targetUser) => {
 		if (!user || user.id === targetUser.id) return false;
 		if (isCashier) return false;
 		if (isManager) return targetUser.role === "CASHIER";
@@ -119,86 +127,167 @@ export function UsersPage() {
 		return [];
 	};
 
-	useEffect(() => {
-		fetchUsers();
-	}, []);
+	// Fetch users
+	const {
+		data: users = [],
+		isLoading,
+		error,
+	} = useQuery({
+		queryKey: ["users", showArchivedUsers],
+		queryFn: () => {
+			const params = showArchivedUsers ? { include_archived: 'only' } : {};
+			return getUsers(params).then((res) => res.data?.results || res.data || []);
+		},
+	});
 
-	useEffect(() => {
-		applyFilters();
+	// Filter users based on search
+	const filteredUsers = useMemo(() => {
+		if (!filters.search) return users;
+
+		const searchLower = filters.search.toLowerCase();
+		return users.filter((u) => {
+			const username = u.username?.toLowerCase() || "";
+			const email = u.email?.toLowerCase() || "";
+			const fullName = `${u.first_name || ""} ${u.last_name || ""}`
+				.trim()
+				.toLowerCase();
+			const roleName = ROLES[u.role]?.toLowerCase() || "";
+			return (
+				username.includes(searchLower) ||
+				email.includes(searchLower) ||
+				fullName.includes(searchLower) ||
+				roleName.includes(searchLower)
+			);
+		});
 	}, [users, filters.search]);
 
-	const applyFilters = () => {
-		// Ensure users is an array before spreading
-		const usersArray = Array.isArray(users) ? users : [];
-		let filtered = [...usersArray];
-
-		if (filters.search) {
-			const searchLower = filters.search.toLowerCase();
-			filtered = filtered.filter((u) => {
-				const username = u.username?.toLowerCase() || "";
-				const email = u.email?.toLowerCase() || "";
-				const fullName = `${u.first_name || ""} ${u.last_name || ""}`
-					.trim()
-					.toLowerCase();
-				const roleName = ROLES[u.role]?.toLowerCase() || "";
-				return (
-					username.includes(searchLower) ||
-					email.includes(searchLower) ||
-					fullName.includes(searchLower) ||
-					roleName.includes(searchLower)
-				);
+	// Mutations
+	const createUserMutation = useMutation({
+		mutationFn: createUser,
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "User created successfully.",
 			});
-		}
-
-		setFilteredUsers(filtered);
-	};
-
-	const fetchUsers = async () => {
-		try {
-			setLoading(true);
-			const response = await getUsers();
-			// Handle paginated response - users are in results field
-			setUsers(response.data?.results || response.data || []);
-			setError(null);
-		} catch (err) {
-			console.error("Failed to fetch users:", err);
-			setError("Failed to fetch users.");
+			queryClient.invalidateQueries({ queryKey: ["users"] });
+			closeUserDialog();
+		},
+		onError: (error) => {
+			console.error("Failed to create user:", error);
 			toast({
 				title: "Error",
-				description: "Failed to fetch users.",
+				description: "Failed to create user.",
 				variant: "destructive",
 			});
-		} finally {
-			setLoading(false);
+		},
+	});
+
+	const updateUserMutation = useMutation({
+		mutationFn: ({ id, userData }) => updateUser(id, userData),
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "User updated successfully.",
+			});
+			queryClient.invalidateQueries({ queryKey: ["users"] });
+			closeUserDialog();
+		},
+		onError: (error) => {
+			console.error("Failed to update user:", error);
+			toast({
+				title: "Error",
+				description: "Failed to update user.",
+				variant: "destructive",
+			});
+		},
+	});
+
+	const archiveUserMutation = useMutation({
+		mutationFn: archiveUser,
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "User archived successfully.",
+			});
+			queryClient.invalidateQueries({ queryKey: ["users"] });
+		},
+		onError: (error) => {
+			console.error("Failed to archive user:", error);
+			toast({
+				title: "Error",
+				description: "Failed to archive user.",
+				variant: "destructive",
+			});
+		},
+	});
+
+	const unarchiveUserMutation = useMutation({
+		mutationFn: unarchiveUser,
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "User restored successfully.",
+			});
+			queryClient.invalidateQueries({ queryKey: ["users"] });
+		},
+		onError: (error) => {
+			console.error("Failed to restore user:", error);
+			toast({
+				title: "Error",
+				description: "Failed to restore user.",
+				variant: "destructive",
+			});
+		},
+	});
+
+	const setPinMutation = useMutation({
+		mutationFn: ({ userId, pinData }) => setPin(userId, pinData.pin),
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "PIN set successfully.",
+			});
+			closePinDialog();
+		},
+		onError: (error) => {
+			console.error("Failed to set PIN:", error);
+			toast({
+				title: "Error",
+				description: "Failed to set PIN.",
+				variant: "destructive",
+			});
+		},
+	});
+
+	// Event handlers
+	const handleArchiveUser = async (userId, userToArchive) => {
+		if (showArchivedUsers) {
+			// Unarchive/restore user
+			confirmation.show({
+				title: "Restore User",
+				description: `Are you sure you want to restore "${userToArchive.first_name} ${userToArchive.last_name}"?`,
+				variant: "default",
+				confirmText: "Restore",
+				onConfirm: () => {
+					unarchiveUserMutation.mutate(userId);
+				}
+			});
+		} else {
+			// Archive user
+			confirmation.show({
+				title: "Archive User",
+				description: `Are you sure you want to archive "${userToArchive.first_name} ${userToArchive.last_name}"? They will no longer be able to access the system.`,
+				variant: "destructive",
+				confirmText: "Archive",
+				onConfirm: () => {
+					archiveUserMutation.mutate(userId);
+				}
+			});
 		}
 	};
 
-	const handleDelete = async (userToDelete) => {
-		confirmation.show({
-			title: "Delete User",
-			description: `Are you sure you want to delete "${userToDelete.first_name} ${userToDelete.last_name}"? This action cannot be undone.`,
-			confirmText: "Delete",
-			cancelText: "Cancel",
-			variant: "destructive",
-			icon: AlertTriangle,
-			onConfirm: async () => {
-				try {
-					await deleteUser(userToDelete.id);
-					fetchUsers();
-					toast({
-						title: "Success",
-						description: "User deleted successfully.",
-					});
-				} catch (error) {
-					console.error("Failed to delete user:", error);
-					toast({
-						title: "Error",
-						description: "Failed to delete user.",
-						variant: "destructive",
-					});
-				}
-			},
-		});
+	const toggleArchivedView = () => {
+		setShowArchivedUsers(!showArchivedUsers);
 	};
 
 	const handleSearchChange = (e) => {
@@ -222,62 +311,33 @@ export function UsersPage() {
 
 	const handleUserFormSubmit = async (e) => {
 		e.preventDefault();
-		try {
-			if (editingUser) {
-				const updateData = {
-					username: formData.username,
-					email: formData.email,
-					first_name: formData.first_name,
-					last_name: formData.last_name,
-				};
 
-				if (isOwner || (isManager && editingUser.role === "CASHIER")) {
-					updateData.role = formData.role;
-				}
+		if (editingUser) {
+			const updateData = {
+				username: formData.username,
+				email: formData.email,
+				first_name: formData.first_name,
+				last_name: formData.last_name,
+			};
 
-				await updateUser(editingUser.id, updateData);
-				toast({
-					title: "Success",
-					description: "User updated successfully.",
-				});
-			} else {
-				await createUser(formData);
-				toast({
-					title: "Success",
-					description: "User created successfully.",
-				});
+			if (isOwner || (isManager && editingUser.role === "CASHIER")) {
+				updateData.role = formData.role;
 			}
-			closeUserDialog();
-			fetchUsers();
-		} catch (error) {
-			console.error("Failed to save user:", error);
-			toast({
-				title: "Error",
-				description: "Failed to save user.",
-				variant: "destructive",
-			});
+
+			updateUserMutation.mutate({ id: editingUser.id, userData: updateData });
+		} else {
+			createUserMutation.mutate(formData);
 		}
 	};
 
 	const handlePinFormSubmit = async (e) => {
 		e.preventDefault();
-		try {
-			await setPin(selectedUserForPin.id, pinData.pin);
-			toast({
-				title: "Success",
-				description: "PIN set successfully.",
-			});
-			closePinDialog();
-		} catch (error) {
-			console.error("Failed to set PIN:", error);
-			toast({
-				title: "Error",
-				description: "Failed to set PIN.",
-				variant: "destructive",
-			});
+		if (selectedUserForPin) {
+			setPinMutation.mutate({ userId: selectedUserForPin.id, pinData });
 		}
 	};
 
+	// Dialog handlers
 	const openCreateDialog = () => {
 		setEditingUser(null);
 		setFormData({
@@ -320,13 +380,12 @@ export function UsersPage() {
 		setSelectedUserForPin(null);
 	};
 
-	const isSelfEditingCashier = isCashier;
-
 	const headers = [
 		{ label: "Name" },
 		{ label: "Username" },
 		{ label: "Email" },
 		{ label: "Role" },
+		{ label: "Status" },
 		{ label: "Actions", className: "text-right" },
 	];
 
@@ -341,6 +400,11 @@ export function UsersPage() {
 			<TableCell>{targetUser.email}</TableCell>
 			<TableCell>
 				<Badge variant="outline">{ROLES[targetUser.role]}</Badge>
+			</TableCell>
+			<TableCell>
+				<Badge variant={targetUser.is_active ? "default" : "secondary"}>
+					{targetUser.is_active ? "Active" : "Archived"}
+				</Badge>
 			</TableCell>
 			<TableCell
 				onClick={(e) => e.stopPropagation()}
@@ -369,13 +433,22 @@ export function UsersPage() {
 								Set PIN
 							</DropdownMenuItem>
 						)}
-						{canDeleteUser(targetUser) && (
+						{canArchiveUser(targetUser) && (
 							<DropdownMenuItem
-								onClick={() => handleDelete(targetUser)}
-								className="text-destructive"
+								onClick={() => handleArchiveUser(targetUser.id, targetUser)}
+								className={showArchivedUsers ? "text-green-600" : "text-destructive"}
 							>
-								<Trash2 className="mr-2 h-4 w-4" />
-								Delete
+								{showArchivedUsers ? (
+									<>
+										<ArchiveRestore className="mr-2 h-4 w-4" />
+										Restore
+									</>
+								) : (
+									<>
+										<Archive className="mr-2 h-4 w-4" />
+										Archive
+									</>
+								)}
 							</DropdownMenuItem>
 						)}
 					</DropdownMenuContent>
@@ -384,21 +457,38 @@ export function UsersPage() {
 		</>
 	);
 
-	const headerActions = canCreateUsers ? (
-		<Button onClick={openCreateDialog}>
-			<UserPlus className="mr-2 h-4 w-4" />
-			Create User
-		</Button>
-	) : null;
+	const headerActions = (
+		<div className="flex gap-2">
+			<Button variant="outline" onClick={toggleArchivedView}>
+				{showArchivedUsers ? (
+					<>
+						<ArchiveRestore className="mr-2 h-4 w-4" />
+						Show Active Users
+					</>
+				) : (
+					<>
+						<Archive className="mr-2 h-4 w-4" />
+						Show Archived Users
+					</>
+				)}
+			</Button>
+			{canCreateUsers && (
+				<Button onClick={openCreateDialog}>
+					<UserPlus className="mr-2 h-4 w-4" />
+					Create User
+				</Button>
+			)}
+		</div>
+	);
 
 	return (
 		<>
 			<DomainPageLayout
-				pageTitle={isSelfEditingCashier ? "My Profile" : "User Management"}
+				pageTitle={showArchivedUsers ? "Archived Users" : "User Management"}
 				pageDescription={
-					isSelfEditingCashier
-						? "Manage your personal information and settings."
-						: "Manage users in your system."
+					showArchivedUsers
+						? "View and restore archived users."
+						: "Manage active users in your system."
 				}
 				pageIcon={Users}
 				pageActions={headerActions}
@@ -406,12 +496,12 @@ export function UsersPage() {
 				searchPlaceholder="Search by name, username, email, or role..."
 				searchValue={filters.search}
 				onSearchChange={handleSearchChange}
-				error={error}
+				error={error?.message}
 			>
 				<StandardTable
 					headers={headers}
-					data={filteredUsers}
-					loading={loading}
+					data={Array.isArray(filteredUsers) ? filteredUsers : []}
+					loading={isLoading}
 					emptyMessage="No users found for the selected filters."
 					renderRow={renderUserRow}
 				/>
@@ -561,7 +651,11 @@ export function UsersPage() {
 							>
 								Cancel
 							</Button>
-							<Button type="submit">Save</Button>
+							<Button type="submit">
+								{createUserMutation.isPending || updateUserMutation.isPending
+									? "Saving..."
+									: "Save"}
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -612,13 +706,14 @@ export function UsersPage() {
 							>
 								Cancel
 							</Button>
-							<Button type="submit">Set PIN</Button>
+							<Button type="submit">
+								{setPinMutation.isPending ? "Setting..." : "Set PIN"}
+							</Button>
 						</DialogFooter>
 					</form>
 				</DialogContent>
 			</Dialog>
 
-			{/* Confirmation Dialog */}
 			{confirmation.dialog}
 		</>
 	);
