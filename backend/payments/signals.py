@@ -114,7 +114,7 @@ def _invalidate_payment_report_cache_entries():
         # Mark payment-related report cache entries as expired
         one_hour_ago = timezone.now() - timezone.timedelta(hours=1)
         ReportCache.objects.filter(
-            created_at__gte=one_hour_ago,
+            generated_at__gte=one_hour_ago,
             report_type__in=['payment', 'sales', 'summary']
         ).update(expires_at=timezone.now())
         

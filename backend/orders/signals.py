@@ -57,6 +57,11 @@ def handle_order_completion_inventory(sender, instance, created, **kwargs):
     This receiver listens for Order model post_save signals.
     """
     if instance.status == Order.OrderStatus.COMPLETED and not created:
+        # Skip inventory processing for test orders
+        if instance.order_number and instance.order_number.startswith('TEST-'):
+            logger.info(f"Skipping inventory processing for test order {instance.order_number}")
+            return
+            
         from inventory.services import InventoryService
 
         try:
@@ -174,13 +179,22 @@ def _invalidate_report_cache_entries():
         from reports.models import ReportCache
         from django.utils import timezone
         
+        # Debug: log the ReportCache model fields
+        logger.debug(f"ReportCache model fields: {[field.name for field in ReportCache._meta.fields]}")
+        
         # Mark recent report cache entries as expired
         one_hour_ago = timezone.now() - timezone.timedelta(hours=1)
+        
+        # Debug: try to identify the exact query that's failing
+        logger.debug(f"Attempting to filter ReportCache with generated_at__gte={one_hour_ago}")
+        
         ReportCache.objects.filter(
-            created_at__gte=one_hour_ago
+            generated_at__gte=one_hour_ago
         ).update(expires_at=timezone.now())
         
         logger.debug("Invalidated recent database report cache entries")
         
     except Exception as e:
+        import traceback
         logger.error(f"Failed to invalidate database report cache entries: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")

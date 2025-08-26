@@ -352,17 +352,25 @@ class Command(BaseCommand):
             products_with_images = 0
 
             for prod_data in legacy_products:
-                # Find matching category by name
+                # Find or create matching category by name
                 category = None
                 if prod_data["category_name"]:
                     try:
                         category = Category.objects.get(name=prod_data["category_name"])
                     except Category.DoesNotExist:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"Category '{prod_data['category_name']}' not found for product {prod_data['name']}"
-                            )
+                        # Auto-create missing category like we do for ProductType
+                        category, created = Category.objects.get_or_create(
+                            name=prod_data["category_name"],
+                            defaults={
+                                "description": f"Auto-created category from migration for {prod_data['category_name']}"
+                            }
                         )
+                        if created:
+                            self.stdout.write(
+                                self.style.SUCCESS(
+                                    f"Auto-created category '{prod_data['category_name']}' for product {prod_data['name']}"
+                                )
+                            )
 
                 # Handle image path migration
                 image_path = prod_data.get("image")

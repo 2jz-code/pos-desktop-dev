@@ -41,6 +41,11 @@ def handle_payment_completed(sender, order, **kwargs):
     Receiver function to send an order confirmation email when a payment is completed.
     Uses the new Maizzle templates for beautiful, responsive emails.
     """
+    # Skip email notifications for test orders
+    if order.order_number and order.order_number.startswith('TEST-'):
+        logger.info(f"Skipping email notification for test order {order.order_number}")
+        return
+        
     # Check if confirmation email has already been sent
     if order.confirmation_sent:
         logger.info(
@@ -154,6 +159,11 @@ def handle_order_status_completion(sender, instance, created, **kwargs):
     """
     # Only process orders that are just marked as completed (not new orders)
     if not created and instance.status == "COMPLETED":
+        # Skip email notifications for test orders
+        if instance.order_number and instance.order_number.startswith('TEST-'):
+            logger.info(f"Skipping email notification for test order {instance.order_number}")
+            return
+            
         # Check if confirmation email has already been sent
         if instance.confirmation_sent:
             logger.info(
