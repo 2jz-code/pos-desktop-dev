@@ -1,4 +1,5 @@
 import logging
+import io
 from datetime import datetime
 from rest_framework import viewsets, permissions, status, filters
 from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
@@ -254,13 +255,64 @@ class ReportViewSet(viewsets.ViewSet):
                 content_type = "text/csv"
                 file_extension = "csv"
             elif format_type == "xlsx" or format_type == "excel":
-                # For now, still use original service for xlsx exports
-                file_data = ReportService.export_to_xlsx(report_data, report_type)
+                # Use specific service for sales reports, original service for others
+                if report_type == "sales":
+                    from openpyxl import Workbook
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = "Sales Report"
+                    
+                    # Styles
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(
+                        start_color="366092", end_color="366092", fill_type="solid"
+                    )
+                    header_alignment = Alignment(horizontal="center", vertical="center")
+                    
+                    # Call the new SalesReportService export method
+                    SalesReportService.export_sales_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                    
+                    # Save to bytes
+                    output = io.BytesIO()
+                    wb.save(output)
+                    file_data = output.getvalue()
+                else:
+                    file_data = ReportService.export_to_xlsx(report_data, report_type)
                 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 file_extension = "xlsx"
             elif format_type == "pdf":
-                # For now, still use original service for PDF exports
-                file_data = ReportService.export_to_pdf(report_data, report_type)
+                # Use specific service for sales reports, original service for others
+                if report_type == "sales":
+                    from reportlab.lib.pagesizes import letter, landscape
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                    from reportlab.lib.units import inch
+                    from reportlab.lib.enums import TA_CENTER
+                    
+                    # Create PDF in landscape mode for better table display
+                    output = io.BytesIO()
+                    doc = SimpleDocTemplate(output, pagesize=landscape(letter), 
+                                          leftMargin=0.5*inch, rightMargin=0.5*inch,
+                                          topMargin=0.5*inch, bottomMargin=0.5*inch)
+                    
+                    # Create story and styles
+                    story = []
+                    styles = getSampleStyleSheet()
+                    
+                    # Add custom title style
+                    styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], 
+                                            alignment=TA_CENTER, fontSize=18, spaceAfter=20))
+                    
+                    # Call the new SalesReportService export method
+                    SalesReportService.export_sales_to_pdf(report_data, story, styles)
+                    
+                    # Build PDF
+                    doc.build(story)
+                    file_data = output.getvalue()
+                else:
+                    file_data = ReportService.export_to_pdf(report_data, report_type)
                 content_type = "application/pdf"
                 file_extension = "pdf"
             else:

@@ -60,16 +60,42 @@ class PaymentFilter(django_filters.FilterSet):
 
         # Handle special case for split payments
         if value.upper() == "SPLIT":
-            # Split payments have more than one transaction
+            # Split payments have more than one SUCCESSFUL transaction (refunded doesn't count for split)
             return queryset.annotate(
-                transaction_count=models.Count("transactions")
-            ).filter(transaction_count__gt=1)
+                successful_transaction_count=models.Count(
+                    "transactions",
+                    filter=models.Q(transactions__status=PaymentTransaction.TransactionStatus.SUCCESSFUL)
+                )
+            ).filter(successful_transaction_count__gt=1)
         else:
-            # Single method payments
+            # Single method payments - include both successful and refunded transactions
             return (
-                queryset.filter(transactions__method=value.upper())
-                .annotate(transaction_count=models.Count("transactions"))
-                .filter(transaction_count=1)
+                queryset.filter(
+                    transactions__method=value.upper(),
+                    transactions__status__in=[
+                        PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                        PaymentTransaction.TransactionStatus.REFUNDED
+                    ]
+                )
+                .annotate(
+                    successful_transaction_count=models.Count(
+                        "transactions",
+                        filter=models.Q(transactions__status=PaymentTransaction.TransactionStatus.SUCCESSFUL)
+                    ),
+                    processed_transaction_count=models.Count(
+                        "transactions",
+                        filter=models.Q(
+                            transactions__status__in=[
+                                PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                                PaymentTransaction.TransactionStatus.REFUNDED
+                            ]
+                        )
+                    )
+                )
+                .filter(
+                    successful_transaction_count__lte=1,  # At most 1 successful (not split)
+                    processed_transaction_count__gte=1     # At least 1 processed payment
+                )
             )
 
 

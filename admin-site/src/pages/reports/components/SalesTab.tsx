@@ -101,33 +101,15 @@ interface SalesData {
 	total_surcharges: number;
 	total_tips: number;
 	revenue_breakdown?: {
-		revenue_components: {
+		total_revenue: number;
+		components: {
 			subtotal: number;
 			tips: number;
+			surcharges: number;
+			tax: number;
 			discounts_applied: number;
 			refunds: number;
 			net_revenue: number;
-		};
-		non_revenue_components: {
-			tax: number;
-			surcharges: number;
-		};
-		customer_totals: {
-			grand_total: number;
-			total_collected: number;
-		};
-	};
-	order_vs_payment_reconciliation: {
-		total_orders_value: number;
-		total_payment_attempts: number;
-		successfully_processed: number;
-		lost_revenue: number;
-		order_completion_rate: number;
-		payment_breakdown: {
-			[status: string]: {
-				count: number;
-				amount: number;
-			};
 		};
 	};
 	sales_by_period: Array<{
@@ -383,90 +365,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				</Card>
 			</div>
 
-			{/* Order vs Payment Reconciliation */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Order vs Payment Reconciliation</CardTitle>
-					<CardDescription>
-						Detailed breakdown of order processing and payments
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-						<div>
-							<p className="text-sm font-medium text-muted-foreground">
-								Total Orders Value
-							</p>
-							<p className="text-2xl font-bold">
-								$
-								{data?.order_vs_payment_reconciliation?.total_orders_value?.toLocaleString() ||
-									"0"}
-							</p>
-						</div>
-						<div>
-							<p className="text-sm font-medium text-muted-foreground">
-								Successfully Processed
-							</p>
-							<p className="text-2xl font-bold text-green-600">
-								$
-								{data?.order_vs_payment_reconciliation?.successfully_processed?.toLocaleString() ||
-									"0"}
-							</p>
-						</div>
-						<div>
-							<p className="text-sm font-medium text-muted-foreground">
-								Lost Revenue
-							</p>
-							<p className="text-2xl font-bold text-red-600">
-								$
-								{data?.order_vs_payment_reconciliation?.lost_revenue?.toLocaleString() ||
-									"0"}
-							</p>
-						</div>
-						<div>
-							<p className="text-sm font-medium text-muted-foreground">
-								Order Completion Rate
-							</p>
-							<p className="text-2xl font-bold">
-								{data?.order_vs_payment_reconciliation?.order_completion_rate?.toFixed(
-									2
-								) || "0"}
-								%
-							</p>
-						</div>
-					</div>
-					{data?.order_vs_payment_reconciliation?.payment_breakdown && (
-						<div className="mt-4">
-							<h4 className="text-sm font-medium mb-2">
-								Payment Status Breakdown
-							</h4>
-							<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-								{Object.entries(
-									data.order_vs_payment_reconciliation.payment_breakdown
-								).map(([status, breakdown]) => (
-									<div
-										key={status}
-										className="bg-muted/20 p-3 rounded-lg"
-									>
-										<p className="text-xs text-muted-foreground capitalize">
-											{status.replace("_", " ")}
-										</p>
-										<div className="flex justify-between mt-1">
-											<span className="text-sm font-medium">
-												{breakdown?.count || 0} transactions
-											</span>
-											<span className="text-sm font-bold">
-												${(breakdown?.amount || 0).toLocaleString()}
-											</span>
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-					)}
-				</CardContent>
-			</Card>
-			{/* Enhanced Revenue Breakdown */}
+			{/* Revenue Breakdown */}
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
@@ -495,7 +394,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							<div className="text-right">
 								<div className="text-3xl font-bold text-green-700">
 									$
-									{data?.revenue_breakdown?.revenue_components?.net_revenue?.toLocaleString() ||
+									{data?.revenue_breakdown?.components?.net_revenue?.toLocaleString() ||
 										data?.net_revenue?.toLocaleString() ||
 										"0"}
 								</div>

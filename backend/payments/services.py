@@ -683,8 +683,12 @@ class PaymentService:
         # --- CHANGE: Call the strategy but DO NOT update the database here ---
         strategy.refund_transaction(original_transaction, amount_to_refund, reason)
 
+        # For cash transactions, update payment status immediately since there are no webhooks
+        if original_transaction.method == PaymentTransaction.PaymentMethod.CASH:
+            PaymentService._update_payment_status(original_transaction.payment)
+
         # The method now returns the original transaction. The UI will have to wait
-        # for the webhook to deliver the updated state.
+        # for the webhook to deliver the updated state (except for cash which is updated above).
         return original_transaction
 
     @staticmethod

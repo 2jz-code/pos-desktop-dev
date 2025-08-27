@@ -31,6 +31,7 @@ import {
 	Receipt,
 	DollarSign,
 	ExternalLink,
+	RefreshCw,
 } from "lucide-react";
 import { RefundDialog } from "@/components/RefundDialog";
 
@@ -48,6 +49,8 @@ const PaymentDetailsPage = () => {
 		isLoading,
 		isError,
 		error,
+		refetch,
+		isFetching,
 	} = useQuery({
 		queryKey: ["payment", paymentId],
 		queryFn: () => getPaymentById(paymentId),
@@ -161,6 +164,16 @@ const PaymentDetailsPage = () => {
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Payments
+						</Button>
+						<Button
+							onClick={() => refetch()}
+							variant="outline"
+							size="sm"
+							className="border-slate-200 dark:border-slate-700"
+							disabled={isFetching}
+						>
+							<RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+							Refresh
 						</Button>
 						<Badge
 							variant={getStatusVariant(payment.status)}
