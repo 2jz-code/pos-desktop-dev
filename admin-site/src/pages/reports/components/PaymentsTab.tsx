@@ -254,51 +254,21 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				</div>
 			</div>
 
-			{/* Key Metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+			{/* Key Metrics - Simplified to 4 clear metrics */}
+			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							🎯 Total Attempted
+							Total Collected
 						</CardTitle>
-						<CreditCard className="h-4 w-4 text-muted-foreground" />
+						<DollarSign className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-blue-600">
-							${totalAttempted.toLocaleString()}
-						</div>
-						<p className="text-xs text-muted-foreground">All payment attempts</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							✅ Successfully Processed
-						</CardTitle>
-						<CheckCircle className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
+						<div className="text-2xl font-bold">
 							${successfullyProcessed.toLocaleString()}
 						</div>
-						<p className="text-xs text-muted-foreground">Completed transactions</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							⚠️ Processing Issues
-						</CardTitle>
-						<AlertCircle className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-red-600">
-							${processingIssues.toLocaleString()}
-						</div>
 						<p className="text-xs text-muted-foreground">
-							{processingIssuesRate.toFixed(1)}% of attempts
+							Successfully processed payments
 						</p>
 					</CardContent>
 				</Card>
@@ -306,12 +276,29 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							💵 Net Revenue
+							Total Refunds
 						</CardTitle>
-						<CheckCircle className="h-4 w-4 text-muted-foreground" />
+						<RefreshCw className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-blue-600">
+						<div className="text-2xl font-bold text-orange-600">
+							${totalRefunds.toLocaleString()}
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{refundedCount} transactions refunded
+						</p>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle className="text-sm font-medium">
+							Net Revenue
+						</CardTitle>
+						<CreditCard className="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<div className="text-2xl font-bold text-green-600">
 							${netRevenue.toLocaleString()}
 						</div>
 						<p className="text-xs text-muted-foreground">After refunds</p>
@@ -320,17 +307,18 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">📊 Success Rate</CardTitle>
+						<CardTitle className="text-sm font-medium">Success Rate</CardTitle>
 						<TrendingUp className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
+						<div className="text-2xl font-bold">
 							{processingSuccessRate.toFixed(1)}%
 						</div>
-						<p className="text-xs text-muted-foreground">Payment success</p>
+						<p className="text-xs text-muted-foreground">
+							{successfulCount} of {totalTransactions} succeeded
+						</p>
 					</CardContent>
 				</Card>
-
 			</div>
 
 			{/* Payment Methods Breakdown */}
@@ -373,29 +361,25 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 									<div className="flex items-center space-x-2">
 										<div className="text-right">
 											<div className="font-medium">
-												${Number(method.total_processed || 0).toLocaleString()}
+												${Number(method.amount || 0).toLocaleString()}
 											</div>
 											<div className="text-sm text-muted-foreground">
-												Net: ${Number(method.net_amount || 0).toLocaleString()}
+												{Number(method.processing_fees || 0) > 0 && (
+													<span>Fees: ${Number(method.processing_fees || 0).toFixed(2)} | </span>
+												)}
+												{Number(method.percentage || 0).toFixed(1)}%
 											</div>
 										</div>
-										<Badge variant={method.trend > 0 ? "default" : "secondary"}>
-											{method.trend > 0 ? (
-												<TrendingUp className="mr-1 h-3 w-3" />
-											) : (
-												<TrendingDown className="mr-1 h-3 w-3" />
-											)}
-											{Math.abs(Number(method.trend || 0)).toFixed(1)}%
-										</Badge>
-									</div>
-									<div className="flex items-center space-x-2">
-										<Progress
-											value={method.percentage}
-											className="w-20"
-										/>
-										<span className="text-sm text-muted-foreground">
-											{Number(method.percentage || 0).toFixed(1)}%
-										</span>
+										{method.trend !== 0 && (
+											<Badge variant={method.trend > 0 ? "default" : "secondary"}>
+												{method.trend > 0 ? (
+													<TrendingUp className="mr-1 h-3 w-3" />
+												) : (
+													<TrendingDown className="mr-1 h-3 w-3" />
+												)}
+												{Math.abs(Number(method.trend || 0)).toFixed(1)}%
+											</Badge>
+										)}
 									</div>
 								</div>
 							</div>
@@ -487,16 +471,16 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				</Card>
 			</div>
 
-			{/* Processing Statistics */}
+			{/* Processing Breakdown */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Processing Statistics</CardTitle>
-					<CardDescription>Transaction processing performance</CardDescription>
+					<CardTitle>Transaction Breakdown</CardTitle>
+					<CardDescription>Detailed transaction status breakdown</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="grid gap-4 md:grid-cols-5">
+					<div className="grid gap-4 md:grid-cols-4">
 						<div className="space-y-2">
-							<p className="text-sm font-medium">✅ Successful</p>
+							<p className="text-sm font-medium">Successful</p>
 							<p className="text-2xl font-bold text-green-600">
 								{successfulCount.toLocaleString()}
 							</p>
@@ -505,7 +489,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							</p>
 						</div>
 						<div className="space-y-2">
-							<p className="text-sm font-medium text-orange-600">↩️ Refunded</p>
+							<p className="text-sm font-medium">Refunded</p>
 							<p className="text-2xl font-bold text-orange-600">
 								{refundedCount.toLocaleString()}
 							</p>
@@ -514,7 +498,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							</p>
 						</div>
 						<div className="space-y-2">
-							<p className="text-sm font-medium text-red-600">❌ Failed</p>
+							<p className="text-sm font-medium">Failed</p>
 							<p className="text-2xl font-bold text-red-600">
 								{failedCount.toLocaleString()}
 							</p>
@@ -523,7 +507,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							</p>
 						</div>
 						<div className="space-y-2">
-							<p className="text-sm font-medium text-gray-600">🚫 Canceled</p>
+							<p className="text-sm font-medium">Canceled</p>
 							<p className="text-2xl font-bold text-gray-600">
 								{canceledCount.toLocaleString()}
 							</p>
@@ -531,74 +515,10 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 								${canceledAmount.toLocaleString()}
 							</p>
 						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium text-blue-600">📊 Success Rate</p>
-							<p className="text-2xl font-bold text-blue-600">
-								{processingSuccessRate.toFixed(1)}%
-							</p>
-							<p className="text-xs text-muted-foreground">
-								{(successfulCount + refundedCount + failedCount + canceledCount).toLocaleString()} total
-							</p>
-						</div>
 					</div>
 				</CardContent>
 			</Card>
 
-			{/* Reconciliation */}
-			{data?.order_totals_comparison && (
-				<Card>
-					<CardHeader>
-						<CardTitle>Payment Reconciliation</CardTitle>
-						<CardDescription>
-							Comparison between order totals and payment transactions
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="grid gap-4 md:grid-cols-3">
-							<div className="space-y-2">
-								<p className="text-sm font-medium">Order Grand Total</p>
-								<p className="text-2xl font-bold">
-									$
-									{data.order_totals_comparison.order_grand_total.toLocaleString()}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									{data.order_totals_comparison.order_count} orders
-								</p>
-							</div>
-							<div className="space-y-2">
-								<p className="text-sm font-medium">Payment Transactions</p>
-								<p className="text-2xl font-bold">
-									$
-									{data.order_totals_comparison.payment_transaction_total.toLocaleString()}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									Processed amount
-								</p>
-							</div>
-							<div className="space-y-2">
-								<p className="text-sm font-medium">Difference</p>
-								<p
-									className={`text-2xl font-bold ${
-										data.order_totals_comparison.difference === 0
-											? "text-green-600"
-											: "text-red-600"
-									}`}
-								>
-									$
-									{Math.abs(
-										data.order_totals_comparison.difference
-									).toLocaleString()}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									{data.order_totals_comparison.difference === 0
-										? "Balanced"
-										: "Variance detected"}
-								</p>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-			)}
 
 			{/* Export Dialog */}
 			<ExportDialog
