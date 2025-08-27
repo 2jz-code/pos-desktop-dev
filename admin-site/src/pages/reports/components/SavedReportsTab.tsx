@@ -218,8 +218,6 @@ export function SavedReportsTab() {
 
 	const getReportTypeLabel = (type: string) => {
 		switch (type) {
-			case "summary":
-				return "Dashboard Summary";
 			case "sales":
 				return "Sales Report";
 			case "products":
@@ -358,7 +356,6 @@ export function SavedReportsTab() {
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="all">All Types</SelectItem>
-						<SelectItem value="summary">Summary</SelectItem>
 						<SelectItem value="sales">Sales</SelectItem>
 						<SelectItem value="products">Products</SelectItem>
 						<SelectItem value="payments">Payments</SelectItem>

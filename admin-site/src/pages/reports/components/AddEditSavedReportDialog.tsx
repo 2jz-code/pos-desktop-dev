@@ -98,7 +98,7 @@ export function AddEditSavedReportDialog({
 		const { startDate, endDate } = getDateRangeFromPreset(dateRangePreset);
 		return {
 			name: "",
-			report_type: "summary",
+			report_type: "sales",
 			schedule: "manual",
 			format: "Excel",
 			status: "active",
@@ -245,7 +245,6 @@ export function AddEditSavedReportDialog({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="summary">Dashboard Summary</SelectItem>
 								<SelectItem value="sales">Sales Report</SelectItem>
 								<SelectItem value="products">Products Report</SelectItem>
 								<SelectItem value="payments">Payments Report</SelectItem>

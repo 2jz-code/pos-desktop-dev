@@ -31,6 +31,7 @@ from .serializers import (
 # Import from the original services.py file and new modular services
 from .services import ReportService  # Original services.py file
 from .services_new.sales_service import SalesReportService  # New modular service
+from .services_new.summary_service import SummaryReportService  # New modular service
 from .advanced_exports import AdvancedExportService, ExportQueue
 from .tasks import create_bulk_export_async, process_export_queue
 
@@ -57,7 +58,7 @@ class ReportViewSet(viewsets.ViewSet):
             # Use cache by default, but allow bypassing with ?use_cache=false
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
-            report_data = ReportService.generate_summary_report(
+            report_data = SummaryReportService.generate_summary_report(
                 start_date=start_date, end_date=end_date, use_cache=use_cache
             )
 
@@ -181,7 +182,7 @@ class ReportViewSet(viewsets.ViewSet):
     def quick_metrics(self, request):
         """Get today/MTD/YTD quick metrics for dashboard"""
         try:
-            metrics_data = ReportService.get_quick_metrics()
+            metrics_data = SummaryReportService.get_quick_metrics()
             return Response(metrics_data, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -225,7 +226,7 @@ class ReportViewSet(viewsets.ViewSet):
             
             # Generate the report data first
             if report_type == "summary":
-                report_data = ReportService.generate_summary_report(start_date, end_date)
+                report_data = SummaryReportService.generate_summary_report(start_date, end_date)
             elif report_type == "sales":
                 report_data = SalesReportService.generate_sales_report(start_date, end_date)
             elif report_type == "products":
@@ -442,7 +443,7 @@ class SavedReportViewSet(BaseViewSet):
 
             # Generate report based on type
             if saved_report.report_type == "summary":
-                report_data = ReportService.generate_summary_report(
+                report_data = SummaryReportService.generate_summary_report(
                     start_date, end_date
                 )
             elif saved_report.report_type == "sales":

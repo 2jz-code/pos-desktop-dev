@@ -30,7 +30,6 @@ import {
 	TrendingUp,
 	TrendingDown,
 	Users,
-	Download,
 	RefreshCw,
 	Package,
 	HelpCircle,
@@ -38,7 +37,6 @@ import {
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
-import { ExportDialog } from "@/components/reports/ExportDialog";
 import { RevenueTooltip } from "@/components/reports/RevenueTooltip";
 
 interface SummaryData {
@@ -133,7 +131,6 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 	const [quickMetrics, setQuickMetrics] = useState<QuickMetrics | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [quickMetricsLoading, setQuickMetricsLoading] = useState(false);
-	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const fetchSummaryData = async () => {
@@ -249,16 +246,6 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 					<p className="text-sm text-muted-foreground">
 						Overview of your business performance
 					</p>
-				</div>
-				<div className="flex items-center space-x-2">
-					<Button
-						onClick={() => setExportDialogOpen(true)}
-						variant="outline"
-						size="sm"
-					>
-						<Download className="mr-2 h-4 w-4" />
-						Export
-					</Button>
 				</div>
 			</div>
 
@@ -684,13 +671,6 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 					</div>
 				</CardContent>
 			</Card>
-			<ExportDialog
-				open={exportDialogOpen}
-				onOpenChange={setExportDialogOpen}
-				reportType="summary"
-				defaultStartDate={dateRange?.from}
-				defaultEndDate={dateRange?.to}
-			/>
 		</div>
 	);
 }
