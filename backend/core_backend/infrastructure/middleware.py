@@ -1,6 +1,8 @@
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 from settings.models import GlobalSettings
+from business_hours.models import BusinessHoursProfile
+from business_hours.services import BusinessHoursService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,11 +24,12 @@ class BusinessHoursMiddleware(MiddlewareMixin):
 
     # Specific endpoints blocked during closed hours (primarily online/external orders)
     RESTRICTED_ENDPOINTS = [
-        # Online order creation endpoints (add these as you build the customer website)
+        # Online order creation endpoints
         "/api/orders/online/",  # Future online order endpoint
         "/api/orders/website/",  # Future website order endpoint
         "/api/orders/external/",  # Future external order endpoint
         "/api/orders/public/",  # Future public order endpoint
+        "/api/orders/guest-order/",  # Guest order creation (when from external sources)
         # Add more online-specific endpoints here as needed
     ]
 
@@ -46,15 +49,21 @@ class BusinessHoursMiddleware(MiddlewareMixin):
         if not self._should_restrict_request(request):
             return None
 
-        # Check if business is currently open
+        # Check if business is currently open using new BusinessHoursService
         try:
-            settings = GlobalSettings.objects.get(pk=1)
-            if not settings.is_business_open():
-                return self._business_closed_response(settings)
-        except GlobalSettings.DoesNotExist:
-            # If no settings exist, allow access (setup mode)
-            logger.warning("No GlobalSettings found - allowing access")
-            return None
+            service = BusinessHoursService.get_default_service()
+            if not service.is_open():
+                return self._business_closed_response(service)
+        except BusinessHoursProfile.DoesNotExist:
+            # If no business hours profile exists, fall back to old GlobalSettings
+            try:
+                settings = GlobalSettings.objects.get(pk=1)
+                if not settings.is_business_open():
+                    return self._business_closed_response_legacy(settings)
+            except GlobalSettings.DoesNotExist:
+                # If neither exist, allow access (setup mode)
+                logger.warning("No business hours configuration found - allowing access")
+                return None
         except Exception as e:
             # If check fails, log error but allow access
             logger.error(f"Business hours check failed: {e}")
@@ -108,8 +117,58 @@ class BusinessHoursMiddleware(MiddlewareMixin):
 
         return False
 
-    def _business_closed_response(self, settings):
-        """Return a JSON response indicating business is closed."""
+    def _business_closed_response(self, service):
+        """Return an enhanced JSON response indicating business is closed using BusinessHoursService."""
+        try:
+            # Get comprehensive status summary
+            summary = service.get_status_summary()
+            
+            # Get store name from GlobalSettings if available
+            store_name = "Store"
+            try:
+                settings = GlobalSettings.objects.get(pk=1)
+                store_name = settings.store_name
+            except GlobalSettings.DoesNotExist:
+                pass
+            
+            # Get today's hours for additional context
+            today_hours = summary.get('today_hours', {})
+            
+            response_data = {
+                "error": "BUSINESS_CLOSED",
+                "message": "The business is currently closed.",
+                "current_time": summary.get('current_time'),
+                "timezone": summary.get('timezone'),
+                "store_name": store_name,
+                "today_hours": today_hours,
+            }
+            
+            # Add next opening time if available
+            next_opening = summary.get('next_opening')
+            if next_opening:
+                response_data["next_opening"] = next_opening
+                response_data["message"] = f"The business is currently closed. We'll be open next at {next_opening}."
+            
+            # Add reason if it's a special closure
+            if today_hours.get('reason'):
+                response_data["closure_reason"] = today_hours['reason']
+                response_data["message"] = f"The business is currently closed due to {today_hours['reason']}."
+            
+            return JsonResponse(response_data, status=503)  # Service Unavailable
+            
+        except Exception as e:
+            logger.error(f"Error generating enhanced business closed response: {e}")
+            # Fallback to simple response
+            return JsonResponse(
+                {
+                    "error": "BUSINESS_CLOSED",
+                    "message": "The business is currently closed.",
+                },
+                status=503,
+            )
+    
+    def _business_closed_response_legacy(self, settings):
+        """Legacy fallback response using GlobalSettings (for backward compatibility)."""
         return JsonResponse(
             {
                 "error": "BUSINESS_CLOSED",

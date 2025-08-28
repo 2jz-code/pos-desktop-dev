@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_redis",
     # My Apps
+    "business_hours",
     "products",
     "inventory",
     "orders",
@@ -101,7 +102,7 @@ INTERNAL_IPS = [
 ]
 
 DEBUG_TOOLBAR_CONFIG = {
-    'SHOW_TOOLBAR_CALLBACK': lambda request: DEBUG,
+    "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
 }
 
 INTERNAL_IPS = ["192.168.5.144", "192.168.2.27"]
@@ -181,7 +182,9 @@ USE_TZ = True
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-AWS_BACKUP_BUCKET_NAME = os.getenv("AWS_BACKUP_BUCKET_NAME")  # Separate bucket for backups
+AWS_BACKUP_BUCKET_NAME = os.getenv(
+    "AWS_BACKUP_BUCKET_NAME"
+)  # Separate bucket for backups
 AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
 AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
@@ -201,13 +204,13 @@ if USE_S3:
     }
     AWS_DEFAULT_ACL = None  # Don't set ACLs, use bucket policy instead
     AWS_S3_FILE_OVERWRITE = False
-    
+
     # Static files storage
     class StaticStorage(S3Boto3Storage):
         location = "static"
         default_acl = None
         file_overwrite = False
-    
+
     # Media files storage
     class MediaStorage(S3Boto3Storage):
         location = "media"
@@ -217,11 +220,11 @@ if USE_S3:
     # Configure storage backends
     STATICFILES_STORAGE = "core_backend.settings.StaticStorage"
     DEFAULT_FILE_STORAGE = "core_backend.settings.MediaStorage"
-    
+
     # URLs for S3
     STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
     MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
-    
+
     logger.info(f"Using S3 for static files: {STATIC_URL}")
     logger.info(f"Using S3 for media files: {MEDIA_URL}")
 else:
@@ -445,55 +448,55 @@ CACHE_VERSION = os.getenv("CACHE_VERSION", 1)
 
 # Logging configuration
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
         },
-        'simple': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple'
-        },
-        'file': {
-            'level': 'DEBUG',
-            'class': 'logging.FileHandler',
-            'filename': 'logs.md',
-            'formatter': 'verbose',
+        "simple": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
         },
     },
-    'root': {
-        'handlers': ['console', 'file'],
-        'level': 'INFO',
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+        "file": {
+            "level": "DEBUG",
+            "class": "logging.FileHandler",
+            "filename": "logs.md",
+            "formatter": "verbose",
+        },
     },
-    'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
-            'propagate': False,
+    "root": {
+        "handlers": ["console", "file"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+            "propagate": False,
         },
-        'reports': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "reports": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
-        'reports.services_new': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "reports.services_new": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
-        'reports.services_new.sales_service': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "reports.services_new.sales_service": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
     },
 }
@@ -676,28 +679,50 @@ CELERY_RESULT_EXPIRES = 3600  # 1 hour
 
 # Cache warming configuration
 CACHE_WARMING_ENABLED = os.getenv("CACHE_WARMING_ENABLED", "True").lower() == "true"
-CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", str(not DEBUG)).lower() == "true"
+CACHE_WARMING_ON_STARTUP = (
+    os.getenv("CACHE_WARMING_ON_STARTUP", str(not DEBUG)).lower() == "true"
+)
 
 # Cache warming intervals (in seconds)
-CACHE_WARMING_INTERVAL = int(os.getenv("CACHE_WARMING_INTERVAL", "10800"))  # 3 hours default
-CACHE_WARMING_STALE_CHECK_INTERVAL = int(os.getenv("CACHE_WARMING_STALE_CHECK_INTERVAL", "1800"))  # 30 minutes
-CACHE_WARMING_PRODUCT_INTERVAL = int(os.getenv("CACHE_WARMING_PRODUCT_INTERVAL", "7200"))  # 2 hours
-CACHE_WARMING_SETTINGS_INTERVAL = int(os.getenv("CACHE_WARMING_SETTINGS_INTERVAL", "14400"))  # 4 hours
-CACHE_WARMING_REPORT_INTERVAL = int(os.getenv("CACHE_WARMING_REPORT_INTERVAL", "3600"))  # 1 hour
-CACHE_WARMING_INVENTORY_INTERVAL = int(os.getenv("CACHE_WARMING_INVENTORY_INTERVAL", "7200"))  # 2 hours
+CACHE_WARMING_INTERVAL = int(
+    os.getenv("CACHE_WARMING_INTERVAL", "10800")
+)  # 3 hours default
+CACHE_WARMING_STALE_CHECK_INTERVAL = int(
+    os.getenv("CACHE_WARMING_STALE_CHECK_INTERVAL", "1800")
+)  # 30 minutes
+CACHE_WARMING_PRODUCT_INTERVAL = int(
+    os.getenv("CACHE_WARMING_PRODUCT_INTERVAL", "7200")
+)  # 2 hours
+CACHE_WARMING_SETTINGS_INTERVAL = int(
+    os.getenv("CACHE_WARMING_SETTINGS_INTERVAL", "14400")
+)  # 4 hours
+CACHE_WARMING_REPORT_INTERVAL = int(
+    os.getenv("CACHE_WARMING_REPORT_INTERVAL", "3600")
+)  # 1 hour
+CACHE_WARMING_INVENTORY_INTERVAL = int(
+    os.getenv("CACHE_WARMING_INVENTORY_INTERVAL", "7200")
+)  # 2 hours
 
 # Cache warming failure tolerance
-CACHE_WARMING_FAILURE_TOLERANCE = os.getenv("CACHE_WARMING_FAILURE_TOLERANCE", "True").lower() == "true"
+CACHE_WARMING_FAILURE_TOLERANCE = (
+    os.getenv("CACHE_WARMING_FAILURE_TOLERANCE", "True").lower() == "true"
+)
 CACHE_WARMING_LOG_LEVEL = os.getenv("CACHE_WARMING_LOG_LEVEL", "INFO").upper()
 
 # Environment-specific cache warming behavior
 if DEBUG:
     # In development, be less aggressive with cache warming
-    CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", "False").lower() == "true"
-    CACHE_WARMING_INTERVAL = int(os.getenv("CACHE_WARMING_INTERVAL", "21600"))  # 6 hours in dev
+    CACHE_WARMING_ON_STARTUP = (
+        os.getenv("CACHE_WARMING_ON_STARTUP", "False").lower() == "true"
+    )
+    CACHE_WARMING_INTERVAL = int(
+        os.getenv("CACHE_WARMING_INTERVAL", "21600")
+    )  # 6 hours in dev
 else:
     # In production, enable all cache warming features
-    CACHE_WARMING_ON_STARTUP = os.getenv("CACHE_WARMING_ON_STARTUP", "True").lower() == "true"
+    CACHE_WARMING_ON_STARTUP = (
+        os.getenv("CACHE_WARMING_ON_STARTUP", "True").lower() == "true"
+    )
     CACHE_WARMING_ENABLED = True
 
 # Task routing (optional - for organizing tasks)
@@ -716,14 +741,24 @@ CELERY_TASK_ROUTES = {
     "inventory.tasks.daily_low_stock_sweep": {"queue": "maintenance"},
     "inventory.tasks.reset_low_stock_notifications": {"queue": "maintenance"},
     # Cache warming tasks
-    "core_backend.infrastructure.tasks.warm_critical_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_critical_caches": {
+        "queue": "cache_warming"
+    },
     "core_backend.infrastructure.tasks.warm_product_caches": {"queue": "cache_warming"},
-    "core_backend.infrastructure.tasks.warm_settings_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_settings_caches": {
+        "queue": "cache_warming"
+    },
     "core_backend.infrastructure.tasks.warm_report_caches": {"queue": "cache_warming"},
-    "core_backend.infrastructure.tasks.warm_inventory_caches": {"queue": "cache_warming"},
-    "core_backend.infrastructure.tasks.refresh_stale_caches": {"queue": "cache_warming"},
+    "core_backend.infrastructure.tasks.warm_inventory_caches": {
+        "queue": "cache_warming"
+    },
+    "core_backend.infrastructure.tasks.refresh_stale_caches": {
+        "queue": "cache_warming"
+    },
     "core_backend.infrastructure.tasks.cache_health_check": {"queue": "monitoring"},
-    "core_backend.infrastructure.tasks.clear_expired_cache_locks": {"queue": "maintenance"},
+    "core_backend.infrastructure.tasks.clear_expired_cache_locks": {
+        "queue": "maintenance"
+    },
     "core_backend.infrastructure.tasks.backup_database": {"queue": "maintenance"},
 }
 
@@ -766,78 +801,66 @@ CELERY_BEAT_SCHEDULE = {
     # ========================================================================
     # COMPREHENSIVE CACHE WARMING TASKS
     # ========================================================================
-    
     # Critical cache warming - comprehensive
     "warm-critical-caches": {
         "task": "core_backend.infrastructure.tasks.warm_critical_caches",
         "schedule": CACHE_WARMING_INTERVAL,  # Use configurable interval
         "options": {"expires": CACHE_WARMING_INTERVAL // 2},
     },
-    
     # Product-specific cache warming
     "warm-product-caches": {
         "task": "core_backend.infrastructure.tasks.warm_product_caches",
         "schedule": CACHE_WARMING_PRODUCT_INTERVAL,  # Every 2 hours by default
         "options": {"expires": CACHE_WARMING_PRODUCT_INTERVAL // 2},
     },
-    
     # Settings cache warming
     "warm-settings-caches": {
-        "task": "core_backend.infrastructure.tasks.warm_settings_caches", 
+        "task": "core_backend.infrastructure.tasks.warm_settings_caches",
         "schedule": CACHE_WARMING_SETTINGS_INTERVAL,  # Every 4 hours by default
         "options": {"expires": CACHE_WARMING_SETTINGS_INTERVAL // 2},
     },
-    
     # Report cache warming
     "warm-report-caches": {
         "task": "core_backend.infrastructure.tasks.warm_report_caches",
-        "schedule": CACHE_WARMING_REPORT_INTERVAL,  # Every hour by default  
+        "schedule": CACHE_WARMING_REPORT_INTERVAL,  # Every hour by default
         "options": {"expires": CACHE_WARMING_REPORT_INTERVAL // 2},
     },
-    
     # Inventory cache warming
     "warm-inventory-caches": {
         "task": "core_backend.infrastructure.tasks.warm_inventory_caches",
         "schedule": CACHE_WARMING_INVENTORY_INTERVAL,  # Every 2 hours by default
         "options": {"expires": CACHE_WARMING_INVENTORY_INTERVAL // 2},
     },
-    
     # Stale cache refresh
     "refresh-stale-caches": {
         "task": "core_backend.infrastructure.tasks.refresh_stale_caches",
         "schedule": CACHE_WARMING_STALE_CHECK_INTERVAL,  # Every 30 minutes by default
         "options": {"expires": CACHE_WARMING_STALE_CHECK_INTERVAL // 2},
     },
-    
     # Early morning comprehensive cache warming (production-ready start)
     "morning-cache-warming": {
         "task": "core_backend.infrastructure.tasks.warm_critical_caches",
         "schedule": crontab(hour=6, minute=30),  # 6:30 AM daily
         "options": {"expires": 3600},
     },
-    
     # ========================================================================
     # CACHE MAINTENANCE TASKS
     # ========================================================================
-    
     # Cache health monitoring
     "cache-health-check": {
         "task": "core_backend.infrastructure.tasks.cache_health_check",
         "schedule": 300.0,  # Every 5 minutes
         "options": {"expires": 240},
     },
-    
     # Clear expired cache locks
     "clear-expired-locks": {
         "task": "core_backend.infrastructure.tasks.clear_expired_cache_locks",
         "schedule": 3600.0,  # Every hour
         "options": {"expires": 1800},
     },
-    
     # ========================================================================
     # DATABASE BACKUP TASKS
     # ========================================================================
-    
     # Daily database backup
     "daily-database-backup": {
         "task": "core_backend.infrastructure.tasks.backup_database",

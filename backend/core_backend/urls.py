@@ -57,6 +57,7 @@ urlpatterns = [
     path("api/integrations/", include("integrations.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/reports/", include("reports.urls")),
+    path("api/business-hours/", include("business_hours.urls")),
 ]
 
 if settings.DEBUG:
