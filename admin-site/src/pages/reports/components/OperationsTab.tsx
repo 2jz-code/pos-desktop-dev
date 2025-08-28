@@ -18,7 +18,7 @@ import {
 	ResponsiveContainer,
 	LineChart,
 	Line,
-	AreaChart,
+	ComposedChart,
 	Area,
 } from "recharts";
 import {
@@ -219,16 +219,16 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Peak Day</CardTitle>
+						<CardTitle className="text-sm font-medium">Slowest Day</CardTitle>
 						<TrendingUp className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold">
-							{data?.summary?.peak_day?.orders || "0"}
+							{data?.summary?.slowest_day?.orders || "0"}
 						</div>
 						<p className="text-xs text-muted-foreground">
-							{data?.summary?.peak_day?.date
-								? format(new Date(data.summary.peak_day.date), "MMM dd")
+							{data?.summary?.slowest_day?.date
+								? format(new Date(data.summary.slowest_day.date), "MMM dd")
 								: "N/A"}
 						</p>
 					</CardContent>
@@ -261,7 +261,7 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 						width="100%"
 						height={400}
 					>
-						<AreaChart data={data?.hourly_patterns || []}>
+						<ComposedChart data={data?.hourly_patterns || []}>
 							<CartesianGrid strokeDasharray="3 3" />
 							<XAxis dataKey="hour" />
 							<YAxis
@@ -285,7 +285,6 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 								yAxisId="orders"
 								type="monotone"
 								dataKey="orders"
-								stackId="1"
 								stroke="#8884d8"
 								fill="#8884d8"
 								fillOpacity={0.6}
@@ -298,7 +297,7 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 								strokeWidth={2}
 								dot={{ fill: "#82ca9d" }}
 							/>
-						</AreaChart>
+						</ComposedChart>
 					</ResponsiveContainer>
 				</CardContent>
 			</Card>
@@ -379,7 +378,7 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 			<Card>
 				<CardHeader>
 					<CardTitle>Staff Performance</CardTitle>
-					<CardDescription>Cashier performance metrics</CardDescription>
+					<CardDescription>Orders processed by cashier</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
@@ -390,18 +389,10 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 							>
 								<div className="flex items-center space-x-4">
 									<Badge variant="outline">{index + 1}</Badge>
-									<div>
-										<p className="font-medium">{staff.cashier}</p>
-										<p className="text-sm text-muted-foreground">
-											Avg Order: ${staff.avg_order_value.toFixed(2)}
-										</p>
-									</div>
+									<p className="font-medium">{staff.cashier}</p>
 								</div>
-								<div className="text-right space-y-1">
+								<div className="text-right">
 									<p className="font-medium">{staff.orders_processed} orders</p>
-									<p className="text-sm text-muted-foreground">
-										${staff.revenue.toLocaleString()} revenue
-									</p>
 								</div>
 							</div>
 						))}
@@ -409,67 +400,6 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 				</CardContent>
 			</Card>
 
-			{/* Performance Summary */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Performance Summary</CardTitle>
-					<CardDescription>Key operational metrics</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="grid gap-4 md:grid-cols-2">
-						<div className="space-y-4">
-							<div>
-								<p className="text-sm font-medium mb-2">Busiest Day</p>
-								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-									<span>
-										{data?.summary?.peak_day?.date
-											? format(
-													new Date(data.summary.peak_day.date),
-													"EEEE, MMM dd"
-											  )
-											: "N/A"}
-									</span>
-									<Badge>{data?.summary?.peak_day?.orders || 0} orders</Badge>
-								</div>
-							</div>
-							<div>
-								<p className="text-sm font-medium mb-2">Slowest Day</p>
-								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-									<span>
-										{data?.summary?.slowest_day?.date
-											? format(
-													new Date(data.summary.slowest_day.date),
-													"EEEE, MMM dd"
-											  )
-											: "N/A"}
-									</span>
-									<Badge variant="secondary">
-										{data?.summary?.slowest_day?.orders || 0} orders
-									</Badge>
-								</div>
-							</div>
-						</div>
-						<div className="space-y-4">
-							<div>
-								<p className="text-sm font-medium mb-2">Peak Hour</p>
-								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-									<span>{data?.peak_hours?.[0]?.hour || "N/A"}</span>
-									<Badge>{data?.peak_hours?.[0]?.orders || 0} orders</Badge>
-								</div>
-							</div>
-							<div>
-								<p className="text-sm font-medium mb-2">Top Performer</p>
-								<div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-									<span>{data?.staff_performance?.[0]?.cashier || "N/A"}</span>
-									<Badge>
-										{data?.staff_performance?.[0]?.orders_processed || 0} orders
-									</Badge>
-								</div>
-							</div>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
 			{/* Export Dialog */}
 			<ExportDialog
 				open={exportDialogOpen}

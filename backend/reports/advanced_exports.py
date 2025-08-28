@@ -30,6 +30,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 from .models import SavedReport, ReportExecution
 from .services import ReportService
+from .services_new.products_service import ProductsReportService
 from users.models import User
 
 logger = logging.getLogger(__name__)
@@ -363,11 +364,12 @@ class AdvancedExportService:
                 start_date, end_date, use_cache=False
             )
         elif report_type == "products":
-            return ReportService.generate_products_report(
+            return ProductsReportService.generate_products_report(
                 start_date,
                 end_date,
                 category_id=filters.get("category_id"),
                 limit=filters.get("limit", 50),
+                trend_period=filters.get("trend_period", "auto"),
                 use_cache=False,
             )
         elif report_type == "payments":
@@ -394,11 +396,68 @@ class AdvancedExportService:
         filename = f"{report_type}_report_{timestamp}.{format}"
 
         if format == "csv":
-            content = ReportService.export_to_csv(report_data, report_type)
+            # Use specific service for refactored reports, original service for others
+            if report_type == "products":
+                content = ProductsReportService.export_products_to_csv(report_data)
+            else:
+                content = ReportService.export_to_csv(report_data, report_type)
         elif format == "xlsx":
-            content = ReportService.export_to_xlsx(report_data, report_type)
+            if report_type == "products":
+                import io
+                from openpyxl import Workbook
+                from openpyxl.styles import Font, PatternFill, Alignment
+                
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Products Report"
+                
+                # Styles
+                header_font = Font(bold=True, color="FFFFFF")
+                header_fill = PatternFill(
+                    start_color="366092", end_color="366092", fill_type="solid"
+                )
+                header_alignment = Alignment(horizontal="center", vertical="center")
+                
+                # Call the new ProductsReportService export method
+                ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                
+                # Save to bytes
+                output = io.BytesIO()
+                wb.save(output)
+                content = output.getvalue()
+            else:
+                content = ReportService.export_to_xlsx(report_data, report_type)
         elif format == "pdf":
-            content = ReportService.export_to_pdf(report_data, report_type)
+            if report_type == "products":
+                import io
+                from reportlab.lib.pagesizes import letter, landscape
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.lib.units import inch
+                from reportlab.lib.enums import TA_CENTER
+                
+                # Create PDF in landscape mode for better table display
+                output = io.BytesIO()
+                doc = SimpleDocTemplate(output, pagesize=landscape(letter), 
+                                      leftMargin=0.5*inch, rightMargin=0.5*inch,
+                                      topMargin=0.5*inch, bottomMargin=0.5*inch)
+                
+                # Create story and styles
+                story = []
+                styles = getSampleStyleSheet()
+                
+                # Add custom title style
+                styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], 
+                                        alignment=TA_CENTER, fontSize=18, spaceAfter=20))
+                
+                # Call the new ProductsReportService export method
+                ProductsReportService.export_products_to_pdf(report_data, story, styles)
+                
+                # Build PDF
+                doc.build(story)
+                content = output.getvalue()
+            else:
+                content = ReportService.export_to_pdf(report_data, report_type)
         else:
             raise ValueError(f"Unsupported export format: {format}")
 

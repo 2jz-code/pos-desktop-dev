@@ -80,7 +80,7 @@ interface PaymentsData {
 		total_attempted: number;
 		successfully_processed: number;
 		processing_issues: number;
-		
+
 		// Detailed breakdown by status
 		breakdown: {
 			successful: {
@@ -100,11 +100,11 @@ interface PaymentsData {
 				count: number;
 			};
 		};
-		
+
 		// Calculated rates
 		processing_success_rate: number;
 		processing_issues_rate: number;
-		
+
 		// Legacy fields for backward compatibility
 		total_processed: number;
 		total_transactions: number;
@@ -212,20 +212,32 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 	}
 	// New comprehensive payment metrics
 	const totalAttempted = Number(data?.summary?.total_attempted || 0);
-	const successfullyProcessed = Number(data?.summary?.successfully_processed || 0);
+	const successfullyProcessed = Number(
+		data?.summary?.successfully_processed || 0
+	);
 	const processingIssues = Number(data?.summary?.processing_issues || 0);
-	const processingSuccessRate = Number(data?.summary?.processing_success_rate || 0);
-	const processingIssuesRate = Number(data?.summary?.processing_issues_rate || 0);
-	
+	const processingSuccessRate = Number(
+		data?.summary?.processing_success_rate || 0
+	);
+	const processingIssuesRate = Number(
+		data?.summary?.processing_issues_rate || 0
+	);
+
 	// Detailed breakdown
-	const successfulCount = Number(data?.summary?.breakdown?.successful?.count || 0);
-	const refundedAmount = Number(data?.summary?.breakdown?.refunded?.amount || 0);
+	const successfulCount = Number(
+		data?.summary?.breakdown?.successful?.count || 0
+	);
+	const refundedAmount = Number(
+		data?.summary?.breakdown?.refunded?.amount || 0
+	);
 	const refundedCount = Number(data?.summary?.breakdown?.refunded?.count || 0);
 	const failedAmount = Number(data?.summary?.breakdown?.failed?.amount || 0);
 	const failedCount = Number(data?.summary?.breakdown?.failed?.count || 0);
-	const canceledAmount = Number(data?.summary?.breakdown?.canceled?.amount || 0);
+	const canceledAmount = Number(
+		data?.summary?.breakdown?.canceled?.amount || 0
+	);
 	const canceledCount = Number(data?.summary?.breakdown?.canceled?.count || 0);
-	
+
 	// Legacy fields for backward compatibility
 	const totalRefunds = Number(data?.summary?.total_refunds || 0);
 	const netRevenue = Number(data?.summary?.net_revenue || 0);
@@ -275,9 +287,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Refunds
-						</CardTitle>
+						<CardTitle className="text-sm font-medium">Total Refunds</CardTitle>
 						<RefreshCw className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
 					<CardContent>
@@ -293,7 +303,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							Net Revenue
+							Total After Refunds
 						</CardTitle>
 						<CreditCard className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
@@ -365,13 +375,18 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 											</div>
 											<div className="text-sm text-muted-foreground">
 												{Number(method.processing_fees || 0) > 0 && (
-													<span>Fees: ${Number(method.processing_fees || 0).toFixed(2)} | </span>
+													<span>
+														Fees: $
+														{Number(method.processing_fees || 0).toFixed(2)} |{" "}
+													</span>
 												)}
 												{Number(method.percentage || 0).toFixed(1)}%
 											</div>
 										</div>
 										{method.trend !== 0 && (
-											<Badge variant={method.trend > 0 ? "default" : "secondary"}>
+											<Badge
+												variant={method.trend > 0 ? "default" : "secondary"}
+											>
 												{method.trend > 0 ? (
 													<TrendingUp className="mr-1 h-3 w-3" />
 												) : (
@@ -475,7 +490,9 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			<Card>
 				<CardHeader>
 					<CardTitle>Transaction Breakdown</CardTitle>
-					<CardDescription>Detailed transaction status breakdown</CardDescription>
+					<CardDescription>
+						Detailed transaction status breakdown
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="grid gap-4 md:grid-cols-4">
@@ -518,7 +535,6 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 					</div>
 				</CardContent>
 			</Card>
-
 
 			{/* Export Dialog */}
 			<ExportDialog

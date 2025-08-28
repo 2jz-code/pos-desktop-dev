@@ -10,11 +10,27 @@ from typing import Dict, Any, Optional, List
 
 from .models import SavedReport, ReportExecution, ReportCache
 from .services import ReportService
+from .services_new.products_service import ProductsReportService
 from .signals import cleanup_expired_caches, invalidate_all_report_caches
 from .advanced_exports import AdvancedExportService, ExportQueue
 from users.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_products_report_wrapper(user, start_date, end_date, filters=None):
+    """Wrapper to match the expected signature for tasks"""
+    if filters is None:
+        filters = {}
+    
+    return ProductsReportService.generate_products_report(
+        start_date=start_date,
+        end_date=end_date,
+        category_id=filters.get("category_id"),
+        limit=filters.get("limit", 10),
+        trend_period=filters.get("trend_period", "auto"),
+        use_cache=filters.get("use_cache", True),
+    )
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -64,7 +80,7 @@ def generate_report_async(
         report_method_map = {
             "summary": ReportService.generate_summary_report,
             "sales": ReportService.generate_sales_report,
-            "products": ReportService.generate_products_report,
+            "products": _generate_products_report_wrapper,
             "payments": ReportService.generate_payments_report,
             "operations": ReportService.generate_operations_report,
         }
@@ -404,7 +420,7 @@ def warm_report_caches():
                     report_method_map = {
                         "summary": ReportService.generate_summary_report,
                         "sales": ReportService.generate_sales_report,
-                        "products": ReportService.generate_products_report,
+                        "products": _generate_products_report_wrapper,
                         "payments": ReportService.generate_payments_report,
                         "operations": ReportService.generate_operations_report,
                     }

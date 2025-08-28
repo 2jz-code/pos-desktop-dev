@@ -9,6 +9,8 @@ from .base import BaseReportService
 from .timezone_utils import TimezoneUtils
 from .sales_service import SalesReportService
 from .payments_service import PaymentsReportService
+from .products_service import ProductsReportService
+from .operations_service import OperationsReportService
 
 # Make new services available
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     'TimezoneUtils', 
     'SalesReportService',
     'PaymentsReportService',
+    'ProductsReportService',
+    'OperationsReportService',
 ]

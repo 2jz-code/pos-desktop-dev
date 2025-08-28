@@ -27,9 +27,6 @@ import {
 	ResponsiveContainer,
 	LineChart,
 	Line,
-	PieChart,
-	Pie,
-	Cell,
 } from "recharts";
 import {
 	Package,
@@ -42,7 +39,13 @@ import {
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
+import { getCategories } from "@/services/api/categoryService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+
+interface Category {
+	id: number;
+	name: string;
+}
 
 interface ProductsData {
 	top_products: Array<{
@@ -51,12 +54,6 @@ interface ProductsData {
 		revenue: number;
 		sold: number;
 		avg_price: number;
-	}>;
-	best_sellers: Array<{
-		name: string;
-		id: number;
-		sold: number;
-		revenue: number;
 	}>;
 	category_performance: Array<{
 		category: string;
@@ -94,12 +91,24 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [categoryFilter, setCategoryFilter] = useState<string>("all");
+	const [categories, setCategories] = useState<Category[]>([]);
+	const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
 	const [limit, setLimit] = useState<number>(10);
 	const [sortBy, setSortBy] = useState<"revenue" | "quantity" | "margin">(
 		"revenue"
 	);
-	const [trendPeriod, setTrendPeriod] = useState<"auto" | "daily" | "weekly" | "monthly">("auto");
+	const [trendPeriod, setTrendPeriod] = useState<
+		"auto" | "daily" | "weekly" | "monthly"
+	>("auto");
+
+	const fetchCategories = async () => {
+		try {
+			const response = await getCategories();
+			setCategories(response.data || []);
+		} catch (err) {
+			console.error("Error fetching categories:", err);
+		}
+	};
 
 	const fetchProductsData = async () => {
 		if (!dateRange?.from || !dateRange?.to) return;
@@ -119,7 +128,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 			const filters = {
 				limit: limit,
 				trend_period: trendPeriod,
-				...(categoryFilter !== "all" && { category_id: categoryFilter }),
+				...(categoryFilter && { category_id: categoryFilter }),
 			};
 
 			const productsData = await reportsService.generateProductsReport(
@@ -135,9 +144,42 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 		}
 	};
 
+	// Compute sorted products based on sortBy selection
+	const sortedTopProducts = data?.top_products
+		? [...data.top_products].sort((a, b) => {
+				if (sortBy === "revenue") {
+					return b.revenue - a.revenue;
+				} else if (sortBy === "quantity") {
+					return b.sold - a.sold;
+				}
+				// For margin, keep original order until we implement margin calculation
+				return 0;
+		  })
+		: [];
+
+	// Get dynamic title and description based on sort
+	const getTopProductsTitle = () => {
+		if (sortBy === "revenue") return "Top Products by Revenue";
+		if (sortBy === "quantity") return "Top Products by Quantity";
+		if (sortBy === "margin") return "Top Products by Margin (Coming Soon)";
+		return "Top Products";
+	};
+
+	const getTopProductsDescription = () => {
+		if (sortBy === "revenue")
+			return "Highest earning products in the selected period";
+		if (sortBy === "quantity") return "Most frequently sold products";
+		if (sortBy === "margin") return "Profit margin data will be available soon";
+		return "Product performance ranking";
+	};
+
+	useEffect(() => {
+		fetchCategories();
+	}, []);
+
 	useEffect(() => {
 		fetchProductsData();
-	}, [dateRange, categoryFilter, limit, sortBy, trendPeriod]);
+	}, [dateRange, categoryFilter, limit, trendPeriod]);
 
 	if (loading) {
 		return (
@@ -206,6 +248,27 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				</div>
 				<div className="flex items-center space-x-2">
 					<Select
+						value={categoryFilter?.toString() || "all"}
+						onValueChange={(value) =>
+							setCategoryFilter(value === "all" ? null : Number(value))
+						}
+					>
+						<SelectTrigger className="w-40">
+							<SelectValue placeholder="All Categories" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All Categories</SelectItem>
+							{categories.results?.map((category) => (
+								<SelectItem
+									key={category.id}
+									value={category.id.toString()}
+								>
+									{category.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<Select
 						value={sortBy}
 						onValueChange={(value: "revenue" | "quantity" | "margin") =>
 							setSortBy(value)
@@ -266,7 +329,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
-							Total Products
+							Products Sold
 						</CardTitle>
 						<Package className="h-4 w-4 text-muted-foreground" />
 					</CardHeader>
@@ -275,7 +338,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 							{data?.summary?.total_products?.toLocaleString() || "0"}
 						</div>
 						<p className="text-xs text-muted-foreground">
-							Unique products sold
+							Unique SKUs with sales
 						</p>
 					</CardContent>
 				</Card>
@@ -326,18 +389,23 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				</Card>
 			</div>
 
-			{/* Top Products Tables */}
-			<div className="grid gap-4 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle>Top Products by Revenue</CardTitle>
-						<CardDescription>
-							Highest earning products in the selected period
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
+			{/* Top Products Table */}
+			<Card>
+				<CardHeader>
+					<CardTitle>{getTopProductsTitle()}</CardTitle>
+					<CardDescription>{getTopProductsDescription()}</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{sortBy === "margin" ? (
+						<div className="flex items-center justify-center py-8">
+							<p className="text-sm text-muted-foreground">
+								Margin calculation coming soon. Switch to Revenue or Quantity
+								sorting.
+							</p>
+						</div>
+					) : (
 						<div className="space-y-4">
-							{data?.top_products?.map((product, index) => (
+							{sortedTopProducts?.map((product, index) => (
 								<div
 									key={product.id}
 									className="flex items-center justify-between"
@@ -354,45 +422,17 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 									</div>
 									<div className="text-right">
 										<p className="font-medium">
-											${product.revenue.toLocaleString()}
+											{sortBy === "quantity"
+												? `${product.sold} units`
+												: `$${product.revenue.toLocaleString()}`}
 										</p>
 									</div>
 								</div>
 							))}
 						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Best Sellers by Quantity</CardTitle>
-						<CardDescription>Most frequently sold products</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-4">
-							{data?.best_sellers?.map((product, index) => (
-								<div
-									key={product.id}
-									className="flex items-center justify-between"
-								>
-									<div className="flex items-center space-x-4">
-										<Badge variant="secondary">{index + 1}</Badge>
-										<div>
-											<p className="font-medium">{product.name}</p>
-											<p className="text-sm text-muted-foreground">
-												${product.revenue.toLocaleString()} revenue
-											</p>
-										</div>
-									</div>
-									<div className="text-right">
-										<p className="font-medium">{product.sold} units</p>
-									</div>
-								</div>
-							))}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
+					)}
+				</CardContent>
+			</Card>
 
 			{/* Category Performance */}
 			<Card>
@@ -459,7 +499,9 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 					});
 
 					// Determine date format based on current trend period state
-					const actualPeriod = data?.filters?.actual_period || (trendPeriod === "auto" ? "daily" : trendPeriod);
+					const actualPeriod =
+						data?.filters?.actual_period ||
+						(trendPeriod === "auto" ? "daily" : trendPeriod);
 					const getDateFormat = (period: string) => {
 						switch (period) {
 							case "weekly":
@@ -500,7 +542,10 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 									width="100%"
 									height={400}
 								>
-									<LineChart key={actualPeriod} data={unifiedData}>
+									<LineChart
+										key={actualPeriod}
+										data={unifiedData}
+									>
 										<CartesianGrid strokeDasharray="3 3" />
 										<XAxis
 											dataKey="date"
@@ -535,75 +580,6 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 					);
 				})()}
 
-			{/* Category Distribution */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Category Distribution</CardTitle>
-					<CardDescription>Revenue share by category</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="grid gap-4 md:grid-cols-2">
-						<ResponsiveContainer
-							width="100%"
-							height={300}
-						>
-							<PieChart>
-								<Pie
-									data={data?.category_performance || []}
-									cx="50%"
-									cy="50%"
-									labelLine={false}
-									label={({ category, revenue }) =>
-										`${category}: $${revenue.toLocaleString()}`
-									}
-									outerRadius={80}
-									fill="#8884d8"
-									dataKey="revenue"
-								>
-									{data?.category_performance?.map((entry, index) => (
-										<Cell
-											key={`cell-${index}`}
-											fill={COLORS[index % COLORS.length]}
-										/>
-									))}
-								</Pie>
-								<Tooltip
-									formatter={(value: number) => `$${value.toLocaleString()}`}
-								/>
-							</PieChart>
-						</ResponsiveContainer>
-						<div className="space-y-4">
-							{data?.category_performance?.map((category, index) => (
-								<div
-									key={category.category}
-									className="flex items-center justify-between p-3 border rounded-lg"
-								>
-									<div className="flex items-center space-x-3">
-										<div
-											className="w-4 h-4 rounded-full"
-											style={{ backgroundColor: COLORS[index % COLORS.length] }}
-										/>
-										<div>
-											<p className="font-medium">{category.category}</p>
-											<p className="text-sm text-muted-foreground">
-												{category.unique_products} products
-											</p>
-										</div>
-									</div>
-									<div className="text-right">
-										<p className="font-medium">
-											${category.revenue.toLocaleString()}
-										</p>
-										<p className="text-sm text-muted-foreground">
-											{category.units_sold} units
-										</p>
-									</div>
-								</div>
-							))}
-						</div>
-					</div>
-				</CardContent>
-			</Card>
 
 			{/* Export Dialog */}
 			<ExportDialog
@@ -613,7 +589,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				defaultStartDate={dateRange?.from}
 				defaultEndDate={dateRange?.to}
 				defaultFilters={{
-					category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+					category_id: categoryFilter || undefined,
 					limit: limit,
 				}}
 			/>

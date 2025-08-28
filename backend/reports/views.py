@@ -33,6 +33,8 @@ from .services import ReportService  # Original services.py file
 from .services_new.sales_service import SalesReportService  # New modular service
 from .services_new.summary_service import SummaryReportService  # New modular service
 from .services_new.payments_service import PaymentsReportService  # New modular service
+from .services_new.products_service import ProductsReportService  # New modular service
+from .services_new.operations_service import OperationsReportService  # New modular service
 from .advanced_exports import AdvancedExportService, ExportQueue
 from .tasks import create_bulk_export_async, process_export_queue
 
@@ -110,13 +112,15 @@ class ReportViewSet(viewsets.ViewSet):
             end_date = serializer.validated_data["end_date"]
             category_id = serializer.validated_data.get("category_id")
             limit = serializer.validated_data.get("limit", 10)
+            trend_period = request.query_params.get("trend_period", "auto")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
-            report_data = ReportService.generate_products_report(
+            report_data = ProductsReportService.generate_products_report(
                 start_date=start_date,
                 end_date=end_date,
                 category_id=category_id,
                 limit=limit,
+                trend_period=trend_period,
                 use_cache=use_cache,
             )
 
@@ -166,7 +170,7 @@ class ReportViewSet(viewsets.ViewSet):
             end_date = serializer.validated_data["end_date"]
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
-            report_data = ReportService.generate_operations_report(
+            report_data = OperationsReportService.generate_operations_report(
                 start_date=start_date, end_date=end_date, use_cache=use_cache
             )
 
@@ -233,13 +237,14 @@ class ReportViewSet(viewsets.ViewSet):
             elif report_type == "products":
                 category_id = parameters.get("category_id")
                 limit = parameters.get("limit", 10)
-                report_data = ReportService.generate_products_report(
-                    start_date, end_date, category_id, limit
+                trend_period = parameters.get("trend_period", "auto")
+                report_data = ProductsReportService.generate_products_report(
+                    start_date, end_date, category_id, limit, trend_period
                 )
             elif report_type == "payments":
                 report_data = PaymentsReportService.generate_payments_report(start_date, end_date)
             elif report_type == "operations":
-                report_data = ReportService.generate_operations_report(start_date, end_date)
+                report_data = OperationsReportService.generate_operations_report(start_date, end_date)
             else:
                 return Response(
                     {"error": f"Unknown report type: {report_type}"},
@@ -249,11 +254,15 @@ class ReportViewSet(viewsets.ViewSet):
             # Export to the requested format
             format_type = format_type.lower()
             if format_type == "csv":
-                # Use specific service for sales and payments reports, original service for others
+                # Use specific service for refactored reports, original service for others
                 if report_type == "sales":
                     file_data = SalesReportService.export_sales_to_csv(report_data)
                 elif report_type == "payments":
                     file_data = PaymentsReportService.export_payments_to_csv(report_data)
+                elif report_type == "products":
+                    file_data = ProductsReportService.export_products_to_csv(report_data)
+                elif report_type == "operations":
+                    file_data = OperationsReportService.export_operations_to_csv(report_data)
                 else:
                     file_data = ReportService.export_to_csv(report_data, report_type)
                 content_type = "text/csv"
@@ -299,6 +308,50 @@ class ReportViewSet(viewsets.ViewSet):
                     
                     # Call the new PaymentsReportService export method
                     PaymentsReportService.export_payments_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                    
+                    # Save to bytes
+                    output = io.BytesIO()
+                    wb.save(output)
+                    file_data = output.getvalue()
+                elif report_type == "products":
+                    from openpyxl import Workbook
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = "Products Report"
+                    
+                    # Styles
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(
+                        start_color="366092", end_color="366092", fill_type="solid"
+                    )
+                    header_alignment = Alignment(horizontal="center", vertical="center")
+                    
+                    # Call the new ProductsReportService export method
+                    ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                    
+                    # Save to bytes
+                    output = io.BytesIO()
+                    wb.save(output)
+                    file_data = output.getvalue()
+                elif report_type == "operations":
+                    from openpyxl import Workbook
+                    from openpyxl.styles import Font, PatternFill, Alignment
+                    
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = "Operations Report"
+                    
+                    # Styles
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(
+                        start_color="366092", end_color="366092", fill_type="solid"
+                    )
+                    header_alignment = Alignment(horizontal="center", vertical="center")
+                    
+                    # Call the new OperationsReportService export method
+                    OperationsReportService.export_operations_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
                     
                     # Save to bytes
                     output = io.BytesIO()
@@ -360,6 +413,60 @@ class ReportViewSet(viewsets.ViewSet):
                     
                     # Call the new PaymentsReportService export method
                     PaymentsReportService.export_payments_to_pdf(report_data, story, styles)
+                    
+                    # Build PDF
+                    doc.build(story)
+                    file_data = output.getvalue()
+                elif report_type == "products":
+                    from reportlab.lib.pagesizes import letter, landscape
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                    from reportlab.lib.units import inch
+                    from reportlab.lib.enums import TA_CENTER
+                    
+                    # Create PDF in landscape mode for better table display
+                    output = io.BytesIO()
+                    doc = SimpleDocTemplate(output, pagesize=landscape(letter), 
+                                          leftMargin=0.5*inch, rightMargin=0.5*inch,
+                                          topMargin=0.5*inch, bottomMargin=0.5*inch)
+                    
+                    # Create story and styles
+                    story = []
+                    styles = getSampleStyleSheet()
+                    
+                    # Add custom title style
+                    styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], 
+                                            alignment=TA_CENTER, fontSize=18, spaceAfter=20))
+                    
+                    # Call the new ProductsReportService export method
+                    ProductsReportService.export_products_to_pdf(report_data, story, styles)
+                    
+                    # Build PDF
+                    doc.build(story)
+                    file_data = output.getvalue()
+                elif report_type == "operations":
+                    from reportlab.lib.pagesizes import letter, landscape
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                    from reportlab.lib.units import inch
+                    from reportlab.lib.enums import TA_CENTER
+                    
+                    # Create PDF in portrait mode for concise operations report
+                    output = io.BytesIO()
+                    doc = SimpleDocTemplate(output, pagesize=letter, 
+                                          leftMargin=0.75*inch, rightMargin=0.75*inch,
+                                          topMargin=0.75*inch, bottomMargin=0.75*inch)
+                    
+                    # Create story and styles
+                    story = []
+                    styles = getSampleStyleSheet()
+                    
+                    # Add custom title style
+                    styles.add(ParagraphStyle(name='CustomTitle', parent=styles['Title'], 
+                                            alignment=TA_CENTER, fontSize=18, spaceAfter=20))
+                    
+                    # Call the new OperationsReportService export method
+                    OperationsReportService.export_operations_to_pdf(story, report_data, styles)
                     
                     # Build PDF
                     doc.build(story)
@@ -503,15 +610,16 @@ class SavedReportViewSet(BaseViewSet):
             elif saved_report.report_type == "products":
                 category_id = parameters.get("category_id")
                 limit = parameters.get("limit", 10)
-                report_data = ReportService.generate_products_report(
-                    start_date, end_date, category_id, limit
+                trend_period = parameters.get("trend_period", "auto")
+                report_data = ProductsReportService.generate_products_report(
+                    start_date, end_date, category_id, limit, trend_period
                 )
             elif saved_report.report_type == "payments":
                 report_data = PaymentsReportService.generate_payments_report(
                     start_date, end_date
                 )
             elif saved_report.report_type == "operations":
-                report_data = ReportService.generate_operations_report(
+                report_data = OperationsReportService.generate_operations_report(
                     start_date, end_date
                 )
             else:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format as formatDate } from "date-fns";
 import {
 	Dialog,
@@ -34,6 +34,12 @@ import {
 } from "lucide-react";
 import { DualDatePicker } from "@/components/ui/dual-date-picker";
 import reportsService from "@/services/api/reportsService";
+import { getCategories } from "@/services/api/categoryService";
+
+interface Category {
+	id: number;
+	name: string;
+}
 
 interface ExportDialogProps {
 	open: boolean;
@@ -89,17 +95,34 @@ export function ExportDialog({
 	defaultFilters = {},
 }: ExportDialogProps) {
 	const [format, setFormat] = useState<"PDF" | "Excel" | "CSV">("Excel");
-	const [startDate, setStartDate] = useState<Date | undefined>(defaultStartDate);
+	const [startDate, setStartDate] = useState<Date | undefined>(
+		defaultStartDate
+	);
 	const [endDate, setEndDate] = useState<Date | undefined>(defaultEndDate);
 	const [loading, setLoading] = useState(false);
-	
+
+	// Category loading
+	const [categories, setCategories] = useState<Category[]>([]);
+
 	// Report-specific parameters
 	const [categoryFilter, setCategoryFilter] = useState<string>(
 		defaultFilters.category_id || "all"
 	);
 	const [limit, setLimit] = useState<number>(defaultFilters.limit || 50);
-	const [includeDetails, setIncludeDetails] = useState(true);
 	const [includeCharts, setIncludeCharts] = useState(format === "PDF");
+
+	const fetchCategories = async () => {
+		try {
+			const response = await getCategories();
+			setCategories(response.data || []);
+		} catch (err) {
+			console.error("Error fetching categories:", err);
+		}
+	};
+
+	useEffect(() => {
+		fetchCategories();
+	}, []);
 
 	const handleFormatChange = (newFormat: "PDF" | "Excel" | "CSV") => {
 		setFormat(newFormat);
@@ -129,12 +152,11 @@ export function ExportDialog({
 
 			// Build filters based on report type
 			const filters: Record<string, any> = {};
-			
+
 			if (reportType === "products") {
 				if (categoryFilter !== "all") {
 					filters.category_id = categoryFilter;
 				}
-				filters.limit = limit;
 			}
 
 			await reportsService.exportReport(
@@ -156,7 +178,10 @@ export function ExportDialog({
 	};
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={onOpenChange}
+		>
 			<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
@@ -164,7 +189,8 @@ export function ExportDialog({
 						Export {reportTypeLabels[reportType]}
 					</DialogTitle>
 					<DialogDescription>
-						Configure your export settings and download your report in the desired format.
+						Configure your export settings and download your report in the
+						desired format.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -186,8 +212,13 @@ export function ExportDialog({
 							/>
 							{startDate && endDate && (
 								<p className="text-sm text-muted-foreground mt-2">
-									{formatDate(startDate, "PPP")} to {formatDate(endDate, "PPP")} 
-									{" "}({Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))} days)
+									{formatDate(startDate, "PPP")} to {formatDate(endDate, "PPP")}{" "}
+									(
+									{Math.ceil(
+										(endDate.getTime() - startDate.getTime()) /
+											(1000 * 60 * 60 * 24)
+									)}{" "}
+									days)
 								</p>
 							)}
 						</CardContent>
@@ -210,7 +241,13 @@ export function ExportDialog({
 									onClick={() => handleFormatChange(option.value)}
 								>
 									<div className="flex items-start gap-3">
-										<div className={`mt-1 ${format === option.value ? "text-primary" : "text-muted-foreground"}`}>
+										<div
+											className={`mt-1 ${
+												format === option.value
+													? "text-primary"
+													: "text-muted-foreground"
+											}`}
+										>
 											{option.icon}
 										</div>
 										<div className="flex-1">
@@ -220,7 +257,9 @@ export function ExportDialog({
 													<div className="w-2 h-2 bg-primary rounded-full" />
 												)}
 											</div>
-											<p className="text-sm text-muted-foreground">{option.description}</p>
+											<p className="text-sm text-muted-foreground">
+												{option.description}
+											</p>
 										</div>
 									</div>
 								</div>
@@ -240,27 +279,23 @@ export function ExportDialog({
 							<CardContent className="space-y-4">
 								<div className="space-y-2">
 									<Label htmlFor="category-filter">Category Filter</Label>
-									<Select value={categoryFilter} onValueChange={setCategoryFilter}>
+									<Select
+										value={categoryFilter}
+										onValueChange={setCategoryFilter}
+									>
 										<SelectTrigger>
 											<SelectValue placeholder="Select category" />
 										</SelectTrigger>
 										<SelectContent>
 											<SelectItem value="all">All Categories</SelectItem>
-											{/* Add actual categories here if needed */}
-										</SelectContent>
-									</Select>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="limit">Number of Products</Label>
-									<Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="25">Top 25</SelectItem>
-											<SelectItem value="50">Top 50</SelectItem>
-											<SelectItem value="100">Top 100</SelectItem>
-											<SelectItem value="250">Top 250</SelectItem>
+											{categories.results?.map((category) => (
+												<SelectItem
+													key={category.id}
+													value={category.id.toString()}
+												>
+													{category.name}
+												</SelectItem>
+											))}
 										</SelectContent>
 									</Select>
 								</div>
@@ -274,20 +309,6 @@ export function ExportDialog({
 							<CardTitle className="text-base">Export Options</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-4">
-							<div className="flex items-center justify-between">
-								<div>
-									<Label htmlFor="include-details">Include Detailed Data</Label>
-									<p className="text-sm text-muted-foreground">
-										Include all available data fields and breakdowns
-									</p>
-								</div>
-								<Switch
-									id="include-details"
-									checked={includeDetails}
-									onCheckedChange={setIncludeDetails}
-								/>
-							</div>
-							
 							{format === "PDF" && (
 								<div className="flex items-center justify-between">
 									<div>
