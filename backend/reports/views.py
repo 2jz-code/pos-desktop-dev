@@ -28,13 +28,14 @@ from .serializers import (
     ExportQueueStatusSerializer,
     CustomTemplateSerializer,
 )
-# Import from the original services.py file and new modular services
-from .services import ReportService  # Original services.py file
+# Import from the new modular services
 from .services_new.sales_service import SalesReportService  # New modular service
 from .services_new.summary_service import SummaryReportService  # New modular service
 from .services_new.payments_service import PaymentsReportService  # New modular service
 from .services_new.products_service import ProductsReportService  # New modular service
 from .services_new.operations_service import OperationsReportService  # New modular service
+from .services_new.saved_reports_service import SavedReportService  # New modular service
+from .services_new.export_service import ExportService  # New modular service
 from .advanced_exports import AdvancedExportService, ExportQueue
 from .tasks import create_bulk_export_async, process_export_queue
 
@@ -264,7 +265,7 @@ class ReportViewSet(viewsets.ViewSet):
                 elif report_type == "operations":
                     file_data = OperationsReportService.export_operations_to_csv(report_data)
                 else:
-                    file_data = ReportService.export_to_csv(report_data, report_type)
+                    file_data = ExportService.export_to_csv(report_data, report_type)
                 content_type = "text/csv"
                 file_extension = "csv"
             elif format_type == "xlsx" or format_type == "excel":
@@ -358,7 +359,7 @@ class ReportViewSet(viewsets.ViewSet):
                     wb.save(output)
                     file_data = output.getvalue()
                 else:
-                    file_data = ReportService.export_to_xlsx(report_data, report_type)
+                    file_data = ExportService.export_to_xlsx(report_data, report_type)
                 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 file_extension = "xlsx"
             elif format_type == "pdf":
@@ -472,7 +473,7 @@ class ReportViewSet(viewsets.ViewSet):
                     doc.build(story)
                     file_data = output.getvalue()
                 else:
-                    file_data = ReportService.export_to_pdf(report_data, report_type)
+                    file_data = ExportService.export_to_pdf(report_data, report_type)
                 content_type = "application/pdf"
                 file_extension = "pdf"
             else:
@@ -506,7 +507,8 @@ class ReportViewSet(viewsets.ViewSet):
             )
 
         try:
-            stats = ReportService.get_cache_stats()
+            from .services_new.base import BaseReportService
+            stats = BaseReportService.get_cache_stats()
             return Response(stats, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -525,7 +527,8 @@ class ReportViewSet(viewsets.ViewSet):
             )
 
         try:
-            deleted_count = ReportService.cleanup_expired_cache()
+            from .services_new.base import BaseReportService
+            deleted_count = BaseReportService.cleanup_expired_cache()
             return Response(
                 {
                     "message": f"Cleaned up {deleted_count} expired cache entries",
@@ -584,56 +587,23 @@ class SavedReportViewSet(BaseViewSet):
         """Run a saved report"""
         saved_report = self.get_object()
 
-        # Check if user can run this report
-        if not request.user.is_staff and saved_report.user != request.user:
-            return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
-            )
-
         try:
-            # Extract parameters from saved report
-            parameters = saved_report.parameters
-            start_date = datetime.fromisoformat(
-                parameters["start_date"].replace("Z", "+00:00")
+            # Use the new SavedReportService to run the report
+            report_data = SavedReportService.run_saved_report(
+                saved_report=saved_report,
+                user=request.user
             )
-            end_date = datetime.fromisoformat(
-                parameters["end_date"].replace("Z", "+00:00")
-            )
-
-            # Generate report based on type
-            if saved_report.report_type == "summary":
-                report_data = SummaryReportService.generate_summary_report(
-                    start_date, end_date
-                )
-            elif saved_report.report_type == "sales":
-                report_data = SalesReportService.generate_sales_report(start_date, end_date)
-            elif saved_report.report_type == "products":
-                category_id = parameters.get("category_id")
-                limit = parameters.get("limit", 10)
-                trend_period = parameters.get("trend_period", "auto")
-                report_data = ProductsReportService.generate_products_report(
-                    start_date, end_date, category_id, limit, trend_period
-                )
-            elif saved_report.report_type == "payments":
-                report_data = PaymentsReportService.generate_payments_report(
-                    start_date, end_date
-                )
-            elif saved_report.report_type == "operations":
-                report_data = OperationsReportService.generate_operations_report(
-                    start_date, end_date
-                )
-            else:
-                return Response(
-                    {"error": f"Unknown report type: {saved_report.report_type}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Update last run time
-            saved_report.last_run = timezone.now()
-            saved_report.save()
-
+            
             return Response(report_data, status=status.HTTP_200_OK)
 
+        except PermissionError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_403_FORBIDDEN
+            )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Saved report execution failed: {e}", exc_info=True)
             return Response(
@@ -646,27 +616,22 @@ class SavedReportViewSet(BaseViewSet):
         """Duplicate a saved report"""
         saved_report = self.get_object()
 
-        # Check if user can duplicate this report
-        if not request.user.is_staff and saved_report.user != request.user:
-            return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
-            )
-
         try:
-            # Create a copy
-            duplicated_report = SavedReport.objects.create(
+            # Use the new SavedReportService to duplicate the report
+            new_name = request.data.get("name")  # Allow optional custom name
+            duplicated_report = SavedReportService.duplicate_saved_report(
+                saved_report=saved_report,
                 user=request.user,
-                name=f"{saved_report.name} (Copy)",
-                report_type=saved_report.report_type,
-                parameters=saved_report.parameters,
-                schedule=saved_report.schedule,
-                format=saved_report.format,
-                status="active",
+                new_name=new_name
             )
 
             serializer = self.get_serializer(duplicated_report)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+        except PermissionError as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_403_FORBIDDEN
+            )
         except Exception as e:
             logger.error(f"Report duplication failed: {e}", exc_info=True)
             return Response(
@@ -703,17 +668,17 @@ class ReportTemplateViewSet(BaseViewSet):
 
         # Get custom name from request or use template name
         report_name = request.data.get("name", f"Report from {template.name}")
+        
+        # Get optional custom parameters
+        custom_parameters = request.data.get("parameters")
 
         try:
-            # Create saved report from template
-            saved_report = SavedReport.objects.create(
+            # Use the new SavedReportService to create from template
+            saved_report = SavedReportService.create_from_template(
+                template=template,
                 user=request.user,
-                name=report_name,
-                report_type=template.report_type,
-                parameters=template.default_parameters,
-                schedule="manual",
-                format="PDF",
-                status="active",
+                report_name=report_name,
+                parameters=custom_parameters
             )
 
             serializer = SavedReportSerializer(saved_report)
@@ -743,7 +708,8 @@ class ReportCacheViewSet(ReadOnlyBaseViewSet):
     def cleanup(self, request):
         """Clean up expired cache entries"""
         try:
-            deleted_count = ReportService.cleanup_expired_cache()
+            from .services_new.base import BaseReportService
+            deleted_count = BaseReportService.cleanup_expired_cache()
             return Response(
                 {
                     "message": f"Cleaned up {deleted_count} expired cache entries",

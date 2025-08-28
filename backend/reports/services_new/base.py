@@ -96,8 +96,8 @@ class BaseReportService:
             logger.error(f"Failed to invalidate cache for report type {report_type}: {e}")
             return 0
 
-    @staticmethod
-    def get_cache_stats() -> Dict[str, Any]:
+    @classmethod
+    def get_cache_stats(cls) -> Dict[str, Any]:
         """Get cache statistics."""
         try:
             total_entries = ReportCache.objects.count()

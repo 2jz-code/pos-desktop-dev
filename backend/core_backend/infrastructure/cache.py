@@ -195,8 +195,8 @@ class CacheWarmingManager:
             
             # Warm report KPIs
             try:
-                from reports.services import ReportService
-                ReportService.get_cached_business_kpis()
+                from reports.services_new.metrics_service import BusinessMetricsService
+                BusinessMetricsService.get_cached_business_kpis()
                 warmed_caches.append("reports")
             except Exception as e:
                 logger.warning(f"Failed to warm report caches: {e}")
@@ -319,11 +319,11 @@ class CacheWarmingManager:
     def _warm_reports_cache(cls):
         """Warm advanced reports caches"""
         try:
-            from reports.services import ReportService
+            from reports.services_new.metrics_service import BusinessMetricsService
             
             # Warm business KPIs and historical trends
-            business_kpis = ReportService.get_cached_business_kpis()
-            historical_trends = ReportService.get_historical_trends_data()
+            business_kpis = BusinessMetricsService.get_cached_business_kpis()
+            historical_trends = BusinessMetricsService.get_historical_trends_data()
             
             return f"Warmed reports: ${business_kpis.get('monthly_revenue', 0):.0f} monthly revenue, {len(historical_trends.get('monthly_trends', []))} trend points"
         except ImportError:
@@ -333,11 +333,11 @@ class CacheWarmingManager:
     def _warm_analytics_cache(cls):
         """Warm sales and payment analytics caches"""
         try:
-            from reports.services import ReportService
+            from reports.services_new.metrics_service import BusinessMetricsService
             
             # Warm real-time sales and payment analytics
-            sales_summary = ReportService.get_real_time_sales_summary()
-            payment_analytics = ReportService.get_payment_analytics()
+            sales_summary = BusinessMetricsService.get_real_time_sales_summary()
+            payment_analytics = BusinessMetricsService.get_payment_analytics()
             
             return f"Warmed analytics: ${sales_summary.get('today_revenue', 0):.0f} today, {len(payment_analytics.get('payment_methods', []))} payment methods"
         except ImportError:
@@ -347,10 +347,10 @@ class CacheWarmingManager:
     def _warm_performance_cache(cls):
         """Warm performance monitoring caches"""
         try:
-            from reports.services import ReportService
+            from reports.services_new.metrics_service import BusinessMetricsService
             
             # Warm performance monitoring
-            performance_data = ReportService.get_performance_monitoring_cache()
+            performance_data = BusinessMetricsService.get_performance_monitoring_cache()
             cache_health = performance_data.get('cache_health', {})
             
             healthy_caches = sum(1 for status in cache_health.values() if status.get('status') == 'healthy')

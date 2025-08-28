@@ -227,8 +227,8 @@ class Command(BaseCommand):
         
         if 'reports' in areas:
             try:
-                from reports.services import ReportService
-                ReportService.get_cached_business_kpis()
+                from reports.services_new.metrics_service import BusinessMetricsService
+                BusinessMetricsService.get_cached_business_kpis()
                 total_warmed.append('reports')
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f'⚠️ Report warming failed: {e}'))

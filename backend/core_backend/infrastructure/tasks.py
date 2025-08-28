@@ -213,13 +213,13 @@ def warm_report_caches():
     try:
         logger.info("📊 Warming report caches...")
         
-        from reports.services import ReportService
+        from reports.services_new.metrics_service import BusinessMetricsService
         
         warmed_caches = []
         
         # Warm business KPIs
         try:
-            ReportService.get_cached_business_kpis()
+            BusinessMetricsService.get_cached_business_kpis()
             warmed_caches.append("business_kpis")
         except Exception as e:
             logger.warning(f"Failed to warm business KPIs cache: {e}")

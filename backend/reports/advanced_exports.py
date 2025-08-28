@@ -29,7 +29,11 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 from .models import SavedReport, ReportExecution
-from .services import ReportService
+from .services_new.summary_service import SummaryReportService
+from .services_new.sales_service import SalesReportService
+from .services_new.payments_service import PaymentsReportService
+from .services_new.operations_service import OperationsReportService
+from .services_new.export_service import ExportService
 from .services_new.products_service import ProductsReportService
 from users.models import User
 
@@ -356,11 +360,11 @@ class AdvancedExportService:
 
         # Use existing ReportService methods
         if report_type == "summary":
-            return ReportService.generate_summary_report(
+            return SummaryReportService.generate_summary_report(
                 start_date, end_date, use_cache=False
             )
         elif report_type == "sales":
-            return ReportService.generate_sales_report(
+            return SalesReportService.generate_sales_report(
                 start_date, end_date, use_cache=False
             )
         elif report_type == "products":
@@ -373,11 +377,11 @@ class AdvancedExportService:
                 use_cache=False,
             )
         elif report_type == "payments":
-            return ReportService.generate_payments_report(
+            return PaymentsReportService.generate_payments_report(
                 start_date, end_date, use_cache=False
             )
         elif report_type == "operations":
-            return ReportService.generate_operations_report(
+            return OperationsReportService.generate_operations_report(
                 start_date, end_date, use_cache=False
             )
         else:
@@ -400,7 +404,7 @@ class AdvancedExportService:
             if report_type == "products":
                 content = ProductsReportService.export_products_to_csv(report_data)
             else:
-                content = ReportService.export_to_csv(report_data, report_type)
+                content = ExportService.export_to_csv(report_data, report_type)
         elif format == "xlsx":
             if report_type == "products":
                 import io
@@ -426,7 +430,7 @@ class AdvancedExportService:
                 wb.save(output)
                 content = output.getvalue()
             else:
-                content = ReportService.export_to_xlsx(report_data, report_type)
+                content = ExportService.export_to_xlsx(report_data, report_type)
         elif format == "pdf":
             if report_type == "products":
                 import io
@@ -457,7 +461,7 @@ class AdvancedExportService:
                 doc.build(story)
                 content = output.getvalue()
             else:
-                content = ReportService.export_to_pdf(report_data, report_type)
+                content = ExportService.export_to_pdf(report_data, report_type)
         else:
             raise ValueError(f"Unsupported export format: {format}")
 

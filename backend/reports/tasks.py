@@ -9,7 +9,11 @@ import os
 from typing import Dict, Any, Optional, List
 
 from .models import SavedReport, ReportExecution, ReportCache
-from .services import ReportService
+from .services_new.summary_service import SummaryReportService
+from .services_new.sales_service import SalesReportService
+from .services_new.payments_service import PaymentsReportService
+from .services_new.operations_service import OperationsReportService
+from .services_new.export_service import ExportService
 from .services_new.products_service import ProductsReportService
 from .signals import cleanup_expired_caches, invalidate_all_report_caches
 from .advanced_exports import AdvancedExportService, ExportQueue
@@ -78,11 +82,11 @@ def generate_report_async(
 
         # Generate the report based on type
         report_method_map = {
-            "summary": ReportService.generate_summary_report,
-            "sales": ReportService.generate_sales_report,
+            "summary": SummaryReportService.generate_summary_report,
+            "sales": SalesReportService.generate_sales_report,
             "products": _generate_products_report_wrapper,
-            "payments": ReportService.generate_payments_report,
-            "operations": ReportService.generate_operations_report,
+            "payments": PaymentsReportService.generate_payments_report,
+            "operations": OperationsReportService.generate_operations_report,
         }
 
         if report_type not in report_method_map:
@@ -178,7 +182,7 @@ def export_report_async(saved_report_id: int, format: str):
 
         # Export based on format
         if format == "csv":
-            file_content = ReportService.export_to_csv(
+            file_content = ExportService.export_to_csv(
                 report_data, saved_report.report_type
             )
             file_name = (
@@ -187,7 +191,7 @@ def export_report_async(saved_report_id: int, format: str):
             content_type = "text/csv"
 
         elif format == "xlsx":
-            file_content = ReportService.export_to_xlsx(
+            file_content = ExportService.export_to_xlsx(
                 report_data, saved_report.report_type
             )
             file_name = (
@@ -198,7 +202,7 @@ def export_report_async(saved_report_id: int, format: str):
             )
 
         elif format == "pdf":
-            file_content = ReportService.export_to_pdf(
+            file_content = ExportService.export_to_pdf(
                 report_data, saved_report.report_type, saved_report.name
             )
             file_name = (
@@ -418,11 +422,11 @@ def warm_report_caches():
                 try:
                     # Generate report to warm cache
                     report_method_map = {
-                        "summary": ReportService.generate_summary_report,
-                        "sales": ReportService.generate_sales_report,
+                        "summary": SummaryReportService.generate_summary_report,
+                        "sales": SalesReportService.generate_sales_report,
                         "products": _generate_products_report_wrapper,
-                        "payments": ReportService.generate_payments_report,
-                        "operations": ReportService.generate_operations_report,
+                        "payments": PaymentsReportService.generate_payments_report,
+                        "operations": OperationsReportService.generate_operations_report,
                     }
 
                     report_method = report_method_map[report_type]
