@@ -395,14 +395,19 @@ class OrderService:
         Finalizes an order.
         - Calls the payment service to handle payment.
         - Updates order status to COMPLETED.
+        - Updates order surcharges_total from payment data.
         - Triggers inventory deduction.
         """
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError("Only PENDING or HOLD orders can be completed.")
 
+        # Update order surcharges from payment data
+        if hasattr(order, 'payment_details') and order.payment_details:
+            order.surcharges_total = order.payment_details.total_surcharges
+
         order.payment_status = Order.PaymentStatus.PAID
         order.status = Order.OrderStatus.COMPLETED
-        order.save(update_fields=["status", "payment_status", "updated_at"])
+        order.save(update_fields=["status", "payment_status", "surcharges_total", "updated_at"])
 
         return order
 

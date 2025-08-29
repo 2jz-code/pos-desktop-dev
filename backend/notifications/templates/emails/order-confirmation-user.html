@@ -291,12 +291,36 @@
                         ${{ order.subtotal|floatformat:2 }}
                       </td>
                     </tr>
+                    {% if order.discounts > 0 %}
+                    <tr>
+                      <td style="color: #654321">Discounts</td>
+                      <td style="text-align: right; color: #654321">
+                        -${{ order.discounts|floatformat:2 }}
+                      </td>
+                    </tr>
+                    {% endif %}
+                    {% if order.surcharges > 0 %}
+                    <tr>
+                      <td style="color: #654321">Service Fee</td>
+                      <td style="text-align: right; color: #654321">
+                        ${{ order.surcharges|floatformat:2 }}
+                      </td>
+                    </tr>
+                    {% endif %}
                     <tr>
                       <td style="color: #654321">Tax</td>
                       <td style="text-align: right; color: #654321">
                         ${{ order.tax|floatformat:2 }}
                       </td>
                     </tr>
+                    {% if order.tips > 0 %}
+                    <tr>
+                      <td style="color: #654321">Tip</td>
+                      <td style="text-align: right; color: #654321">
+                        ${{ order.tips|floatformat:2 }}
+                      </td>
+                    </tr>
+                    {% endif %}
                     <tr style="height: 8px"></tr>
                     <tr style="font-size: 18px; font-weight: 600; color: #5e6650">
                       <td>Total Paid</td>
