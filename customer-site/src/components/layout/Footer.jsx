@@ -11,6 +11,7 @@ import {
 import Logo from "../../assets/logo.png"; // Import the logo
 import { useStoreInfo } from "@/hooks/useSettings";
 import OptimizedImage from "@/components/OptimizedImage";
+import BusinessHours from "@/components/common/BusinessHours";
 
 const Footer = () => {
 	const currentYear = new Date().getFullYear();
@@ -222,26 +223,9 @@ const Footer = () => {
 							Opening Hours
 						</h3>
 						<div className="bg-accent-dark-brown rounded-lg p-4">
-							<ul className="space-y-2 text-sm">
-								<li className="flex justify-between items-center">
-									<span className="text-primary-beige">Sunday - Thursday</span>
-									<span className="text-primary-green font-medium">
-										11:00 AM - 8:00 PM
-									</span>
-								</li>
-								<li className="flex justify-between items-center">
-									<span className="text-primary-beige">Friday</span>
-									<span className="text-primary-green font-medium">
-										11:00 AM - 9:00 PM
-									</span>
-								</li>
-								<li className="flex justify-between items-center">
-									<span className="text-primary-beige">Saturday</span>
-									<span className="text-primary-green font-medium">
-										11:00 AM - 9:00 PM
-									</span>
-								</li>
-							</ul>
+							<div className="text-sm">
+								<BusinessHours mode="detailed" showStatus={true} />
+							</div>
 							<div className="mt-4 pt-3 border-t border-accent-subtle-gray/50">
 								<Link
 									to="/menu"

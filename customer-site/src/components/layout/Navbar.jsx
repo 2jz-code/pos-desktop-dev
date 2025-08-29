@@ -16,6 +16,8 @@ import {
 	History,
 	Settings,
 	LogOut,
+	Clock,
+	Store,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,11 +25,127 @@ import { Button } from "@/components/ui/button";
 // NOTE: The following imports are assumed to exist based on the old project structure.
 // You will need to create and expose the AuthContext.
 import { useAuth } from "@/contexts/AuthContext";
+import { useStoreStatus } from "@/contexts/StoreStatusContext";
 // The logo asset needs to be placed in the specified path.
 import LogoImg from "@/assets/logo.png";
 import { useCartSidebar } from "@/contexts/CartSidebarContext";
 import { useCart } from "@/hooks/useCart";
 import OptimizedImage from "@/components/OptimizedImage";
+import BusinessHours from "@/components/common/BusinessHours";
+
+// Store Status Indicator Component
+const StoreStatusIndicator = ({ scrolled, isHomePage, mobileMenuOpen }) => {
+	const [showHours, setShowHours] = useState(false);
+	const storeStatus = useStoreStatus();
+	const dropdownRef = useRef(null);
+
+	// Close dropdown when clicking outside
+	useEffect(() => {
+		const handleClickOutside = (event) => {
+			if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+				setShowHours(false);
+			}
+		};
+
+		if (showHours) {
+			document.addEventListener("mousedown", handleClickOutside);
+		}
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [showHours]);
+
+	if (storeStatus.isLoading) {
+		return (
+			<div className="flex items-center space-x-2">
+				<div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+				<span className={`text-sm ${
+					isHomePage && !scrolled && !mobileMenuOpen 
+						? "text-accent-light-beige" 
+						: "text-accent-dark-brown"
+				}`}>
+					Loading...
+				</span>
+			</div>
+		);
+	}
+
+	const textColorClass = isHomePage && !scrolled && !mobileMenuOpen 
+		? "text-accent-light-beige" 
+		: "text-accent-dark-brown";
+
+	return (
+		<div className="relative" ref={dropdownRef}>
+			<button
+				onClick={() => setShowHours(!showHours)}
+				className={`flex items-center space-x-2 hover:opacity-80 transition-opacity ${textColorClass}`}
+			>
+				{/* Status Dot */}
+				<div className={`w-2 h-2 rounded-full ${
+					storeStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
+				}`}></div>
+				
+				{/* Status Text */}
+				<span className="text-sm font-medium">
+					{storeStatus.isOpen ? 'Open' : 'Closed'}
+				</span>
+
+				{/* Time indicator for closing soon */}
+				{storeStatus.isClosingSoon && (
+					<Clock className="h-3 w-3 text-yellow-500" />
+				)}
+			</button>
+
+			{/* Dropdown with today's hours */}
+			<AnimatePresence>
+				{showHours && (
+					<motion.div
+						initial={{ opacity: 0, y: -10 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: -10 }}
+						transition={{ duration: 0.2 }}
+						className="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-50 overflow-hidden border border-gray-200"
+					>
+						<div className="p-4">
+							<div className="flex items-center justify-between mb-3">
+								<span className="font-semibold text-gray-800">Store Status</span>
+								<div className="flex items-center space-x-1">
+									<div className={`w-2 h-2 rounded-full ${
+										storeStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
+									}`}></div>
+									<span className={`text-sm font-medium ${
+										storeStatus.isOpen ? 'text-green-700' : 'text-red-700'
+									}`}>
+										{storeStatus.isOpen ? 'Open' : 'Closed'}
+									</span>
+								</div>
+							</div>
+							
+							{storeStatus.isClosingSoon && (
+								<div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+									Closing in {storeStatus.getTimeUntilCloseString()}
+								</div>
+							)}
+
+							{!storeStatus.isOpen && storeStatus.getNextOpeningDisplay() && (
+								<div className="mb-3 text-sm text-gray-600">
+									Opens at {storeStatus.getNextOpeningDisplay()}
+								</div>
+							)}
+							
+							<div className="border-t border-gray-200 pt-3">
+								<h4 className="text-sm font-medium text-gray-800 mb-2">Business Hours</h4>
+								<div className="text-sm">
+									<BusinessHours mode="detailed" textColor="text-accent-warm-brown" />
+								</div>
+							</div>
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+};
 
 const ProfileDropdown = () => {
 	const [isOpen, setIsOpen] = useState(false);
@@ -382,6 +500,15 @@ const Navbar = () => {
 
 					{/* Right side items */}
 					<div className="flex items-center space-x-4">
+						{/* Store Status - Desktop */}
+						<div className="hidden md:block">
+							<StoreStatusIndicator 
+								scrolled={scrolled} 
+								isHomePage={isHomePage}
+								mobileMenuOpen={mobileMenuOpen}
+							/>
+						</div>
+						
 						<div className="hidden md:block">
 							<Button
 								onClick={() => navigate("/menu")}
@@ -456,6 +583,14 @@ const Navbar = () => {
 							{renderMobileNavLinks()}
 							<div className="border-t border-gray-200 pt-4 pb-3">
 								<div className="px-2 space-y-3">
+									{/* Store Status - Mobile */}
+									<div className="flex items-center justify-center py-2">
+										<StoreStatusIndicator 
+											scrolled={true} 
+											isHomePage={false}
+											mobileMenuOpen={true}
+										/>
+									</div>
 									<Button
 										variant="ghost"
 										onClick={(e) => {

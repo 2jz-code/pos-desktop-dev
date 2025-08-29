@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cartAPI, ordersAPI } from "@/api/orders";
 import { useCartStore } from "@/store/cartStore";
 import { useAuth } from "@/contexts/AuthContext";
+import { useStoreStatus } from "@/contexts/StoreStatusContext";
 import { toast } from "sonner";
 
 // Cart query keys
@@ -61,6 +62,7 @@ export const useCartMutations = () => {
 	const queryClient = useQueryClient();
 	const cartStore = useCartStore();
 	const { isAuthenticated } = useAuth();
+	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	const invalidateCart = () => {
 		console.log('useCart: Invalidating cart cache...');
@@ -72,6 +74,11 @@ export const useCartMutations = () => {
 
 	const addToCartMutation = useMutation({
 		mutationFn: async ({ productId, quantity, notes, selectedModifiers }) => {
+			// Check if store is open and can accept orders before allowing cart additions
+			if (!isOpen || !canPlaceOrder) {
+				throw new Error("Store is currently closed and not accepting orders");
+			}
+
 			console.log('useCart: addToCartMutation starting for product:', productId);
 			// Initialize guest session for unauthenticated users (only if needed)
 			if (!isAuthenticated) {
@@ -141,6 +148,13 @@ export const useCartMutations = () => {
 			if (context?.previousCart) {
 				queryClient.setQueryData(cartKeys.current(), context.previousCart);
 			}
+			
+			// Handle store closed errors with specific messaging
+			if (error.message === "Store is currently closed and not accepting orders") {
+				toast.error("Sorry, we're currently closed and not accepting orders. You can still browse our menu!");
+				return;
+			}
+			
 			const errorMessage =
 				error.response?.data?.detail || "Failed to add item to cart";
 			toast.error(errorMessage);
@@ -313,6 +327,7 @@ export const useCart = () => {
 	const mutations = useCartMutations();
 	const summary = useCartSummary();
 	const cartStore = useCartStore();
+	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	return {
 		// Data
@@ -366,12 +381,18 @@ export const useCart = () => {
 				toast.error("Cannot update item: cart not found.");
 				return;
 			}
+
+			// Check store status before allowing cart modifications
+			if (!isOpen || !canPlaceOrder) {
+				toast.error("Sorry, we're currently closed and not accepting order modifications. You can still browse our menu!");
+				return;
+			}
 			
 			try {
 				// Remove the old item
 				await mutations.removeFromCart.mutateAsync({ orderId, itemId });
 				
-				// Add the updated item
+				// Add the updated item (this will also check store status in the mutation)
 				return mutations.addToCart.mutateAsync({
 					productId: product.id,
 					product,

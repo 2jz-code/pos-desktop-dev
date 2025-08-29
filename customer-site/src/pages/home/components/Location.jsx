@@ -6,18 +6,19 @@ import {
 	ClockIcon,
 } from "@heroicons/react/24/outline";
 import apiClient from "../../../api/client";
-import { useStoreInfo } from "../../../hooks/useSettings";
+import { useStoreInfo, useWeeklySchedule } from "../../../hooks/useSettings";
+import { formatTime } from "../../../hooks/useSettings";
 
 const ContactItem = ({ icon, title, details }) => {
 	return (
-		<div className="flex items-start space-x-4 p-6 bg-primary-beige rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
+		<div className="flex items-start space-x-4 p-6 bg-primary-beige rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
 			{/* Icon background: Primary Green, Icon color: Light Beige */}
 			<div className="flex-shrink-0">
 				<div className="p-3 bg-primary-green text-accent-light-beige rounded-full">
 					{icon}
 				</div>
 			</div>
-			<div>
+			<div className="flex-1">
 				{/* Title: Dark Green */}
 				<h3 className="text-lg font-semibold text-accent-dark-green mb-1">
 					{title}
@@ -25,6 +26,90 @@ const ContactItem = ({ icon, title, details }) => {
 				{/* Details: Dark Brown */}
 				<div className="text-accent-dark-brown">{details}</div>
 			</div>
+		</div>
+	);
+};
+
+const WorkingHoursDisplay = () => {
+	const { data: schedule, isLoading } = useWeeklySchedule();
+	
+	if (isLoading) {
+		return <p className="text-accent-subtle-gray">Loading hours...</p>;
+	}
+	
+	if (!schedule?.schedule) {
+		return <p className="text-accent-subtle-gray">Hours not available</p>;
+	}
+	
+	// Convert schedule to grouped format
+	const scheduleEntries = Object.entries(schedule.schedule).sort();
+	const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	
+	// Create ordered array by day of week (Sun=0, Mon=1, etc.)
+	const daySchedules = new Array(7).fill(null);
+	
+	scheduleEntries.forEach(([date, dayData]) => {
+		const [year, month, day] = date.split('-').map(Number);
+		const dateObj = new Date(year, month - 1, day);
+		const dayIndex = dateObj.getDay();
+		const dayName = dayNames[dayIndex];
+		
+		let hoursString = '';
+		if (dayData.is_closed || !dayData.slots || dayData.slots.length === 0) {
+			hoursString = 'CLOSED';
+		} else {
+			hoursString = dayData.slots.map(slot => 
+				`${formatTime(slot.opening_time || slot.open_time)} - ${formatTime(slot.closing_time || slot.close_time)}`
+			).join(', ');
+		}
+		
+		daySchedules[dayIndex] = { dayName, hoursString };
+	});
+	
+	// Group consecutive days with same hours
+	const groupedDays = [];
+	let currentGroup = null;
+	
+	daySchedules.filter(Boolean).forEach((daySchedule) => {
+		if (!currentGroup || currentGroup.hoursString !== daySchedule.hoursString) {
+			// Start new group
+			currentGroup = {
+				hoursString: daySchedule.hoursString,
+				days: [daySchedule.dayName],
+				startDay: daySchedule.dayName,
+				endDay: daySchedule.dayName
+			};
+			groupedDays.push(currentGroup);
+		} else {
+			// Add to current group
+			currentGroup.days.push(daySchedule.dayName);
+			currentGroup.endDay = daySchedule.dayName;
+		}
+	});
+	
+	return (
+		<div className="space-y-1">
+			{groupedDays.map((group, index) => {
+				let dayRange;
+				if (group.days.length === 1) {
+					dayRange = group.startDay;
+				} else if (group.days.length === 2) {
+					dayRange = `${group.startDay} & ${group.endDay}`;
+				} else {
+					dayRange = `${group.startDay} - ${group.endDay}`;
+				}
+				
+				return (
+					<div key={index} className="flex justify-between items-center text-sm">
+						<span className="font-medium text-accent-dark-green">
+							{dayRange}:
+						</span>
+						<span className="text-accent-dark-brown">
+							{group.hoursString === 'CLOSED' ? 'Closed' : group.hoursString}
+						</span>
+					</div>
+				);
+			})}
 		</div>
 	);
 };
@@ -51,17 +136,8 @@ const Location = () => {
 		},
 		{
 			icon: <ClockIcon className="w-6 h-6" />,
-			title: "Working Hours",
-			details: (
-				<>
-					<p>
-						<strong>Sun - Thu:</strong> 11:00 am - 8:00 pm
-					</p>
-					<p>
-						<strong>Fri - Sat:</strong> 11:00 am - 9:00 pm
-					</p>
-				</>
-			),
+			title: "Dining Options",
+			details: "Takeout available with limited seating",
 		},
 	];
 
@@ -127,7 +203,7 @@ const Location = () => {
 				</div>
 
 				<div className="grid md:grid-cols-2 gap-8 mb-16">
-					<div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-stretch">
 						{contactInfo.map((item, index) => (
 							<ContactItem
 								key={index}

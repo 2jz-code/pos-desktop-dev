@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
-import { Edit } from "lucide-react";
+import { Clock, Store } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
+import { useStoreStatus } from "@/contexts/StoreStatusContext";
+import { useCartStore } from "@/store/cartStore";
 import {
 	getProductImageUrl,
 	createImageErrorHandler,
@@ -12,13 +14,13 @@ import OptimizedImage from "@/components/OptimizedImage";
 import ModifierDisplay from "@/components/ui/ModifierDisplay";
 
 const CartSidebar = ({ isOpen, onClose }) => {
-	const [isRestaurantOpen, setIsRestaurantOpen] = useState(true);
 	const checkoutPreloaded = useRef(false);
 	const navigate = useNavigate();
-
-	// Use the new cart hook
-	const { cart, cartItemCount, subtotal, isLoading, removeFromCart } =
-		useCart();
+	
+	// Hooks
+	const { cart, cartItemCount, subtotal, isLoading, removeFromCart } = useCart();
+	const storeStatus = useStoreStatus();
+	const cartStore = useCartStore();
 
 	const cartItems = cart?.items || [];
 
@@ -29,59 +31,12 @@ const CartSidebar = ({ isOpen, onClose }) => {
 		return numericPrice.toFixed(2);
 	};
 
-	// Function to check operating hours based on America/Chicago timezone
-	const checkOperatingHours = useCallback(() => {
-		const now = new Date(); // Current date/time in user's local timezone
-
-		// Get current UTC hour and day
-		const utcHours = now.getUTCHours();
-		const utcDay = now.getUTCDay(); // Sunday - 0, Monday - 1, ..., Saturday - 6
-
-		// America/Chicago is UTC-5 during Daylight Saving Time (CDT)
-		// and UTC-6 during Standard Time (CST).
-		// For this "band-aid" fix, we'll use a fixed offset.
-		// A more robust solution would dynamically determine DST.
-		const CHICAGO_UTC_OFFSET = -5; // Assuming CDT for current context
-
-		// Calculate current hour and day in Chicago time
-		let chicagoHour = utcHours + CHICAGO_UTC_OFFSET;
-		let chicagoDay = utcDay;
-
-		// Adjust day if timezone conversion crosses midnight
-		if (chicagoHour < 0) {
-			chicagoHour += 24; // Wrap around to previous day
-			chicagoDay = (chicagoDay - 1 + 7) % 7; // Go to previous day, wrapping Sunday to Saturday
-		} else if (chicagoHour >= 24) {
-			chicagoHour -= 24; // Wrap around to next day
-			chicagoDay = (chicagoDay + 1) % 7; // Go to next day, wrapping Saturday to Sunday
-		}
-
-		const openHour = 0; // 11:00 AM Chicago time
-		let closeHour; // 24-hour format
-
-		// Determine closing hour based on Chicago day of the week
-		if (chicagoDay >= 0 && chicagoDay <= 4) {
-			// Sunday (0) to Thursday (4)
-			closeHour = 23; // 8:00 PM Chicago time
-		} else {
-			// Friday (5) and Saturday (6)
-			closeHour = 23; // 9:00 PM Chicago time
-		}
-
-		// Check if current "Chicago time" is within operating hours
-		const open = chicagoHour >= openHour && chicagoHour < closeHour;
-		setIsRestaurantOpen(open);
-	}, []);
-
-	// Effect to check operating hours periodically
+	// Update cart store when store status changes
 	useEffect(() => {
-		checkOperatingHours(); // Initial check on component mount
-
-		// Update every minute to reflect time changes
-		const intervalId = setInterval(checkOperatingHours, 60 * 1000);
-
-		return () => clearInterval(intervalId); // Cleanup interval on component unmount
-	}, [checkOperatingHours]); // Re-run if checkOperatingHours callback changes
+		if (!storeStatus.isLoading) {
+			cartStore.updateStoreStatus(storeStatus.isOpen, storeStatus.canPlaceOrder);
+		}
+	}, [storeStatus.isOpen, storeStatus.canPlaceOrder, storeStatus.isLoading]);
 
 	const handleRemoveItem = async (itemId) => {
 		try {
@@ -104,7 +59,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 	};
 
 	// Determine if the checkout button should be disabled
-	const isCheckoutButtonDisabled = cartItemCount === 0 || !isRestaurantOpen;
+	const isCheckoutButtonDisabled = cartItemCount === 0 || !cartStore.canProceedToCheckout();
 
 	return (
 		<AnimatePresence>
@@ -262,13 +217,33 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									<span>${formatPrice(subtotal)}</span>
 								</div>
 
-								{/* Restaurant Status */}
-								{!isRestaurantOpen && (
+								{/* Store Status */}
+								{storeStatus.isClosingSoon && storeStatus.canPlaceOrder && (
+									<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+										<div className="flex items-center justify-center">
+											<Clock className="h-4 w-4 text-yellow-600 mr-2" />
+											<p className="text-sm text-yellow-700 text-center">
+												Store closing in {storeStatus.getTimeUntilCloseString()}. Please checkout soon!
+											</p>
+										</div>
+									</div>
+								)}
+								
+								{!storeStatus.canPlaceOrder && !storeStatus.isLoading && (
 									<div className="bg-red-50 border border-red-200 rounded-lg p-3">
-										<p className="text-sm text-red-700 text-center">
-											🕒 Restaurant is currently closed. Checkout will be
-											available during operating hours.
-										</p>
+										<div className="flex items-center justify-center">
+											<Store className="h-4 w-4 text-red-500 mr-2" />
+											<div className="text-center">
+												<p className="text-sm text-red-700 font-medium">
+													Store is currently closed
+												</p>
+												{storeStatus.getNextOpeningDisplay() && (
+													<p className="text-xs text-red-600 mt-1">
+														We'll open again at {storeStatus.getNextOpeningDisplay()}
+													</p>
+												)}
+											</div>
+										</div>
 									</div>
 								)}
 
@@ -284,7 +259,12 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									}`}
 									aria-disabled={isCheckoutButtonDisabled}
 								>
-									Proceed to Checkout
+									{!storeStatus.canPlaceOrder && !storeStatus.isLoading 
+										? "Store Closed" 
+										: cartItemCount === 0 
+										? "Cart Empty" 
+										: "Proceed to Checkout"
+									}
 								</Link>
 							</div>
 						)}

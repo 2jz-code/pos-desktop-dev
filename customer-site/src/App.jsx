@@ -8,6 +8,7 @@ import Layout from "./components/layout/Layout";
 import AuthContextProvider from "@/contexts/AuthContext";
 import CartSidebarProvider from "@/contexts/CartSidebarContext";
 import DashboardProvider from "@/contexts/DashboardContext";
+import StoreStatusProvider from "@/contexts/StoreStatusContext";
 
 // Lazy load route components for better performance
 const HomePage = React.lazy(() => import("@/pages/home"));
@@ -71,8 +72,9 @@ function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
 			<AuthContextProvider>
-				<CartSidebarProvider>
-					<DashboardProvider>
+				<StoreStatusProvider>
+					<CartSidebarProvider>
+						<DashboardProvider>
 						<LazyMotion features={domAnimation}>
 							<Router>
 								<Layout>
@@ -123,8 +125,9 @@ function App() {
 								</Layout>
 							</Router>
 						</LazyMotion>
-					</DashboardProvider>
-				</CartSidebarProvider>
+						</DashboardProvider>
+					</CartSidebarProvider>
+				</StoreStatusProvider>
 			</AuthContextProvider>
 
 			{/* Toast notifications */}

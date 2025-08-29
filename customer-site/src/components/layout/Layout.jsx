@@ -1,6 +1,7 @@
 import React, { useEffect, Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "./Navbar";
+import StatusBanner from "./StatusBanner";
 import CartSidebar from "../ui/cart-sidebar";
 import { useCartSidebar } from "../../contexts/CartSidebarContext";
 import SEO from "@/components/SEO";
@@ -78,6 +79,9 @@ const Layout = ({ children }) => {
 	return (
 		<div className="min-h-screen flex flex-col">
 			<SEO structuredData={restaurantStructuredData} />
+			{/* Status Banner */}
+			<StatusBanner />
+			
 			{/* Fixed Navbar */}
 			<Navbar isCartOpen={isCartOpen} />
 

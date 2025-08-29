@@ -1,19 +1,24 @@
 import React, { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useCheckout } from "@/hooks/useCheckout";
 import { useOrderConfirmation } from "@/hooks/useOrderConfirmation";
 import { useCart } from "@/hooks/useCart";
+import { useStoreStatus } from "@/contexts/StoreStatusContext";
+import { useCartStore } from "@/store/cartStore";
 import ProgressIndicator from "./ProgressIndicator";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PaymentForm from "./PaymentForm";
 import OrderConfirmation from "./OrderConfirmation";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Clock, Store } from "lucide-react";
 
 const CheckoutFlow = () => {
 	const [searchParams] = useSearchParams();
+	const navigate = useNavigate();
 	const { cart } = useCart();
+	const storeStatus = useStoreStatus();
+	const cartStore = useCartStore();
 	const {
 		currentStep,
 		formData,
@@ -48,6 +53,24 @@ const CheckoutFlow = () => {
 			return () => clearTimeout(timer);
 		}
 	}, [error, clearError]);
+
+	// Monitor store status and update cart store
+	useEffect(() => {
+		if (!storeStatus.isLoading) {
+			cartStore.updateStoreStatus(storeStatus.isOpen, storeStatus.canPlaceOrder);
+			
+			// If store closes during checkout (not in confirmation mode), redirect to cart
+			if (!isConfirmationMode && !storeStatus.canPlaceOrder && !storeStatus.isLoading) {
+				navigate("/menu", { 
+					replace: true, 
+					state: { 
+						message: "Store is now closed. You can continue browsing our menu.", 
+						type: "warning" 
+					} 
+				});
+			}
+		}
+	}, [storeStatus.isOpen, storeStatus.canPlaceOrder, storeStatus.isLoading, isConfirmationMode, navigate]);
 
 	const renderStep = () => {
 		// If URL indicates confirmation, show confirmation regardless of internal step
@@ -158,6 +181,43 @@ const CheckoutFlow = () => {
 						<ProgressIndicator currentStep={currentStep} />
 					</div>
 				</div>
+
+				{/* Store Status Warning */}
+				{storeStatus.isClosingSoon && (
+					<Card className="border-yellow-200 bg-yellow-50">
+						<CardContent className="p-4">
+							<div className="flex items-start">
+								<Clock className="h-5 w-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />
+								<div>
+									<h3 className="text-sm font-medium text-yellow-800">Store Closing Soon</h3>
+									<p className="text-sm text-yellow-700 mt-1">
+										We're closing in {storeStatus.getTimeUntilCloseString()}. Please complete your order quickly.
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				)}
+
+				{/* Store Closed Warning */}
+				{!storeStatus.canPlaceOrder && !storeStatus.isLoading && (
+					<Card className="border-red-200 bg-red-50">
+						<CardContent className="p-4">
+							<div className="flex items-start">
+								<Store className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+								<div>
+									<h3 className="text-sm font-medium text-red-800">Store Closed</h3>
+									<p className="text-sm text-red-700 mt-1">
+										Sorry, we're currently closed. 
+										{storeStatus.getNextOpeningDisplay() && (
+											<> We'll open again at {storeStatus.getNextOpeningDisplay()}.</>
+										)}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				)}
 
 				{/* Error Display */}
 				{error && (

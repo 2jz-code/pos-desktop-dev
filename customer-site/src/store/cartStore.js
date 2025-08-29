@@ -7,6 +7,9 @@ const defaultCartState = {
 	isLoading: false,
 	checkoutCompleted: false,
 	error: null,
+	// Business hours related state
+	storeClosedWarning: false,
+	canCheckout: true,
 	// All cart data comes from server queries, not stored here
 };
 
@@ -22,6 +25,14 @@ export const useCartStore = create(
 				console.log(`Setting checkout completed: ${completed}`);
 				set({ checkoutCompleted: completed });
 			},
+
+			// Business hours related actions
+			setStoreClosedWarning: (warning) => set({ storeClosedWarning: warning }),
+			setCanCheckout: (canCheckout) => set({ canCheckout }),
+			updateStoreStatus: (isOpen, canPlaceOrder) => set({ 
+				canCheckout: isOpen && canPlaceOrder,
+				storeClosedWarning: !isOpen || !canPlaceOrder
+			}),
 			handleSuccessfulCheckout: () => {
 				console.log("Checkout successful. Clearing local cart state only.");
 				set({
@@ -39,6 +50,12 @@ export const useCartStore = create(
 			isCheckoutRecentlyCompleted: () => {
 				const state = get();
 				return state.checkoutCompleted === true;
+			},
+
+			// Business hours utility functions
+			canProceedToCheckout: () => {
+				const state = get();
+				return state.canCheckout && !state.storeClosedWarning;
 			},
 
 			// Force reset checkout state (useful for debugging or manual reset)

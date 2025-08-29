@@ -20,10 +20,8 @@ import { PaymentSettings } from "../components/PaymentSettings";
 import { WebOrderNotificationSettings } from "../components/WebOrderNotificationSettings";
 import { InventorySettings } from "../components/InventorySettings";
 import { StoreInfoSettings } from "../components/StoreInfoSettings";
-import { BusinessHoursSettings } from "../components/BusinessHoursSettings";
 
 export function SettingsPage() {
-
 	return (
 		<>
 			<Toaster />
@@ -42,13 +40,16 @@ export function SettingsPage() {
 							{/* Business Setup Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Business Setup</h3>
-									<p className="text-sm text-muted-foreground">Configure your store information, hours, and locations</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Business Setup
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Configure your store information, hours, and locations
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<StoreInfoSettings />
-									<BusinessHoursSettings />
 									<StoreLocationsManagement />
 								</div>
 							</div>
@@ -58,10 +59,14 @@ export function SettingsPage() {
 							{/* Operations & Finance Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Operations & Finance</h3>
-									<p className="text-sm text-muted-foreground">Manage financial settings and inventory</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Operations & Finance
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Manage financial settings and inventory
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<FinancialSettings />
 									<InventorySettings />
@@ -73,10 +78,14 @@ export function SettingsPage() {
 							{/* Device & Hardware Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Device & Hardware</h3>
-									<p className="text-sm text-muted-foreground">Configure this device, printers, and payment processing</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Device & Hardware
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Configure this device, printers, and payment processing
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<DeviceSettings />
 									<PrinterSettings />
@@ -89,10 +98,14 @@ export function SettingsPage() {
 							{/* Customer Experience Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Customer Experience</h3>
-									<p className="text-sm text-muted-foreground">Configure receipts and order notifications</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Customer Experience
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Configure receipts and order notifications
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<ReceiptSettings />
 									<Card>
