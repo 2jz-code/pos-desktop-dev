@@ -2,6 +2,7 @@ from rest_framework import serializers
 from datetime import datetime, date
 from typing import Dict, Any
 
+from core_backend.base.serializers import BaseModelSerializer, TimestampedSerializer
 from .models import (
     BusinessHoursProfile,
     RegularHours,
@@ -72,39 +73,45 @@ class DateHoursSerializer(serializers.Serializer):
 
 
 # Admin CRUD serializers
-class TimeSlotAdminSerializer(serializers.ModelSerializer):
+class TimeSlotAdminSerializer(BaseModelSerializer):
     """Admin serializer for time slots with full CRUD"""
     
     class Meta:
         model = TimeSlot
-        fields = ['id', 'opening_time', 'closing_time', 'slot_type', 'created_at', 'updated_at']
+        fields = ['id', 'regular_hours', 'opening_time', 'closing_time', 'slot_type', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+        select_related_fields = ['regular_hours']
+        prefetch_related_fields = []
 
 
-class RegularHoursAdminSerializer(serializers.ModelSerializer):
+class RegularHoursAdminSerializer(BaseModelSerializer):
     """Admin serializer for regular hours"""
     time_slots = TimeSlotAdminSerializer(many=True, read_only=True)
     day_name = serializers.SerializerMethodField()
     
     class Meta:
         model = RegularHours
-        fields = ['id', 'day_of_week', 'day_name', 'is_closed', 'time_slots', 'created_at', 'updated_at']
+        fields = ['id', 'profile', 'day_of_week', 'day_name', 'is_closed', 'time_slots', 'created_at', 'updated_at']
         read_only_fields = ['id', 'day_name', 'created_at', 'updated_at']
+        select_related_fields = ['profile']
+        prefetch_related_fields = ['time_slots']
     
     def get_day_name(self, obj):
         return dict(obj.DAYS_OF_WEEK).get(obj.day_of_week, '')
 
 
-class SpecialHoursTimeSlotAdminSerializer(serializers.ModelSerializer):
+class SpecialHoursTimeSlotAdminSerializer(BaseModelSerializer):
     """Admin serializer for special hours time slots"""
     
     class Meta:
         model = SpecialHoursTimeSlot
         fields = ['id', 'opening_time', 'closing_time', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+        select_related_fields = ['special_hours']
+        prefetch_related_fields = []
 
 
-class SpecialHoursAdminSerializer(serializers.ModelSerializer):
+class SpecialHoursAdminSerializer(BaseModelSerializer):
     """Admin serializer for special hours"""
     special_time_slots = SpecialHoursTimeSlotAdminSerializer(many=True, read_only=True)
     
@@ -115,9 +122,11 @@ class SpecialHoursAdminSerializer(serializers.ModelSerializer):
             'special_time_slots', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+        select_related_fields = ['profile']
+        prefetch_related_fields = ['special_time_slots']
 
 
-class HolidayAdminSerializer(serializers.ModelSerializer):
+class HolidayAdminSerializer(BaseModelSerializer):
     """Admin serializer for holidays"""
     date_display = serializers.SerializerMethodField()
     
@@ -128,6 +137,8 @@ class HolidayAdminSerializer(serializers.ModelSerializer):
             'is_closed', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'date_display', 'created_at', 'updated_at']
+        select_related_fields = ['profile']
+        prefetch_related_fields = []
     
     def get_date_display(self, obj):
         import calendar
@@ -135,7 +146,7 @@ class HolidayAdminSerializer(serializers.ModelSerializer):
         return f"{month_name} {obj.day}"
 
 
-class BusinessHoursProfileAdminSerializer(serializers.ModelSerializer):
+class BusinessHoursProfileAdminSerializer(BaseModelSerializer):
     """Admin serializer for business hours profiles"""
     regular_hours = RegularHoursAdminSerializer(many=True, read_only=True)
     special_hours_count = serializers.SerializerMethodField()
@@ -149,6 +160,13 @@ class BusinessHoursProfileAdminSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'special_hours_count', 'holidays_count', 'created_at', 'updated_at']
+        select_related_fields = []
+        prefetch_related_fields = [
+            'regular_hours', 
+            'regular_hours__time_slots', 
+            'special_hours', 
+            'holidays'
+        ]
     
     def get_special_hours_count(self, obj):
         return obj.special_hours.count()

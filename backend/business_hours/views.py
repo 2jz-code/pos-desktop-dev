@@ -1,4 +1,4 @@
-from rest_framework import status, viewsets, permissions
+from rest_framework import status, viewsets, permissions, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,6 +6,10 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from datetime import datetime, date, timedelta
 from typing import Optional
+from django_filters.rest_framework import DjangoFilterBackend
+
+from core_backend.base.viewsets import BaseViewSet
+from core_backend.base.mixins import OptimizedQuerysetMixin
 
 from .models import (
     BusinessHoursProfile,
@@ -199,12 +203,29 @@ def check_business_hours(request):
         )
 
 
+# Custom non-paginated base viewset
+class NonPaginatedBaseViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
+    """Base ViewSet without pagination for business hours endpoints"""
+    pagination_class = None
+    permission_classes = [permissions.IsAuthenticated]
+    ordering = ['-id']
+    
+    # Standard filter backends
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+
+
 # Admin API Views (authentication required)
-class BusinessHoursProfileViewSet(viewsets.ModelViewSet):
+class BusinessHoursProfileViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for business hours profiles"""
     queryset = BusinessHoursProfile.objects.all().order_by('-is_default', 'name')
     serializer_class = BusinessHoursProfileAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ['name', 'timezone']
+    filterset_fields = ['is_active', 'is_default']
+    ordering_fields = ['name', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by active profiles unless specifically requested"""
@@ -217,11 +238,12 @@ class BusinessHoursProfileViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class RegularHoursViewSet(viewsets.ModelViewSet):
+class RegularHoursViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for regular hours"""
     queryset = RegularHours.objects.all().order_by('profile', 'day_of_week')
     serializer_class = RegularHoursAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['profile', 'day_of_week', 'is_closed']
+    ordering_fields = ['day_of_week', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by profile if specified"""
@@ -234,11 +256,12 @@ class RegularHoursViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class TimeSlotViewSet(viewsets.ModelViewSet):
+class TimeSlotViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for time slots"""
     queryset = TimeSlot.objects.all().order_by('regular_hours', 'opening_time')
     serializer_class = TimeSlotAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['regular_hours', 'slot_type']
+    ordering_fields = ['opening_time', 'closing_time', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by regular hours if specified"""
@@ -254,11 +277,13 @@ class TimeSlotViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class SpecialHoursViewSet(viewsets.ModelViewSet):
+class SpecialHoursViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for special hours"""
     queryset = SpecialHours.objects.all().order_by('-date')
     serializer_class = SpecialHoursAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ['reason']
+    filterset_fields = ['profile', 'is_closed', 'date']
+    ordering_fields = ['date', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by profile and date range if specified"""
@@ -287,11 +312,12 @@ class SpecialHoursViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class SpecialHoursTimeSlotViewSet(viewsets.ModelViewSet):
+class SpecialHoursTimeSlotViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for special hours time slots"""
     queryset = SpecialHoursTimeSlot.objects.all().order_by('special_hours', 'opening_time')
     serializer_class = SpecialHoursTimeSlotAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['special_hours']
+    ordering_fields = ['opening_time', 'closing_time', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by special hours if specified"""
@@ -304,11 +330,13 @@ class SpecialHoursTimeSlotViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class HolidayViewSet(viewsets.ModelViewSet):
+class HolidayViewSet(NonPaginatedBaseViewSet):
     """CRUD operations for holidays"""
     queryset = Holiday.objects.all().order_by('month', 'day')
     serializer_class = HolidayAdminSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ['name']
+    filterset_fields = ['profile', 'month', 'day', 'is_closed']
+    ordering_fields = ['name', 'month', 'day', 'created_at', 'updated_at']
     
     def get_queryset(self):
         """Filter by profile if specified"""

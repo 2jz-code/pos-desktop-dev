@@ -18,7 +18,7 @@ import { WebOrderNotificationSettings } from "./components/WebOrderNotificationS
 import { PrinterSettings } from "./components/PrinterSettings";
 import { InventorySettings } from "./components/InventorySettings";
 import { StoreInfoSettings } from "./components/StoreInfoSettings";
-import { BusinessHoursSettings } from "./components/BusinessHoursSettings";
+import { BusinessHours } from "./components/business-hours";
 
 export function SettingsPage() {
 
@@ -46,7 +46,7 @@ export function SettingsPage() {
 								
 								<div className="space-y-6">
 									<StoreInfoSettings />
-									<BusinessHoursSettings />
+									<BusinessHours />
 									<StoreLocationsManagement />
 								</div>
 							</div>
