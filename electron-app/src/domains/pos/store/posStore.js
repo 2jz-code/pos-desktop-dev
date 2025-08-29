@@ -36,6 +36,7 @@ export const usePosStore = createWithEqualityFn(
 				tip: state.tip,
 				appliedDiscounts: state.appliedDiscounts,
 				currentUser: state.currentUser,
+				diningPreference: state.diningPreference, // Persist dining preference
 				// Persist payment state across sessions for order continuity
 				order: state.order,
 				balanceDue: state.balanceDue,

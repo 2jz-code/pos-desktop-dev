@@ -48,6 +48,7 @@ class OrderAdmin(admin.ModelAdmin):
         "status",
         "payment_status",
         "order_type",
+        "dining_preference",
         "get_total_collected_formatted",
         "get_payment_in_progress_display",  # NEW: Use derived property
         "created_at",
@@ -70,6 +71,7 @@ class OrderAdmin(admin.ModelAdmin):
         "status",
         "payment_status",
         "order_type",
+        "dining_preference",
         "created_at",
         "cashier",
     )
@@ -89,6 +91,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "status",
                     "payment_status",
                     "order_type",
+                    "dining_preference",
                 )
             },
         ),

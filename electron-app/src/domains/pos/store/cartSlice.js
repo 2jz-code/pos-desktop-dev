@@ -55,6 +55,7 @@ export const defaultCartState = {
 	updatingItems: [],
 	appliedDiscounts: [],
 	customerFirstName: "",
+	diningPreference: "TAKE_OUT", // Default to take-out
 	stockOverrideDialog: {
 		show: false,
 		productId: null,
@@ -114,6 +115,7 @@ export const createCartSlice = (set, get) => {
 				if (!orderId) {
 					const orderData = {
 						order_type: "POS",
+						dining_preference: get().diningPreference,
 					};
 					
 					// Include customer name if provided
@@ -228,6 +230,7 @@ export const createCartSlice = (set, get) => {
 				if (!orderId) {
 					const orderData = {
 						order_type: "POS",
+						dining_preference: get().diningPreference,
 					};
 					
 					// Include customer name if provided
@@ -618,6 +621,11 @@ export const createCartSlice = (set, get) => {
 		// Customer name actions
 		setCustomerFirstName: (firstName) => {
 			set({ customerFirstName: firstName });
+		},
+
+		// Dining preference actions
+		setDiningPreference: (preference) => {
+			set({ diningPreference: preference });
 		},
 	};
 };

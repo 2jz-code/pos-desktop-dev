@@ -2,6 +2,7 @@
 
 import CartActionsDropdown from "./CartActionsDropdown";
 import CustomerInfoInput from "./CustomerInfoInput";
+import DiningPreferenceButtons from "./DiningPreferenceButtons";
 
 const CartHeader = () => {
 	return (
@@ -17,6 +18,7 @@ const CartHeader = () => {
 				</div>
 				<CartActionsDropdown />
 			</div>
+			<DiningPreferenceButtons />
 			<CustomerInfoInput />
 		</div>
 	);

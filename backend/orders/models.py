@@ -59,6 +59,10 @@ class Order(models.Model):
         REFUNDED = "REFUNDED", _("Refunded")
         PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED", _("Partially Refunded")
 
+    class DiningPreference(models.TextChoices):
+        DINE_IN = "DINE_IN", _("Dine In")
+        TAKE_OUT = "TAKE_OUT", _("Take Out")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     status = models.CharField(
         max_length=10, choices=OrderStatus.choices, default=OrderStatus.PENDING
@@ -72,6 +76,12 @@ class Order(models.Model):
     )
     payment_status = models.CharField(
         max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.UNPAID
+    )
+    dining_preference = models.CharField(
+        max_length=10,
+        choices=DiningPreference.choices,
+        default=DiningPreference.TAKE_OUT,
+        help_text="Whether the order is for dine-in or take-out"
     )
 
     # --- Relationships ---

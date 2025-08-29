@@ -107,6 +107,11 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 	printer.println(`Order #: ${orderId}`);
 	printer.println(`Date: ${orderDate}`);
 	
+	// Show dining preference
+	const diningPreference = order.dining_preference || "TAKE_OUT";
+	const diningLabel = diningPreference === "DINE_IN" ? "Dine In" : "Take Out";
+	printer.println(`Service: ${diningLabel}`);
+	
 	// Show transaction receipt header and order status for non-completed orders
 	if (isTransaction) {
 		printer.alignCenter();
@@ -365,6 +370,13 @@ export function formatKitchenTicket(
 		timeZone: "America/Chicago",
 	});
 	printer.println(`Time: ${orderDate}`);
+	
+	// Show dining preference on kitchen ticket - important for service
+	const diningPreference = order.dining_preference || "TAKE_OUT";
+	const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
+	printer.bold(true);
+	printer.println(`SERVICE: ${diningLabel}`);
+	printer.bold(false);
 
 	printer.drawLine();
 

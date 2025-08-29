@@ -70,6 +70,9 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   }
   printer.println(`Order #: ${orderId}`);
   printer.println(`Date: ${orderDate}`);
+  const diningPreference = order.dining_preference || "TAKE_OUT";
+  const diningLabel = diningPreference === "DINE_IN" ? "Dine In" : "Take Out";
+  printer.println(`Service: ${diningLabel}`);
   if (isTransaction) {
     printer.alignCenter();
     printer.bold(true);
@@ -256,6 +259,11 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
     timeZone: "America/Chicago"
   });
   printer.println(`Time: ${orderDate}`);
+  const diningPreference = order.dining_preference || "TAKE_OUT";
+  const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
+  printer.bold(true);
+  printer.println(`SERVICE: ${diningLabel}`);
+  printer.bold(false);
   printer.drawLine();
   const groupedItems = itemsToPrint.reduce((acc, item) => {
     var _a2;

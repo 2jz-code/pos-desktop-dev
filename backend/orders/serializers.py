@@ -333,6 +333,7 @@ class OrderCreateSerializer(BaseModelSerializer):
         model = Order
         fields = [
             "order_type",
+            "dining_preference",
             "customer",
             "guest_first_name",
             "guest_last_name",
