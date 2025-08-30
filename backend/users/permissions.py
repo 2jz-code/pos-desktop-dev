@@ -68,3 +68,43 @@ class ReadOnlyForCashiers(permissions.BasePermission):
             User.Role.ADMIN,
             User.Role.MANAGER,
         ]
+
+
+class StockReasonOwnerPermission(permissions.BasePermission):
+    """
+    Custom permission for stock action reason management:
+    - Read access for all authenticated POS staff
+    - Create/Update/Delete access only for owners
+    - System reasons can never be deleted
+    """
+
+    def has_permission(self, request, view):
+        # All operations require authentication and POS staff status
+        if not (request.user.is_authenticated and request.user.is_pos_staff):
+            return False
+
+        # Read access for all authenticated POS staff
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Write operations only for owners
+        return request.user.role == User.Role.OWNER
+
+    def has_object_permission(self, request, view, obj):
+        # All operations require authentication and POS staff status
+        if not (request.user.is_authenticated and request.user.is_pos_staff):
+            return False
+
+        # Read access for all authenticated POS staff
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Only owners can modify reasons
+        if request.user.role != User.Role.OWNER:
+            return False
+
+        # System reasons cannot be deleted
+        if request.method == 'DELETE' and obj.is_system_reason:
+            return False
+
+        return True

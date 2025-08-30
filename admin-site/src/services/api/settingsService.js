@@ -126,3 +126,46 @@ export const setDefaultStoreLocation = async (locationId) => {
 	);
 	return response.data;
 };
+
+// === Stock Action Reasons ===
+
+export const getStockReasons = async () => {
+	const response = await apiClient.get("settings/stock-action-reasons/");
+	return response.data.results;
+};
+
+export const getActiveStockReasons = async (category = null) => {
+	const params = new URLSearchParams();
+	if (category) {
+		params.append("category", category);
+	}
+	const response = await apiClient.get(
+		`settings/stock-action-reasons/active_reasons/?${params}`
+	);
+	return response.data;
+};
+
+export const getStockReasonCategories = async () => {
+	const response = await apiClient.get("settings/stock-action-reasons/categories/");
+	return response.data;
+};
+
+export const createStockReason = async (reasonData) => {
+	const response = await apiClient.post(
+		"settings/stock-action-reasons/",
+		reasonData
+	);
+	return response.data;
+};
+
+export const updateStockReason = async (reasonId, reasonData) => {
+	const response = await apiClient.patch(
+		`settings/stock-action-reasons/${reasonId}/`,
+		reasonData
+	);
+	return response.data;
+};
+
+export const deleteStockReason = async (reasonId) => {
+	await apiClient.delete(`settings/stock-action-reasons/${reasonId}/`);
+};

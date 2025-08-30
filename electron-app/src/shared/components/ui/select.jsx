@@ -51,6 +51,15 @@ function SelectTrigger({ className, size = "default", children, ...props }) {
 }
 
 function SelectContent({ className, children, position = "popper", ...props }) {
+	const handleWheel = (e) => {
+		e.stopPropagation();
+		// Allow natural scrolling within the viewport
+		const viewport = e.currentTarget.querySelector('[data-radix-select-viewport]');
+		if (viewport) {
+			viewport.scrollTop += e.deltaY * 0.5; // Adjust scroll speed
+		}
+	};
+
 	return (
 		<SelectPrimitive.Portal>
 			<SelectPrimitive.Content
@@ -62,6 +71,7 @@ function SelectContent({ className, children, position = "popper", ...props }) {
 					className
 				)}
 				position={position}
+				onWheel={handleWheel}
 				{...props}
 			>
 				<SelectScrollUpButton />

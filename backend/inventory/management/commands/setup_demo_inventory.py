@@ -63,8 +63,40 @@ class Command(BaseCommand):
                 stock_level = min_stock + (i * 7) % (max_stock - min_stock + 1)
                 
                 try:
+                    # Get system reason for demo data setup
+                    from settings.models import StockActionReasonConfig
+                    
+                    demo_setup_reason = None
+                    try:
+                        demo_setup_reason = StockActionReasonConfig.objects.get(
+                            name="System Demo Setup",
+                            is_system_reason=True,
+                            is_active=True
+                        )
+                    except StockActionReasonConfig.DoesNotExist:
+                        # Fallback to any manual reason
+                        demo_setup_reason = StockActionReasonConfig.objects.filter(
+                            category="MANUAL",
+                            is_active=True
+                        ).first()
+                        
+                        if not demo_setup_reason:
+                            self.stdout.write(
+                                self.style.WARNING(
+                                    '  ⚠ No active reason configuration found - skipping reason tracking'
+                                )
+                            )
+                    
                     # Add stock using the service (will create if doesn't exist)
-                    InventoryService.add_stock(product, default_location, stock_level)
+                    InventoryService.add_stock(
+                        product, 
+                        default_location, 
+                        stock_level,
+                        reason_config=demo_setup_reason,
+                        detailed_reason="Initial demo inventory setup",
+                        legacy_reason="Demo inventory setup",
+                        reference_id="demo_setup"
+                    )
                     
                     self.stdout.write(
                         f'  ✓ Set {product.name}: {stock_level} units'

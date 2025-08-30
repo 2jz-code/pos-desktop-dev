@@ -9,6 +9,7 @@ from .views import (
     TerminalLocationViewSet,
     TerminalReaderListView,
     WebOrderSettingsViewSet,
+    StockActionReasonConfigViewSet,
 )
 
 app_name = "settings"
@@ -26,6 +27,9 @@ router.register(
 # router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
 router.register(
     r"terminal-locations", TerminalLocationViewSet, basename="terminal-location"
+)
+router.register(
+    r"stock-action-reasons", StockActionReasonConfigViewSet, basename="stock-action-reasons"
 )
 
 # The API URLs are now determined automatically by the router.

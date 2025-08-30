@@ -40,6 +40,7 @@ import {
 	Clock,
 	Link2,
 	RefreshCw,
+	Shield,
 } from "lucide-react";
 import inventoryService from "../services/inventoryService";
 
@@ -73,6 +74,21 @@ const getCategoryColorClasses = (color) => {
 	return colorMap[color] || colorMap.slate;
 };
 
+const getCategoryColorFromName = (categoryName) => {
+	const categoryColors = {
+		SYSTEM: "gray",
+		MANUAL: "blue", 
+		TRANSFER: "purple",
+		CORRECTION: "orange",
+		INVENTORY: "green",
+		WASTE: "red",
+		RESTOCK: "emerald",
+		BULK: "indigo",
+		OTHER: "slate",
+	};
+	return categoryColors[categoryName] || "slate";
+};
+
 const formatTimestamp = (timestamp) => {
 	return new Date(timestamp).toLocaleString();
 };
@@ -89,11 +105,27 @@ export const ReasonBadge = ({
 	onFilterByReferenceId,
 }) => {
 	const [modalOpen, setModalOpen] = useState(false);
-	const Icon = getCategoryIcon(entry.reason_category);
-	const colorClasses = getCategoryColorClasses(entry.reason_category_display.color);
 	
-	const fullReason = entry.reason || entry.notes || "No reason provided";
-	const displayText = entry.truncated_reason || entry.reason_category_display.label;
+	// Determine if this is a new structured reason or legacy reason
+	const isStructuredReason = entry.reason_config != null;
+	
+	// Extract display information based on reason type
+	const reasonCategory = isStructuredReason ? entry.reason_config.category : entry.reason_category;
+	const reasonName = isStructuredReason ? entry.reason_config.name : entry.reason_category_display.label;
+	const reasonDescription = isStructuredReason ? entry.reason_config.category_display : entry.reason_category_display.description;
+	const reasonColor = isStructuredReason ? getCategoryColorFromName(reasonCategory) : entry.reason_category_display.color;
+	
+	const Icon = getCategoryIcon(reasonCategory);
+	const colorClasses = getCategoryColorClasses(reasonColor);
+	
+	// For structured reasons, use the full reason display; for legacy, use the old logic
+	const fullReason = isStructuredReason 
+		? (entry.get_full_reason || entry.detailed_reason || entry.reason_config.name)
+		: (entry.reason || entry.notes || "No reason provided");
+	
+	const displayText = isStructuredReason 
+		? entry.reason_config.name
+		: (entry.truncated_reason || entry.reason_category_display.label);
 
 	// Fetch related operations when modal opens and there's a reference_id
 	const { data: relatedOperations, isLoading: relatedLoading } = useQuery({
@@ -108,8 +140,11 @@ export const ReasonBadge = ({
 			onClick={showModal ? () => setModalOpen(true) : undefined}
 		>
 			<Icon className="h-3 w-3" />
-			<span className="font-medium">{entry.reason_category_display.label}</span>
-			{entry.truncated_reason && (
+			<span className="font-medium">{reasonName}</span>
+			{isStructuredReason && entry.reason_config?.is_system_reason && (
+				<Shield className="h-3 w-3 opacity-70" />
+			)}
+			{!isStructuredReason && entry.truncated_reason && (
 				<span className="text-xs opacity-80">
 					{entry.truncated_reason}
 				</span>
@@ -125,8 +160,20 @@ export const ReasonBadge = ({
 				</TooltipTrigger>
 				<TooltipContent side="top" className="max-w-xs">
 					<div className="space-y-1">
-						<p className="font-medium">{entry.reason_category_display.description}</p>
-						{fullReason !== "No reason provided" && (
+						<div className="flex items-center gap-2">
+							<p className="font-medium">{reasonName}</p>
+							{isStructuredReason && entry.reason_config?.is_system_reason && (
+								<Badge variant="secondary" className="text-xs">System</Badge>
+							)}
+						</div>
+						<p className="text-sm opacity-90">{reasonDescription}</p>
+						{isStructuredReason && entry.detailed_reason && (
+							<div className="pt-1 border-t border-white/20">
+								<p className="text-xs font-medium opacity-80">Details:</p>
+								<p className="text-xs opacity-90">{entry.detailed_reason}</p>
+							</div>
+						)}
+						{!isStructuredReason && fullReason !== "No reason provided" && (
 							<p className="text-sm opacity-90">{fullReason}</p>
 						)}
 					</div>

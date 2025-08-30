@@ -12,6 +12,7 @@ from .models import (
     TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
+    StockActionReasonConfig,
 )
 from .serializers import (
     GlobalSettingsSerializer,
@@ -20,8 +21,11 @@ from .serializers import (
     TerminalRegistrationSerializer,
     PrinterConfigurationSerializer,
     WebOrderSettingsSerializer,
+    StockActionReasonConfigSerializer,
+    StockActionReasonConfigListSerializer,
 )
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
+from users.permissions import StockReasonOwnerPermission
 from payments.strategies import StripeTerminalStrategy
 from core_backend.base.mixins import ArchivingViewSetMixin
 from .services import (
@@ -421,3 +425,84 @@ class SyncStripeLocationsView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class StockActionReasonConfigViewSet(BaseViewSet):
+    """
+    ViewSet for managing stock action reason configurations.
+    - List/Read: Available to all authenticated POS staff
+    - Create/Update/Delete: Only available to owners
+    - System reasons cannot be deleted and have limited editing
+    """
+    
+    queryset = StockActionReasonConfig.objects.all().order_by('category', 'name')
+    serializer_class = StockActionReasonConfigSerializer
+    permission_classes = [StockReasonOwnerPermission]
+    filterset_fields = ['category', 'is_system_reason', 'is_active']
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'category', 'created_at']
+    ordering = ['category', 'name']
+    
+    def get_serializer_class(self):
+        """Use list serializer for list actions and dropdown endpoints"""
+        if self.action == 'list' or self.action == 'active_reasons':
+            return StockActionReasonConfigListSerializer
+        return StockActionReasonConfigSerializer
+    
+    def get_queryset(self):
+        """Filter queryset based on action and parameters"""
+        queryset = super().get_queryset()
+        
+        # For list and active_reasons actions, optionally filter to only active reasons
+        if self.action in ['list', 'active_reasons']:
+            # Check if we should only show active reasons
+            active_only = self.request.query_params.get('active_only', 'false').lower() == 'true'
+            if active_only:
+                queryset = queryset.filter(is_active=True)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def active_reasons(self, request):
+        """
+        Endpoint to get only active reasons for use in dropdowns.
+        Returns a simplified list of active stock action reasons.
+        """
+        queryset = self.get_queryset().filter(is_active=True)
+        
+        # Apply category filter if specified
+        category = request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        serializer = StockActionReasonConfigListSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """
+        Endpoint to get available reason categories.
+        Returns the category choices for use in forms.
+        """
+        categories = [
+            {'value': choice[0], 'label': choice[1]}
+            for choice in StockActionReasonConfig.CATEGORY_CHOICES
+        ]
+        return Response(categories)
+    
+    def perform_create(self, serializer):
+        """Override to ensure new reasons are marked as custom (non-system)"""
+        # Ensure new reasons are never marked as system reasons
+        serializer.save(is_system_reason=False)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to prevent deletion of system reasons"""
+        instance = self.get_object()
+        
+        if instance.is_system_reason:
+            return Response(
+                {'error': 'System reasons cannot be deleted.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return super().destroy(request, *args, **kwargs)

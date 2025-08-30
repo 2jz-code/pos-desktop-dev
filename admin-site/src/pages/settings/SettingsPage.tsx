@@ -17,6 +17,7 @@ import { ReceiptSettings } from "./components/ReceiptSettings";
 import { WebOrderNotificationSettings } from "./components/WebOrderNotificationSettings";
 import { PrinterSettings } from "./components/PrinterSettings";
 import { InventorySettings } from "./components/InventorySettings";
+import { StockReasonSettings } from "./components/StockReasonSettings";
 import { StoreInfoSettings } from "./components/StoreInfoSettings";
 import { BusinessHours } from "./components/business-hours";
 
@@ -63,6 +64,7 @@ export function SettingsPage() {
 								<div className="space-y-6">
 									<FinancialSettings />
 									<InventorySettings />
+									<StockReasonSettings />
 									<PrinterSettings />
 								</div>
 							</div>

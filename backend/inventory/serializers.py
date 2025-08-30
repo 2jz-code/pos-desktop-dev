@@ -184,7 +184,36 @@ class StockAdjustmentSerializer(serializers.Serializer):
     )
     expiration_threshold = serializers.IntegerField(required=False)
     user_id = serializers.IntegerField(required=False)
-    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    
+    # New structured reason fields
+    reason_id = serializers.IntegerField(
+        required=True,
+        help_text="ID of the stock action reason configuration"
+    )
+    detailed_reason = serializers.CharField(
+        max_length=500, 
+        required=False, 
+        allow_blank=True,
+        help_text="Optional detailed explanation for this stock adjustment"
+    )
+    
+    # Legacy reason field (for backward compatibility during migration)
+    reason = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True,
+        help_text="Legacy reason field - will be deprecated"
+    )
+    
+    def validate_reason_id(self, value):
+        """Validate that the reason_id corresponds to an active reason config"""
+        try:
+            from settings.models import StockActionReasonConfig
+            # Validate the reason exists and is active, but return the ID
+            StockActionReasonConfig.objects.get(id=value, is_active=True)
+            return value  # Return the ID, not the object
+        except StockActionReasonConfig.DoesNotExist:
+            raise serializers.ValidationError("Invalid or inactive reason configuration.")
 
     def save(self):
         product = Product.objects.get(id=self.validated_data["product_id"])
@@ -194,7 +223,19 @@ class StockAdjustmentSerializer(serializers.Serializer):
         low_stock_threshold = self.validated_data.get("low_stock_threshold")
         expiration_threshold = self.validated_data.get("expiration_threshold")
         user_id = self.validated_data.get("user_id")
-        reason = self.validated_data.get("reason", "")
+        reason_id = self.validated_data.get("reason_id")
+        detailed_reason = self.validated_data.get("detailed_reason", "")
+        legacy_reason = self.validated_data.get("reason", "")  # For backward compatibility
+        
+        # Convert reason_id to reason_config object
+        reason_config = None
+        if reason_id:
+            from settings.models import StockActionReasonConfig
+            try:
+                reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+            except StockActionReasonConfig.DoesNotExist:
+                # This shouldn't happen due to validation, but just in case
+                reason_config = None
         
         # Get user object if user_id provided
         user = None
@@ -204,9 +245,25 @@ class StockAdjustmentSerializer(serializers.Serializer):
 
         # A positive quantity adds stock, a negative quantity decrements stock
         if quantity > 0:
-            stock = InventoryService.add_stock(product, location, quantity, user=user, reason=reason)
+            stock = InventoryService.add_stock(
+                product, 
+                location, 
+                quantity, 
+                user=user, 
+                reason_config=reason_config,
+                detailed_reason=detailed_reason,
+                legacy_reason=legacy_reason
+            )
         else:
-            stock = InventoryService.decrement_stock(product, location, abs(quantity), user=user, reason=reason)
+            stock = InventoryService.decrement_stock(
+                product, 
+                location, 
+                abs(quantity), 
+                user=user, 
+                reason_config=reason_config,
+                detailed_reason=detailed_reason,
+                legacy_reason=legacy_reason
+            )
 
         # Update additional fields if provided
         if expiration_date is not None:
@@ -234,7 +291,36 @@ class StockTransferSerializer(serializers.Serializer):
     to_location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
     user_id = serializers.IntegerField(required=False)
-    reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    
+    # New structured reason fields
+    reason_id = serializers.IntegerField(
+        required=True,
+        help_text="ID of the stock action reason configuration"
+    )
+    detailed_reason = serializers.CharField(
+        max_length=500, 
+        required=False, 
+        allow_blank=True,
+        help_text="Optional detailed explanation for this stock transfer"
+    )
+    
+    # Legacy reason field (for backward compatibility during migration)
+    reason = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True,
+        help_text="Legacy reason field - will be deprecated"
+    )
+    
+    def validate_reason_id(self, value):
+        """Validate that the reason_id corresponds to an active reason config"""
+        try:
+            from settings.models import StockActionReasonConfig
+            # Validate the reason exists and is active, but return the ID
+            StockActionReasonConfig.objects.get(id=value, is_active=True)
+            return value  # Return the ID, not the object
+        except StockActionReasonConfig.DoesNotExist:
+            raise serializers.ValidationError("Invalid or inactive reason configuration.")
 
     def validate(self, data):
         if data["from_location_id"] == data["to_location_id"]:
@@ -253,7 +339,19 @@ class StockTransferSerializer(serializers.Serializer):
         to_location = Location.objects.get(id=self.validated_data["to_location_id"])
         quantity = self.validated_data["quantity"]
         user_id = self.validated_data.get("user_id")
-        reason = self.validated_data.get("reason", "")
+        reason_id = self.validated_data.get("reason_id")
+        detailed_reason = self.validated_data.get("detailed_reason", "")
+        legacy_reason = self.validated_data.get("reason", "")  # For backward compatibility
+        
+        # Convert reason_id to reason_config object
+        reason_config = None
+        if reason_id:
+            from settings.models import StockActionReasonConfig
+            try:
+                reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+            except StockActionReasonConfig.DoesNotExist:
+                # This shouldn't happen due to validation, but just in case
+                reason_config = None
         
         # Get user object if user_id provided
         user = None
@@ -262,7 +360,14 @@ class StockTransferSerializer(serializers.Serializer):
             user = User.objects.get(id=user_id)
 
         return InventoryService.transfer_stock(
-            product, from_location, to_location, quantity, user=user, reason=reason
+            product, 
+            from_location, 
+            to_location, 
+            quantity, 
+            user=user, 
+            reason_config=reason_config,
+            detailed_reason=detailed_reason,
+            legacy_reason=legacy_reason
         )
 
 
@@ -273,7 +378,36 @@ class BulkStockAdjustmentItemSerializer(serializers.Serializer):
     location_id = serializers.IntegerField()
     adjustment_type = serializers.ChoiceField(choices=[("Add", "Add"), ("Subtract", "Subtract")])
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
-    reason = serializers.CharField(max_length=255)
+    
+    # New structured reason fields
+    reason_id = serializers.IntegerField(
+        required=True,
+        help_text="ID of the stock action reason configuration"
+    )
+    detailed_reason = serializers.CharField(
+        max_length=500, 
+        required=False, 
+        allow_blank=True,
+        help_text="Optional detailed explanation for this stock adjustment"
+    )
+    
+    # Legacy reason field (for backward compatibility during migration)
+    reason = serializers.CharField(
+        max_length=255, 
+        required=False, 
+        allow_blank=True,
+        help_text="Legacy reason field - will be deprecated"
+    )
+    
+    def validate_reason_id(self, value):
+        """Validate that the reason_id corresponds to an active reason config"""
+        try:
+            from settings.models import StockActionReasonConfig
+            # Validate the reason exists and is active, but return the ID
+            StockActionReasonConfig.objects.get(id=value, is_active=True)
+            return value  # Return the ID, not the object
+        except StockActionReasonConfig.DoesNotExist:
+            raise serializers.ValidationError("Invalid or inactive reason configuration.")
 
 class BulkStockAdjustmentSerializer(serializers.Serializer):
     adjustments = BulkStockAdjustmentItemSerializer(many=True)
@@ -290,6 +424,29 @@ class BulkStockTransferItemSerializer(serializers.Serializer):
     from_location_id = serializers.IntegerField()
     to_location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Optional reason fields (will use system bulk transfer reason if not provided)
+    reason_id = serializers.IntegerField(
+        required=False,
+        help_text="Optional ID of the stock action reason configuration"
+    )
+    detailed_reason = serializers.CharField(
+        max_length=500, 
+        required=False, 
+        allow_blank=True,
+        help_text="Optional detailed explanation for this stock transfer"
+    )
+    
+    def validate_reason_id(self, value):
+        """Validate that the reason_id corresponds to an active reason config"""
+        if value is not None:
+            try:
+                from settings.models import StockActionReasonConfig
+                reason_config = StockActionReasonConfig.objects.get(id=value, is_active=True)
+                return reason_config
+            except StockActionReasonConfig.DoesNotExist:
+                raise serializers.ValidationError("Invalid or inactive reason configuration.")
+        return None
 
 class BulkStockTransferSerializer(serializers.Serializer):
     transfers = BulkStockTransferItemSerializer(many=True)
@@ -337,6 +494,11 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
     reason_category_display = serializers.ReadOnlyField()
     truncated_reason = serializers.ReadOnlyField()
     
+    # New structured reason fields
+    reason_config = serializers.SerializerMethodField()
+    get_reason_display = serializers.ReadOnlyField()
+    get_full_reason = serializers.ReadOnlyField()
+    
     class Meta:
         model = StockHistoryEntry
         fields = [
@@ -349,12 +511,33 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
             'quantity_change',
             'previous_quantity',
             'new_quantity',
+            
+            # New structured reason fields
+            'reason_config',
+            'detailed_reason',
+            'get_reason_display',
+            'get_full_reason',
+            
+            # Legacy reason fields (for backward compatibility)
             'reason',
             'notes',
             'reason_category',
             'reason_category_display',
             'truncated_reason',
+            
             'reference_id',
             'timestamp',
         ]
-        select_related_fields = ['product__category', 'product__product_type', 'location', 'user']
+        select_related_fields = ['product__category', 'product__product_type', 'location', 'user', 'reason_config']
+        
+    def get_reason_config(self, obj):
+        """Return basic reason config information"""
+        if obj.reason_config:
+            return {
+                'id': obj.reason_config.id,
+                'name': obj.reason_config.name,
+                'category': obj.reason_config.category,
+                'category_display': obj.reason_config.get_category_display(),
+                'is_system_reason': obj.reason_config.is_system_reason,
+            }
+        return None

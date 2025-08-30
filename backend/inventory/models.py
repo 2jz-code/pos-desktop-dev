@@ -292,10 +292,24 @@ class StockHistoryEntry(models.Model):
         help_text=_("Quantity after the operation")
     )
     
+    # New structured reason system
+    reason_config = models.ForeignKey(
+        'settings.StockActionReasonConfig',
+        on_delete=models.PROTECT,
+        null=True,  # Temporary for migration
+        blank=True,
+        help_text=_("Structured reason for the stock operation")
+    )
+    detailed_reason = models.TextField(
+        blank=True,
+        help_text=_("Optional detailed explanation for the stock operation")
+    )
+    
+    # Legacy reason field (will be removed after migration)
     reason = models.CharField(
         max_length=255,
         blank=True,
-        help_text=_("Reason for the stock operation")
+        help_text=_("Legacy reason for the stock operation (will be migrated)")
     )
     notes = models.TextField(
         blank=True,
@@ -334,6 +348,7 @@ class StockHistoryEntry(models.Model):
             models.Index(fields=['operation_type'], name='stock_hist_operation_idx'),
             models.Index(fields=['timestamp'], name='stock_hist_timestamp_idx'),
             models.Index(fields=['reference_id'], name='stock_hist_reference_idx'),
+            models.Index(fields=['reason_config'], name='stock_hist_reason_idx'),
         ]
 
     def __str__(self):
@@ -345,8 +360,38 @@ class StockHistoryEntry(models.Model):
         return dict(self.OPERATION_CHOICES).get(self.operation_type, self.operation_type)
     
     @property
+    def get_reason_display(self):
+        """Returns the reason display for backward compatibility and migration."""
+        if self.reason_config:
+            # Use the structured reason if available
+            base_reason = self.reason_config.name
+            if self.detailed_reason:
+                return f"{base_reason}: {self.detailed_reason}"
+            return base_reason
+        elif self.reason:
+            # Fall back to legacy reason during migration period
+            return self.reason
+        else:
+            return "No reason provided"
+    
+    @property
+    def get_full_reason(self):
+        """Returns the complete reason including both structured and detailed parts."""
+        if self.reason_config:
+            parts = [self.reason_config.name]
+            if self.detailed_reason:
+                parts.append(self.detailed_reason)
+            return " - ".join(parts)
+        return self.reason or "No reason provided"
+    
+    @property
     def reason_category(self):
-        """Categorizes the reason based on operation type and reason text."""
+        """Categorizes the reason based on structured reason config or operation type and reason text."""
+        # Use structured reason category if available
+        if self.reason_config:
+            return self.reason_config.category
+        
+        # Fall back to legacy categorization logic
         # System-generated operations
         if self.operation_type in ['ORDER_DEDUCTION']:
             return 'SYSTEM'
@@ -359,7 +404,7 @@ class StockHistoryEntry(models.Model):
         if self.operation_type in ['BULK_ADJUSTMENT']:
             return 'BULK'
         
-        # Check reason text for common patterns
+        # Check legacy reason text for common patterns
         if self.reason:
             reason_lower = self.reason.lower()
             

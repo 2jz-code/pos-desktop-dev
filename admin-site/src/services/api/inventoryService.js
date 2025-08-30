@@ -217,6 +217,66 @@ class InventoryService {
 	}
 
 	/**
+	 * Adjust stock with structured reasons
+	 * @param {Object} adjustmentData - Adjustment data with reason_id and detailed_reason
+	 * @returns {Promise} API response
+	 */
+	async adjustStockWithReasons(adjustmentData) {
+		try {
+			const response = await apiClient.post("/inventory/stock/adjust/", adjustmentData);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to adjust stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Transfer stock with structured reasons
+	 * @param {Object} transferData - Transfer data with reason_id and detailed_reason
+	 * @returns {Promise} API response
+	 */
+	async transferStockWithReasons(transferData) {
+		try {
+			const response = await apiClient.post("/inventory/stock/transfer/", transferData);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to transfer stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Bulk adjust stock with structured reasons
+	 * @param {Object} data - Bulk adjustment data with reason_id and detailed_reason for each adjustment
+	 * @returns {Promise} API response
+	 */
+	async bulkAdjustStockWithReasons(data) {
+		try {
+			const response = await apiClient.post("/inventory/stock/bulk-adjust/", data);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to bulk adjust stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Bulk transfer stock with structured reasons
+	 * @param {Object} data - Bulk transfer data with reason_id and detailed_reason for each transfer
+	 * @returns {Promise} API response
+	 */
+	async bulkTransferStockWithReasons(data) {
+		try {
+			const response = await apiClient.post("/inventory/stock/bulk-transfer/", data);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to bulk transfer stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Check stock availability for a single product
 	 * @param {number} productId - Product ID to check
 	 * @returns {Promise} API response with stock information

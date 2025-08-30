@@ -7,6 +7,7 @@ from .models import (
     TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
+    StockActionReasonConfig,
 )
 
 
@@ -161,3 +162,92 @@ class WebOrderSettingsSerializer(BaseModelSerializer):
                 instance.web_receipt_terminals.set(terminals)
 
         return super().update(instance, validated_data)
+
+
+class StockActionReasonConfigSerializer(BaseModelSerializer):
+    """
+    Serializer for StockActionReasonConfig model.
+    Handles validation for system reason protection.
+    """
+    
+    usage_count = serializers.ReadOnlyField()
+    can_be_deleted = serializers.ReadOnlyField()
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    
+    class Meta:
+        model = StockActionReasonConfig
+        fields = [
+            'id',
+            'name',
+            'description',
+            'category',
+            'category_display',
+            'is_system_reason',
+            'is_active',
+            'usage_count',
+            'can_be_deleted',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['is_system_reason', 'created_at', 'updated_at']
+    
+    def validate(self, data):
+        """Custom validation for system reason protection"""
+        instance = getattr(self, 'instance', None)
+        
+        if instance and instance.is_system_reason:
+            # For system reasons, only allow is_active to be changed
+            allowed_fields = {'is_active'}
+            changed_fields = set(data.keys())
+            
+            if changed_fields - allowed_fields:
+                forbidden_fields = changed_fields - allowed_fields
+                raise serializers.ValidationError(
+                    f"System reasons can only have 'is_active' modified. "
+                    f"Cannot change: {', '.join(forbidden_fields)}"
+                )
+        
+        return data
+    
+    def validate_name(self, value):
+        """Ensure name uniqueness among active reasons"""
+        # Get the current instance if updating
+        instance = getattr(self, 'instance', None)
+        
+        # Check for duplicates among active reasons
+        existing = StockActionReasonConfig.objects.filter(
+            name=value,
+            is_active=True
+        )
+        
+        if instance:
+            existing = existing.exclude(pk=instance.pk)
+        
+        if existing.exists():
+            raise serializers.ValidationError(
+                f"An active reason with the name '{value}' already exists."
+            )
+        
+        return value
+
+
+class StockActionReasonConfigListSerializer(BaseModelSerializer):
+    """
+    Lightweight serializer for listing stock action reasons.
+    Used in dropdowns and simple lists.
+    """
+    
+    usage_count = serializers.ReadOnlyField()
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    
+    class Meta:
+        model = StockActionReasonConfig
+        fields = [
+            'id',
+            'name',
+            'category',
+            'category_display',
+            'is_system_reason',
+            'is_active',
+            'usage_count',
+        ]

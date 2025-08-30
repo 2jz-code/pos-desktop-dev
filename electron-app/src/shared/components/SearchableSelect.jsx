@@ -44,7 +44,13 @@ const SearchableSelect = ({
 						value={searchValue}
 						onValueChange={setSearchValue}
 					/>
-					<CommandList>
+					<CommandList
+						onWheel={(e) => {
+							e.stopPropagation();
+							// Allow natural scrolling within the command list
+							e.currentTarget.scrollTop += e.deltaY * 0.5;
+						}}
+					>
 						<CommandEmpty>No option found.</CommandEmpty>
 						<CommandGroup>
 							{filteredOptions.map((option) => (

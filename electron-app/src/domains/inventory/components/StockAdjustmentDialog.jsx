@@ -23,7 +23,8 @@ import { Plus, Minus, Package, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import SearchableSelect from "@/shared/components/SearchableSelect";
-import { adjustStock as adjustStockAPI, getInventoryDefaults } from "@/domains/inventory/services/inventoryService";
+import { adjustStockWithReasons, getInventoryDefaults } from "@/domains/inventory/services/inventoryService";
+import ReasonInput from "./ReasonInput";
 
 const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, onSuccess }) => {
 	const [formData, setFormData] = useState({
@@ -31,7 +32,8 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 		location_id: "",
 		quantity: "",
 		adjustment_type: "add", // 'add' or 'remove'
-		reason: "",
+		reason_id: "",
+		detailed_reason: "",
 		expiration_date: "",
 		low_stock_threshold: "",
 		expiration_threshold: "",
@@ -154,7 +156,7 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
-		if (!formData.product_id || !formData.location_id || !formData.quantity) {
+		if (!formData.product_id || !formData.location_id || !formData.quantity || !formData.reason_id) {
 			setError("Please fill in all required fields");
 			return;
 		}
@@ -173,12 +175,18 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 					? parseFloat(formData.quantity)
 					: -parseFloat(formData.quantity);
 
-			// Prepare the API payload with new fields
+			// Prepare the API payload with structured reasons
 			const payload = {
 				product_id: parseInt(formData.product_id),
 				location_id: parseInt(formData.location_id),
 				quantity: quantity,
+				reason_id: parseInt(formData.reason_id),
 			};
+
+			// Add detailed reason if provided
+			if (formData.detailed_reason) {
+				payload.detailed_reason = formData.detailed_reason;
+			}
 
 			// Add optional fields if provided
 			if (formData.expiration_date) {
@@ -191,15 +199,8 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 				payload.expiration_threshold = parseInt(formData.expiration_threshold);
 			}
 
-			// Use the direct API call that supports the new fields
-			const result = await adjustStockAPI(
-				payload.product_id,
-				payload.location_id,
-				payload.quantity,
-				payload.expiration_date,
-				payload.low_stock_threshold,
-				payload.expiration_threshold
-			);
+			// Use the new structured reason API
+			const result = await adjustStockWithReasons(payload);
 
 			const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
 			const selectedLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.location_id);
@@ -235,7 +236,8 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 			location_id: "",
 			quantity: "",
 			adjustment_type: "add",
-			reason: "",
+			reason_id: "",
+			detailed_reason: "",
 			expiration_date: "",
 			low_stock_threshold: "",
 			expiration_threshold: "",
@@ -282,7 +284,7 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 			open={isOpen}
 			onOpenChange={handleClose}
 		>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="sm:max-w-4xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Package className="h-5 w-5" />
@@ -388,18 +390,20 @@ const StockAdjustmentDialog = ({ isOpen, onClose, onOpenChange, product = null, 
 						</div>
 					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="reason">Reason (Optional)</Label>
-						<Textarea
-							id="reason"
-							value={formData.reason}
-							onChange={(e) =>
-								setFormData({ ...formData, reason: e.target.value })
-							}
-							placeholder="Reason for adjustment (e.g., damaged goods, found extra stock)"
-							rows={3}
-						/>
-					</div>
+					<ReasonInput
+						reasonId={formData.reason_id}
+						onReasonChange={(reasonId) =>
+							setFormData({ ...formData, reason_id: reasonId })
+						}
+						detailedReason={formData.detailed_reason}
+						onDetailedReasonChange={(detailedReason) =>
+							setFormData({ ...formData, detailed_reason: detailedReason })
+						}
+						reasonRequired={true}
+						reasonDescription="Select the reason for this stock adjustment"
+						detailedReasonDescription="Optional: Add specific details about this adjustment"
+						layout="side-by-side"
+					/>
 
 					<div className="space-y-4 border-t pt-4">
 						<div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">

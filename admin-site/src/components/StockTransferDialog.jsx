@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import inventoryService from "../services/api/inventoryService";
 import productService from "../services/api/productService";
 import SearchableSelect from "./shared/SearchableSelect";
+import { ReasonInput } from "./inventory/ReasonInput";
 
 const StockTransferDialog = ({
 	isOpen,
@@ -36,7 +37,8 @@ const StockTransferDialog = ({
 		from_location_id: "",
 		to_location_id: "",
 		quantity: "",
-		reason: "",
+		reason_id: "",
+		detailed_reason: "",
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -153,9 +155,10 @@ const StockTransferDialog = ({
 			!formData.product_id ||
 			!formData.from_location_id ||
 			!formData.to_location_id ||
-			!formData.quantity
+			!formData.quantity ||
+			!formData.reason_id
 		) {
-			setError("Please fill in all required fields");
+			setError("Please fill in all required fields including reason");
 			return;
 		}
 
@@ -181,13 +184,16 @@ const StockTransferDialog = ({
 		setError("");
 
 		try {
-			await inventoryService.transferStock(
-				parseInt(formData.product_id),
-				parseInt(formData.from_location_id),
-				parseInt(formData.to_location_id),
-				parseFloat(formData.quantity),
-				formData.reason
-			);
+			const transferData = {
+				product_id: parseInt(formData.product_id),
+				from_location_id: parseInt(formData.from_location_id),
+				to_location_id: parseInt(formData.to_location_id),
+				quantity: parseFloat(formData.quantity),
+				reason_id: parseInt(formData.reason_id),
+				detailed_reason: formData.detailed_reason || "",
+			};
+
+			await inventoryService.transferStockWithReasons(transferData);
 
 			const selectedProduct = Array.isArray(products)
 				? products.find((p) => p.id.toString() === formData.product_id)
@@ -227,7 +233,8 @@ const StockTransferDialog = ({
 			from_location_id: "",
 			to_location_id: "",
 			quantity: "",
-			reason: "",
+			reason_id: "",
+			detailed_reason: "",
 		});
 		setError("");
 		setStockLevels({});
@@ -256,7 +263,7 @@ const StockTransferDialog = ({
 				open={isOpen}
 				onOpenChange={handleClose}
 			>
-				<DialogContent className="sm:max-w-lg">
+				<DialogContent className="sm:max-w-4xl">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
 							<Package className="h-5 w-5" />
@@ -279,7 +286,7 @@ const StockTransferDialog = ({
 			open={isOpen}
 			onOpenChange={handleClose}
 		>
-			<DialogContent className="sm:max-w-lg">
+			<DialogContent className="sm:max-w-4xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Package className="h-5 w-5" />
@@ -410,18 +417,22 @@ const StockTransferDialog = ({
 						/>
 					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="reason">Reason (Optional)</Label>
-						<Textarea
-							id="reason"
-							value={formData.reason}
-							onChange={(e) =>
-								setFormData({ ...formData, reason: e.target.value })
-							}
-							placeholder="Reason for transfer (e.g., restocking, reorganization)"
-							rows={3}
-						/>
-					</div>
+					<ReasonInput
+						reasonValue={formData.reason_id}
+						onReasonChange={(value) => setFormData({ ...formData, reason_id: value })}
+						detailedReasonValue={formData.detailed_reason}
+						onDetailedReasonChange={(value) => setFormData({ ...formData, detailed_reason: value })}
+						categoryFilter="TRANSFER"
+						reasonPlaceholder="Select reason for this stock transfer..."
+						detailedReasonPlaceholder="Optional: Add more details about this transfer..."
+						required={true}
+						reasonLabel="Transfer Reason"
+						detailedReasonLabel="Additional Details"
+						reasonDescription="Select the primary reason for this stock transfer."
+						detailedReasonDescription="Provide additional context about this transfer operation."
+						layout="stacked"
+						className="space-y-4"
+					/>
 
 					<DialogFooter>
 						<Button

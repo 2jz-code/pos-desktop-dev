@@ -23,6 +23,8 @@ import { ArrowRight, Package } from "lucide-react";
 import { toast } from "sonner";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import SearchableSelect from "@/shared/components/SearchableSelect";
+import { transferStockWithReasons } from "@/domains/inventory/services/inventoryService";
+import ReasonInput from "./ReasonInput";
 
 const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, onSuccess }) => {
 	const [formData, setFormData] = useState({
@@ -30,7 +32,8 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 		from_location_id: "",
 		to_location_id: "",
 		quantity: "",
-		reason: "",
+		reason_id: "",
+		detailed_reason: "",
 	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
@@ -131,7 +134,8 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 			!formData.product_id ||
 			!formData.from_location_id ||
 			!formData.to_location_id ||
-			!formData.quantity
+			!formData.quantity ||
+			!formData.reason_id
 		) {
 			setError("Please fill in all required fields");
 			return;
@@ -159,14 +163,23 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 		setError("");
 
 		try {
-			const result = await transferStock(
-				parseInt(formData.product_id),
-				parseInt(formData.from_location_id),
-				parseInt(formData.to_location_id),
-				parseFloat(formData.quantity)
-			);
+			// Prepare the API payload with structured reasons
+			const payload = {
+				product_id: parseInt(formData.product_id),
+				from_location_id: parseInt(formData.from_location_id),
+				to_location_id: parseInt(formData.to_location_id),
+				quantity: parseFloat(formData.quantity),
+				reason_id: parseInt(formData.reason_id),
+			};
 
-			if (result.success) {
+			// Add detailed reason if provided
+			if (formData.detailed_reason) {
+				payload.detailed_reason = formData.detailed_reason;
+			}
+
+			const result = await transferStockWithReasons(payload);
+
+			if (result.status === "success") {
 				const selectedProduct = products.find((p) => p.id.toString() === formData.product_id);
 				const selectedFromLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.from_location_id);
 				const selectedToLocation = (locations?.results || locations || []).find((l) => l.id.toString() === formData.to_location_id);
@@ -181,7 +194,7 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 
 				handleClose();
 			} else {
-				const errorMessage = result.error || "Failed to transfer stock";
+				const errorMessage = result.message || result.error || "Failed to transfer stock";
 				setError(errorMessage);
 				toast.error("Stock Transfer Failed", {
 					description: errorMessage,
@@ -205,7 +218,8 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 			from_location_id: "",
 			to_location_id: "",
 			quantity: "",
-			reason: "",
+			reason_id: "",
+			detailed_reason: "",
 		});
 		setError("");
 		if (onOpenChange) {
@@ -233,7 +247,7 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 				open={isOpen}
 				onOpenChange={handleClose}
 			>
-				<DialogContent className="sm:max-w-lg">
+				<DialogContent className="sm:max-w-4xl">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
 							<Package className="h-5 w-5" />
@@ -256,7 +270,7 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 			open={isOpen}
 			onOpenChange={handleClose}
 		>
-			<DialogContent className="sm:max-w-lg">
+			<DialogContent className="sm:max-w-4xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Package className="h-5 w-5" />
@@ -385,18 +399,21 @@ const StockTransferDialog = ({ isOpen, onClose, onOpenChange, product = null, on
 						/>
 					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="reason">Reason (Optional)</Label>
-						<Textarea
-							id="reason"
-							value={formData.reason}
-							onChange={(e) =>
-								setFormData({ ...formData, reason: e.target.value })
-							}
-							placeholder="Reason for transfer (e.g., restocking, reorganization)"
-							rows={3}
-						/>
-					</div>
+					<ReasonInput
+						reasonId={formData.reason_id}
+						onReasonChange={(reasonId) =>
+							setFormData({ ...formData, reason_id: reasonId })
+						}
+						detailedReason={formData.detailed_reason}
+						onDetailedReasonChange={(detailedReason) =>
+							setFormData({ ...formData, detailed_reason: detailedReason })
+						}
+						categoryFilter="TRANSFER"
+						reasonRequired={true}
+						reasonDescription="Select the reason for this stock transfer"
+						detailedReasonDescription="Optional: Add specific details about this transfer"
+						layout="side-by-side"
+					/>
 
 					<DialogFooter>
 						<Button

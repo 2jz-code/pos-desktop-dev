@@ -20,7 +20,9 @@ class InventoryService:
         previous_quantity: Decimal,
         new_quantity: Decimal,
         user=None,
-        reason: str = "",
+        reason_config=None,
+        detailed_reason: str = "",
+        reason: str = "",  # Legacy for backward compatibility
         notes: str = "",
         reference_id: str = "",
         ip_address: str = None,
@@ -38,7 +40,9 @@ class InventoryService:
                 quantity_change=quantity_change,
                 previous_quantity=previous_quantity,
                 new_quantity=new_quantity,
-                reason=reason,
+                reason_config=reason_config,
+                detailed_reason=detailed_reason,
+                reason=reason,  # Legacy field for backward compatibility
                 notes=notes,
                 reference_id=reference_id,
                 ip_address=ip_address,
@@ -145,7 +149,18 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def add_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id="", skip_logging=False):
+    def add_stock(
+        product: Product, 
+        location: Location, 
+        quantity, 
+        user=None, 
+        reason_config=None, 
+        detailed_reason="",
+        reason="",  # Legacy for backward compatibility
+        legacy_reason="",  # Alternative legacy field name
+        reference_id="", 
+        skip_logging=False
+    ):
         """
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
@@ -171,6 +186,10 @@ class InventoryService:
         # Log the stock operation (unless skipped for transfers)
         if not skip_logging:
             operation_type = 'CREATED' if created else 'ADJUSTED_ADD'
+            
+            # Handle legacy reason fallback
+            legacy_reason_final = reason or legacy_reason
+            
             InventoryService._log_stock_operation(
                 product=product,
                 location=location,
@@ -179,7 +198,9 @@ class InventoryService:
                 previous_quantity=previous_quantity,
                 new_quantity=stock.quantity,
                 user=user,
-                reason=reason,
+                reason_config=reason_config,
+                detailed_reason=detailed_reason,
+                reason=legacy_reason_final,  # Legacy field for backward compatibility
                 reference_id=reference_id
             )
         
@@ -187,7 +208,18 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def decrement_stock(product: Product, location: Location, quantity, user=None, reason="", reference_id="", skip_logging=False):
+    def decrement_stock(
+        product: Product, 
+        location: Location, 
+        quantity, 
+        user=None, 
+        reason_config=None, 
+        detailed_reason="",
+        reason="",  # Legacy for backward compatibility
+        legacy_reason="",  # Alternative legacy field name
+        reference_id="", 
+        skip_logging=False
+    ):
         """
         Decrements a specified quantity of a product from a specific inventory location.
         Raises ValueError if sufficient stock is not available.
@@ -222,6 +254,9 @@ class InventoryService:
         
         # Log the stock operation (unless skipped for transfers)
         if not skip_logging:
+            # Handle legacy reason fallback
+            legacy_reason_final = reason or legacy_reason
+            
             InventoryService._log_stock_operation(
                 product=product,
                 location=location,
@@ -230,7 +265,9 @@ class InventoryService:
                 previous_quantity=previous_quantity,
                 new_quantity=stock.quantity,
                 user=user,
-                reason=reason,
+                reason_config=reason_config,
+                detailed_reason=detailed_reason,
+                reason=legacy_reason_final,  # Legacy field for backward compatibility
                 reference_id=reference_id
             )
         
@@ -239,7 +276,16 @@ class InventoryService:
     @staticmethod
     @transaction.atomic
     def transfer_stock(
-        product: Product, from_location: Location, to_location: Location, quantity, user=None, reason="", notes=""
+        product: Product, 
+        from_location: Location, 
+        to_location: Location, 
+        quantity, 
+        user=None, 
+        reason_config=None, 
+        detailed_reason="",
+        reason="",  # Legacy for backward compatibility
+        legacy_reason="",  # Alternative legacy field name
+        notes=""
     ):
         """
         Transfers a specified quantity of a product from one location to another.
@@ -265,14 +311,33 @@ class InventoryService:
         except InventoryStock.DoesNotExist:
             to_previous_qty = Decimal('0.0')
 
+        # Handle legacy reason fallback
+        legacy_reason_final = reason or legacy_reason
+        
         # Decrement from the source location (skip logging to avoid duplicate records)
         source_stock = InventoryService.decrement_stock(
-            product, from_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref, skip_logging=True
+            product, 
+            from_location, 
+            quantity_decimal, 
+            user=user, 
+            reason_config=reason_config,
+            detailed_reason=detailed_reason,
+            legacy_reason=legacy_reason_final, 
+            reference_id=transfer_ref, 
+            skip_logging=True
         )
 
         # Add to the destination location (skip logging to avoid duplicate records)
         destination_stock = InventoryService.add_stock(
-            product, to_location, quantity_decimal, user=user, reason=reason, reference_id=transfer_ref, skip_logging=True
+            product, 
+            to_location, 
+            quantity_decimal, 
+            user=user, 
+            reason_config=reason_config,
+            detailed_reason=detailed_reason,
+            legacy_reason=legacy_reason_final, 
+            reference_id=transfer_ref, 
+            skip_logging=True
         )
 
         # Log the transfer operations with proper types
@@ -284,7 +349,9 @@ class InventoryService:
             previous_quantity=from_previous_qty,
             new_quantity=source_stock.quantity,
             user=user,
-            reason=reason,
+            reason_config=reason_config,
+            detailed_reason=detailed_reason,
+            reason=legacy_reason_final,
             notes=notes,
             reference_id=transfer_ref
         )
@@ -297,7 +364,9 @@ class InventoryService:
             previous_quantity=to_previous_qty,
             new_quantity=destination_stock.quantity,
             user=user,
-            reason=reason,
+            reason_config=reason_config,
+            detailed_reason=detailed_reason,
+            reason=legacy_reason_final,
             notes=notes,
             reference_id=transfer_ref
         )
@@ -374,7 +443,7 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def deduct_recipe_ingredients(menu_item: Product, quantity, location: Location):
+    def deduct_recipe_ingredients(menu_item: Product, quantity, location: Location, reason_config=None, reference_id=None):
         """
         Deduct ingredients for a recipe-based menu item.
         For restaurant operations: handles cook-to-order scenarios gracefully.
@@ -388,7 +457,15 @@ class InventoryService:
                 
                 try:
                     # Try to deduct the ingredient
-                    InventoryService.decrement_stock(recipe_item.product, location, total_needed)
+                    InventoryService.decrement_stock(
+                        recipe_item.product, 
+                        location, 
+                        total_needed,
+                        reason_config=reason_config,
+                        detailed_reason=f"Recipe ingredient for {menu_item.name}",
+                        legacy_reason="Recipe ingredient deduction",
+                        reference_id=str(reference_id) if reference_id else None
+                    )
                 except ValueError as e:
                     # Ingredient insufficient - log but don't block (cook to order)
                     logger.info(f"Cook-to-order: Used more than in stock for product_id {recipe_item.product.id}. {e}")
@@ -399,6 +476,22 @@ class InventoryService:
                             product=recipe_item.product, location=location
                         )
                         used_from_stock = stock.quantity
+                        
+                        # Log the deduction of what was available
+                        if used_from_stock > 0:
+                            InventoryService._log_stock_operation(
+                                recipe_item.product,
+                                location,
+                                "DECREMENT",
+                                -used_from_stock,
+                                used_from_stock,
+                                Decimal('0'),
+                                reason_config=reason_config,
+                                detailed_reason=f"Recipe ingredient for {menu_item.name} (partial from stock)",
+                                reason="Recipe ingredient deduction",
+                                reference_id=str(reference_id) if reference_id else None
+                            )
+                        
                         stock.quantity = Decimal('0')
                         stock.save()
                         logger.info(f"Used {used_from_stock} from stock, prepared {total_needed - used_from_stock} fresh")
@@ -423,20 +516,46 @@ class InventoryService:
         Handles both regular products and menu items with recipes.
         """
         from settings.config import app_settings
+        from settings.models import StockActionReasonConfig
         
         default_location = app_settings.get_default_location()
+        
+        # Get system reason for order deductions
+        try:
+            order_deduction_reason = StockActionReasonConfig.objects.get(
+                name="System Order Deduction",
+                is_system_reason=True,
+                is_active=True
+            )
+        except StockActionReasonConfig.DoesNotExist:
+            # Fallback to any system reason
+            order_deduction_reason = StockActionReasonConfig.objects.filter(
+                category="SYSTEM",
+                is_active=True
+            ).first()
+            
+            if not order_deduction_reason:
+                logger.error("No active system reason configuration found for order deductions")
+                # Create a temporary fallback reason
+                order_deduction_reason = None
         
         for item in order.items.all():
             try:
                 if hasattr(item.product, 'recipe') and item.product.recipe:
                     # Handle menu items with recipes
                     InventoryService.deduct_recipe_ingredients(
-                        item.product, item.quantity, default_location
+                        item.product, item.quantity, default_location, order_deduction_reason, order.id
                     )
                 else:
                     # Handle regular products
                     InventoryService.decrement_stock(
-                        item.product, default_location, item.quantity
+                        item.product, 
+                        default_location, 
+                        item.quantity,
+                        reason_config=order_deduction_reason,
+                        detailed_reason=f"Order #{order.order_number or order.id} completed",
+                        legacy_reason="Order completion",
+                        reference_id=f"order_{order.id}"
                     )
             except ValueError as e:
                 # Log inventory deduction failures but don't block order completion
@@ -967,6 +1086,8 @@ class InventoryService:
     @transaction.atomic
     def perform_bulk_stock_adjustment(adjustments_data, user_id):
         from users.models import User
+        from settings.models import StockActionReasonConfig
+        
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -980,16 +1101,42 @@ class InventoryService:
             product = Product.objects.get(id=item['product_id'])
             location = Location.objects.get(id=item['location_id'])
             quantity = Decimal(item['quantity'])
-            reason = item.get('reason', '')
             adjustment_type = item['adjustment_type']
+            
+            # Extract new reason structure
+            reason_config = None
+            reason_id = item.get('reason_id')
+            if reason_id:
+                try:
+                    reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+                except StockActionReasonConfig.DoesNotExist:
+                    # Log warning but continue with operation
+                    print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive")
+            
+            detailed_reason = item.get('detailed_reason', '')
+            legacy_reason = item.get('reason', '')  # For backward compatibility
 
             if adjustment_type == "Add":
                 stock = InventoryService.add_stock(
-                    product, location, quantity, user=user, reason=reason, reference_id=bulk_ref
+                    product, 
+                    location, 
+                    quantity, 
+                    user=user, 
+                    reason_config=reason_config,
+                    detailed_reason=detailed_reason,
+                    legacy_reason=legacy_reason,
+                    reference_id=bulk_ref
                 )
             else:
                 stock = InventoryService.decrement_stock(
-                    product, location, quantity, user=user, reason=reason, reference_id=bulk_ref
+                    product, 
+                    location, 
+                    quantity, 
+                    user=user, 
+                    reason_config=reason_config,
+                    detailed_reason=detailed_reason,
+                    legacy_reason=legacy_reason,
+                    reference_id=bulk_ref
                 )
 
             results.append({
@@ -1002,12 +1149,31 @@ class InventoryService:
 
     @staticmethod
     @transaction.atomic
-    def perform_bulk_stock_transfer(transfers_data, user_id, notes):
+    def perform_bulk_stock_transfer(transfers_data, user_id, notes=""):
         from users.models import User
+        from settings.models import StockActionReasonConfig
+        
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
             raise ValueError(f"User with id {user_id} not found")
+
+        # Get or create system reason for bulk transfers
+        try:
+            bulk_transfer_reason = StockActionReasonConfig.objects.get(
+                name="System Bulk Transfer",
+                is_system_reason=True,
+                is_active=True
+            )
+        except StockActionReasonConfig.DoesNotExist:
+            # Fallback to any bulk transfer reason
+            bulk_transfer_reason = StockActionReasonConfig.objects.filter(
+                category="BULK",
+                is_active=True
+            ).first()
+            
+            if not bulk_transfer_reason:
+                raise ValueError("No active bulk transfer reason configuration found")
 
         # Generate a unique reference ID for this bulk operation
         bulk_ref = f"bulk_xfer_{uuid.uuid4().hex[:12]}"
@@ -1018,9 +1184,28 @@ class InventoryService:
             from_location = Location.objects.get(id=item['from_location_id'])
             to_location = Location.objects.get(id=item['to_location_id'])
             quantity = Decimal(item['quantity'])
+            
+            # Use individual item reason if provided, otherwise use bulk reason
+            item_reason_config = bulk_transfer_reason  # Default to bulk reason
+            reason_id = item.get('reason_id')
+            if reason_id:
+                try:
+                    item_reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+                except StockActionReasonConfig.DoesNotExist:
+                    print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive, using bulk reason")
+            
+            item_detailed_reason = item.get('detailed_reason', notes)
 
             source_stock, destination_stock = InventoryService.transfer_stock(
-                product, from_location, to_location, quantity, user=user, reason="Bulk transfer", notes=notes
+                product, 
+                from_location, 
+                to_location, 
+                quantity, 
+                user=user, 
+                reason_config=item_reason_config,
+                detailed_reason=item_detailed_reason,
+                legacy_reason="Bulk transfer",
+                reference_id=bulk_ref
             )
 
             results.append({

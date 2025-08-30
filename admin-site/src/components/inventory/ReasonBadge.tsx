@@ -40,6 +40,7 @@ import {
 	Clock,
 	Link2,
 	RefreshCw,
+	Shield,
 } from "lucide-react";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
@@ -50,15 +51,32 @@ interface ReasonCategoryDisplay {
 	description: string;
 }
 
+interface StockReasonConfig {
+	id: number;
+	name: string;
+	category: string;
+	category_display: string;
+	is_system_reason: boolean;
+}
+
 interface StockHistoryEntry {
 	id: number;
 	operation_type: string;
 	operation_display: string;
+	
+	// New structured reason fields
+	reason_config?: StockReasonConfig;
+	detailed_reason?: string;
+	get_reason_display?: string;
+	get_full_reason?: string;
+	
+	// Legacy reason fields (for backward compatibility)
 	reason?: string;
 	notes?: string;
 	reason_category: string;
 	reason_category_display: ReasonCategoryDisplay;
 	truncated_reason?: string;
+	
 	timestamp: string;
 	quantity_change: number;
 	previous_quantity: number;
@@ -118,6 +136,21 @@ const getCategoryColorClasses = (color: string) => {
 	return colorMap[color as keyof typeof colorMap] || colorMap.slate;
 };
 
+const getCategoryColorFromName = (category: string) => {
+	const colorMap = {
+		SYSTEM: "gray",
+		MANUAL: "blue",
+		TRANSFER: "purple",
+		CORRECTION: "orange",
+		INVENTORY: "green",
+		WASTE: "red",
+		RESTOCK: "emerald",
+		BULK: "indigo",
+		OTHER: "slate",
+	};
+	return colorMap[category as keyof typeof colorMap] || "slate";
+};
+
 const formatTimestamp = (timestamp: string) => {
 	return new Date(timestamp).toLocaleString();
 };
@@ -134,11 +167,27 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 	onFilterByReferenceId,
 }) => {
 	const [modalOpen, setModalOpen] = useState(false);
-	const Icon = getCategoryIcon(entry.reason_category);
-	const colorClasses = getCategoryColorClasses(entry.reason_category_display.color);
 	
-	const fullReason = entry.reason || entry.notes || "No reason provided";
-	const displayText = entry.truncated_reason || entry.reason_category_display.label;
+	// Determine if this is a new structured reason or legacy reason
+	const isStructuredReason = entry.reason_config != null;
+	
+	// Extract display information based on reason type
+	const reasonCategory = isStructuredReason ? entry.reason_config!.category : entry.reason_category;
+	const reasonName = isStructuredReason ? entry.reason_config!.name : entry.reason_category_display.label;
+	const reasonDescription = isStructuredReason ? entry.reason_config!.category_display : entry.reason_category_display.description;
+	const reasonColor = isStructuredReason ? getCategoryColorFromName(reasonCategory) : entry.reason_category_display.color;
+	
+	const Icon = getCategoryIcon(reasonCategory);
+	const colorClasses = getCategoryColorClasses(reasonColor);
+	
+	// For structured reasons, use the full reason display; for legacy, use the old logic
+	const fullReason = isStructuredReason 
+		? (entry.get_full_reason || entry.detailed_reason || entry.reason_config!.name)
+		: (entry.reason || entry.notes || "No reason provided");
+	
+	const displayText = isStructuredReason 
+		? entry.reason_config!.name
+		: (entry.truncated_reason || entry.reason_category_display.label);
 
 	// Fetch related operations when modal opens and there's a reference_id
 	const { data: relatedOperations, isLoading: relatedLoading } = useQuery({
@@ -153,8 +202,11 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 			onClick={showModal ? () => setModalOpen(true) : undefined}
 		>
 			<Icon className="h-3 w-3" />
-			<span className="font-medium">{entry.reason_category_display.label}</span>
-			{entry.truncated_reason && (
+			<span className="font-medium">{reasonName}</span>
+			{isStructuredReason && entry.reason_config?.is_system_reason && (
+				<Shield className="h-3 w-3 opacity-70" />
+			)}
+			{!isStructuredReason && entry.truncated_reason && (
 				<span className="text-xs opacity-80">
 					{entry.truncated_reason}
 				</span>
@@ -170,8 +222,20 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 				</TooltipTrigger>
 				<TooltipContent side="top" className="max-w-xs">
 					<div className="space-y-1">
-						<p className="font-medium">{entry.reason_category_display.description}</p>
-						{fullReason !== "No reason provided" && (
+						<div className="flex items-center gap-2">
+							<p className="font-medium">{reasonName}</p>
+							{isStructuredReason && entry.reason_config?.is_system_reason && (
+								<Badge variant="secondary" className="text-xs">System</Badge>
+							)}
+						</div>
+						<p className="text-sm opacity-90">{reasonDescription}</p>
+						{isStructuredReason && entry.detailed_reason && (
+							<div className="pt-1 border-t border-white/20">
+								<p className="text-xs font-medium opacity-80">Details:</p>
+								<p className="text-xs opacity-90">{entry.detailed_reason}</p>
+							</div>
+						)}
+						{!isStructuredReason && fullReason !== "No reason provided" && (
 							<p className="text-sm opacity-90">{fullReason}</p>
 						)}
 					</div>
@@ -268,27 +332,64 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 						</div>
 					</div>
 
-					{/* Reason & Notes */}
-					{(entry.reason || entry.notes) && (
-						<div className="space-y-4">
-							{entry.reason && (
+					{/* Reason Information */}
+					<div className="space-y-4">
+						{isStructuredReason ? (
+							// New structured reason display
+							<>
 								<div className="space-y-2">
 									<label className="text-sm font-medium text-muted-foreground">Reason</label>
-									<div className="p-3 bg-muted rounded-md max-h-32 overflow-y-auto">
-										<p className="text-sm whitespace-pre-wrap break-words">{entry.reason}</p>
+									<div className="p-3 bg-muted rounded-md">
+										<div className="flex items-center justify-between">
+											<span className="font-medium">{entry.reason_config!.name}</span>
+											<div className="flex items-center gap-2">
+												<Badge 
+													variant="outline"
+													className={getCategoryColorClasses(getCategoryColorFromName(entry.reason_config!.category))}
+												>
+													{entry.reason_config!.category_display}
+												</Badge>
+												{entry.reason_config!.is_system_reason && (
+													<Badge variant="secondary" className="text-xs">
+														<Shield className="h-3 w-3 mr-1" />
+														System
+													</Badge>
+												)}
+											</div>
+										</div>
 									</div>
 								</div>
-							)}
-							{entry.notes && (
-								<div className="space-y-2">
-									<label className="text-sm font-medium text-muted-foreground">Notes</label>
-									<div className="p-3 bg-muted rounded-md max-h-32 overflow-y-auto">
-										<p className="text-sm whitespace-pre-wrap break-words">{entry.notes}</p>
+								{entry.detailed_reason && (
+									<div className="space-y-2">
+										<label className="text-sm font-medium text-muted-foreground">Additional Details</label>
+										<div className="p-3 bg-muted rounded-md max-h-32 overflow-y-auto">
+											<p className="text-sm whitespace-pre-wrap break-words">{entry.detailed_reason}</p>
+										</div>
 									</div>
-								</div>
-							)}
-						</div>
-					)}
+								)}
+							</>
+						) : (
+							// Legacy reason display
+							<>
+								{entry.reason && (
+									<div className="space-y-2">
+										<label className="text-sm font-medium text-muted-foreground">Reason (Legacy)</label>
+										<div className="p-3 bg-muted rounded-md max-h-32 overflow-y-auto">
+											<p className="text-sm whitespace-pre-wrap break-words">{entry.reason}</p>
+										</div>
+									</div>
+								)}
+								{entry.notes && (
+									<div className="space-y-2">
+										<label className="text-sm font-medium text-muted-foreground">Notes</label>
+										<div className="p-3 bg-muted rounded-md max-h-32 overflow-y-auto">
+											<p className="text-sm whitespace-pre-wrap break-words">{entry.notes}</p>
+										</div>
+									</div>
+								)}
+							</>
+						)}
+					</div>
 
 					{/* Metadata */}
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">

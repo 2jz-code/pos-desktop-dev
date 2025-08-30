@@ -402,3 +402,95 @@ class TerminalLocation(SoftDeleteMixin):
     class Meta:
         verbose_name = "Stripe Location Link"
         verbose_name_plural = "Stripe Location Links"
+
+
+class StockActionReasonConfig(SoftDeleteMixin):
+    """
+    Configurable reasons for stock actions. Owners can define custom reasons
+    while system reasons are built-in and protected from modification.
+    """
+    
+    # Reason categories matching the existing StockHistoryEntry categories
+    CATEGORY_CHOICES = [
+        ('SYSTEM', 'System'),
+        ('MANUAL', 'Manual'),
+        ('TRANSFER', 'Transfer'),
+        ('CORRECTION', 'Correction'),
+        ('INVENTORY', 'Inventory'),
+        ('WASTE', 'Waste'),
+        ('RESTOCK', 'Restock'),
+        ('BULK', 'Bulk'),
+        ('OTHER', 'Other'),
+    ]
+    
+    name = models.CharField(
+        max_length=100,
+        help_text="Name of the stock action reason (e.g., 'Damaged Items', 'Inventory Count')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Optional detailed description of when this reason should be used"
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='OTHER',
+        help_text="Category this reason belongs to for reporting and organization"
+    )
+    is_system_reason = models.BooleanField(
+        default=False,
+        help_text="System reasons are built-in and cannot be modified by users"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive reasons cannot be selected for new stock operations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Stock Action Reason"
+        verbose_name_plural = "Stock Action Reasons"
+        ordering = ['category', 'name']
+        indexes = [
+            models.Index(fields=['is_active', 'category']),
+            models.Index(fields=['is_system_reason']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+    
+    def clean(self):
+        """Validate the model before saving"""
+        from django.core.exceptions import ValidationError
+        
+        # Ensure system reasons cannot be deactivated
+        if self.is_system_reason and not self.is_active:
+            raise ValidationError("System reasons cannot be deactivated")
+        
+        # Ensure name is unique within active reasons
+        existing = StockActionReasonConfig.objects.filter(
+            name=self.name,
+            is_active=True
+        ).exclude(pk=self.pk)
+        
+        if existing.exists():
+            raise ValidationError(f"An active reason with the name '{self.name}' already exists")
+    
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+    
+    @property
+    def can_be_deleted(self):
+        """Check if this reason can be safely deleted (not referenced in stock history)"""
+        # Import here to avoid circular imports
+        from inventory.models import StockHistoryEntry
+        return not StockHistoryEntry.objects.filter(reason_config=self).exists()
+    
+    @property
+    def usage_count(self):
+        """Return the number of times this reason has been used"""
+        # Import here to avoid circular imports
+        from inventory.models import StockHistoryEntry
+        return StockHistoryEntry.objects.filter(reason_config=self).count()

@@ -29,6 +29,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { ExpandableTextarea } from "@/components/ui/expandable-textarea";
 import {
 	PlusCircle,
 	Trash2,
@@ -44,6 +45,7 @@ import { toast } from "sonner";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
 import { useAuth } from "@/contexts/AuthContext";
+import { ReasonSelector } from "@/components/inventory/ReasonSelector";
 
 // Helper component for adjustment quantity field with stock validation
 const AdjustmentQuantityField = ({ index, control, productStockLevels }) => {
@@ -200,7 +202,7 @@ export const BulkOperationsPage = () => {
 	});
 
 	const { mutate: bulkAdjustStock, isPending: isAdjusting } = useMutation({
-		mutationFn: (data) => inventoryService.bulkAdjustStock(data),
+		mutationFn: (data) => inventoryService.bulkAdjustStockWithReasons(data),
 		onSuccess: () => {
 			toast.success("Bulk stock adjustment successful");
 			queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
@@ -214,7 +216,7 @@ export const BulkOperationsPage = () => {
 	});
 
 	const { mutate: bulkTransferStock, isPending: isTransferring } = useMutation({
-		mutationFn: (data) => inventoryService.bulkTransferStock(data),
+		mutationFn: (data) => inventoryService.bulkTransferStockWithReasons(data),
 		onSuccess: () => {
 			toast.success("Bulk stock transfer successful");
 			queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
@@ -234,7 +236,7 @@ export const BulkOperationsPage = () => {
 	} = useForm({
 		defaultValues: {
 			adjustments: [
-				{ product_id: "", location_id: "", quantity: "", reason: "" },
+				{ product_id: "", location_id: "", quantity: "", reason_id: "", detailed_reason: "" },
 			],
 		},
 	});
@@ -257,21 +259,23 @@ export const BulkOperationsPage = () => {
 						adjustment.product_id &&
 						adjustment.location_id &&
 						adjustment.adjustment_type &&
-						adjustment.quantity
+						adjustment.quantity &&
+						adjustment.reason_id
 				)
 				.map((adjustment) => ({
 					product_id: parseInt(adjustment.product_id),
 					location_id: parseInt(adjustment.location_id),
 					adjustment_type: adjustment.adjustment_type,
 					quantity: parseFloat(adjustment.quantity),
-					reason: adjustment.reason || "",
+					reason_id: parseInt(adjustment.reason_id),
+					detailed_reason: adjustment.detailed_reason || "",
 				})),
 			user_id: user.id,
 		};
 
 		if (processedData.adjustments.length === 0) {
 			toast.error(
-				"Please fill in all required fields for at least one adjustment"
+				"Please fill in all required fields including reason for at least one adjustment"
 			);
 			return;
 		}
@@ -291,9 +295,10 @@ export const BulkOperationsPage = () => {
 					from_location_id: "",
 					to_location_id: "",
 					quantity: "",
+					reason_id: "",
+					detailed_reason: "",
 				},
 			],
-			notes: "",
 		},
 	});
 
@@ -315,21 +320,23 @@ export const BulkOperationsPage = () => {
 						transfer.product_id &&
 						transfer.from_location_id &&
 						transfer.to_location_id &&
-						transfer.quantity
+						transfer.quantity &&
+						transfer.reason_id
 				)
 				.map((transfer) => ({
 					product_id: parseInt(transfer.product_id),
 					from_location_id: parseInt(transfer.from_location_id),
 					to_location_id: parseInt(transfer.to_location_id),
 					quantity: parseFloat(transfer.quantity),
+					reason_id: parseInt(transfer.reason_id),
+					detailed_reason: transfer.detailed_reason || "",
 				})),
 			user_id: user.id,
-			notes: data.notes || "",
 		};
 
 		if (processedData.transfers.length === 0) {
 			toast.error(
-				"Please fill in all required fields for at least one transfer"
+				"Please fill in all required fields including reason for at least one transfer"
 			);
 			return;
 		}
@@ -452,6 +459,7 @@ export const BulkOperationsPage = () => {
 											<TableHead>Type</TableHead>
 											<TableHead>Quantity</TableHead>
 											<TableHead>Reason</TableHead>
+											<TableHead>Details</TableHead>
 											<TableHead></TableHead>
 										</TableRow>
 									</TableHeader>
@@ -565,9 +573,34 @@ export const BulkOperationsPage = () => {
 													/>
 												</TableCell>
 												<TableCell className="align-top">
-													<Input
-														{...adjustmentControl.register(
-															`adjustments.${index}.reason`
+													<Controller
+														name={`adjustments.${index}.reason_id`}
+														control={adjustmentControl}
+														render={({ field }) => (
+															<ReasonSelector
+																value={field.value}
+																onValueChange={field.onChange}
+																placeholder="Select reason..."
+																showUsageStats={false}
+																showCategoryBadges={true}
+																className="w-full"
+															/>
+														)}
+													/>
+												</TableCell>
+												<TableCell className="align-top">
+													<Controller
+														name={`adjustments.${index}.detailed_reason`}
+														control={adjustmentControl}
+														render={({ field }) => (
+															<ExpandableTextarea
+																value={field.value}
+																onChange={field.onChange}
+																placeholder="Additional details..."
+																maxLength={500}
+																collapsedHeight="h-10"
+																expandedHeight="h-24"
+															/>
 														)}
 													/>
 												</TableCell>
@@ -595,7 +628,8 @@ export const BulkOperationsPage = () => {
 											product_id: "",
 											location_id: "",
 											quantity: "",
-											reason: "",
+											reason_id: "",
+											detailed_reason: "",
 										})
 									}
 								>
@@ -654,6 +688,8 @@ export const BulkOperationsPage = () => {
 											<TableHead>From Location</TableHead>
 											<TableHead>To Location</TableHead>
 											<TableHead>Quantity</TableHead>
+											<TableHead>Reason</TableHead>
+											<TableHead>Details</TableHead>
 											<TableHead></TableHead>
 										</TableRow>
 									</TableHeader>
@@ -794,6 +830,39 @@ export const BulkOperationsPage = () => {
 													/>
 												</TableCell>
 												<TableCell className="align-top">
+													<Controller
+														name={`transfers.${index}.reason_id`}
+														control={transferControl}
+														render={({ field }) => (
+															<ReasonSelector
+																value={field.value}
+																onValueChange={field.onChange}
+																placeholder="Select reason..."
+																categoryFilter="TRANSFER"
+																showUsageStats={false}
+																showCategoryBadges={false}
+																className="w-full"
+															/>
+														)}
+													/>
+												</TableCell>
+												<TableCell className="align-top">
+													<Controller
+														name={`transfers.${index}.detailed_reason`}
+														control={transferControl}
+														render={({ field }) => (
+															<ExpandableTextarea
+																value={field.value}
+																onChange={field.onChange}
+																placeholder="Additional details..."
+																maxLength={500}
+																collapsedHeight="h-10"
+																expandedHeight="h-24"
+															/>
+														)}
+													/>
+												</TableCell>
+												<TableCell className="align-top">
 													<Button
 														type="button"
 														variant="ghost"
@@ -818,25 +887,14 @@ export const BulkOperationsPage = () => {
 											from_location_id: "",
 											to_location_id: "",
 											quantity: "",
+											reason_id: "",
+											detailed_reason: "",
 										})
 									}
 								>
 									<PlusCircle className="h-4 w-4 mr-2" />
 									Add Row
 								</Button>
-								<div className="mt-4 space-y-2">
-									<Label
-										htmlFor="notes"
-										className="text-sm font-medium"
-									>
-										Transfer Notes (Optional)
-									</Label>
-									<Input
-										id="notes"
-										placeholder="Add notes about this bulk transfer..."
-										{...transferControl.register("notes")}
-									/>
-								</div>
 								<div className="flex justify-between items-center mt-6 pt-4 border-t">
 									<p className="text-sm text-muted-foreground">
 										{transferFields.length} transfer

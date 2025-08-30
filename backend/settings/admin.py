@@ -9,6 +9,7 @@ from .models import (
     TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
+    StockActionReasonConfig,
 )
 from core_backend.admin.mixins import ArchivingAdminMixin
 
@@ -172,3 +173,159 @@ class WebOrderSettingsAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(
             reverse("admin:settings_webordersettings_change", args=[obj.pk])
         )
+
+
+@admin.register(StockActionReasonConfig)
+class StockActionReasonConfigAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+    """
+    Admin view for managing stock action reasons.
+    Only owners can create/edit/delete custom reasons.
+    System reasons are protected from modification.
+    """
+
+    list_display = (
+        "name",
+        "category",
+        "is_system_reason",
+        "is_active",
+        "usage_count_display",
+        "created_at",
+    )
+    list_filter = (
+        "category",
+        "is_system_reason",
+        "is_active",
+    )
+    search_fields = ("name", "description")
+    readonly_fields = (
+        "is_system_reason",
+        "usage_count_display",
+        "can_be_deleted_display",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ["category", "name"]
+
+    fieldsets = (
+        (
+            "Basic Information",
+            {
+                "fields": (
+                    "name",
+                    "description",
+                    "category",
+                )
+            },
+        ),
+        (
+            "Status & Configuration",
+            {
+                "fields": (
+                    "is_active",
+                    "is_system_reason",
+                )
+            },
+        ),
+        (
+            "Usage & Analytics",
+            {
+                "fields": (
+                    "usage_count_display",
+                    "can_be_deleted_display",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Timestamps",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    def usage_count_display(self, obj):
+        """Display usage count with link to history if applicable"""
+        count = obj.usage_count
+        if count > 0:
+            return f"{count} times used"
+        return "Not used yet"
+
+    usage_count_display.short_description = "Usage Count"
+
+    def can_be_deleted_display(self, obj):
+        """Display whether this reason can be safely deleted"""
+        if obj.is_system_reason:
+            return "❌ System reason (cannot delete)"
+        elif obj.can_be_deleted:
+            return "✅ Safe to delete"
+        else:
+            return "⚠️ In use (delete will affect history)"
+
+    can_be_deleted_display.short_description = "Deletion Safety"
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make system reasons read-only for non-superusers"""
+        readonly_fields = list(self.readonly_fields)
+        
+        if obj and obj.is_system_reason:
+            # System reasons cannot be modified
+            readonly_fields.extend(["name", "description", "category", "is_active"])
+        
+        return readonly_fields
+
+    def has_add_permission(self, request):
+        """Only owners can add new reasons"""
+        return request.user.is_authenticated and (
+            request.user.is_superuser or 
+            (hasattr(request.user, 'role') and request.user.role == 'OWNER')
+        )
+
+    def has_change_permission(self, request, obj=None):
+        """Owners can edit all reasons, but system reasons are read-only"""
+        if not request.user.is_authenticated:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+            
+        if hasattr(request.user, 'role') and request.user.role == 'OWNER':
+            return True
+            
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Only owners can delete reasons, and only custom ones"""
+        if not request.user.is_authenticated:
+            return False
+            
+        if not (request.user.is_superuser or 
+                (hasattr(request.user, 'role') and request.user.role == 'OWNER')):
+            return False
+            
+        # Never allow deletion of system reasons
+        if obj and obj.is_system_reason:
+            return False
+            
+        return True
+
+    def delete_model(self, request, obj):
+        """Override delete to show warning if reason is in use"""
+        if not obj.can_be_deleted:
+            messages.warning(
+                request,
+                f"Warning: '{obj.name}' is currently in use by {obj.usage_count} stock history entries. "
+                "Deleting it will not affect existing history, but the reason will show as 'Deleted Reason' in reports."
+            )
+        super().delete_model(request, obj)
+        
+    def save_model(self, request, obj, form, change):
+        """Override save to prevent system reason modification"""
+        if obj.is_system_reason and change:
+            messages.error(
+                request, 
+                "System reasons cannot be modified. Changes were not saved."
+            )
+            return
+        super().save_model(request, obj, form, change)

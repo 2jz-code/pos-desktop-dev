@@ -169,6 +169,36 @@ class InventoryService {
 	}
 
 	/**
+	 * Adjust stock with structured reasons
+	 * @param {Object} adjustmentData - Adjustment data with reason_id and detailed_reason
+	 * @returns {Promise} API response
+	 */
+	async adjustStockWithReasons(adjustmentData) {
+		try {
+			const response = await apiClient.post("/inventory/stock/adjust/", adjustmentData);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to adjust stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Transfer stock with structured reasons
+	 * @param {Object} transferData - Transfer data with reason_id and detailed_reason
+	 * @returns {Promise} API response
+	 */
+	async transferStockWithReasons(transferData) {
+		try {
+			const response = await apiClient.post("/inventory/stock/transfer/", transferData);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to transfer stock with reasons:", error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Get all locations
 	 * @returns {Promise} API response with locations
 	 */
@@ -422,3 +452,5 @@ export const deleteRecipe = (recipeId) => inventoryService.deleteRecipe(recipeId
 export const getInventoryDefaults = () => inventoryService.getInventoryDefaults();
 export const getStockHistory = (filters) => inventoryService.getStockHistory(filters);
 export const getRelatedStockOperations = (referenceId) => inventoryService.getRelatedStockOperations(referenceId);
+export const adjustStockWithReasons = (adjustmentData) => inventoryService.adjustStockWithReasons(adjustmentData);
+export const transferStockWithReasons = (transferData) => inventoryService.transferStockWithReasons(transferData);
