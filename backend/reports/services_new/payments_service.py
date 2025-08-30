@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 
 from django.db import transaction
 from django.db.models import (
-    Sum, Count, Q, Value
+    Sum, Count, Q, Value, F
 )
 from django.db.models.functions import TruncDate, Coalesce
 from django.utils import timezone
@@ -70,7 +70,7 @@ class PaymentsReportService(BaseReportService):
         daily_breakdown = PaymentsReportService._calculate_daily_breakdown(transaction_querysets['successful'])
         
         # Calculate comprehensive summary
-        summary = PaymentsReportService._calculate_payments_summary(transaction_querysets)
+        summary = PaymentsReportService._calculate_payments_summary(transaction_querysets, start_date, end_date)
         
         # Get processing statistics
         processing_stats = PaymentsReportService._calculate_processing_stats(start_date, end_date)
@@ -156,10 +156,14 @@ class PaymentsReportService(BaseReportService):
         refunded_transactions = transaction_querysets['refunded']
         
         # Get payment method aggregation from successful transactions
+        # Include tips and surcharges to match total_collected calculation
         payment_methods_agg = (
             successful_transactions.values("method")
             .annotate(
-                amount=Sum("amount"),
+                base_amount=Sum("amount"),
+                tips=Sum("tip"),
+                surcharges=Sum("surcharge"),
+                amount=Sum(F("amount") + F("tip") + F("surcharge")),
                 count=Count("id"),
                 processing_fees=Sum("surcharge"),
             )
@@ -167,8 +171,9 @@ class PaymentsReportService(BaseReportService):
         )
 
         # Get refunded amounts by method
+        # Include tips and surcharges to match total_collected calculation
         refunded_methods_agg = refunded_transactions.values("method").annotate(
-            refunded_amount=Sum("amount"),
+            refunded_amount=Sum(F("amount") + F("tip") + F("surcharge")),
             refunded_count=Count("id"),
         )
 
@@ -211,6 +216,10 @@ class PaymentsReportService(BaseReportService):
                 "refunded_count": refunded_count,
                 "total_processed": method_amount + refunded_amount,
                 "net_amount": method_amount,
+                # Add detailed breakdown for transparency
+                "base_amount": float(item["base_amount"] or 0),
+                "tips_total": float(item["tips"] or 0), 
+                "surcharges_total": float(item["surcharges"] or 0),
             })
 
         return payment_methods
@@ -267,21 +276,32 @@ class PaymentsReportService(BaseReportService):
         return sorted(list(daily_breakdown.values()), key=lambda x: x["date"])
 
     @staticmethod
-    def _calculate_payments_summary(transaction_querysets: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_payments_summary(transaction_querysets: Dict[str, Any], start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Calculate comprehensive payments summary."""
         successful = transaction_querysets['successful']
         refunded = transaction_querysets['refunded']
         failed = transaction_querysets['failed']
         canceled = transaction_querysets['canceled']
 
-        # Calculate totals
-        total_successful = float(successful.aggregate(total=Sum("amount"))["total"] or 0)
-        total_refunds = float(refunded.aggregate(total=Sum("amount"))["total"] or 0)
-        total_failed = float(failed.aggregate(total=Sum("amount"))["total"] or 0)
-        total_canceled = float(canceled.aggregate(total=Sum("amount"))["total"] or 0)
+        # Calculate totals from transactions (include tips and surcharges to match Payment.total_collected)
+        total_successful = float(successful.aggregate(total=Sum(F("amount") + F("tip") + F("surcharge")))["total"] or 0)
+        total_refunds_amount = float(refunded.aggregate(total=Sum("refunded_amount"))["total"] or 0)
+        total_failed = float(failed.aggregate(total=Sum(F("amount") + F("tip") + F("surcharge")))["total"] or 0)
+        total_canceled = float(canceled.aggregate(total=Sum(F("amount") + F("tip") + F("surcharge")))["total"] or 0)
+        
+        # Get the actual total collected from Payment objects for consistency with sales reports
+        # Use the same filtering logic as sales service for consistency
+        payment_totals = Payment.objects.filter(
+            order__status=Order.OrderStatus.COMPLETED,
+            order__created_at__range=(start_date, end_date),
+            order__subtotal__gt=0,
+        ).aggregate(
+            total_collected_payments=Coalesce(Sum("total_collected"), Value(Decimal("0.00")))
+        )
+        total_collected_from_payments = float(payment_totals["total_collected_payments"] or 0)
 
-        total_attempted = total_successful + total_refunds + total_failed + total_canceled
-        total_processing_issues = total_refunds + total_failed + total_canceled
+        total_attempted = total_successful + total_refunds_amount + total_failed + total_canceled
+        total_processing_issues = total_refunds_amount + total_failed + total_canceled
 
         # Calculate rates
         processing_success_rate = (
@@ -293,10 +313,15 @@ class PaymentsReportService(BaseReportService):
             if total_attempted > 0 else 0
         )
 
+        # Calculate net revenue correctly (use actual collected amounts minus refunds)
+        # Use total_collected_from_payments for consistency with sales reports
+        net_revenue = total_collected_from_payments - total_refunds_amount
+        
         return {
             # Primary metrics
             "total_attempted": total_attempted,
-            "successfully_processed": total_successful,
+            "successfully_processed": total_collected_from_payments,  # This should be the total collected (before refunds)
+            "total_collected": total_collected_from_payments,  # Use Payment.total_collected for consistency
             "processing_issues": total_processing_issues,
             
             # Detailed breakdown
@@ -306,7 +331,7 @@ class PaymentsReportService(BaseReportService):
                     "count": successful.count(),
                 },
                 "refunded": {
-                    "amount": total_refunds,
+                    "amount": total_refunds_amount,
                     "count": refunded.count(),
                 },
                 "failed": {
@@ -324,11 +349,12 @@ class PaymentsReportService(BaseReportService):
             "processing_issues_rate": processing_issues_rate,
             
             # Legacy fields for backward compatibility
-            "total_processed": total_successful,
+            "total_processed": total_collected_from_payments,  # Use collected for consistency
             "total_transactions": successful.count(),
-            "total_refunds": total_refunds,
+            "total_refunds": total_refunds_amount,
             "total_refunded_transactions": refunded.count(),
-            "net_revenue": total_successful,
+            "net_revenue": net_revenue,
+            "total_after_refunds": net_revenue,  # Explicit field for "total after refunds"
         }
 
     @staticmethod
@@ -466,8 +492,9 @@ class PaymentsReportService(BaseReportService):
         writer.writerow(["Metric", "Value"])
         
         summary = report_data.get("summary", {})
-        writer.writerow(["Total Collected", f"${summary.get('successfully_processed', 0):,.2f}"])
+        writer.writerow(["Total Collected", f"${summary.get('total_collected', 0):,.2f}"])
         writer.writerow(["Total Refunds", f"${summary.get('total_refunds', 0):,.2f}"])
+        writer.writerow(["Total After Refunds", f"${summary.get('total_after_refunds', 0):,.2f}"])
         writer.writerow(["Net Revenue", f"${summary.get('net_revenue', 0):,.2f}"])
         writer.writerow(["Success Rate", f"{summary.get('processing_success_rate', 0):.2f}%"])
         writer.writerow(["Total Transactions", summary.get('total_transactions', 0)])
@@ -610,8 +637,9 @@ class PaymentsReportService(BaseReportService):
         # Summary metrics
         summary = report_data.get("summary", {})
         summary_metrics = [
-            ("Total Collected", summary.get('successfully_processed', 0), currency_format),
+            ("Total Collected", summary.get('total_collected', 0), currency_format),
             ("Total Refunds", summary.get('total_refunds', 0), currency_format),
+            ("Total After Refunds", summary.get('total_after_refunds', 0), currency_format),
             ("Net Revenue", summary.get('net_revenue', 0), currency_format),
             ("Success Rate", summary.get('processing_success_rate', 0), '"0.00"%'),
             ("Total Transactions", summary.get('total_transactions', 0), number_format),
@@ -800,8 +828,9 @@ class PaymentsReportService(BaseReportService):
         summary = report_data.get("summary", {})
         summary_data = [
             ["Metric", "Value"],
-            ["Total Collected", f"${summary.get('successfully_processed', 0):,.2f}"],
+            ["Total Collected", f"${summary.get('total_collected', 0):,.2f}"],
             ["Total Refunds", f"${summary.get('total_refunds', 0):,.2f}"],
+            ["Total After Refunds", f"${summary.get('total_after_refunds', 0):,.2f}"],
             ["Net Revenue", f"${summary.get('net_revenue', 0):,.2f}"],
             ["Success Rate", f"{summary.get('processing_success_rate', 0):.2f}%"],
             ["Total Transactions", f"{summary.get('total_transactions', 0):,}"],

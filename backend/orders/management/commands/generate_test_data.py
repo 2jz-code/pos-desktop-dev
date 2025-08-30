@@ -205,10 +205,8 @@ class Command(BaseCommand):
             # Choose cashier
             cashier = random.choice(self.cashiers)
             
-            # Choose customer (30% of orders have registered customers)
+            # Never associate a customer with test orders to avoid emails
             customer = None
-            if self.customers and random.random() < 0.3:
-                customer = random.choice(self.customers)
 
             try:
                 self.stdout.write(f"Creating order {i+1} with pattern {pattern['type']}...")
@@ -282,10 +280,11 @@ class Command(BaseCommand):
             updated_at=order_date,
         )
 
-        # Add guest info for orders without customers
+        # Add guest name only (no email) for orders without customers
         if not customer and random.random() < 0.7:  # 70% of non-customer orders have guest names
             guest_names = ["Ahmed", "Fatima", "Omar", "Aisha", "Hassan", "Zainab", "Ali", "Mariam"]
             order.guest_first_name = random.choice(guest_names)
+            # Never add guest_email to avoid sending emails
             order.save()
 
         # Generate realistic items based on pattern
@@ -369,10 +368,10 @@ class Command(BaseCommand):
         payment = Payment.objects.create(
             order=order,
             payment_number=f"PAY-{order.order_number}",
-            status=Payment.PaymentStatus.PAID,
+            status=Payment.PaymentStatus.PENDING,  # Start as PENDING, will be updated by signals
             total_amount_due=grand_total_decimal,
-            amount_paid=grand_total_decimal,
-            total_collected=grand_total_decimal,
+            amount_paid=Decimal('0.00'),  # Will be calculated by signal
+            total_collected=Decimal('0.00'),  # Will be calculated by signal
             created_at=payment_date,
             updated_at=payment_date,
         )
@@ -424,8 +423,7 @@ class Command(BaseCommand):
                 tip_amount = grand_total_decimal * tip_percentage
                 
             print(f"DEBUG: tip calculation - order_type: {order.order_type}, payment_method: {method}, tip_type: {tip_type}, grand_total: {grand_total_decimal}, tip_amount: {tip_amount}")
-            payment.total_tips = tip_amount
-            payment.total_collected += tip_amount
+            # Tips will be added to transactions and signal will update payment totals
 
         # Create payment transactions based on method
         if method == 'mixed':
@@ -435,7 +433,7 @@ class Command(BaseCommand):
             
             # Add 3% surcharge to card portion
             card_surcharge = card_amount * Decimal('0.03')
-            payment.total_surcharges = card_surcharge
+            # Surcharge will be added to transaction and signal will update payment totals
             
             # For mixed payments, sometimes tip goes to card, sometimes split, sometimes cash
             tip_distribution = random.choices(
@@ -456,33 +454,31 @@ class Command(BaseCommand):
             
             print(f"DEBUG: mixed payment - cash_amount: {cash_amount}, card_amount: {card_amount}, card_surcharge: {card_surcharge}, cash_tip: {cash_tip}, card_tip: {card_tip}")
 
-            self.create_payment_transaction(payment, 'CASH', cash_amount + cash_tip, payment_date, tip=cash_tip)
-            # Card transaction includes surcharge and tip
-            card_total = card_amount + card_surcharge + card_tip
-            payment.total_collected = grand_total_decimal + card_surcharge + tip_amount
-            self.create_payment_transaction(payment, 'CARD_TERMINAL', card_total, payment_date, surcharge=card_surcharge, tip=card_tip)
+            # Create transactions with base amounts only, tips and surcharges separate
+            self.create_payment_transaction(payment, 'CASH', cash_amount, payment_date, tip=cash_tip)
+            self.create_payment_transaction(payment, 'CARD_TERMINAL', card_amount, payment_date, surcharge=card_surcharge, tip=card_tip)
         else:
             if method == 'card':
                 transaction_method = 'CARD_TERMINAL'
                 # Add 3% surcharge for card transactions
                 surcharge = grand_total_decimal * Decimal('0.03')
-                payment.total_surcharges = surcharge
-                transaction_total = grand_total_decimal + surcharge + tip_amount
-                payment.total_collected = grand_total_decimal + surcharge + tip_amount
-                print(f"DEBUG: card payment - grand_total: {grand_total_decimal}, surcharge: {surcharge}, tip: {tip_amount}, total: {transaction_total}")
-                self.create_payment_transaction(payment, transaction_method, transaction_total, payment_date, surcharge=surcharge, tip=tip_amount)
+                print(f"DEBUG: card payment - grand_total: {grand_total_decimal}, surcharge: {surcharge}, tip: {tip_amount}")
+                # Pass base amount only, surcharge and tip separate
+                self.create_payment_transaction(payment, transaction_method, grand_total_decimal, payment_date, surcharge=surcharge, tip=tip_amount)
             elif method == 'gift_card':
                 transaction_method = 'GIFT_CARD'
-                transaction_total = grand_total_decimal + tip_amount
-                print(f"DEBUG: gift card payment - grand_total: {grand_total_decimal}, tip: {tip_amount}, total: {transaction_total}")
-                self.create_payment_transaction(payment, transaction_method, transaction_total, payment_date, tip=tip_amount)
+                print(f"DEBUG: gift card payment - grand_total: {grand_total_decimal}, tip: {tip_amount}")
+                # Pass base amount only, tip separate
+                self.create_payment_transaction(payment, transaction_method, grand_total_decimal, payment_date, tip=tip_amount)
             else:  # cash
                 transaction_method = method.upper()
-                transaction_total = grand_total_decimal + tip_amount
-                print(f"DEBUG: cash payment - grand_total: {grand_total_decimal}, tip: {tip_amount}, total: {transaction_total}")
-                self.create_payment_transaction(payment, transaction_method, transaction_total, payment_date, tip=tip_amount)
+                print(f"DEBUG: cash payment - grand_total: {grand_total_decimal}, tip: {tip_amount}")
+                # Pass base amount only, tip separate
+                self.create_payment_transaction(payment, transaction_method, grand_total_decimal, payment_date, tip=tip_amount)
 
-        payment.save()
+        # Update payment status to PAID after creating successful transactions
+        Payment.objects.filter(pk=payment.pk).update(status=Payment.PaymentStatus.PAID)
+        payment.refresh_from_db()
         return payment
 
     def choose_weighted_option(self, options):
