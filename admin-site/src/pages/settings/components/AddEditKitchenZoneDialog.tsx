@@ -84,9 +84,19 @@ export const AddEditKitchenZoneDialog: React.FC<
 
 	useEffect(() => {
 		if (zone) {
+			// Handle both printerId and printer_name for compatibility
+			let printerValue = "";
+			if (zone.printer_name) {
+				// Find printer by name and get its ID
+				const printer = printers.find(p => p.name === zone.printer_name);
+				printerValue = printer ? String(printer.id) : "";
+			} else if (zone.printerId) {
+				printerValue = String(zone.printerId);
+			}
+			
 			setFormData({
 				name: zone.name || "",
-				printerId: String(zone.printerId) || "",
+				printerId: printerValue,
 				categories: zone.categories || [],
 			});
 		} else {
@@ -96,13 +106,13 @@ export const AddEditKitchenZoneDialog: React.FC<
 				categories: [],
 			});
 		}
-	}, [zone, isOpen]);
+	}, [zone, isOpen, printers]);
 
 	const fetchData = async () => {
 		setLoading(true);
 		try {
 			const categoriesResponse = await getCategories();
-			setCategoryTree(buildTree(categoriesResponse.data));
+			setCategoryTree(buildTree(categoriesResponse.data?.results));
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
 		} finally {

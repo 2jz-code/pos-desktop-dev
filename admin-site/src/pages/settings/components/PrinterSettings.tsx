@@ -180,7 +180,7 @@ export function PrinterSettings() {
 										<p className="font-medium">{zone.name}</p>
 										<p className="text-sm text-muted-foreground">
 											Printer:{" "}
-											{config.kitchen_printers.find(
+											{zone.printer_name || config.kitchen_printers.find(
 												(p) => p.id === zone.printerId
 											)?.name || "N/A"}
 										</p>

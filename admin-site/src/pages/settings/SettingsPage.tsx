@@ -22,7 +22,6 @@ import { StoreInfoSettings } from "./components/StoreInfoSettings";
 import { BusinessHours } from "./components/business-hours";
 
 export function SettingsPage() {
-
 	return (
 		<>
 			<Toaster />
@@ -41,10 +40,14 @@ export function SettingsPage() {
 							{/* Business Setup Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Business Setup</h3>
-									<p className="text-sm text-muted-foreground">Configure your store information, hours, and locations</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Business Setup
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Configure your store information, hours, and locations
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<StoreInfoSettings />
 									<BusinessHours />
@@ -57,10 +60,14 @@ export function SettingsPage() {
 							{/* Operations & Finance Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Operations & Finance</h3>
-									<p className="text-sm text-muted-foreground">Manage financial settings, inventory, and equipment</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Operations & Finance
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Manage financial settings, inventory, and equipment
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<FinancialSettings />
 									<InventorySettings />
@@ -74,10 +81,14 @@ export function SettingsPage() {
 							{/* Customer Experience Section */}
 							<div className="space-y-6">
 								<div>
-									<h3 className="text-xl font-semibold tracking-tight">Customer Experience</h3>
-									<p className="text-sm text-muted-foreground">Configure receipts and order notifications</p>
+									<h3 className="text-xl font-semibold tracking-tight">
+										Customer Experience
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Configure receipts and order notifications
+									</p>
 								</div>
-								
+
 								<div className="space-y-6">
 									<ReceiptSettings />
 									<Card>
