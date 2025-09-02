@@ -244,7 +244,7 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   printer.println("");
   printer.setTextSize(2, 2);
   printer.bold(true);
-  printer.println(`Order #${order.order_number || order.id}`);
+  printer.println(`${order.order_number || order.id}`);
   printer.bold(false);
   printer.setTextNormal();
   const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);

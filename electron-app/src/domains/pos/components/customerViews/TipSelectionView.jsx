@@ -52,7 +52,7 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 	};
 
 	return (
-		<div className="w-full h-full bg-gradient-to-br from-[#faf5ef] via-[#f3e1ca] to-[#d1c7bc] dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-8">
+		<div className="w-full h-screen bg-gradient-to-br from-[#faf5ef] via-[#f3e1ca] to-[#d1c7bc] dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-4 sm:p-6">
 			<motion.div
 				variants={containerVariants}
 				initial="hidden"
@@ -60,53 +60,75 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 				className="w-full h-full flex flex-col"
 			>
 				{/* Header */}
-				<div className="text-center pb-8 border-b border-[#d1c7bc] dark:border-slate-700 flex-shrink-0">
+				<div className="text-center pb-4 sm:pb-6 border-b border-[#d1c7bc] dark:border-slate-700 flex-shrink-0">
 					<motion.div
 						initial={{ scale: 0.8, opacity: 0 }}
 						animate={{ scale: 1, opacity: 1 }}
 						transition={{ duration: 0.5, delay: 0.2 }}
-						className="flex items-center justify-center gap-3 mb-6"
+						className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4"
 					>
-						<div className="p-4 bg-gradient-to-br from-[#909373] to-[#5e6650] rounded-3xl">
-							<Heart className="w-10 h-10 text-white" />
+						<div className="p-2 sm:p-3 bg-gradient-to-br from-[#909373] to-[#5e6650] rounded-xl sm:rounded-2xl">
+							<Heart className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
 						</div>
-						<h1 className="text-5xl font-bold text-[#5e6650] dark:text-slate-100">
+						<h1 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-[#5e6650] dark:text-slate-100">
 							Add a Tip?
 						</h1>
 					</motion.div>
 
 					<motion.p
 						variants={itemVariants}
-						className="text-xl text-[#654321] dark:text-slate-300 font-light"
+						className="text-sm sm:text-base lg:text-lg xl:text-xl text-[#654321] dark:text-slate-300 font-light mb-2"
 					>
 						Your support means the world to us
 					</motion.p>
 
+					{/* Appreciation Message */}
+					<motion.div
+						variants={itemVariants}
+						className="text-center mb-3 sm:mb-4"
+					>
+						<motion.div
+							animate={{
+								scale: [1, 1.02, 1],
+								opacity: [0.8, 1, 0.8],
+							}}
+							transition={{
+								duration: 3,
+								repeat: Number.POSITIVE_INFINITY,
+								ease: "easeInOut",
+							}}
+							className="inline-flex items-center gap-2 sm:gap-3 text-[#5e6650] dark:text-slate-400 text-sm sm:text-base lg:text-lg font-semibold"
+						>
+							<Coffee className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-[#a0522d]" />
+							Every tip helps our team provide better service
+						</motion.div>
+					</motion.div>
+
 					{/* Order Total Display */}
 					<motion.div
 						variants={itemVariants}
-						className="mt-6 p-4 bg-[#f3e1ca]/50 dark:bg-slate-800 rounded-xl"
+						className="p-2 sm:p-3 bg-[#f3e1ca]/50 dark:bg-slate-800 rounded-lg sm:rounded-xl"
 					>
-						<div className="flex items-center justify-center gap-2 text-[#a0522d] dark:text-slate-400 mb-2">
-							<DollarSign className="w-5 h-5" />
-							<span className="text-lg font-medium">Order Total</span>
+						<div className="flex items-center justify-center gap-2 text-[#a0522d] dark:text-slate-400 mb-1">
+							<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
+							<span className="text-sm sm:text-base lg:text-lg font-medium">Order Total</span>
 						</div>
-						<div className="text-3xl font-bold text-[#5e6650] dark:text-slate-100">
+						<div className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#5e6650] dark:text-slate-100">
 							${Number.parseFloat(amountDue).toFixed(2)}
 						</div>
 					</motion.div>
 				</div>
 
-				<div className="p-8 flex-1 overflow-y-auto">
+				<div className="p-3 sm:p-4 lg:p-6 flex-1 flex flex-col justify-center min-h-0">
 						{/* Quick Tip Buttons */}
 						<motion.div
 							variants={itemVariants}
-							className="mb-8"
+							className="mb-4 sm:mb-6"
 						>
-							<h3 className="text-xl font-semibold text-[#5e6650] dark:text-slate-100 mb-4 text-center">
+							<h3 className="text-lg sm:text-xl font-semibold text-[#5e6650] dark:text-slate-100 mb-3 sm:mb-4 text-center">
 								Quick Select
 							</h3>
-							<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+							<div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
 								{tipPercentages.map((percentage) => {
 									const tipAmount = calculateTipAmount(percentage);
 									const isSelected = selectedTip === tipAmount;
@@ -114,13 +136,13 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 									return (
 										<motion.div
 											key={percentage}
-											whileHover={{ scale: 1.05 }}
-											whileTap={{ scale: 0.95 }}
+											whileHover={{ scale: 1.02 }}
+											whileTap={{ scale: 0.98 }}
 										>
 											<Button
 												onClick={() => handleTipSelect(tipAmount)}
 												variant={isSelected ? "default" : "outline"}
-												className={`w-full h-24 flex flex-col gap-2 text-lg font-semibold transition-all duration-200 ${
+												className={`w-full h-16 sm:h-18 lg:h-20 flex flex-col gap-1 text-base sm:text-lg font-semibold transition-all duration-200 ${
 													isSelected
 														? "bg-gradient-to-br from-[#909373] to-[#5e6650] text-white shadow-lg"
 														: "border-[#d1c7bc] dark:border-slate-600 hover:border-[#a0522d] dark:hover:border-[#a0522d]"
@@ -129,7 +151,7 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 												<div className="flex items-center gap-1">
 													{percentage}%
 												</div>
-												<div className="text-sm font-medium">
+												<div className="text-xs sm:text-sm font-medium">
 													${Number.parseFloat(tipAmount).toFixed(2)}
 												</div>
 											</Button>
@@ -142,73 +164,44 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 						{/* Custom Tip Section */}
 						<motion.div
 							variants={itemVariants}
-							className="mb-8"
+							className="mb-4 sm:mb-6"
 						>
-							<h3 className="text-xl font-semibold text-[#5e6650] dark:text-slate-100 mb-4 text-center">
+							<h3 className="text-lg sm:text-xl font-semibold text-[#5e6650] dark:text-slate-100 mb-3 sm:mb-4 text-center">
 								Custom Amount
 							</h3>
-							<div className="flex flex-col gap-6 items-center justify-center">
-								<div className="flex gap-3 items-center justify-center">
-									<DollarSign className="w-6 h-6 text-[#a0522d] dark:text-slate-400" />
-									<div className="w-64">
+							<div className="flex flex-col gap-3 sm:gap-4 items-center justify-center">
+								<div className="flex gap-3 sm:gap-4 items-center justify-center -ml-6 sm:-ml-8 lg:-ml-10">
+									<DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-[#a0522d] dark:text-slate-400" />
+									<div className="w-32 sm:w-40 lg:w-48">
 										<TouchNumberInput
 											placeholder="0.00"
 											value={customTip}
 											onChange={setCustomTip}
-											className="w-full text-center text-2xl font-semibold border-[#d1c7bc] dark:border-slate-600 h-16"
+											className="w-full text-center text-lg sm:text-xl lg:text-2xl font-semibold border-[#d1c7bc] dark:border-slate-600 h-12 sm:h-14 lg:h-16"
 										/>
 									</div>
-									{/* Invisible spacer to balance the dollar sign */}
-									<div className="w-6 h-6"></div>
+									<Button
+										onClick={handleCustomTipSubmit}
+										disabled={
+											!customTip || customTip === "0" || customTip === "0."
+										}
+										className="bg-gradient-to-r from-[#909373] to-[#5e6650] hover:from-[#5e6650] hover:to-[#a0522d] h-12 sm:h-14 lg:h-16 px-3 sm:px-4 lg:px-6 text-xs sm:text-sm lg:text-base font-semibold min-w-[140px] sm:min-w-[160px] lg:min-w-[180px] transition-all duration-200 disabled:opacity-50"
+									>
+										Add ${customTip || "0.00"} Tip
+									</Button>
 								</div>
-								<Button
-									onClick={handleCustomTipSubmit}
-									disabled={
-										!customTip || customTip === "0" || customTip === "0."
-									}
-									className="bg-gradient-to-r from-[#909373] to-[#5e6650] hover:from-[#5e6650] hover:to-[#a0522d] h-16 px-8 text-lg font-semibold min-w-[200px] transition-all duration-200 disabled:opacity-50"
-								>
-									Add ${customTip || "0.00"} Tip
-								</Button>
 
 								{/* No Tip Option */}
 								<Button
 									onClick={() => handleTipSelect(0)}
 									variant="ghost"
-									className="text-[#a0522d] dark:text-slate-400 hover:text-[#5e6650] dark:hover:text-slate-200"
+									className="text-[#a0522d] dark:text-slate-400 hover:text-[#5e6650] dark:hover:text-slate-200 text-sm sm:text-base"
 								>
 									No tip, thanks
 								</Button>
 							</div>
 						</motion.div>
 
-						{/* Spacer for better layout */}
-						<motion.div
-							variants={itemVariants}
-							className="mb-6"
-						></motion.div>
-
-						{/* Appreciation Message */}
-						<motion.div
-							variants={itemVariants}
-							className="text-center mt-8"
-						>
-							<motion.div
-								animate={{
-									scale: [1, 1.02, 1],
-									opacity: [0.8, 1, 0.8],
-								}}
-								transition={{
-									duration: 3,
-									repeat: Number.POSITIVE_INFINITY,
-									ease: "easeInOut",
-								}}
-								className="inline-flex items-center gap-2 text-[#5e6650] dark:text-slate-400 text-sm font-medium"
-							>
-								<Coffee className="w-4 h-4 text-[#a0522d]" />
-								Every tip helps our team provide better service
-							</motion.div>
-						</motion.div>
 				</div>
 			</motion.div>
 		</div>

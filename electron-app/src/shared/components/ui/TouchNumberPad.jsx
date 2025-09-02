@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/shared/components/ui/button";
 import { X, Delete } from "lucide-react";
 
-const TouchNumberPad = ({ isOpen, onNumberPress, onBackspace, onClear, onClose, currencyMode = true, className = "" }) => {
+const TouchNumberPad = ({ isOpen, onNumberPress, onBackspace, onClear, onClose, currencyMode = true, className = "", currentValue = "0.00" }) => {
 	const numbers = [
 		["1", "2", "3"],
 		["4", "5", "6"],
@@ -32,19 +32,26 @@ const TouchNumberPad = ({ isOpen, onNumberPress, onBackspace, onClear, onClose, 
 					transition={{ duration: 0.2, ease: "easeOut" }}
 					className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-4 w-80 max-w-[90vw] ${className}`}
 				>
-					{/* Header with close button */}
-					<div className="flex justify-between items-center mb-4">
-						<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-							Enter Amount
-						</h3>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={onClose}
-							className="h-8 w-8 p-0 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-						>
-							<X className="w-4 h-4" />
-						</Button>
+					{/* Header with current value display */}
+					<div className="mb-4">
+						<div className="flex justify-between items-start mb-2">
+							<div className="text-sm font-medium text-slate-600 dark:text-slate-400">
+								Tip Amount
+							</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={onClose}
+								className="h-8 w-8 p-0 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+							>
+								<X className="w-4 h-4" />
+							</Button>
+						</div>
+						<div className="text-center p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
+							<div className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+								${currentValue || "0.00"}
+							</div>
+						</div>
 					</div>
 
 					{/* Number pad grid */}

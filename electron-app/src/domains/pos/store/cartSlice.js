@@ -612,6 +612,8 @@ export const createCartSlice = (set, get) => {
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
+				customerFirstName: orderData.guest_first_name || "",
+				diningPreference: orderData.dining_preference || "TAKE_OUT",
 				isLoadingCart: false,
 				socketConnected: false,
 			});
@@ -619,13 +621,39 @@ export const createCartSlice = (set, get) => {
 		},
 
 		// Customer name actions
-		setCustomerFirstName: (firstName) => {
+		setCustomerFirstName: async (firstName) => {
 			set({ customerFirstName: firstName });
+			
+			// Update the backend if there's an active order
+			const orderId = get().orderId;
+			if (orderId) {
+				try {
+					await orderService.updateOrder(orderId, {
+						guest_first_name: firstName || null
+					});
+				} catch (error) {
+					console.error("Failed to update customer name in backend:", error);
+					// Don't show toast error for this, as it's not critical for POS operation
+				}
+			}
 		},
 
 		// Dining preference actions
-		setDiningPreference: (preference) => {
+		setDiningPreference: async (preference) => {
 			set({ diningPreference: preference });
+			
+			// Update the backend if there's an active order
+			const orderId = get().orderId;
+			if (orderId) {
+				try {
+					await orderService.updateOrder(orderId, {
+						dining_preference: preference
+					});
+				} catch (error) {
+					console.error("Failed to update dining preference in backend:", error);
+					// Don't show toast error for this, as it's not critical for POS operation
+				}
+			}
 		},
 	};
 };

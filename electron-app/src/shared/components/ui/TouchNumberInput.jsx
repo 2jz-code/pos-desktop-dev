@@ -82,15 +82,15 @@ const TouchNumberInput = ({
 			const rect = inputRef.current.getBoundingClientRect();
 			const viewportHeight = window.innerHeight;
 			const viewportWidth = window.innerWidth;
-			const numberPadHeight = 400; // Approximate height of number pad
+			const numberPadHeight = 480; // Updated height to account for larger header
 			const numberPadWidth = 320; // Approximate width of number pad
 			
-			let top = rect.bottom + window.scrollY + 8; // 8px gap
+			let top = rect.bottom + window.scrollY + 16; // Increased gap to 16px
 			let left = rect.left + window.scrollX;
 			
 			// Check if number pad would go off the bottom of the screen
-			if (rect.bottom + numberPadHeight > viewportHeight) {
-				top = rect.top + window.scrollY - numberPadHeight - 8; // Position above input
+			if (rect.bottom + numberPadHeight + 16 > viewportHeight) {
+				top = rect.top + window.scrollY - numberPadHeight - 16; // Position above input with larger gap
 			}
 			
 			// Check if number pad would go off the right side of the screen
@@ -257,6 +257,7 @@ const TouchNumberInput = ({
 						onClear={handleClear}
 						onClose={handleClose}
 						currencyMode={currencyMode}
+						currentValue={internalValue}
 					/>
 				</div>,
 				document.body

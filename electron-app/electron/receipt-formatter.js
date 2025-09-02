@@ -347,7 +347,7 @@ export function formatKitchenTicket(
 	// --- Order Info ---
 	printer.setTextSize(2, 2); // Make order number bigger
 	printer.bold(true);
-	printer.println(`Order #${order.order_number || order.id}`); // Use user-friendly number
+	printer.println(`${order.order_number || order.id}`); // Order number already includes "ORD-" prefix
 	printer.bold(false);
 	printer.setTextNormal(); // Reset text size
 

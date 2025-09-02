@@ -121,6 +121,8 @@ const CartSummary = () => {
 				items: orderDetails.items,
 				status: "SENT_TO_KITCHEN",
 				created_at: orderDetails.created_at,
+				guest_first_name: orderDetails.guest_first_name,
+				dining_preference: orderDetails.dining_preference,
 			};
 
 			if (!kitchenZones || kitchenZones.length === 0) {

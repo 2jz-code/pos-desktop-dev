@@ -182,8 +182,11 @@ const StripeTerminalService = {
 
 		this._listeners.onUpdate?.({ message: "Discovering readers..." });
 
+		const isDevMode =
+			import.meta.env.DEV || import.meta.env.NODE_ENV === "development";
+
 		const discoveryConfig = {
-			simulated: true, // MUST be true for dashboard simulated readers
+			simulated: isDevMode, // Use simulated readers in dev, real readers in production
 			location: this.locationId,
 		};
 

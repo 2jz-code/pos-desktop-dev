@@ -19,7 +19,7 @@ import { toast } from "@/shared/components/ui/use-toast";
 import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
-	const { clearCart, holdOrder, items, subtotal, total, taxAmount, totalDiscountsAmount, surchargesAmount } = usePosStore(
+	const { clearCart, holdOrder, items, subtotal, total, taxAmount, totalDiscountsAmount, surchargesAmount, customerFirstName, diningPreference } = usePosStore(
 		(state) => ({
 			clearCart: state.clearCart,
 			holdOrder: state.holdOrder,
@@ -29,6 +29,8 @@ const CartActionsDropdown = () => {
 			taxAmount: state.taxAmount,
 			totalDiscountsAmount: state.totalDiscountsAmount,
 			surchargesAmount: state.surchargesAmount,
+			customerFirstName: state.customerFirstName,
+			diningPreference: state.diningPreference,
 		}),
 		shallow
 	);
@@ -88,6 +90,8 @@ const CartActionsDropdown = () => {
 				created_at: currentTime,
 				status: "PENDING",
 				order_type: "POS",
+				dining_preference: diningPreference, // Include the dining preference (DINE_IN/TAKE_OUT)
+				guest_first_name: customerFirstName || "", // Include the guest name
 				items: items, // Cart items already have the correct structure with price_at_sale
 				subtotal: subtotal || 0,
 				tax_total: taxAmount || 0,

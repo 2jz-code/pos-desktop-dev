@@ -145,7 +145,7 @@
 					]
 				}
 			],
-			"icon": "public/logo.png"
+			"icon": "public/logo.ico"
 		},
 		"linux": {
 			"target": [
