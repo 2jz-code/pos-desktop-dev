@@ -9,7 +9,7 @@ export const getUserById = (id) => {
 };
 
 export const createUser = (userData) => {
-	return apiClient.post("/users/register/", userData);
+	return apiClient.post("/users/", userData);
 };
 
 export const updateUser = (id, userData) => {
