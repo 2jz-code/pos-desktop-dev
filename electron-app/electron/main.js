@@ -48,19 +48,9 @@ function createMainWindow() {
 			contextIsolation: true,
 			enableRemoteModule: false,
 			
-			// ===========================================
-			// DEVELOPMENT SETTINGS (Comment out for production)
-			// ===========================================
-			...(isDev && {
-				allowRunningInsecureContent: true,
-				webSecurity: false,
-			}),
-			
-			// ===========================================
-			// PRODUCTION SETTINGS (Uncomment for production)
-			// ===========================================
-			// allowRunningInsecureContent: false,
-			// webSecurity: true,
+			// Production security settings
+			allowRunningInsecureContent: false,
+			webSecurity: true,
 			
 			experimentalFeatures: false,
 		},
@@ -88,21 +78,21 @@ function createMainWindow() {
 }
 
 function createCustomerWindow() {
-	// const displays = screen.getAllDisplays();
-	// const secondaryDisplay = displays.find(
-	// 	(display) => display.id !== screen.getPrimaryDisplay().id
-	// );
+	const displays = screen.getAllDisplays();
+	const secondaryDisplay = displays.find(
+		(display) => display.id !== screen.getPrimaryDisplay().id
+	);
 
-	// if (!secondaryDisplay) {
-	// 	console.log("No secondary display found, not creating customer window.");
-	// 	return;
-	// }
+	if (!secondaryDisplay) {
+		console.log("No secondary display found, not creating customer window.");
+		return;
+	}
 
 	customerWindow = new BrowserWindow({
 		icon: path.join(process.env.PUBLIC, "logo.png"),
-		// x: secondaryDisplay.bounds.x,
-		// y: secondaryDisplay.bounds.y,
-		// fullscreen: true,
+		x: secondaryDisplay.bounds.x,
+		y: secondaryDisplay.bounds.y,
+		fullscreen: true,
 		webPreferences: {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
 		},
@@ -492,25 +482,18 @@ ipcMain.on("shutdown-app", () => {
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
 
-	// ===========================================
-	// DEVELOPMENT COMMAND LINE SWITCHES (Comment out for production)
-	// ===========================================
-	if (isDev) {
-		// Allow secure cookies over HTTP in development
+	// Production security switches
+	if (!isDev) {
+		// Enable security features for production
+		app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
+		app.commandLine.appendSwitch("--force-color-profile", "srgb");
+		console.log("[Main Process] Production mode - security features enabled");
+	} else {
+		// Development-only switches
 		app.commandLine.appendSwitch("--ignore-certificate-errors");
 		app.commandLine.appendSwitch("--allow-running-insecure-content");
 		console.log("[Main Process] Development mode - security switches enabled");
 	}
-	
-	// ===========================================
-	// PRODUCTION COMMAND LINE SWITCHES (Uncomment for production)
-	// ===========================================
-	// if (!isDev) {
-	// 	// Enable security features for production
-	// 	app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
-	// 	app.commandLine.appendSwitch("--force-color-profile", "srgb");
-	// 	console.log("[Main Process] Production mode - security features enabled");
-	// }
 
 	createMainWindow();
 	createCustomerWindow();

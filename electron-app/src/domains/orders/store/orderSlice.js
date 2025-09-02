@@ -6,7 +6,7 @@ export const createOrderSlice = (set) => ({
 
 	fetchOrders: async () => {
 		try {
-			const response = await orderService.getOrders();
+			const response = await orderService.getAllOrders();
 			set({ orders: response.data || [] });
 		} catch (error) {
 			console.error("Failed to fetch orders:", error);

@@ -2,6 +2,8 @@
 	"name": "electron-app",
 	"private": true,
 	"version": "0.0.0",
+	"description": "Ajeen POS - Point of Sale System",
+	"author": "Bake Ajeen",
 	"main": "dist-electron/main.js",
 	"type": "module",
 	"scripts": {
@@ -10,7 +12,8 @@
 		"build:prod": "cross-env NODE_ENV=production vite build && electron-builder --publish=never",
 		"dist": "cross-env NODE_ENV=production vite build && electron-builder --publish=always",
 		"lint": "eslint .",
-		"preview": "vite preview"
+		"preview": "vite preview",
+		"postinstall": "electron-builder install-app-deps"
 	},
 	"dependencies": {
 		"@hello-pangea/dnd": "^18.0.1",
@@ -32,7 +35,6 @@
 		"@radix-ui/react-tooltip": "^1.2.7",
 		"@reduxjs/toolkit": "^2.8.2",
 		"@stripe/terminal-js": "^0.24.0",
-		"@tailwindcss/vite": "^4.1.8",
 		"@tanstack/react-query": "^5.80.6",
 		"@uidotdev/usehooks": "^2.4.1",
 		"@xstate/react": "^4.1.1",
@@ -59,7 +61,6 @@
 		"sonner": "^2.0.5",
 		"sound-play": "^1.1.0",
 		"tailwind-merge": "^3.3.0",
-		"tailwindcss": "^4.1.8",
 		"tailwindcss-animate": "^1.0.7",
 		"usb": "^2.15.0",
 		"use-debounce": "^10.0.5",
@@ -83,7 +84,6 @@
 		"cross-env": "^7.0.3",
 		"electron": "^36.4.0",
 		"electron-builder": "^26.0.12",
-		"electron-rebuild": "^3.2.9",
 		"eslint": "^9.25.0",
 		"eslint-plugin-react-hooks": "^5.2.0",
 		"eslint-plugin-react-refresh": "^0.4.19",
@@ -92,6 +92,8 @@
 		"jest": "^29.7.0",
 		"jest-environment-jsdom": "^30.0.0-beta.3",
 		"npm": "^11.4.2",
+		"@tailwindcss/vite": "^4.1.8",
+		"tailwindcss": "^4.1.8",
 		"tw-animate-css": "^1.3.4",
 		"vite": "^6.3.5",
 		"vite-plugin-electron": "^0.29.0",
@@ -107,8 +109,18 @@
 		"files": [
 			"dist/**/*",
 			"dist-electron/**/*",
-			"node_modules/**/*"
+			"node_modules/**/*",
+			"!node_modules/@tailwindcss/oxide*/**/*",
+			"!node_modules/@emnapi/**/*"
 		],
+		"asarUnpack": [
+			"node_modules/usb/**/*"
+		],
+		"fileAssociations": [],
+		"extraResources": [],
+		"buildDependenciesFromSource": false,
+		"nodeGypRebuild": false,
+		"npmRebuild": false,
 		"mac": {
 			"category": "public.app-category.business",
 			"target": [
