@@ -112,7 +112,7 @@ ROOT_URLCONF = "core_backend.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -145,7 +145,8 @@ DATABASES = {
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
-
+# Use X-Forwarded-For in production, but disable rate limiting if header issues occur
+RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -256,7 +257,11 @@ AUTH_USER_MODEL = "users.User"
 CORS_ALLOW_CREDENTIALS = True
 # CORS settings - dynamically load from environment
 CORS_ALLOWED_ORIGINS = (
-    os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    [
+        origin.strip()
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
     if os.getenv("CORS_ALLOWED_ORIGINS")
     else [
         "http://localhost:5173",  # React/Vite dev server
@@ -291,7 +296,11 @@ CORS_ALLOW_HEADERS = [
 
 # CSRF Trusted Origins - dynamically load from environment
 CSRF_TRUSTED_ORIGINS = (
-    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    [
+        origin.strip()
+        for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
     if os.getenv("CSRF_TRUSTED_ORIGINS")
     else [
         "http://localhost:5173",
@@ -546,6 +555,11 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
         # Url that gets reversed (Permissions can be added)
         {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {
+            "name": "🔄 Legacy Migration",
+            "url": "legacy_migration",
+            "permissions": ["auth.view_user"],
+        },
         # model admin to link to (Permissions checked against model)
         # {"model": "users.User"},
         # App with dropdown menu to all its models pages (Permissions checked against models)

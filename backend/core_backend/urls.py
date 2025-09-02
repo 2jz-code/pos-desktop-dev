@@ -26,6 +26,7 @@ from .views import (
     invalidate_cache,
     cache_statistics,
 )
+from .admin_views import legacy_migration_view
 
 
 def health_check(request):
@@ -35,6 +36,7 @@ def health_check(request):
 
 urlpatterns = [
     path("api/health/", health_check, name="health_check"),
+    path("admin/legacy-migration/", legacy_migration_view, name="legacy_migration"),
     path("admin/", admin.site.urls),
     # Cache monitoring endpoints (admin only)
     path("api/cache/health/", cache_health_check, name="cache_health_check"),

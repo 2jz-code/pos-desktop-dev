@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 20px;">
+    <h1>Legacy Data Migration</h1>
+    <p>Click the button below to run the legacy data migration (with --all flag).</p>
+    
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" style="background-color: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+            Run Migration
+        </button>
+    </form>
+    
+    {% if output %}
+    <div style="margin-top: 20px;">
+        <h3>Output:</h3>
+        <pre style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 15px; white-space: pre-wrap; max-height: 500px; overflow-y: auto; font-size: 12px;">{{ output }}</pre>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -29,10 +29,10 @@ class UserAdminCreationForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data["password"])
-        if self.cleaned_data.get("pin"):
-            user.set_pin(self.cleaned_data["pin"])
         if commit:
             user.save()
+            if self.cleaned_data.get("pin"):
+                user.set_pin(self.cleaned_data["pin"])
         return user
 
 

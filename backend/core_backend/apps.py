@@ -32,8 +32,8 @@ class CoreBackendConfig(AppConfig):
         cache_warming_enabled = getattr(settings, 'CACHE_WARMING_ON_STARTUP', False)
         is_production = not getattr(settings, 'DEBUG', True)
         
-        # Only warm caches if enabled or in production
-        if not (cache_warming_enabled or is_production):
+        # Only warm caches if explicitly enabled
+        if not cache_warming_enabled:
             logger.debug("Cache warming on startup disabled (DEBUG=True and CACHE_WARMING_ON_STARTUP=False)")
             return
         
