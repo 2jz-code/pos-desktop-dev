@@ -4,7 +4,9 @@
       "Bash(mv:*)",
       "Bash(find:*)",
       "WebFetch(domain:docs.n8n.io)",
-      "WebSearch"
+      "WebSearch",
+      "mcp__context7__get-library-docs",
+      "mcp__context7__resolve-library-id"
     ],
     "deny": []
   }
