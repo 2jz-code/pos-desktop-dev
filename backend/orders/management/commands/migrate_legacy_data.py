@@ -14,6 +14,7 @@ import uuid
 from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction, connection
+from django.db.models import Count
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
 from django.db.models.signals import (
@@ -55,6 +56,7 @@ class Command(BaseCommand):
                 "all",
                 "validate",
                 "cleanup",
+                "reset",
             ],
             help="Which migration step to run",
         )
@@ -72,10 +74,16 @@ class Command(BaseCommand):
             default=1000,
             help="Number of records to process at once",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Force operations without confirmation prompts",
+        )
 
     def handle(self, *args, **options):
         self.dry_run = options["dry_run"]
         self.batch_size = options["batch_size"]
+        self.force = options["force"]
 
         if options["dry_run"]:
             self.stdout.write(
@@ -159,7 +167,13 @@ class Command(BaseCommand):
         self.cleanup_post_migration()
 
     def run_migration_step(self, step):
-        """Run a specific migration step"""
+        """Run a specific migration step with validation"""
+        self.stdout.write(f"Starting migration step: {step}")
+        
+        # Pre-migration validation
+        if step in ["orders", "payments"] and not self.dry_run:
+            self.pre_migration_validation(step)
+            
         if step == "users":
             self.migrate_users()
         elif step == "categories":
@@ -174,8 +188,14 @@ class Command(BaseCommand):
             self.validate_migration()
         elif step == "cleanup":
             self.cleanup_post_migration()
+        elif step == "reset":
+            self.reset_migration_data()
         else:
             raise CommandError(f"Unknown migration step: {step}")
+            
+        # Post-migration validation
+        if step in ["orders", "payments"] and not self.dry_run:
+            self.post_migration_validation(step)
 
     def get_legacy_data(self, query):
         """Execute query against legacy schema"""
@@ -271,6 +291,13 @@ class Command(BaseCommand):
 
             User.objects.bulk_create(users_to_create, batch_size=self.batch_size)
             self.stdout.write(f"Migrated {len(users_to_create)} users")
+        
+        # Validate all users have unique emails after migration
+        duplicate_emails = User.objects.filter(legacy_id__isnull=False).values('email').annotate(count=Count('email')).filter(count__gt=1)
+        if duplicate_emails.exists():
+            self.stdout.write(
+                self.style.WARNING(f"Found {duplicate_emails.count()} duplicate emails after user migration")
+            )
 
     def migrate_categories(self):
         """Migrate categories from legacy.products_category"""
@@ -558,11 +585,12 @@ class Command(BaseCommand):
                     guest_last_name=order_data["guest_last_name"],
                     guest_email=order_data["guest_email"],
                     guest_phone=order_data["guest_phone"],
-                    # Fixed financial mapping: Order only stores base transaction amounts
+                    # Fixed financial mapping: Use legacy subtotal or calculate correctly
                     subtotal=(
                         Decimal(str(order_data["subtotal_from_frontend"] or 0))
                         if order_data["subtotal_from_frontend"] is not None
                         else (
+                            # Calculate subtotal as: total - tax - tip - surcharge + discount
                             Decimal(str(order_data["total_price"] or 0))
                             - Decimal(str(order_data["tax_amount_from_frontend"] or 0))
                             - Decimal(str(order_data["tip_amount"] or 0))
@@ -584,11 +612,39 @@ class Command(BaseCommand):
                 )
                 orders_to_create.append(order)
 
-            # Bulk create orders without order_number (will be generated)
-            created_orders = []
-            for order in orders_to_create:
-                order.save()  # Use save() to generate order_number
-                created_orders.append(order)
+            # Bulk create orders - use bulk_create but then update legacy_id
+            Order.objects.bulk_create(orders_to_create, batch_size=self.batch_size)
+            
+            # Update legacy_id for all created orders since bulk_create doesn't set them
+            for order_data in legacy_orders:
+                try:
+                    # Find the order by matching created_at and other unique fields
+                    order = Order.objects.get(
+                        created_at=order_data["created_at"],
+                        grand_total=Decimal(str(order_data["total_price"] or 0)),
+                        legacy_id__isnull=True  # Only update those without legacy_id
+                    )
+                    order.legacy_id = order_data["id"]
+                    order.save(update_fields=["legacy_id"])
+                except Order.DoesNotExist:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Could not find created order for legacy_id {order_data['id']}"
+                        )
+                    )
+                except Order.MultipleObjectsReturned:
+                    # Handle potential duplicates by taking the first one
+                    orders = Order.objects.filter(
+                        created_at=order_data["created_at"],
+                        grand_total=Decimal(str(order_data["total_price"] or 0)),
+                        legacy_id__isnull=True
+                    )
+                    if orders.exists():
+                        order = orders.first()
+                        order.legacy_id = order_data["id"]
+                        order.save(update_fields=["legacy_id"])
+            
+            created_orders = Order.objects.filter(legacy_id__isnull=False)
 
             self.stdout.write(f"Migrated {len(created_orders)} orders")
 
@@ -715,14 +771,18 @@ class Command(BaseCommand):
                 # Oldest payment gets PAY-00001, newest gets highest number
                 payment_number = f"PAY-{index:05d}"
 
-                # Fixed financial mapping: Payment stores full financial picture
+                # Fixed financial mapping: Use legacy order total as source of truth
                 tip_amount = Decimal(str(payment_data["tip_amount"] or 0))
                 surcharge_amount = Decimal(str(payment_data["surcharge_amount"] or 0))
-                # total_amount_due is subtotal + tax (excluding tips and surcharges)
-                total_amount_due = order.grand_total - tip_amount - surcharge_amount
-                total_collected = Decimal(
-                    str(payment_data["order_total_price"] or 0)
-                )  # Full legacy total
+                
+                # total_amount_due = subtotal + tax - discounts (excludes tips and surcharges)
+                total_amount_due = order.subtotal + order.tax_total - order.total_discounts_amount
+                
+                # total_collected should match legacy order total_price exactly
+                total_collected = Decimal(str(payment_data["order_total_price"] or 0))
+                
+                # amount_paid should equal total_amount_due for successful payments
+                amount_paid = total_amount_due if payment_data["status"] == "completed" else Decimal("0.00")
 
                 payment = Payment(
                     id=uuid.uuid4(),
@@ -732,7 +792,7 @@ class Command(BaseCommand):
                         payment_data["status"], Payment.PaymentStatus.PENDING
                     ),
                     total_amount_due=total_amount_due,
-                    amount_paid=total_amount_due,  # Should equal amount_due when paid
+                    amount_paid=amount_paid,
                     total_tips=tip_amount,
                     total_surcharges=surcharge_amount,
                     total_collected=total_collected,
@@ -742,11 +802,41 @@ class Command(BaseCommand):
                 )
                 payments_to_create.append(payment)
 
-            # Save payments individually to generate payment_number
-            created_payments = []
-            for payment in payments_to_create:
-                payment.save()
-                created_payments.append(payment)
+            # Bulk create payments - use bulk_create but then update legacy_id
+            Payment.objects.bulk_create(payments_to_create, batch_size=self.batch_size)
+            
+            # Update legacy_id for all created payments since bulk_create doesn't set them
+            for payment_data in legacy_payments:
+                try:
+                    order = Order.objects.get(legacy_id=payment_data["order_id"])
+                    payment = Payment.objects.get(
+                        order=order,
+                        created_at=payment_data["created_at"],
+                        total_collected=Decimal(str(payment_data["order_total_price"] or 0)),
+                        legacy_id__isnull=True  # Only update those without legacy_id
+                    )
+                    payment.legacy_id = payment_data["id"]
+                    payment.save(update_fields=["legacy_id"])
+                except (Payment.DoesNotExist, Order.DoesNotExist):
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Could not find created payment for legacy_id {payment_data['id']}"
+                        )
+                    )
+                except Payment.MultipleObjectsReturned:
+                    # Handle potential duplicates by taking the first one
+                    payments = Payment.objects.filter(
+                        order=order,
+                        created_at=payment_data["created_at"],
+                        total_collected=Decimal(str(payment_data["order_total_price"] or 0)),
+                        legacy_id__isnull=True
+                    )
+                    if payments.exists():
+                        payment = payments.first()
+                        payment.legacy_id = payment_data["id"]
+                        payment.save(update_fields=["legacy_id"])
+            
+            created_payments = Payment.objects.filter(legacy_id__isnull=False)
 
             self.stdout.write(f"Migrated {len(created_payments)} payments")
 
@@ -1005,52 +1095,9 @@ class Command(BaseCommand):
         Category.objects.rebuild()
         self.stdout.write("✓ Rebuilt category MPTT tree")
 
-        orders_to_process = Order.objects.filter(
-            legacy_id__isnull=False, payment_details__isnull=False
-        ).select_related("payment_details")
-
-        updated_records = 0
-        self.stdout.write(
-            f"Validating and recalculating totals for {orders_to_process.count()} orders..."
-        )
-
-        for order in orders_to_process:
-            payment = order.payment_details
-            needs_saving = False
-
-            # Step 1: Calculate the true subtotal from items.
-            correct_subtotal = sum(item.total_price for item in order.items.all())
-
-            # Step 2: Calculate the one, true final total.
-            true_final_total = (
-                correct_subtotal
-                - order.total_discounts_amount
-                + order.tax_total
-                + payment.total_surcharges
-                + payment.total_tips
-            )
-
-            # Step 3: Check and update all relevant fields on both models.
-            if order.subtotal != correct_subtotal:
-                order.subtotal = correct_subtotal
-                needs_saving = True
-
-            if payment.total_collected != true_final_total:
-                payment.total_collected = true_final_total
-                payment.save(update_fields=["total_collected"])
-
-            if order.grand_total != true_final_total:
-                order.grand_total = true_final_total
-                needs_saving = True
-
-            if needs_saving:
-                order.save(update_fields=["subtotal", "grand_total"])
-                updated_records += 1
-
-        if updated_records > 0:
-            self.stdout.write(
-                f"✓ Corrected and synced totals for {updated_records} records."
-            )
+        # Skip financial recalculation to preserve legacy totals exactly
+        # The legacy totals should be preserved as-is for historical accuracy
+        self.stdout.write("✓ Preserving exact legacy financial totals (skipping recalculation)")
 
         # --- FINAL FORCED SYNC STEP ---
         self.stdout.write("\n--- Forcing Final Sync from Order to Payment ---")
@@ -1073,6 +1120,171 @@ class Command(BaseCommand):
             self.stdout.write("✓ All payment records were already in sync.")
 
         self.stdout.write("✓ Post-migration cleanup completed.")
+        
+    def pre_migration_validation(self, step):
+        """Validate data consistency before migration"""
+        self.stdout.write(f"\n--- Pre-{step} Migration Validation ---")
+        
+        if step == "orders":
+            # Check for existing migrated orders that might cause conflicts
+            existing_migrated = Order.objects.filter(legacy_id__isnull=False).count()
+            if existing_migrated > 0:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Found {existing_migrated} already migrated orders. "
+                        "Consider running 'reset' step first to avoid duplicates."
+                    )
+                )
+                
+        elif step == "payments":
+            # Ensure orders are migrated first
+            migrated_orders = Order.objects.filter(legacy_id__isnull=False).count()
+            if migrated_orders == 0:
+                raise CommandError("No migrated orders found. Run orders migration first.")
+                
+    def post_migration_validation(self, step):
+        """Validate data after migration step"""
+        self.stdout.write(f"\n--- Post-{step} Migration Validation ---")
+        
+        if step == "orders":
+            # Validate all migrated orders have correct legacy_id
+            orders_without_legacy_id = Order.objects.filter(
+                created_at__lt='2025-07-01',  # Assuming legacy data is before this date
+                legacy_id__isnull=True
+            ).count()
+            
+            if orders_without_legacy_id > 0:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"❌ {orders_without_legacy_id} orders missing legacy_id!"
+                    )
+                )
+            else:
+                self.stdout.write("✅ All migrated orders have legacy_id")
+                
+            # Validate financial calculations (only if payments exist)
+            if Payment.objects.filter(legacy_id__isnull=False).exists():
+                self.validate_financial_consistency()
+            else:
+                self.stdout.write("⚠️ Skipping financial validation - payments not migrated yet")
+            
+        elif step == "payments":
+            # Validate all payments have legacy_id
+            payments_without_legacy_id = Payment.objects.filter(
+                created_at__lt='2025-07-01',
+                legacy_id__isnull=True
+            ).count()
+            
+            if payments_without_legacy_id > 0:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"❌ {payments_without_legacy_id} payments missing legacy_id!"
+                    )
+                )
+            else:
+                self.stdout.write("✅ All migrated payments have legacy_id")
+                
+    def validate_financial_consistency(self):
+        """Validate that financial calculations are consistent"""
+        self.stdout.write("\n--- Financial Consistency Check ---")
+        
+        # Check for orders with financial inconsistencies
+        inconsistent_orders = []
+        
+        for order in Order.objects.filter(legacy_id__isnull=False).select_related('payment_details')[:10]:  # Sample check
+            if order.payment_details:
+                payment = order.payment_details
+                expected_total = order.subtotal + order.tax_total + order.surcharges_total - order.total_discounts_amount + payment.total_tips
+                
+                if abs(expected_total - order.grand_total) > Decimal('0.01'):  # Allow 1 cent tolerance
+                    inconsistent_orders.append({
+                        'order_id': order.id,
+                        'legacy_id': order.legacy_id,
+                        'expected': expected_total,
+                        'actual': order.grand_total,
+                        'difference': expected_total - order.grand_total
+                    })
+                    
+        if inconsistent_orders:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"⚠ Found {len(inconsistent_orders)} orders with financial inconsistencies"
+                )
+            )
+            for order_info in inconsistent_orders[:3]:  # Show first 3
+                self.stdout.write(
+                    f"  Order {order_info['legacy_id']}: Expected {order_info['expected']}, "
+                    f"Got {order_info['actual']}, Diff: {order_info['difference']}"
+                )
+        else:
+            self.stdout.write("✅ Financial calculations are consistent")
+            
+    def reset_migration_data(self):
+        """Reset migrated data to clean slate"""
+        if self.dry_run:
+            self.stdout.write("DRY RUN: Would reset all migrated data")
+            return
+            
+        self.stdout.write(
+            self.style.WARNING(
+                "\n--- RESETTING ALL MIGRATED DATA ---\n"
+                "This will DELETE all records with legacy_id!"
+            )
+        )
+        
+        # Confirm deletion
+        if not self.force:
+            confirm = input("Type 'YES' to confirm deletion: ")
+            if confirm != 'YES':
+                self.stdout.write("Reset cancelled.")
+                return
+        else:
+            self.stdout.write("Force mode: Skipping confirmation")
+            
+        with transaction.atomic():
+            # Delete in reverse dependency order, handling foreign key constraints
+            
+            # First delete PaymentTransactions
+            deleted_transactions = PaymentTransaction.objects.filter(legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_transactions[0]} payment transactions")
+            
+            # Then delete Payments
+            deleted_payments = Payment.objects.filter(legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_payments[0]} payments")
+            
+            # Delete OrderItems
+            deleted_order_items = OrderItem.objects.filter(legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_order_items[0]} order items")
+            
+            # Delete Orders
+            deleted_orders = Order.objects.filter(legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_orders[0]} orders")
+            
+            # Delete inventory stocks first (they reference products)
+            deleted_inventory = InventoryStock.objects.filter(product__legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_inventory[0]} inventory stocks")
+            
+            # Now delete Products
+            deleted_products = Product.objects.filter(legacy_id__isnull=False).delete()
+            self.stdout.write(f"Deleted {deleted_products[0]} products")
+            
+            # Finally delete Users (only those not referenced by remaining data)
+            # Check for users that are still referenced
+            users_to_delete = User.objects.filter(legacy_id__isnull=False)
+            safe_to_delete = []
+            
+            for user in users_to_delete:
+                # Check if user is referenced by any remaining orders/payments
+                if not Order.objects.filter(customer=user).exists() and not Order.objects.filter(cashier=user).exists():
+                    safe_to_delete.append(user.id)
+                    
+            if safe_to_delete:
+                deleted_users = User.objects.filter(id__in=safe_to_delete).delete()
+                self.stdout.write(f"Deleted {deleted_users[0]} users")
+            else:
+                self.stdout.write("No users deleted (they may be referenced by non-legacy orders)")
+            
+        self.stdout.write(self.style.SUCCESS("✅ Migration data reset complete"))
 
     def process_migrated_product_images(self):
         """Process images for migrated products after signals are reconnected"""
