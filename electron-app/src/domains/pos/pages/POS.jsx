@@ -15,6 +15,7 @@ const POS = () => {
 	useCustomerTipListener();
 	const barcodeInputRef = useRef("");
 	const lastKeystrokeRef = useRef(0);
+	const productGridRef = useRef(null);
 
 	// Select all necessary state from the store
 	const {
@@ -158,7 +159,16 @@ const POS = () => {
 				if (barcode.length >= 3) {
 					// Minimum barcode length
 					e.preventDefault();
-					scanBarcode(barcode);
+					
+					// Check if search input is focused - if so, use for search instead of adding to cart
+					const searchInput = productGridRef.current?.searchInputRef?.current;
+					if (searchInput && document.activeElement === searchInput) {
+						// Put barcode in search field
+						productGridRef.current.setSearchValue(barcode);
+					} else {
+						// Add to cart as usual
+						scanBarcode(barcode);
+					}
 				}
 				barcodeInputRef.current = "";
 			}
@@ -171,7 +181,15 @@ const POS = () => {
 				) {
 					const barcode = barcodeInputRef.current;
 					if (barcode.length >= 3) {
-						scanBarcode(barcode);
+						// Check if search input is focused - if so, use for search instead of adding to cart
+						const searchInput = productGridRef.current?.searchInputRef?.current;
+						if (searchInput && document.activeElement === searchInput) {
+							// Put barcode in search field
+							productGridRef.current.setSearchValue(barcode);
+						} else {
+							// Add to cart as usual
+							scanBarcode(barcode);
+						}
 					}
 					barcodeInputRef.current = "";
 				}
@@ -188,7 +206,7 @@ const POS = () => {
 	return (
 		<div className="flex h-full bg-gray-100 p-4 gap-4">
 			<div className="w-3/5 h-full">
-				<ProductGrid />
+				<ProductGrid ref={productGridRef} />
 			</div>
 			<div className="w-2/5 h-full">
 				<Cart />

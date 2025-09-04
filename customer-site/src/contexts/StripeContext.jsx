@@ -27,7 +27,7 @@ export const StripeProvider = ({ children }) => {
 				setLoading(true);
 
 				// Get the publishable key from environment
-				const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+				const publishableKey = import.meta.env.VITE_APP_STRIPE_PUBLISHABLE_KEY;
 
 				if (!publishableKey) {
 					throw new Error(

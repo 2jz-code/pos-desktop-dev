@@ -5,9 +5,9 @@ import { SiUbereats, SiDoordash, SiGrubhub } from "react-icons/si";
 
 // Define your delivery service links (IMPORTANT: Replace these placeholders)
 const UBER_EATS_RESTAURANT_LINK =
-	import.meta.env.VITE_UBEREATS_LINK || "https://www.ubereats.com";
+	import.meta.env.VITE_APP_UBEREATS_LINK || "https://www.ubereats.com";
 const DOORDASH_RESTAURANT_LINK =
-	import.meta.env.VITE_DOORDASH_LINK || "https://www.doordash.com";
+	import.meta.env.VITE_APP_DOORDASH_LINK || "https://www.doordash.com";
 // const GRUBHUB_RESTAURANT_LINK =
 // 	import.meta.env.VITE_GRUBHUB_LINK || "https://www.grubhub.com";
 

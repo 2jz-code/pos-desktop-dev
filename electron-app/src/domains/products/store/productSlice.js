@@ -250,53 +250,56 @@ export const createProductSlice = (set, get) => ({
 			childCategories: state.childCategories.length,
 		});
 
-		// Apply search filter
+		// If there's a search term, search through ALL products (including grocery items)
 		if (finalSearchTerm) {
+			const searchLower = finalSearchTerm.toLowerCase();
 			filtered = filtered.filter((product) =>
-				product.name.toLowerCase().includes(finalSearchTerm.toLowerCase())
+				product.name.toLowerCase().includes(searchLower) ||
+				(product.barcode && product.barcode.toLowerCase().includes(searchLower))
 			);
-		}
+			console.log(`🔍 [ProductSlice] Search found ${filtered.length} products matching "${finalSearchTerm}"`);
+		} else {
+			// No search term - apply category filtering and grocery exclusion
+			if (finalCategoryId && finalCategoryId !== "all") {
+				const parentId = parseInt(finalCategoryId);
 
-		// Apply category filter - FIXED to work with nested structure
-		if (finalCategoryId && finalCategoryId !== "all") {
-			const parentId = parseInt(finalCategoryId);
-
-			if (finalSubcategoryId && finalSubcategoryId !== "all") {
-				// Filter by specific subcategory
-				const subId = parseInt(finalSubcategoryId);
-				console.log(`🎯 [ProductSlice] Filtering by subcategory ID: ${subId}`);
-				filtered = filtered.filter((p) => p.category?.id === subId);
-				console.log(
-					`🎯 [ProductSlice] Found ${filtered.length} products in subcategory ${subId}`
-				);
-			} else {
-				// Filter by parent category (show products directly under parent OR under its children)
-				const childIds = state.childCategories.map((c) => c.id);
-				console.log(
-					`🎯 [ProductSlice] Filtering by parent ID: ${parentId}, child IDs: [${childIds.join(
-						", "
-					)}]`
-				);
-				filtered = filtered.filter((p) => {
-					// Product is directly under the parent category OR under one of its child categories
-					return (
-						p.category?.id === parentId || childIds.includes(p.category?.id)
+				if (finalSubcategoryId && finalSubcategoryId !== "all") {
+					// Filter by specific subcategory
+					const subId = parseInt(finalSubcategoryId);
+					console.log(`🎯 [ProductSlice] Filtering by subcategory ID: ${subId}`);
+					filtered = filtered.filter((p) => p.category?.id === subId);
+					console.log(
+						`🎯 [ProductSlice] Found ${filtered.length} products in subcategory ${subId}`
 					);
-				});
+				} else {
+					// Filter by parent category (show products directly under parent OR under its children)
+					const childIds = state.childCategories.map((c) => c.id);
+					console.log(
+						`🎯 [ProductSlice] Filtering by parent ID: ${parentId}, child IDs: [${childIds.join(
+							", "
+						)}]`
+					);
+					filtered = filtered.filter((p) => {
+						// Product is directly under the parent category OR under one of its child categories
+						return (
+							p.category?.id === parentId || childIds.includes(p.category?.id)
+						);
+					});
+					console.log(
+						`🎯 [ProductSlice] Found ${filtered.length} products in parent category ${parentId}`
+					);
+				}
+			} else {
+				// When showing "all" products (no search, no category), exclude only the specific "grocery" category
 				console.log(
-					`🎯 [ProductSlice] Found ${filtered.length} products in parent category ${parentId}`
+					`🎯 [ProductSlice] Showing all products, excluding retail grocery items`
+				);
+				filtered = filterOutGroceryItems(filtered);
+
+				console.log(
+					`🎯 [ProductSlice] Found ${filtered.length} products after filtering`
 				);
 			}
-		} else {
-			// When showing "all" products, exclude only the specific "grocery" category
-			console.log(
-				`🎯 [ProductSlice] Showing all products, excluding retail grocery items`
-			);
-			filtered = filterOutGroceryItems(filtered);
-
-			console.log(
-				`🎯 [ProductSlice] Found ${filtered.length} products after filtering`
-			);
 		}
 
 		// Sort products using the helper function

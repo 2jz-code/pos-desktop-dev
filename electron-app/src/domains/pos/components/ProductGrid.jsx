@@ -1,16 +1,47 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, forwardRef } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import ProductFilter from "./ProductFilter";
 import { ProductCard } from "./ProductSubcategoryGroup";
-import { Package } from "lucide-react";
+import { Package, Search, X } from "lucide-react";
+import { Input } from "@/shared/components/ui/input";
+import { Button } from "@/shared/components/ui/button";
 
-const ProductGrid = () => {
-	const { filteredProducts, isLoadingProducts } = usePosStore((state) => ({
+const ProductGrid = forwardRef((props, ref) => {
+	const { filteredProducts, isLoadingProducts, searchTerm, applyFilter } = usePosStore((state) => ({
 		filteredProducts: state.filteredProducts,
 		isLoadingProducts: state.isLoadingProducts,
+		searchTerm: state.searchTerm,
+		applyFilter: state.applyFilter,
 	}));
+
+	const searchInputRef = useRef(null);
+
+	// Expose the search input ref to parent components
+	if (ref) {
+		ref.current = {
+			searchInputRef: searchInputRef,
+			setSearchValue: (value) => {
+				if (searchInputRef.current) {
+					searchInputRef.current.value = value;
+					applyFilter({ searchTerm: value });
+				}
+			}
+		};
+	}
+
+	const handleSearchChange = (e) => {
+		const value = e.target.value;
+		applyFilter({ searchTerm: value });
+	};
+
+	const clearSearch = () => {
+		applyFilter({ searchTerm: "" });
+		if (searchInputRef.current) {
+			searchInputRef.current.focus();
+		}
+	};
 
 	const groupedProducts = useMemo(() => {
 		if (!Array.isArray(filteredProducts)) {
@@ -98,36 +129,36 @@ const ProductGrid = () => {
 		);
 	}
 
-	// Show empty state when not loading but no products
-	if (
-		!Array.isArray(filteredProducts) ||
-		(filteredProducts.length === 0 && Object.keys(groupedProducts).length === 0)
-	) {
-		return (
-			<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col">
-				<div className="p-6 border-b border-slate-200 dark:border-slate-700">
-					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-						Products
-					</h2>
-				</div>
-				<div className="flex-1 flex items-center justify-center">
-					<div className="text-center py-12">
-						<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-						<p className="text-slate-500 dark:text-slate-400 text-lg">
-							No products available
-						</p>
-					</div>
-				</div>
-			</div>
-		);
-	}
 
 	return (
 		<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col shadow-sm">
 			<div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-				<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">
-					Products
-				</h2>
+				<div className="flex items-center justify-between mb-4">
+					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+						Products
+					</h2>
+					<div className="relative">
+						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+						<Input
+							ref={searchInputRef}
+							type="text"
+							placeholder="Search products..."
+							value={searchTerm}
+							onChange={handleSearchChange}
+							className="pl-9 pr-9 w-64 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+						/>
+						{searchTerm && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={clearSearch}
+								className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-slate-100 dark:hover:bg-slate-800"
+							>
+								<X className="h-3 w-3" />
+							</Button>
+						)}
+					</div>
+				</div>
 				<ProductFilter />
 			</div>
 
@@ -189,18 +220,20 @@ const ProductGrid = () => {
 					</div>
 				))}
 
-				{filteredProducts.length === 0 &&
+				{(!Array.isArray(filteredProducts) || filteredProducts.length === 0) &&
 					Object.keys(groupedProducts).length === 0 && (
 						<div className="text-center py-12">
 							<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
 							<p className="text-slate-500 dark:text-slate-400 text-lg">
-								No products match the current filter.
+								{searchTerm ? `No products found for "${searchTerm}"` : "No products match the current filter."}
 							</p>
 						</div>
 					)}
 			</div>
 		</div>
 	);
-};
+});
+
+ProductGrid.displayName = "ProductGrid";
 
 export default ProductGrid;
