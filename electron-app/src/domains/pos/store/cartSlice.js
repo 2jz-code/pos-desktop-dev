@@ -56,6 +56,7 @@ export const defaultCartState = {
 	appliedDiscounts: [],
 	customerFirstName: "",
 	diningPreference: "TAKE_OUT", // Default to take-out
+	pendingOperations: new Set(), // Track pending WebSocket operations
 	stockOverrideDialog: {
 		show: false,
 		productId: null,
@@ -141,6 +142,10 @@ export const createCartSlice = (set, get) => {
 				}
 
 				const payload = { product_id: product.id, quantity: 1 };
+				const operationId = `add-${product.id}-${Date.now()}`;
+
+				// Track this operation as pending
+				get().addPendingOperation(operationId);
 
 				// Store the payload in case we need to retry with force_add
 				set({
@@ -152,6 +157,7 @@ export const createCartSlice = (set, get) => {
 
 				cartSocket.sendMessage({
 					type: "add_item",
+					operationId: operationId,
 					payload: payload,
 				});
 			} catch (error) {
@@ -259,6 +265,10 @@ export const createCartSlice = (set, get) => {
 					selected_modifiers: selected_modifiers || [],
 					notes: notes || ""
 				};
+				const operationId = `add-${product_id}-${Date.now()}`;
+
+				// Track this operation as pending
+				get().addPendingOperation(operationId);
 
 				// Store the payload in case we need to retry with force_add
 				set({
@@ -270,6 +280,7 @@ export const createCartSlice = (set, get) => {
 
 				cartSocket.sendMessage({
 					type: "add_item",
+					operationId: operationId,
 					payload: payload,
 				});
 			} catch (error) {
@@ -419,8 +430,12 @@ export const createCartSlice = (set, get) => {
 				updatingItems: [...state.updatingItems, itemId],
 			}));
 
+			const operationId = `update-quantity-${itemId}-${Date.now()}`;
+			get().addPendingOperation(operationId);
+
 			cartSocket.sendMessage({
 				type: "update_item_quantity",
+				operationId: operationId,
 				payload: { item_id: itemId, quantity },
 			});
 		},
@@ -435,14 +450,37 @@ export const createCartSlice = (set, get) => {
 				...updatedItemData
 			};
 
+			const operationId = `update-item-${itemId}-${Date.now()}`;
+			get().addPendingOperation(operationId);
+
 			cartSocket.sendMessage({
 				type: "update_item",
+				operationId: operationId,
 				payload: payload,
 			});
 		},
 
 		setSocketConnected: (connected) => {
 			set({ isSocketConnected: connected });
+		},
+
+		// Helper methods for managing pending operations
+		addPendingOperation: (operationId) => {
+			set((state) => ({
+				pendingOperations: new Set([...state.pendingOperations, operationId])
+			}));
+		},
+
+		removePendingOperation: (operationId) => {
+			set((state) => {
+				const newPending = new Set(state.pendingOperations);
+				newPending.delete(operationId);
+				return { pendingOperations: newPending };
+			});
+		},
+
+		isPendingOperation: (operationId) => {
+			return get().pendingOperations.has(operationId);
 		},
 
 		initializeCartSocket: async () => {

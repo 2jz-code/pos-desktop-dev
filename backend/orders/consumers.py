@@ -59,6 +59,10 @@ class OrderConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         message_type = data.get("type")
         payload = data.get("payload", {})
+        operation_id = data.get("operationId")
+
+        # Store operation ID for use in response
+        self._current_operation_id = operation_id
 
         if message_type == "add_item":
             await self.add_item(payload)
@@ -78,6 +82,9 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await self.clear_cart(payload)
 
         await self.send_full_order_state()
+        
+        # Clear operation ID after sending response
+        self._current_operation_id = None
 
     async def add_item(self, payload):
         product_id = payload.get("product_id")
@@ -496,7 +503,11 @@ class OrderConsumer(AsyncWebsocketConsumer):
         )
 
         await self.channel_layer.group_send(
-            self.order_group_name, {"type": "cart_update", "payload": final_payload}
+            self.order_group_name, {
+                "type": "cart_update", 
+                "payload": final_payload,
+                "operationId": getattr(self, '_current_operation_id', None)
+            }
         )
 
     async def cart_update(self, event):
@@ -504,10 +515,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
         Handles the 'cart_update' event from the channel layer and sends it to the client.
         """
         payload = event["payload"]
+        operation_id = event.get("operationId")
+        
+        # Prepare response with operation ID if present
+        response = {"type": "cart_update", "payload": payload}
+        if operation_id:
+            response["operationId"] = operation_id
+            
         # 4. No special encoder needed here anymore because the payload is already clean.
-        await self.send(
-            text_data=json.dumps({"type": "cart_update", "payload": payload})
-        )
+        await self.send(text_data=json.dumps(response))
 
     async def configuration_update(self, event):
         """

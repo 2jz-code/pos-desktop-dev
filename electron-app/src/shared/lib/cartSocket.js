@@ -123,7 +123,20 @@ const connect = (orderId) => {
 					data.payload
 				); // ADDED LOG
 				if (store) {
-					store.getState().setCartFromSocket(data.payload);
+					// Check if this is a response to a pending operation or a general update
+					const operationId = data.operationId;
+					if (!operationId || store.getState().isPendingOperation(operationId)) {
+						// Apply the update
+						store.getState().setCartFromSocket(data.payload);
+						
+						// Remove from pending operations if it was tracked
+						if (operationId) {
+							store.getState().removePendingOperation(operationId);
+							console.log(`Operation ${operationId} completed and removed from pending`);
+						}
+					} else {
+						console.log(`Ignoring cart update for non-pending operation: ${operationId}`);
+					}
 				} else {
 					console.error(
 						"Store is not set in cartSocket.js, cannot dispatch cart update."
