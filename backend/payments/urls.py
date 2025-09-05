@@ -25,6 +25,16 @@ from .views.guest import (
     CreateGuestPaymentIntentView,
     CompleteGuestPaymentView,
 )
+from .clover_views import (
+    clover_authorize,
+    clover_callback,
+    clover_status,
+    clover_test_connection,
+)
+from .clover_rest_test import (
+    test_clover_device_connection,
+    test_clover_payment,
+)
 
 app_name = "payments"
 
@@ -108,6 +118,38 @@ urlpatterns = [
         "terminal/configuration/",
         TerminalConfigurationView.as_view(),
         name="terminal-configuration",
+    ),
+    # Clover OAuth endpoints
+    path(
+        "clover/authorize/",
+        clover_authorize,
+        name="clover-authorize",
+    ),
+    path(
+        "clover/callback/",
+        clover_callback,
+        name="clover-callback",
+    ),
+    path(
+        "clover/status/",
+        clover_status,
+        name="clover-status",
+    ),
+    path(
+        "clover/test/",
+        clover_test_connection,
+        name="clover-test",
+    ),
+    # Clover device REST API test endpoints
+    path(
+        "clover/device/test/",
+        test_clover_device_connection,
+        name="clover-device-test",
+    ),
+    path(
+        "clover/device/payment/",
+        test_clover_payment,
+        name="clover-device-payment",
     ),
     # Include the router-generated URLs for PaymentViewSet
     # This includes: /api/payments/, /api/payments/{id}/, and all ViewSet actions

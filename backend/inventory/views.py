@@ -6,6 +6,7 @@ from rest_framework import generics, permissions, status, viewsets, filters
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
+from users.permissions import IsAdminOrHigher
 from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from .serializers import (
     LocationSerializer,
@@ -32,18 +33,18 @@ from core_backend.base import SerializerOptimizedMixin
 class LocationViewSet(BaseViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
 
 class RecipeViewSet(BaseViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
 
 class InventoryStockViewSet(BaseViewSet):
     queryset = InventoryStock.objects.all()
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def get_serializer_class(self):
         """Use optimized serializer for list view to reduce N+1 queries"""
@@ -54,7 +55,7 @@ class InventoryStockViewSet(BaseViewSet):
 
 class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
     serializer_class = OptimizedInventoryStockSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
     
     # Base queryset that the mixin will optimize
     queryset = InventoryStock.objects.filter(archived_at__isnull=True)
@@ -75,7 +76,7 @@ class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
 
 class ProductStockListView(SerializerOptimizedMixin, generics.ListAPIView):
     serializer_class = FullInventoryStockSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def get_queryset(self):
         product_id = self.kwargs.get("product_id")
@@ -137,7 +138,7 @@ class AdjustStockView(APIView):
     - Negative quantity: removes stock.
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
@@ -163,7 +164,7 @@ class TransferStockView(APIView):
     An endpoint to transfer stock between two locations.
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
@@ -185,7 +186,7 @@ class TransferStockView(APIView):
 
 
 class BulkAdjustStockView(APIView):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
@@ -207,7 +208,7 @@ class BulkAdjustStockView(APIView):
 
 
 class BulkTransferStockView(APIView):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
@@ -345,7 +346,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     """
     queryset = StockHistoryEntry.objects.all()
     serializer_class = StockHistoryEntrySerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
     
     # Enable search and filtering via filter backends
     filter_backends = [
@@ -406,7 +407,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
 
 
 @api_view(["GET"])
-@permission_classes([permissions.IsAdminUser])
+@permission_classes([IsAdminOrHigher])
 def get_related_stock_operations(request, reference_id):
     """
     Get all stock operations that share the same reference_id.

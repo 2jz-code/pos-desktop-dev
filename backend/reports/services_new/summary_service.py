@@ -311,28 +311,31 @@ class SummaryReportService(BaseReportService):
     def get_quick_metrics() -> Dict[str, Any]:
         """Get today/MTD/YTD metrics for dashboard."""
         
-        # Get local timezone for date calculations
+        # Use the same approach as sales service - get local timezone and make timezone-aware datetimes
         local_tz = TimezoneUtils.get_local_timezone()
-        now = timezone.now().astimezone(local_tz)
+        now_local = timezone.now().astimezone(local_tz)
+        now = timezone.now()
 
-        # Calculate date ranges
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = now
-
-        # Month to date
-        mtd_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        mtd_end = now
-
-        # Year to date
-        ytd_start = now.replace(
-            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        # Today: start of day in business timezone (same as sales service approach)
+        today_start = timezone.make_aware(
+            datetime.combine(now_local.date(), datetime.min.time()), local_tz
         )
-        ytd_end = now
+
+        # Month to date: first day of month in business timezone
+        mtd_start = timezone.make_aware(
+            datetime.combine(now_local.replace(day=1).date(), datetime.min.time()), local_tz
+        )
+
+        # Year to date: first day of year in business timezone
+        ytd_start = timezone.make_aware(
+            datetime.combine(now_local.replace(month=1, day=1).date(), datetime.min.time()), local_tz
+        )
+
 
         return {
-            "today": SummaryReportService._get_metrics_for_period(today_start, today_end),
-            "month_to_date": SummaryReportService._get_metrics_for_period(mtd_start, mtd_end),
-            "year_to_date": SummaryReportService._get_metrics_for_period(ytd_start, ytd_end),
+            "today": SummaryReportService._get_metrics_for_period(today_start, now),
+            "month_to_date": SummaryReportService._get_metrics_for_period(mtd_start, now),
+            "year_to_date": SummaryReportService._get_metrics_for_period(ytd_start, now),
             "generated_at": timezone.now().isoformat(),
         }
 

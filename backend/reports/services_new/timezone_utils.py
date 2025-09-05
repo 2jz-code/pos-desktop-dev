@@ -12,29 +12,38 @@ class TimezoneUtils:
 
     @staticmethod
     def get_local_timezone():
-        """Get the configured business timezone from settings."""
+        """Get the configured business timezone from business hours profile."""
         try:
             # Import here to avoid circular imports
-            from settings.config import AppSettings
+            from business_hours.models import BusinessHoursProfile
             
-            # Use business settings timezone
-            app_settings = AppSettings()
-            business_timezone = app_settings.timezone
-            
-            # Debug logging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Using business timezone: {business_timezone}")
-            
-            return pytz.timezone(business_timezone)
+            try:
+                # Get the default business hours profile (this is what the admin-site manages)
+                profile = BusinessHoursProfile.objects.filter(is_default=True).first()
+                if profile:
+                    business_timezone = profile.timezone
+                    return pytz.timezone(business_timezone)
+                else:
+                    # Fallback to GlobalSettings if no business hours profile
+                    from settings.config import AppSettings
+                    app_settings = AppSettings()
+                    business_timezone = app_settings.timezone
+                    return pytz.timezone(business_timezone)
+                    
+            except Exception as profile_e:
+                # Fallback to GlobalSettings 
+                from settings.config import AppSettings
+                app_settings = AppSettings()
+                business_timezone = app_settings.timezone
+                return pytz.timezone(business_timezone)
+                
         except Exception as e:
-            # Debug logging for fallback
+            # Final fallback to Django settings
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to get business timezone, falling back to Django settings: {e}")
+            logger.warning(f"Failed to get business timezone from all sources, falling back to Django settings: {e}")
             logger.info(f"Using Django timezone fallback: {settings.TIME_ZONE}")
             
-            # Fallback to Django settings if business settings fail
             return pytz.timezone(settings.TIME_ZONE)
 
     @staticmethod

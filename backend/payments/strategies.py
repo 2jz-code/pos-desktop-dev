@@ -341,44 +341,134 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 
 class CloverTerminalStrategy(TerminalPaymentStrategy):
     """
-    Strategy for processing payments via a Clover card terminal.
+    Strategy for processing payments via a Clover card terminal using REST API.
     """
+
+    def __init__(self, merchant_id: str = None):
+        from .clover_api import CloverAPIService
+        from settings.models import GlobalSettings
+        
+        self.merchant_id = merchant_id
+        if not self.merchant_id:
+            # Try to get merchant_id from settings or use a default
+            # You'll need to add this to your settings model
+            self.merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
+        
+        if not self.merchant_id:
+            logger.warning("No Clover merchant ID configured")
+            return
+            
+        self.clover_api = CloverAPIService(self.merchant_id)
 
     def get_frontend_configuration(self):
         return {
             "provider": "CLOVER_TERMINAL",
-            "api_key": "mock_clover_api_key",
+            "merchant_id": self.merchant_id,
             "needs_connection_token": False,
         }
 
-    def process(self, transaction: PaymentTransaction):
-        transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-        transaction.transaction_id = f"sim_clover_{uuid.uuid4().hex}"
-        transaction.provider_response = {
-            "provider": "clover",
-            "status": "succeeded",
-            "message": "Simulated payment successful.",
-        }
-        transaction.save()
-        return transaction
+    def process(self, transaction: PaymentTransaction, **kwargs):
+        """
+        Process payment using Clover REST API.
+        """
+        if not hasattr(self, 'clover_api'):
+            raise ValueError("Clover API not initialized - check merchant ID configuration")
+        
+        try:
+            # Calculate amounts in cents
+            amount_cents = int(transaction.amount * 100)
+            tip_cents = int(transaction.tip * 100) if transaction.tip else 0
+            surcharge_cents = int(transaction.surcharge * 100) if transaction.surcharge else 0
+            
+            # Create payment note
+            order = transaction.payment.order
+            note = f"POS Order #{order.order_number}" if order else "POS Payment"
+            
+            # Create payment in Clover
+            clover_payment = self.clover_api.create_payment(
+                amount_cents=amount_cents + tip_cents + surcharge_cents,
+                note=note,
+                tip_amount_cents=tip_cents
+            )
+            
+            # Update transaction with Clover response
+            transaction.transaction_id = clover_payment.get('id')
+            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+            transaction.provider_response = {
+                "provider": "clover",
+                "clover_payment_id": clover_payment.get('id'),
+                "amount": clover_payment.get('amount'),
+                "status": clover_payment.get('state', 'processed'),
+                "created_time": clover_payment.get('createdTime'),
+                "message": "Payment processed successfully via Clover API",
+            }
+            transaction.save()
+            
+            logger.info(f"Clover payment created: {clover_payment.get('id')}")
+            return transaction
+            
+        except Exception as e:
+            logger.error(f"Clover payment processing failed: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.provider_response = {
+                "provider": "clover",
+                "error": str(e),
+                "status": "failed"
+            }
+            transaction.save()
+            raise e
 
     def refund_transaction(
         self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
     ):
         """
-        Simulated refund for Clover Terminal payments.
+        Create refund using Clover REST API.
         """
-        transaction.refunded_amount += amount
-        transaction.refund_reason = reason
-        if transaction.refunded_amount >= transaction.amount:
-            transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-        else:
-            pass  # Keep original status or add PARTIALLY_REFUNDED status
-        transaction.provider_response["refunds"] = transaction.provider_response.get(
-            "refunds", []
-        ) + [{"amount": str(amount), "reason": reason, "status": "succeeded"}]
-        transaction.save()
-        return transaction
+        if not hasattr(self, 'clover_api'):
+            raise ValueError("Clover API not initialized")
+        
+        if not transaction.transaction_id:
+            raise ValueError("No Clover payment ID found for refund")
+            
+        try:
+            amount_cents = int(amount * 100)
+            
+            # Create refund in Clover
+            clover_refund = self.clover_api.refund_payment(
+                payment_id=transaction.transaction_id,
+                amount_cents=amount_cents,
+                reason=reason
+            )
+            
+            # Update transaction record
+            transaction.refunded_amount += amount
+            transaction.refund_reason = reason
+            
+            if transaction.refunded_amount >= transaction.amount:
+                transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+            
+            # Update provider response with refund info
+            if "refunds" not in transaction.provider_response:
+                transaction.provider_response["refunds"] = []
+            
+            transaction.provider_response["refunds"].append({
+                "id": clover_refund.get('id'),
+                "amount": clover_refund.get('amount'),
+                "reason": reason,
+                "status": clover_refund.get('state', 'processed'),
+                "created_time": clover_refund.get('createdTime')
+            })
+            
+            transaction.save()
+            
+            logger.info(f"Clover refund created: {clover_refund.get('id')}")
+            return transaction
+            
+        except Exception as e:
+            logger.error(f"Clover refund failed: {e}")
+            transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            transaction.save()
+            raise e
 
 
 class StripeOnlineStrategy(PaymentStrategy):

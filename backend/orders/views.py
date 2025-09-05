@@ -25,7 +25,8 @@ from .permissions import (
     IsAuthenticatedOrGuestOrder,
     IsGuestOrAuthenticated,
 )
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
+from users.permissions import IsAdminOrHigher
 from users.authentication import (
     CustomerCookieJWTAuthentication,
     CookieJWTAuthentication,
@@ -235,7 +236,7 @@ class OrderViewSet(BaseViewSet):
         detail=True,
         methods=["post"],
         url_path="resend-confirmation",
-        permission_classes=[IsAdminUser],
+        permission_classes=[IsAdminOrHigher],
     )
     def resend_confirmation(self, request: Request, pk=None) -> Response:
         """

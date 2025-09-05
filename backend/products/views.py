@@ -15,7 +15,7 @@ from .models import (
     ProductModifierSet,
     ProductSpecificOption,
 )
-from users.permissions import ReadOnlyForCashiers
+from users.permissions import ReadOnlyForCashiers, IsAdminOrHigher
 from .serializers import (
     ProductSerializer,
     ProductCreateSerializer,
@@ -40,7 +40,7 @@ from core_backend.base.viewsets import BaseViewSet
 class ProductModifierSetViewSet(BaseViewSet):
     queryset = ProductModifierSet.objects.all()
     serializer_class = ProductModifierSetSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     def get_queryset(self):
         return self.queryset.filter(product_id=self.kwargs["product_pk"])
@@ -197,7 +197,7 @@ class ProductModifierSetViewSet(BaseViewSet):
 class ModifierSetViewSet(BaseViewSet):
     queryset = ModifierSet.objects.all()
     serializer_class = ModifierSetSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
     @action(detail=True, methods=["get"], url_path="usage")
     def get_usage_analytics(self, request, pk=None):
@@ -260,7 +260,7 @@ class ModifierSetViewSet(BaseViewSet):
 class ModifierOptionViewSet(BaseViewSet):
     queryset = ModifierOption.objects.all()
     serializer_class = ModifierOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
 
 # Create your views here.
@@ -567,7 +567,7 @@ class CategoryViewSet(BaseViewSet):
 class TaxViewSet(BaseViewSet):
     queryset = Tax.objects.all()
     serializer_class = TaxSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrHigher]
 
 
 class ProductTypeViewSet(BaseViewSet):

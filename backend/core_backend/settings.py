@@ -636,6 +636,11 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
+# --- Clover Configs ---
+CLOVER_APP_ID = os.environ.get("CLOVER_APP_ID")
+CLOVER_APP_SECRET = os.environ.get("CLOVER_APP_SECRET")
+CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID")
+
 # ==============================================================================
 # GOOGLE SETTINGS
 # ==============================================================================

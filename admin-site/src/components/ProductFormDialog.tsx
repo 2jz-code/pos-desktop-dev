@@ -6,6 +6,7 @@ import {
 } from "@/services/api/productService";
 import { getCategories } from "@/services/api/categoryService";
 import { getProductTypes } from "@/services/api/productTypeService";
+import inventoryService from "@/services/api/inventoryService";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -105,17 +106,16 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 	const fetchInitialData = async () => {
 		setLoading(true);
 		try {
-			const [categoriesRes, typesRes] = await Promise.all([
+			const [categoriesRes, typesRes, locationsRes] = await Promise.all([
 				getCategories(),
 				getProductTypes(),
-				// TODO: Add inventory service when available
-				// inventoryService.getLocations(),
+				inventoryService.getLocations(),
 			]);
 
 			// Handle different response formats
 			const categoriesData = categoriesRes.data ?? categoriesRes;
 			const typesData = typesRes.data ?? typesRes;
-			const locationsData: Location[] = []; // TODO: Replace with actual locations
+			const locationsData = locationsRes.data ?? locationsRes;
 
 			// Ensure categoriesData is an array - handle paginated responses
 			const finalCategoriesData = Array.isArray(categoriesData) 
@@ -126,15 +126,20 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 			const finalTypesData = Array.isArray(typesData) 
 				? typesData 
 				: typesData?.results ?? [];
+			
+			// Ensure locationsData is an array - handle paginated responses
+			const finalLocationsData = Array.isArray(locationsData) 
+				? locationsData 
+				: locationsData?.results ?? [];
 
 			setCategories(finalCategoriesData);
 			setProductTypes(finalTypesData);
-			setLocations(locationsData);
+			setLocations(finalLocationsData);
 
-			if (locationsData.length > 0) {
+			if (finalLocationsData.length > 0) {
 				setFormData((prev) => ({
 					...prev,
-					location_id: locationsData[0].id.toString(),
+					location_id: finalLocationsData[0].id.toString(),
 				}));
 			}
 
@@ -154,7 +159,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 						: "",
 					track_inventory: product.track_inventory || false,
 					initial_quantity: "", // Not editable after creation
-					location_id: locationsData?.[0]?.id.toString() || "", // Default to first location
+					location_id: finalLocationsData?.[0]?.id.toString() || "", // Default to first location
 					barcode: product.barcode || "",
 					is_public: product.is_public ?? true,
 				});
@@ -297,12 +302,13 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 					formData.initial_quantity &&
 					parseFloat(formData.initial_quantity) !== 0
 				) {
-					// TODO: Add inventory service for stock adjustment
-					// await inventoryService.adjustStock(
-					//   productId,
-					//   parseInt(formData.location_id),
-					//   parseFloat(formData.initial_quantity)
-					// );
+					// Adjust stock using inventory service
+					await inventoryService.adjustStock(
+						productId,
+						parseInt(formData.location_id),
+						parseFloat(formData.initial_quantity),
+						"Initial stock adjustment via product edit"
+					);
 					toast({
 						title: "Stock Adjusted",
 						description: `Stock updated for ${savedProduct.name}.`,

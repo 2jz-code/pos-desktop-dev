@@ -1,5 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from users.permissions import IsAdminOrHigher
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminOrHigher])
 def cache_health_check(request):
     """API endpoint for cache health monitoring"""
     try:
@@ -34,7 +34,7 @@ def cache_health_check(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminOrHigher])
 def warm_caches(request):
     """API endpoint to manually trigger cache warming"""
     try:
@@ -56,7 +56,7 @@ def warm_caches(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminOrHigher])
 def invalidate_cache(request):
     """API endpoint to invalidate cache patterns"""
     pattern = request.data.get('pattern')
@@ -88,7 +88,7 @@ def invalidate_cache(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAdminOrHigher])
 def cache_statistics(request):
     """API endpoint for detailed cache statistics"""
     try:
