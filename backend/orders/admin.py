@@ -237,14 +237,39 @@ class OrderItemAdmin(admin.ModelAdmin):
     Admin configuration for the OrderItem model.
     """
 
-    list_display = ("id", "order", "product", "quantity", "price_at_sale")
+    list_display = ("id", "get_order_number", "get_order_created_at", "product", "quantity", "price_at_sale", "get_line_item_total", "status")
+    list_filter = ("status", "order__status", "order__created_at", "order__order_type")
     search_fields = (
         "order__order_number",
         "product__name",
-    )  # Changed search field for order
+        "id",
+    )
     autocomplete_fields = ("order", "product")
-    readonly_fields = ("price_at_sale",)
+    readonly_fields = ("get_line_item_total",)
     inlines = [OrderItemModifierInline]
+    ordering = ("-order__created_at", "-id")  # Most recent orders first, then most recent items
+    list_per_page = 50
+    date_hierarchy = "order__created_at"
+    
+    def get_order_number(self, obj):
+        """Display the order number for easier identification."""
+        return obj.order.order_number
+    get_order_number.short_description = "Order Number"
+    get_order_number.admin_order_field = "order__order_number"
+    
+    def get_order_created_at(self, obj):
+        """Display when the order was created."""
+        return obj.order.created_at.strftime("%Y-%m-%d %H:%M")
+    get_order_created_at.short_description = "Order Date"
+    get_order_created_at.admin_order_field = "order__created_at"
+    
+    def get_line_item_total(self, obj):
+        """Display the line item total (quantity * price_at_sale)."""
+        if obj.quantity is not None and obj.price_at_sale is not None:
+            total = obj.quantity * obj.price_at_sale
+            return f"${total:.2f}"
+        return "$0.00"
+    get_line_item_total.short_description = "Line Total"
 
 
 @admin.register(OrderDiscount)
