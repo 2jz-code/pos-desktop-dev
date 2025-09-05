@@ -507,6 +507,22 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": False,
         },
+        # Disable cache invalidation logs
+        "core_backend.infrastructure.cache": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",  # Only show warnings and errors, not INFO
+            "propagate": False,
+        },
+        "core_backend.infrastructure.cache_utils": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "reports.signals": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",  # This will hide the "invalidated related caches" logs
+            "propagate": False,
+        },
     },
 }
 
