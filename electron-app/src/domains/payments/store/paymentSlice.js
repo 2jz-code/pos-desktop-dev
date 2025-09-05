@@ -415,12 +415,10 @@ export const createPaymentSlice = (set, get) => ({
 			// Create proper payment record with Payment + PaymentTransaction
 			const paymentResponse = await createDeliveryPayment(state.order.id, platformId);
 
-			// The payment service returns the complete payment object with order details
-			const completedOrder = paymentResponse.order;
-
-			// Mark payment as complete for delivery orders
+			// Use the original order from state instead of the simplified order from backend
+			// This ensures we have all the items data needed for printing
 			set({
-				lastCompletedOrder: completedOrder,
+				lastCompletedOrder: state.order,
 				tenderState: "complete",
 				balanceDue: 0,
 				partialAmount: 0,

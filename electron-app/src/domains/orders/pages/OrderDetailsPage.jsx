@@ -34,6 +34,7 @@ import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useMutation } from "@tanstack/react-query";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { isDeliveryPlatform } from "@/domains/pos/constants/deliveryPlatforms";
 
 // Professional Transaction Detail Component
 const TransactionDetail = ({ transaction }) => {
@@ -384,7 +385,7 @@ const OrderDetailsPage = () => {
 								</CardContent>
 								<CardFooter className="flex flex-wrap justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
 									{["COMPLETED", "PENDING", "HOLD"].includes(status) &&
-										["POS", "WEB"].includes(order.order_type) &&
+										(["POS", "WEB"].includes(order.order_type) || isDeliveryPlatform(order.order_type)) &&
 										permissions?.canCancelOrders() && (
 											<Button
 												variant="outline"
