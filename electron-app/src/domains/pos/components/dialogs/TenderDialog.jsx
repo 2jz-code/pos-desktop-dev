@@ -86,7 +86,18 @@ const TenderDialog = () => {
 		shallow
 	);
 
+	const resetCart = usePosStore((state) => state.resetCart);
+	
 	const handleClose = () => closeTender();
+	
+	// Special close handler for completion state - resets cart before closing
+	const handleCompleteClose = () => {
+		if (resetCart) {
+			resetCart();
+		}
+		closeTender();
+	};
+	
 	// --- FIX: The retry handler now calls our new, specific action ---
 	const handleRetry = () => retryFailedPayment();
 
@@ -167,7 +178,7 @@ const TenderDialog = () => {
 						<Button
 							variant="ghost"
 							size="icon"
-							onClick={handleClose}
+							onClick={tenderState === "complete" ? handleCompleteClose : handleClose}
 							className="h-6 w-6 rounded-xs opacity-70 hover:opacity-100"
 						>
 							<X className="h-4 w-4" />
