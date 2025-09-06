@@ -99,14 +99,14 @@ class OrderAdmin(admin.ModelAdmin):
             "Financial Summary",
             {
                 "fields": (
-                    "get_subtotal_formatted",
+                    "subtotal",
                     "get_total_discounts_formatted",
-                    "get_tax_total_formatted",
+                    "tax_total",
                     "get_surcharges_total_formatted",
                     "get_tips_total_formatted",
                     "get_total_collected_formatted",
                 ),
-                "description": "Order totals and payment amounts collected.",
+                "description": "Order totals and payment amounts collected. Subtotal and tax are editable.",
             },
         ),
         (
@@ -133,9 +133,7 @@ class OrderAdmin(admin.ModelAdmin):
             "order_number",  # Make order_number read-only as it's auto-generated
             "created_at",
             "updated_at",
-            "get_subtotal_formatted",
             "get_total_discounts_formatted",
-            "get_tax_total_formatted",
             "get_tips_total_formatted",
             "get_surcharges_total_formatted",
             "get_total_collected_formatted",
