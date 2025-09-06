@@ -118,9 +118,11 @@ export const ProductsPage = () => {
 	const fetchChildCategories = async (parentId: string) => {
 		try {
 			const response = await getCategories({ parent: parentId });
-			setChildCategories(response.data || []);
+			const data = response.data?.results || response.data || [];
+			setChildCategories(Array.isArray(data) ? data : []);
 		} catch (err) {
 			console.error("Failed to fetch child categories:", err);
+			setChildCategories([]);
 		}
 	};
 
@@ -147,11 +149,12 @@ export const ProductsPage = () => {
 
 
 	useEffect(() => {
-		if (selectedParentCategory && selectedParentCategory !== "all") {
+		// Always clear child categories first to avoid stale data
+		setChildCategories([]);
+		setSelectedChildCategory("all");
+		
+		if (selectedParentCategory && selectedParentCategory !== "all" && selectedParentCategory !== "uncategorized") {
 			fetchChildCategories(selectedParentCategory);
-		} else {
-			setChildCategories([]);
-			setSelectedChildCategory("all");
 		}
 	}, [selectedParentCategory]);
 

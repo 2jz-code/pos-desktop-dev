@@ -159,6 +159,7 @@ const ProductsPage = () => {
 			setChildCategories(Array.isArray(data) ? data : []);
 		} catch (err) {
 			console.error("Failed to fetch child categories:", err);
+			setChildCategories([]);
 		}
 	};
 
