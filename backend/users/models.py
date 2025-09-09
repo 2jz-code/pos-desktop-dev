@@ -103,6 +103,7 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         help_text=_("Designates whether the user can log into this admin site."),
     )
     date_joined = models.DateTimeField(_("date joined"), default=timezone.now)
+    updated_at = models.DateTimeField(_("updated at"), auto_now=True)
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The user ID from the old system.")
 

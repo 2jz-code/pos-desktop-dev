@@ -116,6 +116,10 @@ def cache_statistics(request):
             'details': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def ratelimited429(request, exception=None):
+    """Default JSON response for rate-limited requests (HTTP 429)."""
+    return JsonResponse({"error": "Too many requests"}, status=429)
+
 
 @api_view(['GET'])
 @permission_classes([])  # AllowAny
