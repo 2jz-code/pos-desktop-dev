@@ -95,6 +95,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
+    # Global CSRF enforcement for API endpoints (cookie-JWT flows)
+    "core_backend.infrastructure.csrf_api_middleware.CSRFApiMiddleware",
 ]
 
 INTERNAL_IPS = [
@@ -146,7 +148,7 @@ DATABASES = {
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
 # Use X-Forwarded-For in production, but disable rate limiting if header issues occur
-RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
+# RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -289,6 +291,7 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "user-agent",
     "x-csrftoken",
+    "x-csrf-token",
     "x-requested-with",
     "x-client-type",
     "x-client-version",
@@ -409,6 +412,23 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "Lax",
     "AUTH_COOKIE_PERSISTENT": True,
 }
+
+# Admin-specific cookie names to avoid collisions with POS cookies
+SIMPLE_JWT_ADMIN = {
+    "AUTH_COOKIE": "access_token_admin",
+    "AUTH_COOKIE_REFRESH": "refresh_token_admin",
+}
+
+# CSRF header guard toggle (stopgap for cookie-JWT flows)
+# Set via env: ENABLE_CSRF_HEADER_CHECK=true to enforce header on unsafe methods
+ENABLE_CSRF_HEADER_CHECK = (
+    os.getenv("ENABLE_CSRF_HEADER_CHECK", "False").lower() == "true"
+)
+
+# Double-submit CSRF toggle
+ENABLE_DOUBLE_SUBMIT_CSRF = (
+    os.getenv("ENABLE_DOUBLE_SUBMIT_CSRF", "False").lower() == "true"
+)
 
 # Multi-tier Redis cache configuration
 CACHES = {

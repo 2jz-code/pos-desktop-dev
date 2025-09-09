@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
 from .infrastructure.cache import CacheMonitor, AdvancedCacheManager, CacheWarmingManager
+from django.conf import settings
+import secrets
 import logging
 
 logger = logging.getLogger(__name__)
@@ -113,3 +115,37 @@ def cache_statistics(request):
             'error': 'Failed to get statistics',
             'details': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([])  # AllowAny
+def issue_csrf_token(request):
+    """
+    Issue a CSRF token for double-submit pattern.
+    - Sets a Secure, HttpOnly cookie `csrf_token` (SameSite=None for Electron).
+    - Returns the token in the response body so Electron can store it in memory.
+    """
+    try:
+        token = secrets.token_urlsafe(32)
+
+        # Cookie security based on environment
+        is_secure = getattr(settings, 'CSRF_COOKIE_SECURE', True)
+        samesite_policy = getattr(settings, 'CSRF_COOKIE_SAMESITE', 'None') or 'None'
+
+        resp = Response({
+            'csrfToken': token
+        }, status=status.HTTP_200_OK)
+
+        resp.set_cookie(
+            key='csrf_token',
+            value=token,
+            max_age=60 * 60,  # 1 hour
+            path='/',
+            domain=None,
+            secure=is_secure,
+            httponly=True,  # Prevent JS access; Electron reads from body
+            samesite=samesite_policy,
+        )
+        return resp
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

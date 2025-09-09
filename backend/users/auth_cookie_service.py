@@ -56,10 +56,28 @@ class AuthCookieService:
     def set_admin_auth_cookies(response: Response, access_token: str, refresh_token: str) -> Response:
         """
         Set authentication cookies for admin/web users with /api path.
-        Uses existing UserService method for compatibility.
         """
-        from .services import UserService
-        return UserService.set_auth_cookies(response, access_token, refresh_token, cookie_path="/api")
+        cookie_settings = AuthCookieService.get_cookie_settings()
+        access_name = settings.SIMPLE_JWT_ADMIN["AUTH_COOKIE"] if hasattr(settings, 'SIMPLE_JWT_ADMIN') else settings.SIMPLE_JWT["AUTH_COOKIE"]
+        refresh_name = settings.SIMPLE_JWT_ADMIN["AUTH_COOKIE_REFRESH"] if hasattr(settings, 'SIMPLE_JWT_ADMIN') else settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"]
+
+        response.set_cookie(
+            key=access_name,
+            value=access_token,
+            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,
+            path="/api",
+            **cookie_settings,
+        )
+        response.set_cookie(
+            key=refresh_name,
+            value=refresh_token,
+            max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
+            domain=None,
+            path="/api",
+            **cookie_settings,
+        )
+        return response
     
     @staticmethod
     def set_customer_auth_cookies(response: Response, access_token: str, refresh_token: str) -> Response:
@@ -110,13 +128,16 @@ class AuthCookieService:
         samesite = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
         
         # Clear cookies with multiple combinations to ensure deletion
+        admin_access = getattr(settings, 'SIMPLE_JWT_ADMIN', {}).get('AUTH_COOKIE', f"{access_cookie}_admin")
+        admin_refresh = getattr(settings, 'SIMPLE_JWT_ADMIN', {}).get('AUTH_COOKIE_REFRESH', f"{refresh_cookie}_admin")
+
         paths_and_cookies = [
             # POS cookies (path /)
             ("/", access_cookie),
             ("/", refresh_cookie),
             # Admin cookies (path /api)  
-            ("/api", access_cookie),
-            ("/api", refresh_cookie),
+            ("/api", admin_access),
+            ("/api", admin_refresh),
             # Customer cookies (path /)
             ("/", f"{access_cookie}_customer"),
             ("/", f"{refresh_cookie}_customer"),
@@ -210,12 +231,18 @@ class AuthCookieService:
         """
         # Try to blacklist all possible refresh tokens
         refresh_token_keys = [
-            settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],  # Admin/POS refresh token
-            f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",  # Customer refresh token
+            # Admin refresh token (admin-specific name)
+            getattr(settings, 'SIMPLE_JWT_ADMIN', {}).get('AUTH_COOKIE_REFRESH', None),
+            # POS refresh token (base name)
+            settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
+            # Customer refresh token
+            f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer",
         ]
-        
+
         for token_key in refresh_token_keys:
             try:
+                if not token_key:
+                    continue
                 refresh_token = request.COOKIES.get(token_key)
                 if refresh_token:
                     token = RefreshToken(refresh_token)

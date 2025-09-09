@@ -73,6 +73,17 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   const diningPreference = order.dining_preference || "TAKE_OUT";
   const diningLabel = diningPreference === "DINE_IN" ? "Dine In" : "Take Out";
   printer.println(`Service: ${diningLabel}`);
+  if (order.order_type) {
+    const orderTypeLabels = {
+      "POS": "In-Store",
+      "WEB": "Website",
+      "APP": "App",
+      "DOORDASH": "DoorDash",
+      "UBER_EATS": "Uber Eats"
+    };
+    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
+    printer.println(`Source: ${sourceLabel}`);
+  }
   if (isTransaction) {
     printer.alignCenter();
     printer.bold(true);
@@ -263,6 +274,17 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
   printer.bold(true);
   printer.println(`SERVICE: ${diningLabel}`);
+  if (order.order_type) {
+    const orderTypeLabels = {
+      "POS": "IN-STORE",
+      "WEB": "WEBSITE",
+      "APP": "APP",
+      "DOORDASH": "DOORDASH",
+      "UBER_EATS": "UBER EATS"
+    };
+    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
+    printer.println(`SOURCE: ${sourceLabel}`);
+  }
   printer.bold(false);
   printer.drawLine();
   const groupedItems = itemsToPrint.reduce((acc, item) => {

@@ -11,6 +11,7 @@ from django.utils.decorators import method_decorator
 
 from .customer_services import CustomerAuthService
 from .auth_cookie_service import AuthCookieService
+from .permissions import RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission
 from .authentication import CustomerCookieJWTAuthentication
 from .customer_serializers import (
     CustomerRegistrationSerializer,
@@ -27,7 +28,7 @@ class CustomerRegisterView(APIView):
     Register a new customer account.
     No authentication required.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request):
         serializer = CustomerRegistrationSerializer(data=request.data)
@@ -70,7 +71,7 @@ class CustomerLoginView(APIView):
     Login for customer accounts.
     No authentication required.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request):
         serializer = CustomerLoginSerializer(data=request.data)
@@ -108,7 +109,7 @@ class CustomerLogoutView(APIView):
     Logout for customer accounts.
     Clears authentication cookies and blacklists refresh token.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request):
         try:
@@ -150,7 +151,7 @@ class CustomerTokenRefreshView(APIView):
     Refresh customer authentication tokens.
     Uses refresh token from cookies.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request):
         # Get refresh token from cookies
@@ -163,49 +164,25 @@ class CustomerTokenRefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        serializer = CustomerTokenRefreshSerializer(data={"refresh": refresh_token})
-        
-        if serializer.is_valid():
-            try:
-                # Generate new access token
-                old_refresh = RefreshToken(refresh_token)
-                new_access = old_refresh.access_token
-                
-                response = Response(
-                    {"message": "Token refreshed successfully"}, 
-                    status=status.HTTP_200_OK
-                )
-                
-                # Set new access token cookie (keep same refresh token)
-                access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
-                
-                # Use same settings as other customer authentication
-                is_secure = getattr(settings, 'SESSION_COOKIE_SECURE', not settings.DEBUG)
-                samesite_policy = getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
-                
-                response.set_cookie(
-                    key=access_cookie_name,
-                    value=str(new_access),
-                    max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
-                    domain=None,
-                    path="/",  # Use root path so cookies are available for all customer endpoints
-                    httponly=True,
-                    secure=is_secure,
-                    samesite=samesite_policy,
-                )
-                
-                return response
-                
-            except TokenError:
-                # Clear invalid cookies
-                response = Response(
-                    {"error": "Invalid refresh token"}, 
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-                AuthCookieService.clear_customer_auth_cookies(response)
-                return response
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Use SimpleJWT serializer to support rotation
+        from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+        s = TokenRefreshSerializer(data={"refresh": refresh_token})
+        try:
+            s.is_valid(raise_exception=True)
+        except TokenError:
+            response = Response({"error": "Invalid refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
+            AuthCookieService.clear_customer_auth_cookies(response)
+            return response
+
+        data = s.validated_data
+        new_access = data.get("access")
+        new_refresh = data.get("refresh", refresh_token)
+
+        response = Response({"message": "Token refreshed successfully"}, status=status.HTTP_200_OK)
+
+        # Set new access and refresh cookies via centralized service
+        AuthCookieService.set_customer_auth_cookies(response, new_access, new_refresh)
+        return response
 
 
 class CustomerProfileView(RetrieveUpdateAPIView):
@@ -215,7 +192,7 @@ class CustomerProfileView(RetrieveUpdateAPIView):
     """
     serializer_class = CustomerProfileSerializer
     authentication_classes = [CustomerCookieJWTAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def get_object(self):
         # Ensure user is a customer
@@ -239,7 +216,7 @@ class CustomerChangePasswordView(APIView):
     Requires customer authentication.
     """
     authentication_classes = [CustomerCookieJWTAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request):
         # Ensure user is a customer

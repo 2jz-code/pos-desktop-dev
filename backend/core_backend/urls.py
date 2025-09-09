@@ -25,6 +25,7 @@ from .views import (
     warm_caches,
     invalidate_cache,
     cache_statistics,
+    issue_csrf_token,
 )
 from .admin_views import legacy_migration_view
 
@@ -43,6 +44,7 @@ urlpatterns = [
     path("api/cache/warm/", warm_caches, name="warm_caches"),
     path("api/cache/invalidate/", invalidate_cache, name="invalidate_cache"),
     path("api/cache/stats/", cache_statistics, name="cache_statistics"),
+    path("api/security/csrf/", issue_csrf_token, name="issue_csrf_token"),
     path("api/users/", include("users.urls")),
     path(
         "api/auth/customer/", include("users.customer_urls")

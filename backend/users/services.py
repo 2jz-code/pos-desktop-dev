@@ -21,8 +21,8 @@ class UserService:
             ],
             is_active=True
         ).select_related().values(
-            'id', 'username', 'role', 'first_name', 'last_name', 
-            'email', 'pin', 'password', 'is_active'
+            'id', 'username', 'role', 'first_name', 'last_name',
+            'email', 'is_active'
         ))
     
     @staticmethod

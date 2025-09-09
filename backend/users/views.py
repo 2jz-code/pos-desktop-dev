@@ -31,6 +31,8 @@ from .permissions import (
     IsAdminOrHigher,
     IsOwner,
     CanEditUserDetails,
+    RequiresAntiCSRFHeader,
+    DoubleSubmitCSRFPremission,
 )
 
 # Create your views here.
@@ -70,12 +72,23 @@ class UserViewSet(BaseViewSet):
         if self.action == 'create':
             # User creation requires manager or higher
             permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
+        elif self.action in ['list', 'retrieve']:
+            # Restrict list/retrieve to manager or higher
+            permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
         elif self.action in ['archive', 'unarchive', 'bulk_archive', 'bulk_unarchive']:
             # Archive actions require manager or higher
             permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
         else:
             permission_classes = self.permission_classes
-        
+
+        # For unsafe methods, enforce CSRF protections
+        if self.request and self.request.method not in permissions.SAFE_METHODS:
+            # Append CSRF header guard and double-submit validator
+            permission_classes = list(permission_classes) + [
+                RequiresAntiCSRFHeader,
+                DoubleSubmitCSRFPremission,
+            ]
+
         return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
@@ -86,7 +99,11 @@ class UserViewSet(BaseViewSet):
             return UserRegistrationSerializer
         return self.serializer_class
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsManagerOrHigher])
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsManagerOrHigher, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission],
+    )
     def set_pin(self, request, pk=None):
         """
         Set PIN for a user.
@@ -104,7 +121,7 @@ class UserViewSet(BaseViewSet):
 
 class SetPinView(generics.GenericAPIView):
     serializer_class = SetPinSerializer
-    permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher]
+    permission_classes = [permissions.IsAuthenticated, IsManagerOrHigher, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request, *args, **kwargs):
         user_id = kwargs.get("pk")
@@ -120,7 +137,7 @@ class SetPinView(generics.GenericAPIView):
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class POSLoginView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request, *args, **kwargs):
         serializer = POSLoginSerializer(data=request.data)
@@ -143,45 +160,58 @@ class POSLoginView(APIView):
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class WebLoginView(TokenObtainPairView):
     serializer_class = WebLoginSerializer
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200 and "access" in response.data:
             access_token = response.data.pop("access")
             refresh_token = response.data.pop("refresh")
-            UserService.set_auth_cookies(response, access_token, refresh_token)
+            AuthCookieService.set_admin_auth_cookies(response, access_token, refresh_token)
         return response
 
 class WebTokenRefreshView(TokenRefreshView):
     serializer_class = WebTokenRefreshSerializer
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request, *args, **kwargs):
-        result = AuthCookieService.refresh_admin_token(request)
-        
-        if not result["success"]:
-            response = Response(
-                {"error": result["error"]},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-            
-            if result["clear_cookies"]:
-                # Clear invalid cookies
-                AuthCookieService.clear_all_auth_cookies(response)
-            
+        # Rotate refresh using SimpleJWT's TokenRefreshSerializer
+        from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+        # Prefer admin refresh cookie; fallback to POS base name for compatibility
+        admin_refresh_name = getattr(settings, 'SIMPLE_JWT_ADMIN', {}).get('AUTH_COOKIE_REFRESH')
+        refresh_cookie = None
+        if admin_refresh_name:
+            refresh_cookie = request.COOKIES.get(admin_refresh_name)
+        if not refresh_cookie:
+            refresh_cookie = request.COOKIES.get(settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"])  # POS fallback
+        if not refresh_cookie:
+            return Response({"error": "Refresh token not found."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_cookie})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:
+            response = Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+            AuthCookieService.clear_all_auth_cookies(response)
             return response
 
-        # Set new tokens in cookies
+        data = serializer.validated_data
+        new_access = data.get("access")
+        new_refresh = data.get("refresh", refresh_cookie)  # present if ROTATE_REFRESH_TOKENS=True
+
         response = Response({"message": "Token refreshed successfully"})
-        AuthCookieService.set_admin_auth_cookies(
-            response, 
-            result["access_token"], 
-            result["refresh_token"]
-        )
-        
+        # If we read admin cookie, set admin cookie family; otherwise set POS cookie family
+        if admin_refresh_name and request.COOKIES.get(admin_refresh_name):
+            AuthCookieService.set_admin_auth_cookies(response, new_access, new_refresh)
+        else:
+            AuthCookieService.set_pos_auth_cookies(response, new_access, new_refresh)
         return response
 
 class LogoutView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     def post(self, request, *args, **kwargs):
         response = Response(
@@ -203,7 +233,7 @@ class CurrentUserView(APIView):
 
 class DebugCookiesView(APIView):
     """Debug endpoint to see what cookies are set"""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAdminUser]
     
     def get(self, request):
         return Response({

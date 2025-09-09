@@ -6,6 +6,53 @@ const apiClient: AxiosInstance = axios.create({
 	withCredentials: true, // This is crucial for sending cookies
 });
 
+// Bare client without interceptors for CSRF token fetch
+const baseClient: AxiosInstance = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
+  withCredentials: true,
+});
+
+let csrfToken: string | null = null;
+let csrfPromise: Promise<string | null> | null = null;
+
+async function ensureCsrfToken(): Promise<string | null> {
+  if (csrfToken) return csrfToken;
+  if (!csrfPromise) {
+    csrfPromise = baseClient
+      .get("/security/csrf/")
+      .then((res) => {
+        csrfToken = (res?.data as any)?.csrfToken || null;
+        return csrfToken;
+      })
+      .finally(() => {
+        csrfPromise = null;
+      });
+  }
+  return csrfPromise;
+}
+
+// Request interceptor: add CSRF headers for unsafe methods
+apiClient.interceptors.request.use(
+  async (config) => {
+    const method = (config.method || "get").toLowerCase();
+    if (!["get", "head", "options"].includes(method)) {
+      config.headers = config.headers || {};
+      (config.headers as any)["X-Requested-With"] = "XMLHttpRequest";
+      try {
+        const token = await ensureCsrfToken();
+        if (token) {
+          (config.headers as any)["X-CSRF-Token"] = token;
+        }
+      } catch (_) {
+        // proceed; server may 403 and we will retry once in response interceptor
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // Response Interceptor
 apiClient.interceptors.response.use(
 	(response) => {
@@ -15,6 +62,28 @@ apiClient.interceptors.response.use(
 	async (error) => {
 		const originalRequest = error.config;
 		originalRequest._retry = originalRequest._retry || false;
+
+		// CSRF 403 auto-refresh + one-time retry for unsafe methods
+		const method = (originalRequest?.method || 'get').toLowerCase();
+		if (
+			error.response?.status === 403 &&
+			!originalRequest?._csrfRetry &&
+			!['get', 'head', 'options'].includes(method)
+		) {
+			originalRequest._csrfRetry = true;
+			try {
+				const res = await baseClient.get('/security/csrf/');
+				const fresh = (res?.data as any)?.csrfToken || null;
+				if (fresh) {
+					csrfToken = fresh;
+					originalRequest.headers = originalRequest.headers || {};
+					originalRequest.headers['X-CSRF-Token'] = fresh;
+				}
+				return apiClient(originalRequest);
+			} catch (_) {
+				// fall through
+			}
+		}
 
 		// Check if the error is 401 Unauthorized and if we haven't already retried
 		if (error.response?.status === 401 && !originalRequest._retry) {
