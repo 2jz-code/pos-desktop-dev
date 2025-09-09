@@ -6,6 +6,8 @@ from orders.models import Order
 from orders.serializers import OrderSerializer
 from orders.permissions import IsAuthenticatedOrGuestOrder
 from .authentication import CustomerCookieJWTAuthentication
+from django.utils.decorators import method_decorator
+from django_ratelimit.decorators import ratelimit
 
 
 class CustomerOrderViewSet(ReadOnlyBaseViewSet):
@@ -70,6 +72,7 @@ class CustomerOrderViewSet(ReadOnlyBaseViewSet):
             )
     
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    @method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True))
     def add_item(self, request):
         """
         Customer-specific add item to cart endpoint.

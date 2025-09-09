@@ -7,6 +7,7 @@ from .infrastructure.cache import CacheMonitor, AdvancedCacheManager, CacheWarmi
 from django.conf import settings
 import secrets
 import logging
+from django_ratelimit.decorators import ratelimit
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ def ratelimited429(request, exception=None):
     return JsonResponse({"error": "Too many requests"}, status=429)
 
 
+@ratelimit(key='ip', rate='60/m', method='GET', block=True)
 @api_view(['GET'])
 @permission_classes([])  # AllowAny
 def issue_csrf_token(request):

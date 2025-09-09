@@ -194,6 +194,12 @@ class CustomerProfileView(RetrieveUpdateAPIView):
     authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
+    # Throttle profile updates (PATCH/PUT)
+    @method_decorator(ratelimit(key='ip', rate='15/m', method='PATCH', block=True), name='dispatch')
+    @method_decorator(ratelimit(key='ip', rate='15/m', method='PUT', block=True), name='dispatch')
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
     def get_object(self):
         # Ensure user is a customer
         if self.request.user.role != self.request.user.Role.CUSTOMER:
@@ -217,6 +223,11 @@ class CustomerChangePasswordView(APIView):
     """
     authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    # Throttle password change attempts
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='dispatch')
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def post(self, request):
         # Ensure user is a customer
