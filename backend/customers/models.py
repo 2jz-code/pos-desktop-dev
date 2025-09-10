@@ -187,15 +187,15 @@ class Customer(models.Model):
     def total_orders(self):
         """Calculate total number of orders"""
         from orders.models import Order
-        return Order.objects.filter(customer_email=self.email).count()
+        return Order.objects.filter(customer=self).count()
     
     @property
     def total_spent(self):
         """Calculate total amount spent"""
         from orders.models import Order
         from django.db.models import Sum
-        result = Order.objects.filter(customer_email=self.email).aggregate(
-            total=Sum('total_amount')
+        result = Order.objects.filter(customer=self).aggregate(
+            total=Sum('grand_total')
         )
         return result['total'] or 0
     
@@ -211,7 +211,7 @@ class Customer(models.Model):
     def last_order_date(self):
         """Get date of most recent order"""
         from orders.models import Order
-        last_order = Order.objects.filter(customer_email=self.email).order_by('-created_at').first()
+        last_order = Order.objects.filter(customer=self).order_by('-created_at').first()
         return last_order.created_at if last_order else None
     
     @property
@@ -226,6 +226,12 @@ class Customer(models.Model):
         """Check if customer has ordered in last 90 days"""
         if self.last_order_date:
             return (timezone.now() - self.last_order_date).days <= 90
+        return False
+    
+    # Compatibility properties for orders permissions
+    @property
+    def is_pos_staff(self):
+        """Customers are never POS staff"""
         return False
 
 
