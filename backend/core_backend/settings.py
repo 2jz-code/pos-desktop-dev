@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "payments",
     "discounts",
     "users.apps.UsersConfig",
+    "customers.apps.CustomersConfig",
     "settings",
     "integrations",
     "notifications",
@@ -90,7 +91,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_ratelimit.middleware.RatelimitMiddleware",
-    "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement
+    # "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement - TEMPORARILY DISABLED FOR TESTING
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

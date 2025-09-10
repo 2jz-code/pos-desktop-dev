@@ -9,7 +9,7 @@ import apiClient from "./client";
 export const ordersAPI = {
 	getPendingOrder: async () => {
 		try {
-			const response = await apiClient.get("/auth/customer/orders/pending/");
+			const response = await apiClient.get("/customers/orders/pending/");
 			return response.data;
 		} catch (error) {
 			if (error.response && error.response.status === 404) {
@@ -38,18 +38,18 @@ export const ordersAPI = {
 
 	// Get order by ID
 	getOrder: async (orderId) => {
-		const response = await apiClient.get(`/auth/customer/orders/${orderId}/`);
+		const response = await apiClient.get(`/customers/orders/${orderId}/`);
 		return response.data;
 	},
 
 	// Get full order details for confirmation view (with all needed data)
 	getOrderForConfirmation: async (orderId) => {
-		const response = await apiClient.get(`/auth/customer/orders/${orderId}/`);
+		const response = await apiClient.get(`/customers/orders/${orderId}/`);
 		return response.data;
 	},
 
 	// Get current user's orders (works for both auth and guest)
-	getCurrentUserOrders: async (url = "/auth/customer/orders/") => {
+	getCurrentUserOrders: async (url = "/customers/orders/") => {
 		// Use customer-specific endpoint to avoid conflicts with admin authentication
 		const response = await apiClient.get(url);
 		return response.data;
@@ -164,7 +164,7 @@ export const cartAPI = {
 		notes = "",
 		selectedModifiers = []
 	) => {
-		const response = await apiClient.post("/auth/customer/orders/add_item/", {
+		const response = await apiClient.post("/customers/orders/add_item/", {
 			product_id: productId,
 			quantity,
 			notes,

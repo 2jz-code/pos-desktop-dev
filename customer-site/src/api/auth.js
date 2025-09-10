@@ -4,14 +4,14 @@ import apiClient from "./client";
 export const authAPI = {
 	// Register a new customer account
 	register: async (userData) => {
-		const response = await apiClient.post("/auth/customer/register/", userData);
+		const response = await apiClient.post("/customers/register/", userData);
 		return response.data;
 	},
 
-	// Login with email/username and password
+	// Login with email and password
 	login: async (credentials) => {
-		const response = await apiClient.post("/auth/customer/login/", {
-			email_or_username: credentials.username || credentials.email,
+		const response = await apiClient.post("/customers/login/", {
+			email: credentials.username || credentials.email, // Backend expects 'email' field
 			password: credentials.password,
 			remember_me: credentials.remember_me || false,
 		});
@@ -20,26 +20,26 @@ export const authAPI = {
 
 	// Logout (clears authentication cookies)
 	logout: async () => {
-		const response = await apiClient.post("/auth/customer/logout/");
+		const response = await apiClient.post("/customers/logout/");
 		return response.data;
 	},
 
 	// Refresh authentication token
 	refreshToken: async () => {
-		const response = await apiClient.post("/auth/customer/token/refresh/");
+		const response = await apiClient.post("/customers/token/refresh/");
 		return response.data;
 	},
 
-	// Get current authenticated user
+	// Get current authenticated customer
 	getCurrentUser: async () => {
-		const response = await apiClient.get("/auth/customer/current-user/");
+		const response = await apiClient.get("/customers/current-user/");
 		return response.data;
 	},
 
-	// Update user profile
+	// Update customer profile
 	updateProfile: async (profileData) => {
 		const response = await apiClient.patch(
-			"/auth/customer/profile/",
+			"/customers/profile/",
 			profileData
 		);
 		return response.data;
@@ -48,7 +48,7 @@ export const authAPI = {
 	// Change password
 	changePassword: async (passwordData) => {
 		const response = await apiClient.post(
-			"/auth/customer/change-password/",
+			"/customers/change-password/",
 			passwordData
 		);
 		return response.data;
@@ -57,14 +57,17 @@ export const authAPI = {
 	// Check authentication status
 	checkAuth: async () => {
 		try {
-			const user = await authAPI.getCurrentUser();
-			return { isAuthenticated: true, user };
+			const response = await authAPI.getCurrentUser();
+			// Backend now returns { customer: {...} } instead of just customer data
+			const customer = response.customer || response;
+			return { isAuthenticated: true, user: customer };
 		} catch {
 			// Try to refresh token
 			try {
 				await authAPI.refreshToken();
-				const user = await authAPI.getCurrentUser();
-				return { isAuthenticated: true, user };
+				const response = await authAPI.getCurrentUser();
+				const customer = response.customer || response;
+				return { isAuthenticated: true, user: customer };
 			} catch {
 				return { isAuthenticated: false, user: null };
 			}

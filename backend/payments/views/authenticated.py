@@ -19,7 +19,7 @@ import django_filters
 
 from orders.serializers import OrderSerializer
 from orders.models import Order
-from users.authentication import CustomerCookieJWTAuthentication
+from customers.authentication import CustomerCookieJWTAuthentication
 from core_backend.base import BaseViewSet
 from core_backend.pagination import StandardPagination
 from .base import (

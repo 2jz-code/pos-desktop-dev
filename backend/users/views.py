@@ -19,7 +19,7 @@ from django.core.cache import cache
 
 from .models import User
 from .services import UserService
-from .auth_cookie_service import AuthCookieService
+from core_backend.auth.cookies import AuthCookieService
 from .serializers import (
     UserSerializer,
     UserRegistrationSerializer,

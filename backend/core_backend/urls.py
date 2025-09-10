@@ -47,9 +47,12 @@ urlpatterns = [
     path("api/cache/stats/", cache_statistics, name="cache_statistics"),
     path("api/security/csrf/", issue_csrf_token, name="issue_csrf_token"),
     path("api/users/", include("users.urls")),
+    # Customer app (new)
+    path("api/customers/", include("customers.urls")),
+    # Backwards compatibility for customer authentication
     path(
         "api/auth/customer/", include("users.customer_urls")
-    ),  # Customer authentication
+    ),  # TODO: Remove after frontend migration
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***
