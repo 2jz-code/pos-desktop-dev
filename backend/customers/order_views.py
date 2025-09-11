@@ -6,11 +6,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from core_backend.base import ReadOnlyBaseViewSet
 from orders.models import Order
-from orders.serializers import OrderSerializer, AddItemSerializer, OrderCreateSerializer
+from orders.serializers import OrderSerializer, AddItemSerializer, OrderCreateSerializer, OptimizedOrderSerializer
 from orders.services import OrderService
 from .authentication import CustomerCookieJWTAuthentication, CustomerJWTAuthenticationMixin
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
+from django.db.models import Count
 
 
 class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
@@ -33,25 +34,48 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
         """
         customer = self.ensure_customer_authenticated()
         
-        # Filter orders by customer ForeignKey
-        return Order.objects.filter(
-            customer=customer
-        ).select_related(
-            'cashier', 'customer'
-        ).prefetch_related(
-            'items__product', 'items__product__category',
-            'applied_discounts__discount'
-        )
+        # Filter orders by customer ForeignKey - heavily optimized for performance
+        queryset = Order.objects.filter(customer=customer)
+        
+        # Always select payment_details, then add additional optimizations per view type
+        queryset = queryset.select_related('cashier', 'customer', 'payment_details')
+        
+        # For list views, use annotations to avoid N+1 queries
+        if hasattr(self, 'action') and self.action == 'list':
+            queryset = queryset.annotate(item_count_annotation=Count('items'))
+        else:
+            # For detail views, use full prefetch
+            queryset = queryset.prefetch_related(
+                # Order items with full product details
+                'items__product__category',
+                'items__product__product_type', 
+                'items__selected_modifiers_snapshot',
+                # Applied discounts
+                'applied_discounts__discount',
+                # Payment transactions for payment details
+                'payment_details__transactions'
+            )
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Use OptimizedOrderSerializer for list view, full OrderSerializer for detail"""
+        if self.action == 'list':
+            return OptimizedOrderSerializer
+        return OrderSerializer
     
     @method_decorator(ratelimit(key='ip', rate='30/m', method='GET', block=True))
     def list(self, request, *args, **kwargs):
-        """List customer orders with rate limiting"""
+        """List customer orders with rate limiting and optimized serializer"""
         return super().list(request, *args, **kwargs)
     
     @method_decorator(ratelimit(key='ip', rate='30/m', method='GET', block=True))
     def retrieve(self, request, *args, **kwargs):
         """Retrieve specific customer order with rate limiting"""
-        return super().retrieve(request, *args, **kwargs)
+        # Ensure we use the optimized queryset for retrieve as well
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def recent(self, request):
@@ -62,9 +86,17 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
         
         recent_orders = Order.objects.filter(
             customer=customer
+        ).select_related(
+            'cashier', 'customer', 'payment_details'
+        ).prefetch_related(
+            'items__product__category',
+            'items__product__product_type',
+            'items__selected_modifiers_snapshot',
+            'applied_discounts__discount',
+            'payment_details__transactions'
         ).order_by('-created_at')[:10]
         
-        serializer = self.get_serializer(recent_orders, many=True)
+        serializer = OptimizedOrderSerializer(recent_orders, many=True, context={'request': request})
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -99,10 +131,14 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
         # Strict separation: authenticated users get their own cart, guests get guest cart
         if request.user and request.user.is_authenticated:
             # Authenticated user: only return their own pending order
-            order = Order.objects.select_related('customer', 'cashier').prefetch_related(
-                'items__product',
-                'items__product__category', 
-                'applied_discounts__discount'
+            order = Order.objects.select_related(
+                'customer', 'cashier', 'payment_details'
+            ).prefetch_related(
+                'items__product__category',
+                'items__product__product_type',
+                'items__selected_modifiers_snapshot',
+                'applied_discounts__discount',
+                'payment_details__transactions'
             ).filter(
                 customer=request.user,
                 status='PENDING'
