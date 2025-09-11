@@ -273,3 +273,60 @@ class CustomerSummarySerializer(BaseModelSerializer, PIISerializerMixin):
         prefetch_related_fields = []
         # PII fields that should be masked for non-owners
         pii_mask_fields = ["email"]
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """
+    Serializer for password reset requests.
+    """
+    email = serializers.EmailField(
+        help_text="Email address to send password reset link to"
+    )
+    
+    def validate_email(self, value):
+        """Normalize email address"""
+        return value.strip().lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """
+    Serializer for password reset confirmation.
+    """
+    token = serializers.CharField(
+        max_length=40,
+        help_text="Password reset token from email"
+    )
+    new_password = serializers.CharField(
+        write_only=True,
+        style={'input_type': 'password'},
+        help_text="New password"
+    )
+    
+    def validate_new_password(self, value):
+        """Validate new password strength"""
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+        
+        try:
+            validate_password(value)
+        except ValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        
+        return value
+
+
+class EmailVerificationRequestSerializer(serializers.Serializer):
+    """
+    Serializer for email verification requests (resend verification).
+    """
+    pass  # No fields needed for authenticated requests
+
+
+class EmailVerificationConfirmSerializer(serializers.Serializer):
+    """
+    Serializer for email verification confirmation.
+    """
+    token = serializers.CharField(
+        max_length=40,
+        help_text="Email verification token from email"
+    )

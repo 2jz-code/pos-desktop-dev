@@ -11,6 +11,10 @@ from .views import (
     CustomerProfileView,
     CustomerChangePasswordView,
     CustomerCurrentUserView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
+    EmailVerificationRequestView,
+    EmailVerificationConfirmView,
 )
 from .order_views import CustomerOrderViewSet
 
@@ -31,6 +35,14 @@ urlpatterns = [
     path("profile/", CustomerProfileView.as_view(), name="profile"),
     path("current-user/", CustomerCurrentUserView.as_view(), name="current_user"),
     path("change-password/", CustomerChangePasswordView.as_view(), name="change_password"),
+    
+    # Password reset endpoints
+    path("password-reset/request/", PasswordResetRequestView.as_view(), name="password_reset_request"),
+    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
+    
+    # Email verification endpoints
+    path("email-verification/request/", EmailVerificationRequestView.as_view(), name="email_verification_request"),
+    path("email-verification/confirm/", EmailVerificationConfirmView.as_view(), name="email_verification_confirm"),
     
     # Customer order endpoints
     path("", include(router.urls)),

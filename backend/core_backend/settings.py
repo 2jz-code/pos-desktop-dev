@@ -926,3 +926,6 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
 }
+
+# Customer site URL for email links and redirects
+CUSTOMER_SITE_URL = os.getenv("CUSTOMER_SITE_URL", "http://192.168.5.144:5174")

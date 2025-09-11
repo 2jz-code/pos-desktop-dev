@@ -54,6 +54,37 @@ export const authAPI = {
 		return response.data;
 	},
 
+	// Request password reset
+	requestPasswordReset: async (email) => {
+		const response = await apiClient.post("/customers/password-reset/request/", {
+			email: email,
+		});
+		return response.data;
+	},
+
+	// Confirm password reset with token
+	confirmPasswordReset: async (token, newPassword) => {
+		const response = await apiClient.post("/customers/password-reset/confirm/", {
+			token: token,
+			new_password: newPassword,
+		});
+		return response.data;
+	},
+
+	// Request email verification
+	requestEmailVerification: async () => {
+		const response = await apiClient.post("/customers/email-verification/request/");
+		return response.data;
+	},
+
+	// Confirm email verification with token
+	confirmEmailVerification: async (token) => {
+		const response = await apiClient.post("/customers/email-verification/confirm/", {
+			token: token,
+		});
+		return response.data;
+	},
+
 	// Check authentication status
 	checkAuth: async () => {
 		try {

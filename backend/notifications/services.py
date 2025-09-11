@@ -318,6 +318,82 @@ class EmailService:
             )
             return False
 
+    def send_password_reset_email(self, customer, token):
+        """
+        Send password reset email to customer.
+        
+        Args:
+            customer: Customer instance
+            token: Password reset token string
+        """
+        try:
+            from django.conf import settings
+            import datetime
+            
+            # Build reset URL
+            customer_site_url = getattr(settings, 'CUSTOMER_SITE_URL', 'http://localhost:3000')
+            reset_url = f"{customer_site_url}/reset-password?token={token}"
+            
+            context = {
+                'customer_name': customer.get_short_name(),
+                'customer_email': customer.email,
+                'reset_url': reset_url,
+                'current_year': datetime.datetime.now().year,
+            }
+            
+            subject = "Reset Your Ajeen Fresh Password"
+            self.send_email(
+                recipient_list=[customer.email],
+                subject=subject,
+                template_name="emails/password-reset.html",
+                context=context,
+            )
+            
+            logger.info(f"Password reset email sent to customer {customer.id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to customer {customer.id}: {e}")
+            return False
+
+    def send_email_verification(self, customer, token):
+        """
+        Send email verification email to customer.
+        
+        Args:
+            customer: Customer instance
+            token: Email verification token string
+        """
+        try:
+            from django.conf import settings
+            import datetime
+            
+            # Build verification URL
+            customer_site_url = getattr(settings, 'CUSTOMER_SITE_URL', 'http://localhost:3000')
+            verification_url = f"{customer_site_url}/verify-email?token={token}"
+            
+            context = {
+                'customer_name': customer.get_short_name(),
+                'customer_email': customer.email,
+                'verification_url': verification_url,
+                'current_year': datetime.datetime.now().year,
+            }
+            
+            subject = "Welcome to Ajeen Fresh - Please Verify Your Email"
+            self.send_email(
+                recipient_list=[customer.email],
+                subject=subject,
+                template_name="emails/email-verification.html",
+                context=context,
+            )
+            
+            logger.info(f"Email verification sent to customer {customer.id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send email verification to customer {customer.id}: {e}")
+            return False
+
 
 # Singleton instance
 email_service = EmailService()

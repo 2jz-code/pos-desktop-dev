@@ -7,6 +7,8 @@ from django.utils import timezone
 from django.core.validators import EmailValidator
 from core_backend.utils.pii import PIIProtection
 import uuid
+import secrets
+from datetime import timedelta
 
 
 class CustomerManager(models.Manager):
@@ -283,3 +285,127 @@ class CustomerAddress(models.Model):
         """PII-safe string representation"""
         customer_name = PIIProtection.mask_name(self.customer.get_short_name())
         return f"{customer_name}'s {self.get_address_type_display()} Address"
+
+
+class CustomerPasswordResetToken(models.Model):
+    """
+    Secure password reset tokens for customers.
+    Single-use tokens with 24-hour expiry.
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    customer = models.ForeignKey(
+        Customer, 
+        on_delete=models.CASCADE, 
+        related_name='password_reset_tokens'
+    )
+    token = models.CharField(max_length=40, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'customers_password_reset_token'
+        verbose_name = 'Password Reset Token'
+        verbose_name_plural = 'Password Reset Tokens'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['expires_at']),
+            models.Index(fields=['customer', 'used_at']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate token and expiry on creation"""
+        if not self.token:
+            self.token = secrets.token_urlsafe(30)  # 40-char URL-safe token
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=24)
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_expired(self):
+        """Check if token has expired"""
+        return timezone.now() > self.expires_at
+    
+    @property
+    def is_used(self):
+        """Check if token has been used"""
+        return self.used_at is not None
+    
+    @property
+    def is_valid(self):
+        """Check if token is valid (not expired and not used)"""
+        return not self.is_expired and not self.is_used
+    
+    def mark_as_used(self):
+        """Mark token as used"""
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])
+    
+    def __str__(self):
+        """PII-safe string representation"""
+        customer_name = PIIProtection.mask_name(self.customer.get_short_name())
+        status = "used" if self.is_used else ("expired" if self.is_expired else "active")
+        return f"Password reset token for {customer_name} ({status})"
+
+
+class CustomerEmailVerificationToken(models.Model):
+    """
+    Email verification tokens for customers.
+    Single-use tokens with 24-hour expiry.
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    customer = models.ForeignKey(
+        Customer, 
+        on_delete=models.CASCADE, 
+        related_name='email_verification_tokens'
+    )
+    token = models.CharField(max_length=40, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'customers_email_verification_token'
+        verbose_name = 'Email Verification Token'
+        verbose_name_plural = 'Email Verification Tokens'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['expires_at']),
+            models.Index(fields=['customer', 'used_at']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        """Auto-generate token and expiry on creation"""
+        if not self.token:
+            self.token = secrets.token_urlsafe(30)  # 40-char URL-safe token
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=24)
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_expired(self):
+        """Check if token has expired"""
+        return timezone.now() > self.expires_at
+    
+    @property
+    def is_used(self):
+        """Check if token has been used"""
+        return self.used_at is not None
+    
+    @property
+    def is_valid(self):
+        """Check if token is valid (not expired and not used)"""
+        return not self.is_expired and not self.is_used
+    
+    def mark_as_used(self):
+        """Mark token as used"""
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])
+    
+    def __str__(self):
+        """PII-safe string representation"""
+        customer_name = PIIProtection.mask_name(self.customer.get_short_name())
+        status = "used" if self.is_used else ("expired" if self.is_expired else "active")
+        return f"Email verification token for {customer_name} ({status})"

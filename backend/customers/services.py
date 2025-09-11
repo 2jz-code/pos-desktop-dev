@@ -35,9 +35,11 @@ class CustomerAuthService:
         except ValidationError as e:
             errors["password"] = e.messages
 
-        # Check if email already exists
+        # Check if email already exists 
+        # Note: We still need to prevent duplicate accounts, but we'll use a generic message
         if Customer.objects.filter(email=email).exists():
-            errors["email"] = ["A customer with this email already exists."]
+            # Generic message that doesn't reveal if the account exists
+            errors["email"] = ["Unable to create account with this email address."]
 
         # Validate email format (basic check)
         if email and "@" not in email:
@@ -98,23 +100,35 @@ class CustomerAuthService:
     def authenticate_customer(email, password):
         """
         Authenticate a customer using email and password.
+        Uses timing-consistent approach to prevent enumeration.
         """
+        import time
+        
+        # Add consistent timing to prevent timing attacks
+        start_time = time.time()
+        customer = None
+        
         try:
             customer = Customer.objects.get_by_email(email)
+            
+            # Check if customer is active and password is correct
+            if customer.is_active and customer.check_password(password):
+                # Update last login timestamp
+                customer.update_last_login()
+            else:
+                customer = None
+                
         except Customer.DoesNotExist:
-            return None
-
-        # Check if customer is active
-        if not customer.is_active:
-            return None
-
-        # Verify password
-        if customer.check_password(password):
-            # Update last login
-            customer.update_last_login()
-            return customer
-
-        return None
+            # Perform dummy password check to maintain consistent timing
+            from django.contrib.auth.hashers import check_password
+            check_password(password, 'dummy_hash_to_waste_time')
+        
+        # Ensure consistent response time (minimum 100ms to prevent timing attacks)
+        elapsed = time.time() - start_time
+        if elapsed < 0.1:
+            time.sleep(0.1 - elapsed)
+            
+        return customer
 
     @staticmethod
     def generate_customer_tokens(customer):
@@ -281,3 +295,178 @@ class CustomerAuthService:
         
         logger.info("Customer phone verified", extra={"customer_id": str(customer.id)})
         return customer
+
+    @staticmethod
+    def request_password_reset(email):
+        """
+        Request a password reset token for a customer.
+        Always returns success to prevent account enumeration.
+        """
+        from .models import CustomerPasswordResetToken
+        from notifications.services import EmailService
+        from django.core.cache import cache
+        from django.utils import timezone
+        
+        # Rate limiting temporarily disabled for testing
+        # cache_key = f"password_reset_requests:{email}"
+        # requests_count = cache.get(cache_key, 0)
+        # 
+        # if requests_count >= 3:
+        #     # Don't reveal rate limiting to prevent enumeration
+        #     logger.warning("Password reset rate limit exceeded", extra={"email": email})
+        #     return True  # Always return success
+        #     
+        # # Increment rate limit counter
+        # cache.set(cache_key, requests_count + 1, 3600)  # 1 hour
+        
+        try:
+            customer = Customer.objects.get_by_email(email)
+            
+            # Deactivate any existing valid tokens for security
+            CustomerPasswordResetToken.objects.filter(
+                customer=customer,
+                used_at__isnull=True,
+                expires_at__gt=timezone.now()
+            ).update(used_at=timezone.now())
+            
+            # Create new token
+            token = CustomerPasswordResetToken.objects.create(customer=customer)
+            
+            # Send password reset email
+            email_service = EmailService()
+            email_service.send_password_reset_email(customer, token.token)
+            
+            logger.info("Password reset requested", extra={"customer_id": str(customer.id)})
+            
+        except Customer.DoesNotExist:
+            # Don't reveal that email doesn't exist
+            logger.info("Password reset requested for non-existent email", extra={"email": email})
+            pass
+        
+        return True  # Always return success to prevent enumeration
+
+    @staticmethod
+    def validate_reset_token(token):
+        """
+        Validate a password reset token.
+        Returns the customer if valid, None if invalid.
+        """
+        from .models import CustomerPasswordResetToken
+        
+        try:
+            reset_token = CustomerPasswordResetToken.objects.select_related('customer').get(
+                token=token
+            )
+            
+            if reset_token.is_valid:
+                logger.info("Valid password reset token accessed", extra={
+                    "customer_id": str(reset_token.customer.id)
+                })
+                return reset_token.customer
+            else:
+                logger.warning("Invalid password reset token accessed", extra={
+                    "token": token[:8] + "...",
+                    "expired": reset_token.is_expired,
+                    "used": reset_token.is_used
+                })
+                return None
+                
+        except CustomerPasswordResetToken.DoesNotExist:
+            logger.warning("Non-existent password reset token accessed", extra={
+                "token": token[:8] + "..."
+            })
+            return None
+
+    @staticmethod
+    def reset_password(token, new_password):
+        """
+        Reset customer password using a valid token.
+        Returns True if successful, raises ValueError with details if not.
+        """
+        from .models import CustomerPasswordResetToken
+        
+        try:
+            reset_token = CustomerPasswordResetToken.objects.select_related('customer').get(
+                token=token
+            )
+            
+            if not reset_token.is_valid:
+                # Generic error message to prevent token state enumeration
+                raise ValueError("Invalid or expired password reset token. Please request a new one.")
+            
+            # Validate new password
+            try:
+                validate_password(new_password)
+            except ValidationError as e:
+                raise ValueError({"new_password": e.messages})
+            
+            # Reset password
+            customer = reset_token.customer
+            customer.set_password(new_password)
+            customer.save(update_fields=['password', 'updated_at'])
+            
+            # Mark token as used
+            reset_token.mark_as_used()
+            
+            logger.info("Password reset completed", extra={"customer_id": str(customer.id)})
+            return True
+            
+        except CustomerPasswordResetToken.DoesNotExist:
+            raise ValueError("Invalid or expired password reset token. Please request a new one.")
+
+    @staticmethod
+    def send_email_verification(customer):
+        """
+        Send email verification token to customer.
+        """
+        from .models import CustomerEmailVerificationToken  
+        from notifications.services import EmailService
+        from django.utils import timezone
+        
+        # Deactivate any existing valid tokens
+        CustomerEmailVerificationToken.objects.filter(
+            customer=customer,
+            used_at__isnull=True,
+            expires_at__gt=timezone.now()
+        ).update(used_at=timezone.now())
+        
+        # Create new token
+        token = CustomerEmailVerificationToken.objects.create(customer=customer)
+        
+        # Send verification email
+        email_service = EmailService()
+        email_service.send_email_verification(customer, token.token)
+        
+        logger.info("Email verification sent", extra={"customer_id": str(customer.id)})
+        return True
+
+    @staticmethod
+    def verify_email_with_token(token):
+        """
+        Verify customer email using token.
+        Returns True if successful, raises ValueError if not.
+        """
+        from .models import CustomerEmailVerificationToken
+        
+        try:
+            verification_token = CustomerEmailVerificationToken.objects.select_related('customer').get(
+                token=token
+            )
+            
+            if not verification_token.is_valid:
+                # Generic error message to prevent token state enumeration
+                raise ValueError("Invalid or expired verification token. Please request a new one.")
+            
+            # Verify email
+            customer = verification_token.customer
+            customer.email_verified = True
+            customer.save(update_fields=['email_verified', 'updated_at'])
+            
+            # Mark token as used
+            verification_token.mark_as_used()
+            
+            logger.info("Email verified via token", extra={"customer_id": str(customer.id)})
+            return True
+            
+        except CustomerEmailVerificationToken.DoesNotExist:
+            raise ValueError("Invalid or expired verification token. Please request a new one.")

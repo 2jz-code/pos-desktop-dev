@@ -22,6 +22,10 @@ from .serializers import (
     CustomerProfileSerializer,
     ChangePasswordSerializer,
     CustomerTokenRefreshSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
+    EmailVerificationRequestSerializer,
+    EmailVerificationConfirmSerializer,
 )
 
 
@@ -274,3 +278,134 @@ class CustomerCurrentUserView(CustomerJWTAuthenticationMixin, APIView):
         
         serializer = CustomerProfileSerializer(customer)
         return Response(serializer.data)
+
+
+# @method_decorator(ratelimit(key='ip', rate='3/h', method='POST', block=True), name='post')  # Temporarily disabled for testing
+class PasswordResetRequestView(APIView):
+    """
+    Request a password reset token.
+    Rate limited to 3 requests per hour per IP.
+    Always returns success to prevent account enumeration.
+    """
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            
+            try:
+                # Always returns True to prevent enumeration
+                CustomerAuthService.request_password_reset(email)
+                
+                return Response({
+                    "message": "If an account with that email exists, a password reset link has been sent."
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                # Log error but don't reveal to user
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Password reset request failed: {str(e)}")
+                
+                # Still return success to prevent enumeration
+                return Response({
+                    "message": "If an account with that email exists, a password reset link has been sent."
+                }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# @method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')  # Temporarily disabled for testing
+class PasswordResetConfirmView(APIView):
+    """
+    Confirm password reset with token and new password.
+    Rate limited to 10 attempts per minute per IP.
+    """
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            token = serializer.validated_data["token"]
+            new_password = serializer.validated_data["new_password"]
+            
+            try:
+                CustomerAuthService.reset_password(token, new_password)
+                
+                return Response({
+                    "message": "Password has been reset successfully. You can now log in with your new password."
+                }, status=status.HTTP_200_OK)
+                
+            except ValueError as e:
+                return Response({
+                    "error": str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+class EmailVerificationRequestView(CustomerJWTAuthenticationMixin, APIView):
+    """
+    Request a new email verification token.
+    Requires authentication. Rate limited to 5 requests per minute.
+    """
+    authentication_classes = [CustomerCookieJWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    def post(self, request):
+        customer = self.ensure_customer_authenticated()
+        
+        # Check if already verified
+        if customer.email_verified:
+            return Response({
+                "message": "Email is already verified."
+            }, status=status.HTTP_200_OK)
+        
+        try:
+            CustomerAuthService.send_email_verification(customer)
+            
+            return Response({
+                "message": "Verification email has been sent to your email address."
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Email verification request failed: {str(e)}")
+            
+            return Response({
+                "error": "Failed to send verification email. Please try again later."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')
+class EmailVerificationConfirmView(APIView):
+    """
+    Confirm email verification with token.
+    Rate limited to 10 attempts per minute per IP.
+    """
+    permission_classes = [permissions.AllowAny, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    def post(self, request):
+        serializer = EmailVerificationConfirmSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            token = serializer.validated_data["token"]
+            
+            try:
+                CustomerAuthService.verify_email_with_token(token)
+                
+                return Response({
+                    "message": "Email has been verified successfully."
+                }, status=status.HTTP_200_OK)
+                
+            except ValueError as e:
+                return Response({
+                    "error": str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

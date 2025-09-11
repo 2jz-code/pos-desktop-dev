@@ -16,6 +16,8 @@ const MenuPage = React.lazy(() => import("@/pages/menu"));
 const CheckoutPage = React.lazy(() => import("@/pages/CheckoutPage"));
 const LoginForm = React.lazy(() => import("@/components/auth/LoginForm"));
 const RegisterForm = React.lazy(() => import("@/components/auth/RegisterForm"));
+const ForgotPasswordForm = React.lazy(() => import("@/components/auth/ForgotPasswordForm"));
+const ResetPasswordForm = React.lazy(() => import("@/components/auth/ResetPasswordForm"));
 const DashboardPage = React.lazy(() => import("@/pages/DashboardPage"));
 const ConfirmationPage = React.lazy(() => import("@/pages/ConfirmationPage"));
 const NotFoundPage = React.lazy(() => import("@/pages/NotFoundPage"));
@@ -107,6 +109,14 @@ function App() {
 											<Route
 												path="/register"
 												element={<RegisterForm />}
+											/>
+											<Route
+												path="/forgot-password"
+												element={<ForgotPasswordForm />}
+											/>
+											<Route
+												path="/reset-password"
+												element={<ResetPasswordForm />}
 											/>
 											<Route
 												path="/dashboard/*"

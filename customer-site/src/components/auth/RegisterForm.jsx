@@ -389,7 +389,14 @@ const RegisterForm = () => {
 										</div>
 										<Progress
 											value={passwordStrength}
-											className="h-2"
+											className="h-2 bg-gray-200"
+											indicatorClassName={
+												passwordStrength < 30
+													? "bg-red-500"
+													: passwordStrength < 60
+													? "bg-yellow-500"
+													: "bg-green-500"
+											}
 										/>
 										<div className="grid grid-cols-2 gap-x-4 text-xs text-accent-dark-brown mt-1">
 											{passwordRequirements.map((req) => (
