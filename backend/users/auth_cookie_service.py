@@ -80,40 +80,6 @@ class AuthCookieService:
         return response
     
     @staticmethod
-    def set_customer_auth_cookies(response: Response, access_token: str, refresh_token: str) -> Response:
-        """
-        Set authentication cookies for customer users.
-        Uses customer-specific cookie names and paths.
-        """
-        cookie_settings = AuthCookieService.get_cookie_settings()
-        
-        # Customer cookies use different names and paths to avoid conflicts
-        access_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer"
-        refresh_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
-        
-        # Set customer access token cookie
-        response.set_cookie(
-            key=access_cookie_name,
-            value=access_token,
-            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
-            domain=None,
-            path="/",  # Use root path for customer endpoints
-            **cookie_settings
-        )
-        
-        # Set customer refresh token cookie
-        response.set_cookie(
-            key=refresh_cookie_name,
-            value=refresh_token,
-            max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
-            domain=None,
-            path="/",  # Use root path for customer endpoints
-            **cookie_settings
-        )
-        
-        return response
-    
-    @staticmethod
     def clear_all_auth_cookies(response: Response) -> Response:
         """
         Clear all authentication cookies (POS, admin, customer).
@@ -200,30 +166,6 @@ class AuthCookieService:
         return response
     
     @staticmethod
-    def clear_customer_auth_cookies(response: Response) -> Response:
-        """
-        Clear only customer authentication cookies.
-        """
-        cookie_settings = AuthCookieService.get_cookie_settings()
-        
-        customer_keys = [
-            f"{settings.SIMPLE_JWT['AUTH_COOKIE']}_customer",
-            f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
-        ]
-        
-        for key in customer_keys:
-            response.set_cookie(
-                key=key,
-                value="",
-                max_age=0,
-                path="/",
-                domain=None,
-                **cookie_settings
-            )
-        
-        return response
-    
-    @staticmethod
     def perform_complete_logout(request, response: Response) -> Response:
         """
         Perform complete logout including token blacklisting and cookie clearing.
@@ -292,35 +234,3 @@ class AuthCookieService:
                 "clear_cookies": True  # Signal to clear invalid cookies
             }
     
-    @staticmethod
-    def refresh_customer_token(request) -> dict:
-        """
-        Refresh customer token using customer-specific cookies.
-        """
-        refresh_cookie_name = f"{settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH']}_customer"
-        refresh_token = request.COOKIES.get(refresh_cookie_name)
-        
-        if not refresh_token:
-            return {
-                "success": False,
-                "error": "Refresh token not found.",
-                "clear_cookies": False
-            }
-        
-        try:
-            old_refresh = RefreshToken(refresh_token)
-            new_access = str(old_refresh.access_token)
-            
-            return {
-                "success": True,
-                "access_token": new_access,
-                "refresh_token": refresh_token,
-                "clear_cookies": False
-            }
-            
-        except TokenError as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "clear_cookies": True
-            }
