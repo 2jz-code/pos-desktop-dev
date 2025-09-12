@@ -686,6 +686,10 @@ CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_PLACE_ID = os.environ.get("GOOGLE_PLACE_ID")
 
+# Google OAuth2 settings for customer authentication
+GOOGLE_OAUTH2_CLIENT_ID = os.environ.get("GOOGLE_OAUTH2_CLIENT_ID")
+GOOGLE_OAUTH2_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH2_CLIENT_SECRET")
+
 
 EMAIL_BACKEND = os.environ.get(
     "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"

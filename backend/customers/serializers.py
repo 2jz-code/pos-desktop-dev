@@ -330,3 +330,58 @@ class EmailVerificationConfirmSerializer(serializers.Serializer):
         max_length=40,
         help_text="Email verification token from email"
     )
+
+
+class GoogleOAuthLoginSerializer(serializers.Serializer):
+    """
+    Serializer for Google OAuth login.
+    Accepts Google ID token and returns customer info with JWT tokens.
+    """
+    id_token = serializers.CharField(
+        max_length=2048,  # Google ID tokens can be quite long
+        help_text="Google ID token from frontend OAuth flow"
+    )
+    
+    def validate_id_token(self, value):
+        """Basic validation of ID token format"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("ID token cannot be empty")
+        
+        # Basic format check - Google ID tokens are JWTs with 3 parts
+        parts = value.split('.')
+        if len(parts) != 3:
+            raise serializers.ValidationError("Invalid ID token format")
+        
+        return value.strip()
+
+
+class GoogleOAuthLinkSerializer(serializers.Serializer):
+    """
+    Serializer for linking Google account to existing customer account.
+    Used by authenticated customers to link their Google account.
+    """
+    id_token = serializers.CharField(
+        max_length=2048,
+        help_text="Google ID token to link to current customer account"
+    )
+    
+    def validate_id_token(self, value):
+        """Basic validation of ID token format"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("ID token cannot be empty")
+        
+        parts = value.split('.')
+        if len(parts) != 3:
+            raise serializers.ValidationError("Invalid ID token format")
+        
+        return value.strip()
+
+
+class GoogleOAuthResponseSerializer(serializers.Serializer):
+    """
+    Serializer for Google OAuth response data.
+    Returns customer information and authentication status.
+    """
+    customer = CustomerProfileSerializer(read_only=True)
+    is_new_customer = serializers.BooleanField(read_only=True)
+    message = serializers.CharField(read_only=True)

@@ -16,6 +16,10 @@ from .views import (
     EmailVerificationRequestView,
     EmailVerificationConfirmView,
 )
+from .google_oauth_views import (
+    GoogleOAuthLoginView,
+    GoogleOAuthLinkView,
+)
 from .order_views import CustomerOrderViewSet
 
 # Create router for customer order endpoints
@@ -43,6 +47,10 @@ urlpatterns = [
     # Email verification endpoints
     path("email-verification/request/", EmailVerificationRequestView.as_view(), name="email_verification_request"),
     path("email-verification/confirm/", EmailVerificationConfirmView.as_view(), name="email_verification_confirm"),
+    
+    # Google OAuth endpoints
+    path("oauth/google/login/", GoogleOAuthLoginView.as_view(), name="google_oauth_login"),
+    path("oauth/google/link/", GoogleOAuthLinkView.as_view(), name="google_oauth_link"),
     
     # Customer order endpoints
     path("", include(router.urls)),

@@ -104,6 +104,22 @@ export const authAPI = {
 			}
 		}
 	},
+
+	// Google OAuth login
+	googleLogin: async (idToken) => {
+		const response = await apiClient.post("/customers/oauth/google/login/", {
+			id_token: idToken,
+		});
+		return response.data;
+	},
+
+	// Link Google account to existing customer account
+	linkGoogleAccount: async (idToken) => {
+		const response = await apiClient.post("/customers/oauth/google/link/", {
+			id_token: idToken,
+		});
+		return response.data;
+	},
 };
 
 export default authAPI;

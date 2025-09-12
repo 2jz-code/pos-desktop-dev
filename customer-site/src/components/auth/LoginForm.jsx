@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import GoogleOAuthButton from "./GoogleOAuthButton";
 
 const LoginForm = () => {
 	const [username, setUsername] = useState("");
@@ -194,6 +195,24 @@ const LoginForm = () => {
 							>
 								{isLoading ? "Signing in..." : "Sign In"}
 							</Button>
+
+							{/* OR Divider */}
+							<div className="relative">
+								<div className="absolute inset-0 flex items-center">
+									<div className="w-full border-t border-accent-subtle-gray/50" />
+								</div>
+								<div className="relative flex justify-center text-xs">
+									<span className="bg-accent-light-beige px-2 text-accent-dark-brown">
+										OR
+									</span>
+								</div>
+							</div>
+
+							{/* Google OAuth Button */}
+							<GoogleOAuthButton 
+								mode="login"
+								disabled={isLoading}
+							/>
 
 							{/* Register Link */}
 							<div className="text-center">
