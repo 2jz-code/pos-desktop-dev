@@ -245,6 +245,10 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
     characterSet: "PC437_USA",
     interface: "tcp://dummy"
   });
+  printer.println("");
+  printer.println("");
+  printer.println("");
+  printer.println("");
   printer.alignCenter();
   printer.bold(true);
   printer.setTextSize(1, 1);
@@ -333,8 +337,6 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
     }
     printer.println("");
   }
-  printer.println("");
-  printer.println("");
   printer.cut();
   return printer.getBuffer();
 }

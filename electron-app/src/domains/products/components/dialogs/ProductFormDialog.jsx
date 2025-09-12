@@ -79,9 +79,7 @@ export function ProductFormDialog({
 			// Axios responses vs direct data handling - handle paginated responses
 			const categoriesData = categoriesRes.data?.results || categoriesRes.data || categoriesRes;
 			const typesData = typesRes.data?.results || typesRes.data || typesRes;
-			const locationsData = Array.isArray(locationsRaw)
-				? locationsRaw
-				: locationsRaw?.data ?? [];
+			const locationsData = locationsRaw?.results || locationsRaw?.data?.results || locationsRaw?.data || locationsRaw || [];
 
 			setCategories(categoriesData);
 			setProductTypes(typesData);
