@@ -5,13 +5,17 @@
 
 {% block content %}
 <div style="max-width: 800px; margin: 20px;">
-    <h1>Legacy Data Migration</h1>
-    <p>Click the button below to run the legacy data migration (with --all flag).</p>
+    <h1>Customer Migration</h1>
+    <p>Click the button below to migrate customer users from the users table to the customers model. This will preserve all customer data including passwords and account information.</p>
+    
+    <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 10px; margin: 15px 0;">
+        <strong>⚠️ Important:</strong> This will migrate users with <code>is_pos_staff=False</code> to the customers model. Make sure to verify which users will be migrated before running.
+    </div>
     
     <form method="post">
         {% csrf_token %}
-        <button type="submit" style="background-color: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
-            Run Migration
+        <button type="submit" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
+            Migrate Customers
         </button>
     </form>
     
