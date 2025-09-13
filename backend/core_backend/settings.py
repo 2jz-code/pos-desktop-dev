@@ -151,7 +151,7 @@ RATELIMIT_USE_CACHE = "default"
 # Use X-Forwarded-For in production, but disable rate limiting if header issues occur
 # RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
 # Default view for blocked rate-limited requests
-RATELIMIT_VIEW = 'core_backend.views.ratelimited429'
+RATELIMIT_VIEW = "core_backend.views.ratelimited429"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -685,10 +685,6 @@ CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID")
 # ==============================================================================
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_PLACE_ID = os.environ.get("GOOGLE_PLACE_ID")
-
-# Google OAuth2 settings for customer authentication
-GOOGLE_OAUTH2_CLIENT_ID = os.environ.get("GOOGLE_OAUTH2_CLIENT_ID")
-GOOGLE_OAUTH2_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH2_CLIENT_SECRET")
 
 
 EMAIL_BACKEND = os.environ.get(

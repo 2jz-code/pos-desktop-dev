@@ -385,8 +385,7 @@ const OrderDetailsPage = () => {
 								</CardContent>
 								<CardFooter className="flex flex-wrap justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
 									{["COMPLETED", "PENDING", "HOLD"].includes(status) &&
-										(["POS", "WEB"].includes(order.order_type) || isDeliveryPlatform(order.order_type)) &&
-										permissions?.canCancelOrders() && (
+										(["POS", "WEB"].includes(order.order_type) || isDeliveryPlatform(order.order_type)) && (
 											<Button
 												variant="outline"
 												onClick={handlePrintReceipt}
