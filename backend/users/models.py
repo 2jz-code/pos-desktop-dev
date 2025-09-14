@@ -22,15 +22,9 @@ class UserManager(SoftDeleteManager, BaseUserManager):
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
 
-        # Automatically set is_pos_staff for staff roles
-        role = extra_fields.get("role", User.Role.CUSTOMER)
-        if role in [
-            User.Role.OWNER,
-            User.Role.ADMIN,
-            User.Role.MANAGER,
-            User.Role.CASHIER,
-        ]:
-            user.is_pos_staff = True
+        # Automatically set is_pos_staff for all staff roles (all roles are now staff)
+        role = extra_fields.get("role", User.Role.CASHIER)
+        user.is_pos_staff = True
 
         user.save(using=self._db)
         return user
@@ -60,7 +54,6 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         ADMIN = "ADMIN", _("Admin")
         MANAGER = "MANAGER", _("Manager")
         CASHIER = "CASHIER", _("Cashier")
-        CUSTOMER = "CUSTOMER", _("Customer")
 
     email = models.EmailField(_("email address"), unique=True)
     username = models.CharField(
@@ -69,7 +62,7 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         unique=True,
         blank=True,
         null=True,
-        help_text=_("A unique username for POS login. Can be blank for customers."),
+        help_text=_("A unique username for POS login."),
     )
     first_name = models.CharField(_("first name"), max_length=150, blank=True)
     last_name = models.CharField(_("last name"), max_length=150, blank=True)
@@ -78,7 +71,7 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
     )
 
     role = models.CharField(
-        _("role"), max_length=50, choices=Role.choices, default=Role.CUSTOMER
+        _("role"), max_length=50, choices=Role.choices, default=Role.CASHIER
     )
 
     # Quick fix: Flag to filter POS interface without major refactoring
@@ -103,6 +96,7 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         help_text=_("Designates whether the user can log into this admin site."),
     )
     date_joined = models.DateTimeField(_("date joined"), default=timezone.now)
+    updated_at = models.DateTimeField(_("updated at"), auto_now=True)
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The user ID from the old system.")
 

@@ -12,7 +12,7 @@ import sys
 
 @staff_member_required
 def legacy_migration_view(request):
-    """Simple view to run legacy data migration with --all flag."""
+    """Simple view to run customer migration from users to customers model."""
     
     if request.method == 'POST':
         try:
@@ -22,10 +22,10 @@ def legacy_migration_view(request):
             sys.stdout = stdout_capture
             
             try:
-                # Run migration with --all flag
-                call_command('migrate_legacy_data', '--all')
+                # Run customer migration command
+                call_command('migrate_users_to_customers', '--force')
                 output = stdout_capture.getvalue()
-                messages.success(request, 'Migration completed successfully!')
+                messages.success(request, 'Customer migration completed successfully!')
                 
             finally:
                 sys.stdout = old_stdout
@@ -35,13 +35,13 @@ def legacy_migration_view(request):
             output = f'Error: {str(e)}'
         
         context = {
-            'title': 'Legacy Data Migration',
+            'title': 'Customer Migration',
             'output': output,
         }
         return render(request, 'admin/legacy_migration.html', context)
     
     # GET request - show the form
     context = {
-        'title': 'Legacy Data Migration',
+        'title': 'Customer Migration',
     }
     return render(request, 'admin/legacy_migration.html', context)

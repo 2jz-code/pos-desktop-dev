@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from products.models import Product
 from users.models import User
+from customers.models import Customer
 from discounts.models import Discount
 import random
 import string
@@ -86,11 +87,11 @@ class Order(models.Model):
 
     # --- Relationships ---
     customer = models.ForeignKey(
-        User,
+        Customer,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="orders_as_customer",
+        related_name="orders",
     )
     cashier = models.ForeignKey(
         User,

@@ -50,6 +50,17 @@ class SetPinSerializer(serializers.Serializer):
         style={"input_type": "password"},
     )
 
+    def validate_pin(self, value: str) -> str:
+        # Numeric-only 4–6 digits, disallow trivial sequences
+        if not value.isdigit():
+            raise serializers.ValidationError("PIN must be numeric.")
+        if not (4 <= len(value) <= 6):
+            raise serializers.ValidationError("PIN must be 4 to 6 digits.")
+        trivial = {"0000", "1111", "1234", "0123", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"}
+        if value in trivial:
+            raise serializers.ValidationError("Choose a less guessable PIN.")
+        return value
+
     def update(self, instance, validated_data):
         instance.set_pin(validated_data["pin"])
         return instance

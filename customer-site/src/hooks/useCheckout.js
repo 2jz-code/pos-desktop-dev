@@ -388,7 +388,7 @@ export const useCheckout = () => {
 								name:
 									user.first_name && user.last_name
 										? `${user.first_name} ${user.last_name}`
-										: user.username,
+										: user.first_name || user.email,
 								email: user.email,
 							},
 						},
@@ -480,7 +480,7 @@ export const useCheckout = () => {
 					name:
 						isAuthenticated && user
 							? `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
-							  user.username
+							  user.first_name || user.email
 							: `${formData.firstName} ${formData.lastName}`,
 					email: isAuthenticated && user ? user.email : formData.email,
 					phone:

@@ -1,5 +1,9 @@
 from rest_framework import permissions
+from django.conf import settings
 from .models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class IsOwner(permissions.BasePermission):
@@ -108,3 +112,76 @@ class StockReasonOwnerPermission(permissions.BasePermission):
             return False
 
         return True
+
+
+class RequiresAntiCSRFHeader(permissions.BasePermission):
+    """
+    Minimal CSRF guard for cookie-based auth endpoints.
+    For unsafe methods, require either X-CSRF-Token or X-Requested-With header.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Allow opt-out via settings if needed
+        enabled = getattr(settings, 'ENABLE_CSRF_HEADER_CHECK', True)
+        if not enabled:
+            return True
+
+        token = request.headers.get('X-CSRF-Token')
+        xrw = request.headers.get('X-Requested-With')
+        allowed = bool(token) or (xrw and xrw.lower() == 'xmlhttprequest')
+        if not allowed:
+            try:
+                origin = request.headers.get('Origin')
+                referer = request.headers.get('Referer')
+                ip = request.META.get('REMOTE_ADDR')
+                logger.warning(
+                    "CSRF header guard denied request: method=%s path=%s origin=%s referer=%s ip=%s",
+                    request.method,
+                    request.get_full_path(),
+                    origin,
+                    referer,
+                    ip,
+                )
+            except Exception:
+                # Best-effort logging; do not break permission evaluation
+                logger.warning("CSRF header guard denied request (logging details unavailable)")
+        return allowed
+
+
+class DoubleSubmitCSRFPremission(permissions.BasePermission):
+    """
+    Enforce double-submit CSRF on unsafe methods:
+    - Client must send header X-CSRF-Token matching cookie csrf_token.
+    - Gated by ENABLE_DOUBLE_SUBMIT_CSRF setting.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not getattr(settings, 'ENABLE_DOUBLE_SUBMIT_CSRF', False):
+            return True
+
+        header_token = request.headers.get('X-CSRF-Token') or request.headers.get('X-CSRFToken')
+        cookie_token = request.COOKIES.get('csrf_token')
+
+        ok = bool(header_token) and cookie_token and (header_token == cookie_token)
+        if not ok:
+            try:
+                origin = request.headers.get('Origin')
+                referer = request.headers.get('Referer')
+                ip = request.META.get('REMOTE_ADDR')
+                logger.warning(
+                    "Double-submit CSRF failed: method=%s path=%s origin=%s referer=%s ip=%s",
+                    request.method,
+                    request.get_full_path(),
+                    origin,
+                    referer,
+                    ip,
+                )
+            except Exception:
+                logger.warning("Double-submit CSRF failed (logging details unavailable)")
+        return ok

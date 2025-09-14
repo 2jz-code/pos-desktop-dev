@@ -1,4 +1,5 @@
 from django.urls import path
+from django.conf import settings
 from .views import (
     UserViewSet,
     SetPinView,
@@ -21,8 +22,8 @@ urlpatterns = [
     path("token/refresh/", WebTokenRefreshView.as_view(), name="token-refresh"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("me/", CurrentUserView.as_view(), name="me"),
-    # Debug
-    path("debug/cookies/", DebugCookiesView.as_view(), name="debug-cookies"),
+    # Debug (included only in DEBUG mode)
+    *([path("debug/cookies/", DebugCookiesView.as_view(), name="debug-cookies")] if settings.DEBUG else []),
     
     # User Management - Explicit ViewSet actions (following products app pattern)
     path("", UserViewSet.as_view({'get': 'list', 'post': 'create'}), name="user-list"),

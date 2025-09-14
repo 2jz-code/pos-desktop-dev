@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "payments",
     "discounts",
     "users.apps.UsersConfig",
+    "customers.apps.CustomersConfig",
     "settings",
     "integrations",
     "notifications",
@@ -90,11 +91,13 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_ratelimit.middleware.RatelimitMiddleware",
-    "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement
+    # "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement - TEMPORARILY DISABLED FOR TESTING
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
+    # Global CSRF enforcement for API endpoints (cookie-JWT flows)
+    "core_backend.infrastructure.csrf_api_middleware.CSRFApiMiddleware",
 ]
 
 INTERNAL_IPS = [
@@ -146,7 +149,9 @@ DATABASES = {
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
 # Use X-Forwarded-For in production, but disable rate limiting if header issues occur
-RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
+# RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
+# Default view for blocked rate-limited requests
+RATELIMIT_VIEW = "core_backend.views.ratelimited429"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -289,6 +294,7 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "user-agent",
     "x-csrftoken",
+    "x-csrf-token",
     "x-requested-with",
     "x-client-type",
     "x-client-version",
@@ -342,7 +348,9 @@ if not DEBUG:
 
     # Cookie security
     CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = "None"
 
     # Additional security headers
     SECURE_BROWSER_XSS_FILTER = True
@@ -409,6 +417,23 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "Lax",
     "AUTH_COOKIE_PERSISTENT": True,
 }
+
+# Admin-specific cookie names to avoid collisions with POS cookies
+SIMPLE_JWT_ADMIN = {
+    "AUTH_COOKIE": "access_token_admin",
+    "AUTH_COOKIE_REFRESH": "refresh_token_admin",
+}
+
+# CSRF header guard toggle (stopgap for cookie-JWT flows)
+# Set via env: ENABLE_CSRF_HEADER_CHECK=true to enforce header on unsafe methods
+ENABLE_CSRF_HEADER_CHECK = (
+    os.getenv("ENABLE_CSRF_HEADER_CHECK", "False").lower() == "true"
+)
+
+# Double-submit CSRF toggle
+ENABLE_DOUBLE_SUBMIT_CSRF = (
+    os.getenv("ENABLE_DOUBLE_SUBMIT_CSRF", "False").lower() == "true"
+)
 
 # Multi-tier Redis cache configuration
 CACHES = {
@@ -663,6 +688,10 @@ CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 GOOGLE_PLACE_ID = os.environ.get("GOOGLE_PLACE_ID")
 
+# Google OAuth2 settings for customer authentication
+GOOGLE_OAUTH2_CLIENT_ID = os.environ.get("GOOGLE_OAUTH2_CLIENT_ID")
+GOOGLE_OAUTH2_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH2_CLIENT_SECRET")
+
 
 EMAIL_BACKEND = os.environ.get(
     "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
@@ -903,3 +932,6 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
 }
+
+# Customer site URL for email links and redirects
+CUSTOMER_SITE_URL = os.getenv("CUSTOMER_SITE_URL", "http://192.168.5.144:5174")

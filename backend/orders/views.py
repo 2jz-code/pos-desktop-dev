@@ -27,10 +27,8 @@ from .permissions import (
 )
 from rest_framework.permissions import AllowAny
 from users.permissions import IsAdminOrHigher
-from users.authentication import (
-    CustomerCookieJWTAuthentication,
-    CookieJWTAuthentication,
-)
+from customers.authentication import CustomerCookieJWTAuthentication
+from users.authentication import CookieJWTAuthentication
 from products.models import Product
 from payments.models import Payment
 from payments.strategies import StripeTerminalStrategy

@@ -2,6 +2,34 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User
 from .forms import UserAdminChangeForm, UserAdminCreationForm
+from django.core.cache import cache
+from django.contrib import messages
+
+
+def _norm_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+@admin.action(description="Clear admin/web login locks for selected users")
+def clear_login_locks(modeladmin, request, queryset):
+    cleared = 0
+    for user in queryset:
+        email = _norm_email(getattr(user, "email", ""))
+        if not email:
+            continue
+        keys = [
+            f"admin_login_fail:{email}",
+            f"admin_login_lock:{email}",
+            f"web_login_fail:{email}",
+            f"web_login_lock:{email}",
+        ]
+        cache.delete_many(keys)
+        cleared += 1
+    modeladmin.message_user(
+        request,
+        f"Cleared login locks for {cleared} user(s).",
+        level=messages.SUCCESS,
+    )
 
 
 @admin.register(User)
@@ -69,3 +97,5 @@ class UserAdmin(BaseUserAdmin):
     )
 
     # PIN is managed via API, so we don't include it in the admin forms.
+
+    actions = [clear_login_locks]

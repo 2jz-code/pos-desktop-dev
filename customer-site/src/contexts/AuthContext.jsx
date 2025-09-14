@@ -46,8 +46,8 @@ export default function AuthContextProvider({ children }) {
 			setIsLoading(true);
 			const response = await authAPI.login(credentials);
 
-			if (response.user) {
-				setUser(response.user);
+			if (response.customer) {
+				setUser(response.customer);
 				setIsAuthenticated(true);
 				// Clear all cart cache and refetch - the backend will handle cart association
 				queryClient.invalidateQueries({ queryKey: cartKeys.all });
@@ -74,8 +74,8 @@ export default function AuthContextProvider({ children }) {
 			setIsLoading(true);
 			const response = await authAPI.register(userData);
 
-			if (response.user) {
-				setUser(response.user);
+			if (response.customer) {
+				setUser(response.customer);
 				setIsAuthenticated(true);
 				// Clear all cart cache and refetch - the backend will handle cart association
 				queryClient.invalidateQueries({ queryKey: cartKeys.all });
@@ -124,8 +124,8 @@ export default function AuthContextProvider({ children }) {
 
 	const updateProfile = async (profileData) => {
 		try {
-			const updatedUser = await authAPI.updateProfile(profileData);
-			setUser(updatedUser);
+			const updatedCustomer = await authAPI.updateProfile(profileData);
+			setUser(updatedCustomer);
 			toast.success("Profile updated successfully");
 			return { success: true };
 		} catch (error) {

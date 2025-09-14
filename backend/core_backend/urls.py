@@ -25,8 +25,10 @@ from .views import (
     warm_caches,
     invalidate_cache,
     cache_statistics,
+    issue_csrf_token,
 )
 from .admin_views import legacy_migration_view
+from .admin_lockout import locking_admin_site
 
 
 def health_check(request):
@@ -37,16 +39,16 @@ def health_check(request):
 urlpatterns = [
     path("api/health/", health_check, name="health_check"),
     path("admin/legacy-migration/", legacy_migration_view, name="legacy_migration"),
-    path("admin/", admin.site.urls),
+    path("admin/", locking_admin_site.urls),
     # Cache monitoring endpoints (admin only)
     path("api/cache/health/", cache_health_check, name="cache_health_check"),
     path("api/cache/warm/", warm_caches, name="warm_caches"),
     path("api/cache/invalidate/", invalidate_cache, name="invalidate_cache"),
     path("api/cache/stats/", cache_statistics, name="cache_statistics"),
+    path("api/security/csrf/", issue_csrf_token, name="issue_csrf_token"),
     path("api/users/", include("users.urls")),
-    path(
-        "api/auth/customer/", include("users.customer_urls")
-    ),  # Customer authentication
+    # Customer app (new)
+    path("api/customers/", include("customers.urls")),
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***

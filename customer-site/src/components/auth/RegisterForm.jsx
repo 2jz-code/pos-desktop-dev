@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import ComingSoonWrapper from "../utility/ComingSoonWrapper";
+import GoogleOAuthButton from "./GoogleOAuthButton";
 // import TermsOfService from "@/pages/TermsOfService";
 // import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
@@ -389,7 +390,14 @@ const RegisterForm = () => {
 										</div>
 										<Progress
 											value={passwordStrength}
-											className="h-2"
+											className="h-2 bg-gray-200"
+											indicatorClassName={
+												passwordStrength < 30
+													? "bg-red-500"
+													: passwordStrength < 60
+													? "bg-yellow-500"
+													: "bg-green-500"
+											}
 										/>
 										<div className="grid grid-cols-2 gap-x-4 text-xs text-accent-dark-brown mt-1">
 											{passwordRequirements.map((req) => (
@@ -504,6 +512,24 @@ const RegisterForm = () => {
 							>
 								{isLoading ? "Creating Account..." : "Create Account"}
 							</Button>
+
+							{/* OR Divider */}
+							<div className="relative">
+								<div className="absolute inset-0 flex items-center">
+									<div className="w-full border-t border-accent-subtle-gray/50" />
+								</div>
+								<div className="relative flex justify-center text-xs">
+									<span className="bg-accent-light-beige px-2 text-accent-dark-brown">
+										OR
+									</span>
+								</div>
+							</div>
+
+							{/* Google OAuth Button */}
+							<GoogleOAuthButton 
+								mode="register"
+								disabled={isLoading}
+							/>
 
 							{/* Login Link */}
 							<div className="text-center">

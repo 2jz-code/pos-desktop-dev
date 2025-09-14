@@ -1,6 +1,9 @@
+"""
+Customer app URL configuration.
+"""
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .customer_views import (
+from .views import (
     CustomerRegisterView,
     CustomerLoginView,
     CustomerLogoutView,
@@ -8,14 +11,22 @@ from .customer_views import (
     CustomerProfileView,
     CustomerChangePasswordView,
     CustomerCurrentUserView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
+    EmailVerificationRequestView,
+    EmailVerificationConfirmView,
 )
-from .customer_order_views import CustomerOrderViewSet
+from .google_oauth_views import (
+    GoogleOAuthLoginView,
+    GoogleOAuthLinkView,
+)
+from .order_views import CustomerOrderViewSet
 
 # Create router for customer order endpoints
 router = DefaultRouter()
 router.register(r'orders', CustomerOrderViewSet, basename='customer-orders')
 
-app_name = "customer_auth"
+app_name = "customers"
 
 urlpatterns = [
     # Authentication endpoints
@@ -29,6 +40,18 @@ urlpatterns = [
     path("current-user/", CustomerCurrentUserView.as_view(), name="current_user"),
     path("change-password/", CustomerChangePasswordView.as_view(), name="change_password"),
     
+    # Password reset endpoints
+    path("password-reset/request/", PasswordResetRequestView.as_view(), name="password_reset_request"),
+    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
+    
+    # Email verification endpoints
+    path("email-verification/request/", EmailVerificationRequestView.as_view(), name="email_verification_request"),
+    path("email-verification/confirm/", EmailVerificationConfirmView.as_view(), name="email_verification_confirm"),
+    
+    # Google OAuth endpoints
+    path("oauth/google/login/", GoogleOAuthLoginView.as_view(), name="google_oauth_login"),
+    path("oauth/google/link/", GoogleOAuthLinkView.as_view(), name="google_oauth_link"),
+    
     # Customer order endpoints
     path("", include(router.urls)),
-] 
+]

@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import { Toaster } from "sonner";
 import { LazyMotion, domAnimation } from "framer-motion";
 import Layout from "./components/layout/Layout";
@@ -16,6 +17,8 @@ const MenuPage = React.lazy(() => import("@/pages/menu"));
 const CheckoutPage = React.lazy(() => import("@/pages/CheckoutPage"));
 const LoginForm = React.lazy(() => import("@/components/auth/LoginForm"));
 const RegisterForm = React.lazy(() => import("@/components/auth/RegisterForm"));
+const ForgotPasswordForm = React.lazy(() => import("@/components/auth/ForgotPasswordForm"));
+const ResetPasswordForm = React.lazy(() => import("@/components/auth/ResetPasswordForm"));
 const DashboardPage = React.lazy(() => import("@/pages/DashboardPage"));
 const ConfirmationPage = React.lazy(() => import("@/pages/ConfirmationPage"));
 const NotFoundPage = React.lazy(() => import("@/pages/NotFoundPage"));
@@ -70,86 +73,96 @@ const queryClient = new QueryClient({
 
 function App() {
 	return (
-		<QueryClientProvider client={queryClient}>
-			<AuthContextProvider>
-				<StoreStatusProvider>
-					<CartSidebarProvider>
-						<DashboardProvider>
-						<LazyMotion features={domAnimation}>
-							<Router>
-								<Layout>
-									<Suspense fallback={<PageSkeleton />}>
-										<Routes>
-											<Route
-												path="/"
-												element={<HomePage />}
-											/>
-											<Route
-												path="/menu"
-												element={<MenuPage />}
-											/>
-											<Route
-												path="/product/:productName"
-												element={<ProductDetailsPage />}
-											/>
-											<Route
-												path="/product/:productName/edit/:cartItemId"
-												element={<ProductDetailsPage />}
-											/>
-											<Route
-												path="/checkout"
-												element={<CheckoutPage />}
-											/>
-											<Route
-												path="/login"
-												element={<LoginForm />}
-											/>
-											<Route
-												path="/register"
-												element={<RegisterForm />}
-											/>
-											<Route
-												path="/dashboard/*"
-												element={<DashboardPage />}
-											/>
-											<Route
-												path="/confirmation"
-												element={<ConfirmationPage />}
-											/>
-											<Route
-												path="*"
-												element={<NotFoundPage />}
-											/>
-										</Routes>
-									</Suspense>
-								</Layout>
-							</Router>
-						</LazyMotion>
-						</DashboardProvider>
-					</CartSidebarProvider>
-				</StoreStatusProvider>
-			</AuthContextProvider>
+		<GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+			<QueryClientProvider client={queryClient}>
+				<AuthContextProvider>
+					<StoreStatusProvider>
+						<CartSidebarProvider>
+							<DashboardProvider>
+								<LazyMotion features={domAnimation}>
+									<Router>
+										<Layout>
+											<Suspense fallback={<PageSkeleton />}>
+												<Routes>
+													<Route
+														path="/"
+														element={<HomePage />}
+													/>
+													<Route
+														path="/menu"
+														element={<MenuPage />}
+													/>
+													<Route
+														path="/product/:productName"
+														element={<ProductDetailsPage />}
+													/>
+													<Route
+														path="/product/:productName/edit/:cartItemId"
+														element={<ProductDetailsPage />}
+													/>
+													<Route
+														path="/checkout"
+														element={<CheckoutPage />}
+													/>
+													<Route
+														path="/login"
+														element={<LoginForm />}
+													/>
+													<Route
+														path="/register"
+														element={<RegisterForm />}
+													/>
+													<Route
+														path="/forgot-password"
+														element={<ForgotPasswordForm />}
+													/>
+													<Route
+														path="/reset-password"
+														element={<ResetPasswordForm />}
+													/>
+													<Route
+														path="/dashboard/*"
+														element={<DashboardPage />}
+													/>
+													<Route
+														path="/confirmation"
+														element={<ConfirmationPage />}
+													/>
+													<Route
+														path="*"
+														element={<NotFoundPage />}
+													/>
+												</Routes>
+											</Suspense>
+										</Layout>
+									</Router>
+								</LazyMotion>
+							</DashboardProvider>
+						</CartSidebarProvider>
+					</StoreStatusProvider>
+				</AuthContextProvider>
 
-			{/* Toast notifications */}
-			<Toaster
-				position="bottom-left"
-				richColors
-				closeButton
-				toastOptions={{
-					duration: 1500,
-					className:
-						"group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-				}}
-			/>
-
-			{/* React Query DevTools - only in development */}
-			{import.meta.env.DEV && (
-				<ReactQueryDevtools
-					initialIsOpen={false}
-					position="bottom-right"
+				{/* Toast notifications */}
+				<Toaster
+					position="bottom-left"
+					richColors
+					closeButton
+					toastOptions={{
+						duration: 1500,
+						className:
+							"group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+					}}
 				/>
-			)}
-		</QueryClientProvider>
+
+				{/* React Query DevTools - only in development */}
+				{import.meta.env.DEV && (
+					<ReactQueryDevtools
+						initialIsOpen={false}
+						position="bottom-right"
+					/>
+				)}
+			</QueryClientProvider>
+		</GoogleOAuthProvider>
 	);
 }
 

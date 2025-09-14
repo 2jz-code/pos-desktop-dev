@@ -196,10 +196,13 @@ class OrderSerializer(BaseModelSerializer):
             "created_at",
             "updated_at",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details"]  # Fix: add payment_details
+        select_related_fields = ["customer", "cashier", "payment_details"]
         prefetch_related_fields = [
-            Prefetch('items', queryset=OrderItem.objects.select_related('product').prefetch_related('selected_modifiers_snapshot')),
+            Prefetch('items', queryset=OrderItem.objects.select_related(
+                'product__category', 'product__product_type'
+            ).prefetch_related('selected_modifiers_snapshot')),
             Prefetch('applied_discounts', queryset=OrderDiscount.objects.select_related('discount')),
+            Prefetch('payment_details__transactions')
         ]
 
     def get_payment_details(self, obj):

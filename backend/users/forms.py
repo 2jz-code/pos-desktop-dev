@@ -26,6 +26,15 @@ class UserAdminCreationForm(forms.ModelForm):
             raise forms.ValidationError(_("Passwords don't match."))
         return cd["password2"]
 
+    def clean_pin(self):
+        pin = self.cleaned_data.get("pin")
+        if pin:
+            if not pin.isdigit() or not (4 <= len(pin) <= 6):
+                raise forms.ValidationError("PIN must be 4 to 6 digits and numeric.")
+            if pin in {"0000", "1111", "1234", "0123", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"}:
+                raise forms.ValidationError("Choose a less guessable PIN.")
+        return pin
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data["password"])
@@ -63,6 +72,15 @@ class UserAdminChangeForm(forms.ModelForm):
         # This is prevents the password from being changed unless the separate
         # form is used.
         return self.initial["password"]
+
+    def clean_pin(self):
+        pin = self.cleaned_data.get("pin")
+        if pin:
+            if not pin.isdigit() or not (4 <= len(pin) <= 6):
+                raise forms.ValidationError("PIN must be 4 to 6 digits and numeric.")
+            if pin in {"0000", "1111", "1234", "0123", "2222", "3333", "4444", "5555", "6666", "7777", "8888", "9999"}:
+                raise forms.ValidationError("Choose a less guessable PIN.")
+        return pin
 
     def save(self, commit=True):
         user = super().save(commit=False)

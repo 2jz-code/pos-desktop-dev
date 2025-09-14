@@ -348,6 +348,12 @@ export function formatKitchenTicket(
 	});
 
 	// --- Header ---
+	// Add top margin to prevent ticket holder from covering order info
+	printer.println("");
+	printer.println("");
+	printer.println("");
+	printer.println("");
+	
 	printer.alignCenter();
 	printer.bold(true);
 	printer.setTextSize(1, 1);
@@ -466,10 +472,6 @@ export function formatKitchenTicket(
 		printer.println(""); // Add space after each category
 	}
 
-	// Remove the footer that shows item counts
-	// --- Footer ---
-	printer.println("");
-	printer.println("");
 	printer.cut();
 
 	return printer.getBuffer();

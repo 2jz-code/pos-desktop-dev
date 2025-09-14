@@ -15,18 +15,55 @@ const apiClient = axios.create({
 	timeout: 10000, // 10 second timeout
 });
 
+// Bare client without interceptors for CSRF token fetch
+const baseClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  timeout: 10000,
+});
+
+let csrfToken = null;
+let csrfPromise = null;
+
+async function ensureCsrfToken() {
+  if (csrfToken) return csrfToken;
+  if (!csrfPromise) {
+    csrfPromise = baseClient
+      .get("/security/csrf/")
+      .then((res) => {
+        csrfToken = res?.data?.csrfToken || null;
+        return csrfToken;
+      })
+      .finally(() => {
+        csrfPromise = null;
+      });
+  }
+  return csrfPromise;
+}
+
 // Request interceptor to add authentication if needed
 apiClient.interceptors.request.use(
-	(config) => {
+	async (config) => {
 		// Add any auth tokens here if you're using token-based auth
 		// const token = localStorage.getItem('token');
 		// if (token) {
 		//   config.headers.Authorization = `Bearer ${token}`;
 		// }
 
-		console.log(
-			`🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`
-		);
+		// CSRF: Add required headers on unsafe methods
+		const method = (config.method || 'get').toLowerCase();
+		if (!['get','head','options'].includes(method)) {
+			config.headers = config.headers || {};
+			config.headers['X-Requested-With'] = 'XMLHttpRequest';
+			try {
+				const token = await ensureCsrfToken();
+				if (token) {
+					config.headers['X-CSRF-Token'] = token;
+				}
+			} catch (_) {}
+		}
+
+		// console log is noisy; keep minimal if needed
 		return config;
 	},
 	(error) => {
@@ -49,6 +86,28 @@ apiClient.interceptors.response.use(
 			// Server responded with error status
 			const { status, data } = error.response;
 			const originalRequest = error.config;
+
+			// CSRF 403 auto-refresh + one-time retry for unsafe methods
+			const method = (originalRequest?.method || 'get').toLowerCase();
+			if (
+				status === 403 &&
+				!originalRequest?._csrfRetry &&
+				!['get','head','options'].includes(method)
+			) {
+				originalRequest._csrfRetry = true;
+				try {
+					const res = await baseClient.get('/security/csrf/');
+					const fresh = res?.data?.csrfToken || null;
+					if (fresh) {
+						csrfToken = fresh;
+						originalRequest.headers = originalRequest.headers || {};
+						originalRequest.headers['X-CSRF-Token'] = fresh;
+					}
+					return apiClient(originalRequest);
+				} catch (_) {
+					// fall through
+				}
+			}
 
 			// Add a check to prevent re-trying the refresh token endpoint
 			if (originalRequest.url.includes("token/refresh")) {

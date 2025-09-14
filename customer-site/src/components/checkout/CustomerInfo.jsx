@@ -111,7 +111,7 @@ const CustomerInfo = ({
 					{isAuthenticated ? (
 						<>
 							<UserCheck className="mr-2 h-5 w-5" />
-							Welcome back, {user?.first_name || user?.username}!
+							Welcome back, {user?.first_name}!
 						</>
 					) : (
 						<>

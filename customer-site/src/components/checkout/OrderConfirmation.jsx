@@ -299,8 +299,13 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								<span className="text-accent-dark-green">
 									${formatPrice(
 										(() => {
-											// Calculate the total including tip
-											const baseTotal = surchargeDisplay?.totalWithSurcharge || parseFloat(orderData.grand_total);
+											// For completed orders, use actual payment data
+											if (orderData.payment_details?.amount_paid !== undefined) {
+												return orderData.payment_details.amount_paid;
+											}
+											
+											// Fallback: Calculate the total including tip from order data
+											const baseTotal = parseFloat(orderData.grand_total);
 											const surcharges = orderData.payment_details?.transactions
 												?.filter(t => t.surcharge > 0)
 												?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0) || 0;
@@ -308,9 +313,7 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 												?.filter(t => t.tip > 0)
 												?.reduce((sum, t) => sum + parseFloat(t.tip || 0), 0) || 0;
 											
-											return (surchargeDisplay?.totalWithSurcharge) 
-												? baseTotal + tips 
-												: baseTotal + surcharges + tips;
+											return baseTotal + surcharges + tips;
 										})()
 									)}
 								</span>

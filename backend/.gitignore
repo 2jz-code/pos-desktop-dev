@@ -11,3 +11,4 @@ __pycache__/
 *.pyzw
 staticfiles/
 media/
+chat_notes.json

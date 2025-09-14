@@ -138,7 +138,7 @@ const PaymentForm = ({
 								<p className="text-sm text-accent-dark-brown/80 font-medium">
 									{formData.firstName && formData.lastName
 										? `${formData.firstName} ${formData.lastName}`
-										: formData.firstName || formData.lastName || user.username}
+										: formData.firstName || formData.lastName || (user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.first_name)}
 								</p>
 								<p className="text-sm text-accent-dark-brown/70">
 									{formData.email || user.email}

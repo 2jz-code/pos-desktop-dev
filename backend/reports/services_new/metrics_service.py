@@ -90,8 +90,9 @@ class BusinessMetricsService(BaseReportService):
             )["total"] or Decimal("0.00")
 
             # Customer metrics
-            total_customers = User.objects.filter(
-                role=User.Role.CUSTOMER
+            from customers.models import Customer
+            total_customers = Customer.objects.filter(
+                is_active=True
             ).count()
 
             repeat_customers = Order.objects.filter(
