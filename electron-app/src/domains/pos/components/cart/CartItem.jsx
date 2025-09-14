@@ -63,13 +63,14 @@ export default function CartItem({ item }) {
 		});
 	};
 
-	if (!item.product) {
-		return null;
-	}
+	// Handle custom items (no product reference)
+	const isCustomItem = !item.product;
+	const itemName = isCustomItem ? (item.custom_name || item.display_name) : item.product?.name;
+	const itemPrice = parseFloat(item.price_at_sale);
 
 	// Helper function to check if item has modifiers
 	const hasModifiers = item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0;
-	const hasModifierGroups = item.product.modifier_groups && item.product.modifier_groups.length > 0;
+	const hasModifierGroups = !isCustomItem && item.product?.modifier_groups && item.product.modifier_groups.length > 0;
 	const modifierTotalPrice = item.total_modifier_price ? parseFloat(item.total_modifier_price) : 0;
 
 	return (
@@ -88,24 +89,37 @@ export default function CartItem({ item }) {
 			<div className="p-3 flex items-center gap-3">
 				{/* Product Image */}
 				<div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0">
-					<img
-						src={
-							item.product.image_url ||
-							item.product.image ||
-							`https://avatar.vercel.sh/${item.product.name}.png`
-						}
-						alt={item.product.name}
-						className="w-full h-full object-cover"
-					/>
+					{isCustomItem ? (
+						<div className="w-full h-full flex items-center justify-center bg-blue-100 dark:bg-blue-900">
+							<span className="text-blue-600 dark:text-blue-400 font-bold text-sm">C</span>
+						</div>
+					) : (
+						<img
+							src={
+								item.product.image_url ||
+								item.product.image ||
+								`https://avatar.vercel.sh/${item.product.name}.png`
+							}
+							alt={item.product.name}
+							className="w-full h-full object-cover"
+						/>
+					)}
 				</div>
 
 				{/* Product Info */}
 				<div className="flex-grow min-w-0">
 					<div className="flex items-center gap-2">
 						<h4 className="font-medium text-slate-900 dark:text-slate-100 truncate">
-							{item.product.name}
+							{itemName}
 						</h4>
-						
+
+						{/* Custom Item Badge */}
+						{isCustomItem && (
+							<Badge variant="secondary" className="text-xs px-1.5 py-0">
+								Custom
+							</Badge>
+						)}
+
 						{/* Modifier Indicator - Clean visual cue */}
 						{hasModifiers && (
 							<div className="flex items-center gap-1">
@@ -116,15 +130,20 @@ export default function CartItem({ item }) {
 							</div>
 						)}
 					</div>
-					
+
 					{/* Price Breakdown - Compact and clear */}
 					<div className="flex items-center gap-3 mt-0.5">
 						<span className="text-sm text-slate-600 dark:text-slate-400">
-							${Number.parseFloat(item.product.price).toFixed(2)}
+							${itemPrice.toFixed(2)}
 						</span>
 						{modifierTotalPrice !== 0 && (
 							<span className="text-sm text-blue-600 dark:text-blue-400">
 								{modifierTotalPrice >= 0 ? '+' : ''}${modifierTotalPrice.toFixed(2)}
+							</span>
+						)}
+						{item.notes && (
+							<span className="text-xs text-slate-500 dark:text-slate-400 italic">
+								Note: {item.notes}
 							</span>
 						)}
 					</div>

@@ -11,18 +11,21 @@ const CartItemList = () => {
 	// Helper function to group items by product
 	const groupItemsByProduct = (items) => {
 		const grouped = {};
-		
+
 		items.forEach(item => {
-			const productId = item.product.id;
-			if (!grouped[productId]) {
-				grouped[productId] = {
+			// Handle custom items (no product reference)
+			const groupKey = item.product ? item.product.id : `custom_${item.id}`;
+
+			if (!grouped[groupKey]) {
+				grouped[groupKey] = {
 					baseProduct: item.product,
-					items: []
+					items: [],
+					isCustom: !item.product
 				};
 			}
-			grouped[productId].items.push(item);
+			grouped[groupKey].items.push(item);
 		});
-		
+
 		return Object.values(grouped);
 	};
 
@@ -48,13 +51,22 @@ const CartItemList = () => {
 		<div className="flex-grow overflow-y-auto">
 			<div className="p-3">
 				<ul className="space-y-1">
-					{groupedItems.map((group) => (
-						<GroupedCartItem
-							key={group.baseProduct.id}
-							baseProduct={group.baseProduct}
-							items={group.items}
-						/>
-					))}
+					{groupedItems.map((group) => {
+						// Render custom items individually
+						if (group.isCustom) {
+							return group.items.map(item => (
+								<CartItem key={item.id} item={item} />
+							));
+						}
+						// Render regular product items as grouped
+						return (
+							<GroupedCartItem
+								key={group.baseProduct.id}
+								baseProduct={group.baseProduct}
+								items={group.items}
+							/>
+						);
+					})}
 				</ul>
 			</div>
 		</div>

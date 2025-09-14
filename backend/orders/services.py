@@ -285,6 +285,41 @@ class OrderService:
         return order_item
 
     @staticmethod
+    @transaction.atomic
+    def add_custom_item_to_order(
+        order: Order, name: str, price: Decimal, quantity: int = 1, notes: str = ""
+    ) -> OrderItem:
+        """
+        Add a custom item (no product reference) to an order.
+        Used for miscellaneous charges that aren't in the product catalog.
+        """
+        if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
+            raise ValueError(
+                "Cannot add items to an order that is not Pending or on Hold."
+            )
+
+        if not name:
+            raise ValueError("Custom item name is required")
+
+        if price <= 0:
+            raise ValueError("Custom item price must be greater than 0")
+
+        # Create the custom item
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=None,  # No product reference for custom items
+            custom_name=name,
+            custom_price=price,
+            quantity=quantity,
+            price_at_sale=price,  # Use the custom price as price_at_sale
+            notes=notes,
+            item_sequence=1,  # Custom items don't need sequence tracking
+        )
+
+        OrderService.recalculate_order_totals(order)
+        return order_item
+
+    @staticmethod
     def group_items_for_kitchen(order_items):
         """
         Group order items by variation_group for kitchen display
@@ -294,7 +329,11 @@ class OrderService:
         # FIX: This method expects order_items to already have select_related('product')
         # applied by the caller to prevent N+1 queries
         for item in order_items:
-            group_key = item.variation_group or item.product.name.lower().replace(' ', '_')
+            if item.product:
+                group_key = item.variation_group or item.product.name.lower().replace(' ', '_')
+            else:
+                # Custom items get their own group
+                group_key = f"custom_{item.custom_name.lower().replace(' ', '_')}"
             if group_key not in grouped:
                 grouped[group_key] = []
             grouped[group_key].append(item)
@@ -564,8 +603,9 @@ class OrderService:
         order = Order.objects.prefetch_related(
             "items__product__taxes", "applied_discounts__discount"
         ).select_related().get(id=order.id)
-        
+
         # Pre-fetch items with related data to prevent N+1 queries
+        # Note: Some items may not have products (custom items), so we use nullable relations
         items = order.items.select_related('product').prefetch_related('product__taxes').all()
 
         # 1. Calculate the pre-discount subtotal from all items
@@ -603,15 +643,17 @@ class OrderService:
                     Decimal("1.0") - proportional_discount_rate
                 )
 
-                # Access pre-fetched taxes to prevent additional queries
-                product_taxes = item.product.taxes.all()
-                if product_taxes:
-                    for tax in product_taxes:
-                        tax_total += discounted_item_price * (
-                            tax.rate / Decimal("100.0")
-                        )
+                # Skip tax calculation for custom items (no product reference)
+                if item.product:
+                    # Access pre-fetched taxes to prevent additional queries
+                    product_taxes = item.product.taxes.all()
+                    if product_taxes:
+                        for tax in product_taxes:
+                            tax_total += discounted_item_price * (
+                                tax.rate / Decimal("100.0")
+                            )
                 else:
-                    # Use the fresh configuration for tax rate
+                    # Custom items use the default tax rate from settings
                     tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
 
         order.tax_total = tax_total.quantize(Decimal("0.01"))
