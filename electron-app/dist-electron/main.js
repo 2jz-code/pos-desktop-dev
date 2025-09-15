@@ -1,6 +1,6 @@
-import { app as S, ipcMain as y, screen as L, session as V, BrowserWindow as B } from "electron";
-import P from "node:path";
-import T from "node:process";
+import { app as I, ipcMain as y, screen as L, session as V, BrowserWindow as B } from "electron";
+import _ from "node:path";
+import P from "node:process";
 import { fileURLToPath as H } from "node:url";
 import { createRequire as q } from "node:module";
 import W from "node-machine-id";
@@ -8,12 +8,12 @@ import x from "usb";
 import z from "child_process";
 import Y from "util";
 const Z = q(import.meta.url), G = Z("node-thermal-printer"), { printer: U, types: A } = G, J = H(import.meta.url);
-P.dirname(J);
-function E(r, o, t) {
+_.dirname(J);
+function w(r, o, t) {
   r.leftRight(o, t);
 }
 async function Q(r, o = null, t = !1) {
-  var _, l, b, w;
+  var f, a, E, O;
   let e = new U({
     type: A.EPSON,
     characterSet: "PC437_USA",
@@ -21,7 +21,7 @@ async function Q(r, o = null, t = !1) {
   });
   e.alignCenter();
   try {
-    const s = P.join(process.env.PUBLIC, "logo-receipt.png");
+    const s = _.join(process.env.PUBLIC, "logo-receipt.png");
     await e.printImage(s), e.println("");
   } catch (s) {
     console.error("Could not print logo. Using text fallback."), console.error("Full logo printing error:", s), o != null && o.receipt_header && (e.println(o.receipt_header), e.println(""));
@@ -29,78 +29,78 @@ async function Q(r, o = null, t = !1) {
   const n = (o == null ? void 0 : o.store_address) || `2105 Cliff Rd #300
 Eagan, MN 55122`, i = (o == null ? void 0 : o.store_phone) || "(651) 412-5336";
   if (n.includes("\\n"))
-    n.split("\\n").forEach((c) => {
-      c.trim() && e.println(c.trim());
+    n.split("\\n").forEach((l) => {
+      l.trim() && e.println(l.trim());
     });
   else {
     const s = n.split(",");
     if (s.length > 1) {
-      const c = s.shift().trim(), p = s.join(",").trim();
-      c && e.println(c), p && e.println(p);
+      const l = s.shift().trim(), d = s.join(",").trim();
+      l && e.println(l), d && e.println(d);
     } else
       e.println(n);
   }
   e.println(`Tel: ${i}`), e.println(""), e.alignLeft();
-  const a = r.order_number || r.id || "N/A", h = new Date(r.created_at).toLocaleString("en-US", {
+  const c = r.order_number || r.id || "N/A", h = new Date(r.created_at).toLocaleString("en-US", {
     timeZone: "America/Chicago"
-  }), d = r.customer_display_name || r.guest_first_name || ((_ = r.payment_details) == null ? void 0 : _.customer_name) || ((l = r.customer) == null ? void 0 : l.full_name);
-  d && e.println(`Customer: ${d}`), e.println(`Order #: ${a}`), e.println(`Date: ${h}`);
+  }), p = r.customer_display_name || r.guest_first_name || ((f = r.payment_details) == null ? void 0 : f.customer_name) || ((a = r.customer) == null ? void 0 : a.full_name);
+  p && e.println(`Customer: ${p}`), e.println(`Order #: ${c}`), e.println(`Date: ${h}`);
   const u = (r.dining_preference || "TAKE_OUT") === "DINE_IN" ? "Dine In" : "Take Out";
   if (e.println(`Service: ${u}`), r.order_type) {
-    const c = {
+    const l = {
       POS: "In-Store",
       WEB: "Website",
       APP: "App",
       DOORDASH: "DoorDash",
       UBER_EATS: "Uber Eats"
     }[r.order_type] || r.order_type;
-    e.println(`Source: ${c}`);
+    e.println(`Source: ${l}`);
   }
   t && (e.alignCenter(), e.bold(!0), e.println("--- TRANSACTION RECEIPT ---"), e.bold(!1), e.alignLeft(), r.status && e.println(`Order Status: ${r.status}`), e.println("** Payment Not Yet Processed **")), e.println(""), e.alignCenter(), e.bold(!0), e.println("ITEMS"), e.bold(!1), e.drawLine(), e.alignLeft();
   for (const s of r.items) {
-    const c = parseFloat(s.price_at_sale) * s.quantity, p = `${s.quantity}x ${s.product.name}`;
-    if (E(e, p, `$${c.toFixed(2)}`), s.selected_modifiers_snapshot && s.selected_modifiers_snapshot.length > 0)
-      for (const f of s.selected_modifiers_snapshot) {
-        const R = parseFloat(f.price_at_sale) * f.quantity * s.quantity;
-        let I = `   - ${f.option_name}`;
-        f.quantity > 1 && (I += ` (${f.quantity}x)`), parseFloat(f.price_at_sale) !== 0 ? E(e, I, `$${R.toFixed(2)}`) : e.println(I);
+    const l = parseFloat(s.price_at_sale) * s.quantity, d = s.product ? s.product.name : s.custom_name || "Custom Item", b = `${s.quantity}x ${d}`;
+    if (w(e, b, `$${l.toFixed(2)}`), s.selected_modifiers_snapshot && s.selected_modifiers_snapshot.length > 0)
+      for (const $ of s.selected_modifiers_snapshot) {
+        const D = parseFloat($.price_at_sale) * $.quantity * s.quantity;
+        let v = `   - ${$.option_name}`;
+        $.quantity > 1 && (v += ` (${$.quantity}x)`), parseFloat($.price_at_sale) !== 0 ? w(e, v, `$${D.toFixed(2)}`) : e.println(v);
       }
   }
-  e.drawLine(), E(e, "Subtotal:", `$${parseFloat(r.subtotal).toFixed(2)}`), parseFloat(r.total_discounts_amount) > 0 && E(
+  e.drawLine(), w(e, "Subtotal:", `$${parseFloat(r.subtotal).toFixed(2)}`), parseFloat(r.total_discounts_amount) > 0 && w(
     e,
     "Discount:",
     `-$${parseFloat(r.total_discounts_amount).toFixed(2)}`
-  ), parseFloat(r.surcharges_total) > 0 && E(
+  ), parseFloat(r.surcharges_total) > 0 && w(
     e,
     "Service Fee:",
     `$${parseFloat(r.surcharges_total).toFixed(2)}`
-  ), E(e, "Tax:", `$${parseFloat(r.tax_total).toFixed(2)}`);
-  const D = (b = r.payment_details) != null && b.tip ? parseFloat(r.payment_details.tip) : 0;
-  if (D > 0 && E(e, "Tip:", `$${D.toFixed(2)}`), e.bold(!0), E(
+  ), w(e, "Tax:", `$${parseFloat(r.tax_total).toFixed(2)}`);
+  const C = (E = r.payment_details) != null && E.tip ? parseFloat(r.payment_details.tip) : 0;
+  if (C > 0 && w(e, "Tip:", `$${C.toFixed(2)}`), e.bold(!0), w(
     e,
     "TOTAL:",
     `$${parseFloat(r.total_with_tip).toFixed(2)}`
   ), e.bold(!1), e.println(""), t)
     e.bold(!0), e.println("Payment Information:"), e.bold(!1), e.println("This is a transaction receipt."), e.println("Payment will be processed separately.");
   else {
-    const s = ((w = r.payment_details) == null ? void 0 : w.transactions) || [];
+    const s = ((O = r.payment_details) == null ? void 0 : O.transactions) || [];
     if (s.length > 0) {
       e.bold(!0), e.println("Payment Details:"), e.bold(!1);
-      for (const [c, p] of s.entries()) {
-        const f = (p.method || "N/A").toUpperCase(), R = parseFloat(p.amount).toFixed(2);
-        if (E(e, ` ${f} (${c + 1})`, `$${R}`), f === "CASH") {
-          const I = parseFloat(p.cashTendered || 0).toFixed(2), C = parseFloat(p.change || 0).toFixed(2);
-          parseFloat(I) > 0 && (E(e, "   Tendered:", `$${I}`), E(e, "   Change:", `$${C}`));
-        } else if (f === "CREDIT" && p.metadata) {
-          const I = p.metadata.card_brand || "", C = p.metadata.card_last4 || "";
-          I && C && e.println(`    ${I} ****${C}`);
+      for (const [l, d] of s.entries()) {
+        const b = (d.method || "N/A").toUpperCase(), $ = parseFloat(d.amount).toFixed(2);
+        if (w(e, ` ${b} (${l + 1})`, `$${$}`), b === "CASH") {
+          const D = parseFloat(d.cashTendered || 0).toFixed(2), v = parseFloat(d.change || 0).toFixed(2);
+          parseFloat(D) > 0 && (w(e, "   Tendered:", `$${D}`), w(e, "   Change:", `$${v}`));
+        } else if (b === "CREDIT" && d.metadata) {
+          const D = d.metadata.card_brand || "", v = d.metadata.card_last4 || "";
+          D && v && e.println(`    ${D} ****${v}`);
         }
       }
     }
   }
   return e.println(""), e.alignCenter(), ((o == null ? void 0 : o.receipt_footer) || "Thank you for your business!").split(`
-`).forEach((c) => {
-    c.trim() && e.println(c.trim());
+`).forEach((l) => {
+    l.trim() && e.println(l.trim());
   }), o != null && o.receipt_footer || e.println("Visit us at bakeajeen.com"), e.println(""), e.println(""), e.cut(), e.getBuffer();
 }
 function X() {
@@ -111,16 +111,16 @@ function X() {
   return r.openCashDrawer(), r.getBuffer();
 }
 function ee(r, o = "KITCHEN", t = null) {
-  var u, D;
+  var u, C;
   let e = r.items || [];
-  if (t && (e = e.filter(($) => {
-    var l, b;
-    const _ = $.product;
-    return !(t.productTypes && t.productTypes.length > 0 && !t.productTypes.includes("ALL") && !t.productTypes.includes(
-      (l = _.product_type) == null ? void 0 : l.id
+  if (t && (e = e.filter((T) => {
+    var a, E;
+    const f = T.product;
+    return f ? !(t.productTypes && t.productTypes.length > 0 && !t.productTypes.includes("ALL") && !t.productTypes.includes(
+      (a = f.product_type) == null ? void 0 : a.id
     ) || t.categories && t.categories.length > 0 && !t.categories.includes("ALL") && !t.categories.includes(
-      (b = _.category) == null ? void 0 : b.id
-    ));
+      (E = f.category) == null ? void 0 : E.id
+    )) : !0;
   })), e.length === 0)
     return console.log(
       `[formatKitchenTicket] No items match filter for zone "${o}" - skipping ticket`
@@ -131,51 +131,53 @@ function ee(r, o = "KITCHEN", t = null) {
     interface: "tcp://dummy"
   });
   n.println(""), n.println(""), n.println(""), n.println(""), n.alignCenter(), n.bold(!0), n.setTextSize(1, 1), n.println(`${o.toUpperCase()} TICKET`), n.setTextNormal(), n.bold(!1), n.alignLeft(), n.println(""), n.setTextSize(2, 2), n.bold(!0), n.println(`${r.order_number || r.id}`), n.bold(!1), n.setTextNormal();
-  const i = r.customer_display_name || r.guest_first_name || ((u = r.payment_details) == null ? void 0 : u.customer_name) || ((D = r.customer) == null ? void 0 : D.full_name);
+  const i = r.customer_display_name || r.guest_first_name || ((u = r.payment_details) == null ? void 0 : u.customer_name) || ((C = r.customer) == null ? void 0 : C.full_name);
   i && n.println(`Customer: ${i}`);
-  const a = new Date(r.created_at).toLocaleTimeString("en-US", {
+  const c = new Date(r.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: !0,
     timeZone: "America/Chicago"
   });
-  n.println(`Time: ${a}`);
-  const d = (r.dining_preference || "TAKE_OUT") === "DINE_IN" ? "DINE IN" : "TAKE OUT";
-  if (n.bold(!0), n.println(`SERVICE: ${d}`), r.order_type) {
-    const _ = {
+  n.println(`Time: ${c}`);
+  const p = (r.dining_preference || "TAKE_OUT") === "DINE_IN" ? "DINE IN" : "TAKE OUT";
+  if (n.bold(!0), n.println(`SERVICE: ${p}`), r.order_type) {
+    const f = {
       POS: "IN-STORE",
       WEB: "WEBSITE",
       APP: "APP",
       DOORDASH: "DOORDASH",
       UBER_EATS: "UBER EATS"
     }[r.order_type] || r.order_type;
-    n.println(`SOURCE: ${_}`);
+    n.println(`SOURCE: ${f}`);
   }
   n.bold(!1), n.drawLine();
-  const g = e.reduce(($, _) => {
-    var b;
-    const l = ((b = _.product.category) == null ? void 0 : b.name) || "Miscellaneous";
-    return $[l] || ($[l] = []), $[l].push(_), $;
+  const g = e.reduce((T, f) => {
+    var E;
+    const a = f.product ? ((E = f.product.category) == null ? void 0 : E.name) || "Miscellaneous" : "Custom Items";
+    return T[a] || (T[a] = []), T[a].push(f), T;
   }, {});
-  for (const $ in g) {
-    n.bold(!0), n.underline(!0), n.println(`${$.toUpperCase()}:`), n.underline(!1), n.bold(!1);
-    const _ = g[$];
-    for (const l of _) {
-      if (n.bold(!0), n.setTextSize(1, 1), n.println(`${l.quantity}x ${l.product.name}`), n.setTextNormal(), n.bold(!1), l.selected_modifiers_snapshot && l.selected_modifiers_snapshot.length > 0) {
-        const b = l.selected_modifiers_snapshot.reduce((w, s) => {
-          const c = s.modifier_set_name || "Other";
-          return w[c] || (w[c] = []), w[c].push(s), w;
+  for (const T in g) {
+    n.bold(!0), n.underline(!0), n.println(`${T.toUpperCase()}:`), n.underline(!1), n.bold(!1);
+    const f = g[T];
+    for (const a of f) {
+      n.bold(!0), n.setTextSize(1, 1);
+      const E = a.product ? a.product.name : a.custom_name || "Custom Item";
+      if (n.println(`${a.quantity}x ${E}`), n.setTextNormal(), n.bold(!1), a.selected_modifiers_snapshot && a.selected_modifiers_snapshot.length > 0) {
+        const O = a.selected_modifiers_snapshot.reduce((s, l) => {
+          const d = l.modifier_set_name || "Other";
+          return s[d] || (s[d] = []), s[d].push(l), s;
         }, {});
-        for (const [w, s] of Object.entries(b)) {
-          const c = s.map((p) => {
-            let f = p.option_name;
-            return p.quantity > 1 && (f += ` (${p.quantity}x)`), f;
+        for (const [s, l] of Object.entries(O)) {
+          const d = l.map((b) => {
+            let $ = b.option_name;
+            return b.quantity > 1 && ($ += ` (${b.quantity}x)`), $;
           }).join(", ");
-          n.println(`   ${w} - ${c}`);
+          n.println(`   ${s} - ${d}`);
         }
       }
-      l.notes && l.notes.trim() && n.println(`   NOTES: ${l.notes.trim()}`);
+      a.notes && a.notes.trim() && n.println(`   NOTES: ${a.notes.trim()}`);
     }
     n.println("");
   }
@@ -200,9 +202,9 @@ function ne() {
     }, t.t = function(e, n) {
       if (1 & n && (e = t(e)), 8 & n || 4 & n && typeof e == "object" && e && e.__esModule) return e;
       var i = /* @__PURE__ */ Object.create(null);
-      if (t.r(i), Object.defineProperty(i, "default", { enumerable: !0, value: e }), 2 & n && typeof e != "string") for (var a in e) t.d(i, a, (function(h) {
+      if (t.r(i), Object.defineProperty(i, "default", { enumerable: !0, value: e }), 2 & n && typeof e != "string") for (var c in e) t.d(i, c, (function(h) {
         return e[h];
-      }).bind(null, a));
+      }).bind(null, c));
       return i;
     }, t.n = function(e) {
       var n = e && e.__esModule ? function() {
@@ -216,10 +218,10 @@ function ne() {
     }, t.p = "", t(t.s = 0);
   }([function(r, o, t) {
     const { exec: e } = t(1), n = t(2).promisify(e);
-    r.exports = { play: async (i, a = 0.5) => {
-      const h = process.platform === "darwin" ? Math.min(2, 2 * a) : a, d = process.platform === "darwin" ? ((g, u) => `afplay "${g}" -v ${u}`)(i, h) : ((g, u) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((D) => `$player.open('${D}');`)(g)} $player.Volume = ${u}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(i, h);
+    r.exports = { play: async (i, c = 0.5) => {
+      const h = process.platform === "darwin" ? Math.min(2, 2 * c) : c, p = process.platform === "darwin" ? ((g, u) => `afplay "${g}" -v ${u}`)(i, h) : ((g, u) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((C) => `$player.open('${C}');`)(g)} $player.Volume = ${u}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(i, h);
       try {
-        await n(d);
+        await n(p);
       } catch (g) {
         throw g;
       }
@@ -231,21 +233,21 @@ function ne() {
   }])), N;
 }
 var re = ne();
-const oe = /* @__PURE__ */ te(re), { machineIdSync: ie } = W, F = q(import.meta.url), se = H(import.meta.url), k = P.dirname(se), ae = T.env.NODE_ENV === "development";
-T.env.DIST = P.join(k, "../dist");
-T.env.PUBLIC = S.isPackaged ? T.env.DIST : P.join(T.env.DIST, "../public");
-let m, v, M = null;
-const O = T.env.VITE_DEV_SERVER_URL;
-function ce() {
+const oe = /* @__PURE__ */ te(re), { machineIdSync: ie } = W, F = q(import.meta.url), se = H(import.meta.url), k = _.dirname(se), ce = P.env.NODE_ENV === "development";
+P.env.DIST = _.join(k, "../dist");
+P.env.PUBLIC = I.isPackaged ? P.env.DIST : _.join(P.env.DIST, "../public");
+let m, S, M = null;
+const R = P.env.VITE_DEV_SERVER_URL;
+function ae() {
   const r = L.getPrimaryDisplay(), o = V.defaultSession;
   m = new B({
-    icon: P.join(T.env.PUBLIC, "logo.png"),
+    icon: _.join(P.env.PUBLIC, "logo.png"),
     x: r.bounds.x,
     y: r.bounds.y,
     fullscreen: !0,
     webPreferences: {
       session: o,
-      preload: P.join(k, "../dist-electron/preload.js"),
+      preload: _.join(k, "../dist-electron/preload.js"),
       nodeIntegration: !1,
       contextIsolation: !0,
       enableRemoteModule: !1,
@@ -259,8 +261,8 @@ function ce() {
       "main-process-message",
       (/* @__PURE__ */ new Date()).toLocaleString()
     );
-  }), O ? m.loadURL(O) : m.loadFile(P.join(T.env.DIST, "index.html")), m.on("closed", () => {
-    m = null, v && v.close();
+  }), R ? m.loadURL(R) : m.loadFile(_.join(P.env.DIST, "index.html")), m.on("closed", () => {
+    m = null, S && S.close();
   });
 }
 function le() {
@@ -271,20 +273,20 @@ function le() {
     console.log("No secondary display found, not creating customer window.");
     return;
   }
-  v = new B({
-    icon: P.join(T.env.PUBLIC, "logo.png"),
+  S = new B({
+    icon: _.join(P.env.PUBLIC, "logo.png"),
     x: o.bounds.x,
     y: o.bounds.y,
     fullscreen: !0,
     webPreferences: {
-      preload: P.join(k, "../dist-electron/preload.js")
+      preload: _.join(k, "../dist-electron/preload.js")
     }
-  }), O ? v.loadURL(`${O}customer.html`) : v.loadFile(P.join(T.env.DIST, "customer.html")), v.on("closed", () => {
-    v = null;
+  }), R ? S.loadURL(`${R}customer.html`) : S.loadFile(_.join(P.env.DIST, "customer.html")), S.on("closed", () => {
+    S = null;
   });
 }
 y.on("to-customer-display", (r, { channel: o, data: t }) => {
-  o === "POS_TO_CUSTOMER_STATE" && (M = t), v && v.webContents.send(o, t);
+  o === "POS_TO_CUSTOMER_STATE" && (M = t), S && S.webContents.send(o, t);
 });
 y.on("from-customer-display", (r, { channel: o, data: t }) => {
   m && m.webContents.send(o, t);
@@ -294,7 +296,7 @@ y.on("CUSTOMER_REQUESTS_STATE", (r) => {
 });
 y.handle("play-notification-sound", async (r, o) => {
   try {
-    const t = o || "notification.wav", e = P.join(T.env.PUBLIC, "sounds", t);
+    const t = o || "notification.wav", e = _.join(P.env.PUBLIC, "sounds", t);
     return console.log(`[IPC] Attempting to play sound: ${e}`), await oe.play(e), { success: !0 };
   } catch (t) {
     return console.error("[IPC] Error playing sound:", t), { success: !1, error: t.message };
@@ -343,19 +345,19 @@ async function K(r, o) {
         )}`
       );
     if (t = x.getDeviceList().find(
-      (d) => d.deviceDescriptor.idVendor === e && d.deviceDescriptor.idProduct === n
+      (p) => p.deviceDescriptor.idVendor === e && p.deviceDescriptor.idProduct === n
     ), !t)
       throw new Error("USB Printer not found. It may be disconnected.");
     t.open();
-    const a = t.interfaces[0];
-    a.claim();
-    const h = a.endpoints.find((d) => d.direction === "out");
+    const c = t.interfaces[0];
+    c.claim();
+    const h = c.endpoints.find((p) => p.direction === "out");
     if (!h)
       throw new Error("Could not find an OUT endpoint on the printer.");
-    await new Promise((d, g) => {
+    await new Promise((p, g) => {
       h.transfer(o, (u) => {
         if (u) return g(u);
-        d();
+        p();
       });
     });
   } finally {
@@ -399,13 +401,13 @@ y.handle(
     try {
       if ((o == null ? void 0 : o.connection_type) !== "network" || !o.ip_address)
         throw new Error("Invalid network printer configuration provided.");
-      const i = F("node-thermal-printer"), { printer: a, types: h } = i;
-      let d = new a({
+      const i = F("node-thermal-printer"), { printer: c, types: h } = i;
+      let p = new c({
         type: h.EPSON,
         interface: `tcp://${o.ip_address}`,
         timeout: 5e3
       });
-      if (!await d.isPrinterConnected())
+      if (!await p.isPrinterConnected())
         throw new Error(
           `Could not connect to kitchen printer at ${o.ip_address}`
         );
@@ -413,7 +415,7 @@ y.handle(
         `Successfully connected to kitchen printer at ${o.ip_address}`
       );
       const u = ee(t, e, n);
-      return u ? (console.log(`Sending kitchen ticket buffer (size: ${u.length})`), await d.raw(u), console.log("Kitchen ticket sent successfully."), { success: !0 }) : (console.log(`No items to print for zone "${e}" - skipping`), {
+      return u ? (console.log(`Sending kitchen ticket buffer (size: ${u.length})`), await p.raw(u), console.log("Kitchen ticket sent successfully."), { success: !0 }) : (console.log(`No items to print for zone "${e}" - skipping`), {
         success: !0,
         message: "No items matched filter - ticket skipped"
       });
@@ -455,7 +457,7 @@ y.handle("open-cash-drawer", async (r, { printerName: o }) => {
 --- [Main Process] Using HYBRID open-drawer method ---`);
   try {
     const e = x.getDeviceList().find(
-      (a) => (a.product || `USB Device ${a.deviceDescriptor.idVendor}:${a.deviceDescriptor.idProduct}`) === o
+      (c) => (c.product || `USB Device ${c.deviceDescriptor.idVendor}:${c.deviceDescriptor.idProduct}`) === o
     );
     if (!e)
       throw new Error(`Printer with name "${o}" not found.`);
@@ -473,9 +475,9 @@ y.handle("open-cash-drawer", async (r, { printerName: o }) => {
 y.handle("get-session-cookies", async (r, o) => {
   try {
     const { session: t } = F("electron"), e = await t.defaultSession.cookies.get({ url: o });
-    console.log(`[Main Process] Found ${e.length} cookies for ${o}`), e.forEach((i, a) => {
+    console.log(`[Main Process] Found ${e.length} cookies for ${o}`), e.forEach((i, c) => {
       console.log(
-        `[Main Process] Cookie ${a + 1}: ${i.name} (${i.httpOnly ? "HttpOnly" : "Regular"})`
+        `[Main Process] Cookie ${c + 1}: ${i.name} (${i.httpOnly ? "HttpOnly" : "Regular"})`
       );
     });
     const n = e.map((i) => `${i.name}=${i.value}`).join("; ");
@@ -488,11 +490,11 @@ y.handle("get-session-cookies", async (r, o) => {
 });
 y.handle("get-machine-id", () => ie({ original: !0 }));
 y.on("shutdown-app", () => {
-  S.quit();
+  I.quit();
 });
-S.whenReady().then(async () => {
-  console.log("[Main Process] Starting Electron app - online-only mode"), ae ? (S.commandLine.appendSwitch("--ignore-certificate-errors"), S.commandLine.appendSwitch("--allow-running-insecure-content"), console.log("[Main Process] Development mode - security switches enabled")) : (S.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor"), S.commandLine.appendSwitch("--force-color-profile", "srgb"), console.log("[Main Process] Production mode - security features enabled")), ce(), le();
+I.whenReady().then(async () => {
+  console.log("[Main Process] Starting Electron app - online-only mode"), ce ? (I.commandLine.appendSwitch("--ignore-certificate-errors"), I.commandLine.appendSwitch("--allow-running-insecure-content"), console.log("[Main Process] Development mode - security switches enabled")) : (I.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor"), I.commandLine.appendSwitch("--force-color-profile", "srgb"), console.log("[Main Process] Production mode - security features enabled")), ae(), le();
 });
-S.on("window-all-closed", () => {
-  T.platform !== "darwin" && S.quit();
+I.on("window-all-closed", () => {
+  P.platform !== "darwin" && I.quit();
 });

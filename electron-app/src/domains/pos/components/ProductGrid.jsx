@@ -1,22 +1,25 @@
 "use client";
 
-import { useMemo, useRef, forwardRef } from "react";
+import { useMemo, useRef, forwardRef, useState } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import ProductFilter from "./ProductFilter";
 import { ProductCard } from "./ProductSubcategoryGroup";
-import { Package, Search, X } from "lucide-react";
+import { Package, Search, X, Plus } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
 import { Button } from "@/shared/components/ui/button";
+import { CustomItemDialog } from "./CustomItemDialog";
 
 const ProductGrid = forwardRef((props, ref) => {
-	const { filteredProducts, isLoadingProducts, searchTerm, applyFilter } = usePosStore((state) => ({
+	const { filteredProducts, isLoadingProducts, searchTerm, applyFilter, addCustomItem } = usePosStore((state) => ({
 		filteredProducts: state.filteredProducts,
 		isLoadingProducts: state.isLoadingProducts,
 		searchTerm: state.searchTerm,
 		applyFilter: state.applyFilter,
+		addCustomItem: state.addCustomItem,
 	}));
 
 	const searchInputRef = useRef(null);
+	const [showCustomItemDialog, setShowCustomItemDialog] = useState(false);
 
 	// Expose the search input ref to parent components
 	if (ref) {
@@ -41,6 +44,11 @@ const ProductGrid = forwardRef((props, ref) => {
 		if (searchInputRef.current) {
 			searchInputRef.current.focus();
 		}
+	};
+
+	const handleAddCustomItem = (customItemData) => {
+		addCustomItem(customItemData);
+		setShowCustomItemDialog(false);
 	};
 
 	const groupedProducts = useMemo(() => {
@@ -137,26 +145,37 @@ const ProductGrid = forwardRef((props, ref) => {
 					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
 						Products
 					</h2>
-					<div className="relative">
-						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-						<Input
-							ref={searchInputRef}
-							type="text"
-							placeholder="Search products..."
-							value={searchTerm}
-							onChange={handleSearchChange}
-							className="pl-9 pr-9 w-64 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
-						/>
-						{searchTerm && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={clearSearch}
-								className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-slate-100 dark:hover:bg-slate-800"
-							>
-								<X className="h-3 w-3" />
-							</Button>
-						)}
+					<div className="flex items-center gap-2">
+						<Button
+							onClick={() => setShowCustomItemDialog(true)}
+							variant="outline"
+							size="sm"
+							className="border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Custom Item
+						</Button>
+						<div className="relative">
+							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+							<Input
+								ref={searchInputRef}
+								type="text"
+								placeholder="Search products..."
+								value={searchTerm}
+								onChange={handleSearchChange}
+								className="pl-9 pr-9 w-64 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+							/>
+							{searchTerm && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={clearSearch}
+									className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-slate-100 dark:hover:bg-slate-800"
+								>
+									<X className="h-3 w-3" />
+								</Button>
+							)}
+						</div>
 					</div>
 				</div>
 				<ProductFilter />
@@ -230,6 +249,13 @@ const ProductGrid = forwardRef((props, ref) => {
 						</div>
 					)}
 			</div>
+
+			{/* Custom Item Dialog */}
+			<CustomItemDialog
+				open={showCustomItemDialog}
+				onClose={() => setShowCustomItemDialog(false)}
+				onAdd={handleAddCustomItem}
+			/>
 		</div>
 	);
 });

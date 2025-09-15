@@ -383,7 +383,9 @@ class OrderItem(models.Model):
 
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(
-        Product, on_delete=models.PROTECT, related_name="order_items"
+        Product, on_delete=models.PROTECT, related_name="order_items",
+        null=True, blank=True,  # Make nullable for custom items
+        help_text=_("Product reference. Null for custom items.")
     )
     quantity = models.PositiveIntegerField(default=1)
     status = models.CharField(
@@ -391,6 +393,16 @@ class OrderItem(models.Model):
     )
     notes = models.TextField(
         blank=True, help_text=_("Customer notes, e.g., 'no onions'")
+    )
+
+    # Custom item fields
+    custom_name = models.CharField(
+        max_length=200, blank=True,
+        help_text=_("Name for custom items (when product is null)")
+    )
+    custom_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text=_("Price for custom items (when product is null)")
     )
 
     # Price snapshot
@@ -437,7 +449,8 @@ class OrderItem(models.Model):
         ]
 
     def __str__(self):
-        base_str = f"{self.quantity} of {self.product.name}"
+        item_name = self.custom_name if not self.product else self.product.name
+        base_str = f"{self.quantity} of {item_name}"
         if self.item_sequence > 1:
             base_str += f" (#{self.item_sequence})"
         return f"{base_str} in Order {self.order.order_number}"

@@ -105,15 +105,27 @@ class OrderItemModifierSerializer(BaseModelSerializer):
 
 
 class OrderItemSerializer(BaseModelSerializer):
-    product = OrderItemProductSerializer(read_only=True)
+    product = OrderItemProductSerializer(read_only=True, allow_null=True)
     selected_modifiers_snapshot = OrderItemModifierSerializer(many=True, read_only=True)
     total_modifier_price = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    display_price = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = "__all__"
         select_related_fields = ["product", "order"]
         prefetch_related_fields = ["selected_modifiers_snapshot"]  # Fix: prefetch for modifier calculations
+
+    def get_display_name(self, obj):
+        """Return the item name, handling both product and custom items"""
+        if obj.product:
+            return obj.product.name
+        return obj.custom_name or "Custom Item"
+
+    def get_display_price(self, obj):
+        """Return the item price, handling both product and custom items"""
+        return str(obj.price_at_sale)
 
     def get_total_modifier_price(self, obj):
         """Calculate total price impact from modifiers using prefetched data"""
