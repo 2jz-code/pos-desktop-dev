@@ -30,9 +30,15 @@ import { ProductsPage, ProductDetailsPage, ModifierManagementPage } from "@/doma
 import { InventoryPage, StockHistoryPage } from "@/domains/inventory";
 import { DiscountsPage } from "@/domains/discounts";
 import { SettingsPage } from "@/domains/settings";
+import { KDSPage } from "@/domains/kds";
+
+// Mode Selection Pages
+import { ModeSelectionPage } from "../pages/ModeSelectionPage";
+import { KDSZoneSelectionPage } from "../pages/KDSZoneSelectionPage";
 
 // Shared Components
 import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
+import { ModeSwitcher } from "../components/ModeSwitcher";
 
 /**
  * This is the root component that sets up all the providers
@@ -68,6 +74,7 @@ function App() {
 				<Router>
 					<Toaster />
 					<AppRoutes />
+					<ModeSwitcher />
 				</Router>
 			</AuthProvider>
 		</QueryProvider>
@@ -97,47 +104,105 @@ function AppRoutes() {
 	// This hook sets up a global listener and is safe to call on re-renders.
 	useCustomerTipListener();
 
+	// Check if user has selected an app mode
+	const appMode = localStorage.getItem("app-mode");
+
+	// If no mode is selected and not already on mode selection page, redirect to mode selection
+	if (!appMode && location.pathname !== "/mode-selection") {
+		return (
+			<Navigate
+				to="/mode-selection"
+				replace
+			/>
+		);
+	}
+
+	// If we have a mode but are on mode selection page, redirect appropriately
+	if (appMode && location.pathname === "/mode-selection") {
+		if (appMode === "pos") {
+			return (
+				<Navigate
+					to="/login"
+					replace
+				/>
+			);
+		} else if (appMode === "kds") {
+			return (
+				<Navigate
+					to="/kds-zone-selection"
+					replace
+				/>
+			);
+		}
+	}
+
 	if (loading) {
 		return <FullScreenLoader />;
 	}
 
-	// This logic handles routing for unauthenticated users.
-	if (!isAuthenticated && location.pathname !== "/login") {
-		return (
-			<Navigate
-				to="/login"
-				replace
-			/>
-		);
-	}
+	// For POS mode: handle authentication logic
+	if (appMode === "pos") {
+		// This logic handles routing for unauthenticated users.
+		if (!isAuthenticated && location.pathname !== "/login" && location.pathname !== "/mode-selection") {
+			return (
+				<Navigate
+					to="/login"
+					replace
+				/>
+			);
+		}
 
-	// This logic handles routing for authenticated users trying to access login page.
-	if (isAuthenticated && location.pathname === "/login") {
-		return (
-			<Navigate
-				to="/"
-				replace
-			/>
-		);
+		// This logic handles routing for authenticated users trying to access login page.
+		if (isAuthenticated && location.pathname === "/login") {
+			return (
+				<Navigate
+					to="/"
+					replace
+				/>
+			);
+		}
 	}
 
 	// Main routing structure
 	return (
 		<Routes>
+			{/* Mode Selection Route - Always accessible */}
 			<Route
-				path="/login"
-				element={<LoginPage />}
+				path="/mode-selection"
+				element={<ModeSelectionPage />}
 			/>
-			<Route
-				path="/*"
-				element={
-					<PrivateRoute>
-						<Layout>
-							<AnimatedOutlet />
-						</Layout>
-					</PrivateRoute>
-				}
-			>
+
+			{/* KDS Routes - No authentication required */}
+			{appMode === "kds" && (
+				<>
+					<Route
+						path="/kds-zone-selection"
+						element={<KDSZoneSelectionPage />}
+					/>
+					<Route
+						path="/kds"
+						element={<KDSPage />}
+					/>
+				</>
+			)}
+
+			{/* POS Routes - Authentication required */}
+			{appMode === "pos" && (
+				<>
+					<Route
+						path="/login"
+						element={<LoginPage />}
+					/>
+					<Route
+						path="/*"
+						element={
+							<PrivateRoute>
+								<Layout>
+									<AnimatedOutlet />
+								</Layout>
+							</PrivateRoute>
+						}
+					>
 				{/* Nested routes are rendered inside AnimatedOutlet */}
 				<Route
 					index
@@ -235,16 +300,29 @@ function AppRoutes() {
 						</RoleProtectedRoute>
 					}
 				/>
-				<Route
-					path="*"
-					element={
-						<Navigate
-							to="/"
-							replace
+						<Route
+							path="*"
+							element={
+								<Navigate
+									to="/"
+									replace
+								/>
+							}
 						/>
-					}
-				/>
-			</Route>
+					</Route>
+				</>
+			)}
+
+			{/* Fallback route */}
+			<Route
+				path="*"
+				element={
+					<Navigate
+						to="/mode-selection"
+						replace
+					/>
+				}
+			/>
 		</Routes>
 	);
 }
