@@ -81,6 +81,88 @@ export const createCartSlice = (set, get) => {
 	return {
 		...initialState,
 
+		addCustomItem: async (customItemData) => {
+			const { name, price, quantity, notes } = customItemData;
+
+			// Store original state for rollback
+			const originalItems = [...get().items];
+			const originalSubtotal = get().subtotal;
+			const originalTotal = get().total;
+
+			// Optimistically add custom item to UI
+			const tempCustomItem = {
+				id: `temp-custom-${Date.now()}`,
+				product: null,
+				custom_name: name,
+				custom_price: price,
+				quantity: quantity,
+				price_at_sale: price,
+				notes: notes,
+				display_name: name,
+				display_price: price.toString(),
+			};
+
+			const optimisticItems = [...get().items, tempCustomItem];
+			const { subtotal, total } = calculateLocalTotals(optimisticItems);
+			set({ items: optimisticItems, subtotal, total });
+
+			try {
+				let orderId = get().orderId;
+
+				if (!orderId) {
+					const orderData = {
+						order_type: "POS",
+						dining_preference: get().diningPreference,
+					};
+
+					// Include customer name if provided
+					const { customerFirstName } = get();
+					if (customerFirstName) {
+						orderData.guest_first_name = customerFirstName;
+					}
+
+					const orderRes = await orderService.createOrder(orderData);
+					orderId = orderRes.data.id;
+					set({
+						orderId: orderId,
+						orderStatus: orderRes.data.status,
+						orderNumber: orderRes.data.order_number,
+					});
+					await get().initializeCartSocket();
+				}
+
+				// Send custom item through WebSocket
+				cartSocket.sendMessage({
+					type: "add_custom_item",
+					payload: {
+						name,
+						price,
+						quantity,
+						notes,
+					},
+				});
+
+				get().showToast({
+					title: "Custom Item Added",
+					description: `Added ${quantity}x ${name} to order`,
+				});
+
+			} catch (error) {
+				console.error("Error adding custom item:", error);
+				// Rollback on error
+				set({
+					items: originalItems,
+					subtotal: originalSubtotal,
+					total: originalTotal,
+				});
+				get().showToast({
+					title: "Error",
+					description: "Failed to add custom item. Please try again.",
+					variant: "destructive",
+				});
+			}
+		},
+
 		addItem: async (product) => {
 			set({ addingItemId: product.id });
 

@@ -322,8 +322,13 @@ const OrderDetailsPage = () => {
 													<div className="flex justify-between items-center">
 														<div>
 															<span className="font-medium text-slate-900 dark:text-slate-100">
-																{item.product.name}
+																{item.product ? item.product.name : (item.custom_name || item.display_name || 'Custom Item')}
 															</span>
+															{!item.product && (
+																<span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded">
+																	Custom
+																</span>
+															)}
 															<span className="text-slate-500 dark:text-slate-400 ml-2">
 																(x{item.quantity})
 															</span>

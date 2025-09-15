@@ -1,204 +1,107 @@
-import { app, ipcMain, screen, session, BrowserWindow } from "electron";
-import path from "node:path";
-import process$1 from "node:process";
-import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
-import nodeMachineId from "node-machine-id";
-import usb from "usb";
-import require$$0 from "child_process";
-import require$$1 from "util";
-const require$1 = createRequire(import.meta.url);
-const thermalPrinter = require$1("node-thermal-printer");
-const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
-const __filename$1 = fileURLToPath(import.meta.url);
-path.dirname(__filename$1);
-function printLine(printer, left, right) {
-  printer.leftRight(left, right);
+import { app as I, ipcMain as y, screen as L, session as V, BrowserWindow as B } from "electron";
+import _ from "node:path";
+import P from "node:process";
+import { fileURLToPath as H } from "node:url";
+import { createRequire as q } from "node:module";
+import W from "node-machine-id";
+import x from "usb";
+import z from "child_process";
+import Y from "util";
+const Z = q(import.meta.url), G = Z("node-thermal-printer"), { printer: U, types: A } = G, J = H(import.meta.url);
+_.dirname(J);
+function w(r, o, t) {
+  r.leftRight(o, t);
 }
-async function formatReceipt(order, storeSettings = null, isTransaction = false) {
-  var _a, _b, _c, _d;
-  let printer = new ThermalPrinter({
-    type: PrinterTypes.EPSON,
+async function Q(r, o = null, t = !1) {
+  var f, a, E, O;
+  let e = new U({
+    type: A.EPSON,
     characterSet: "PC437_USA",
     interface: "tcp://dummy"
   });
   printer.alignCenter();
   try {
-    const logoPath = path.join(process.env.PUBLIC, "logo-receipt.png");
-    await printer.printImage(logoPath);
-    printer.println("");
-  } catch (error) {
-    console.error("Could not print logo. Using text fallback.");
-    console.error("Full logo printing error:", error);
-    if (storeSettings == null ? void 0 : storeSettings.receipt_header) {
-      printer.println(storeSettings.receipt_header);
-      printer.println("");
-    }
+    const s = _.join(process.env.PUBLIC, "logo-receipt.png");
+    await e.printImage(s), e.println("");
+  } catch (s) {
+    console.error("Could not print logo. Using text fallback."), console.error("Full logo printing error:", s), o != null && o.receipt_header && (e.println(o.receipt_header), e.println(""));
   }
-  const storeAddress = (storeSettings == null ? void 0 : storeSettings.store_address) || "2105 Cliff Rd #300\nEagan, MN 55122";
-  const storePhone = (storeSettings == null ? void 0 : storeSettings.store_phone) || "(651) 412-5336";
-  {
-    if (storeAddress.includes("\\n")) {
-      const addressLines = storeAddress.split("\\n");
-      addressLines.forEach((line) => {
-        if (line.trim()) printer.println(line.trim());
-      });
-    } else {
-      const parts = storeAddress.split(",");
-      if (parts.length > 1) {
-        const street = parts.shift().trim();
-        const cityStateZip = parts.join(",").trim();
-        if (street) printer.println(street);
-        if (cityStateZip) printer.println(cityStateZip);
-      } else {
-        printer.println(storeAddress);
-      }
-    }
-  }
-  {
-    printer.println(`Tel: ${storePhone}`);
-  }
-  printer.println("");
-  printer.alignLeft();
-  const orderId = order.order_number || order.id || "N/A";
-  const orderDate = new Date(order.created_at).toLocaleString("en-US", {
-    timeZone: "America/Chicago"
-  });
-  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
-  if (customerName) {
-    printer.println(`Customer: ${customerName}`);
-  }
-  printer.println(`Order #: ${orderId}`);
-  printer.println(`Date: ${orderDate}`);
-  const diningPreference = order.dining_preference || "TAKE_OUT";
-  const diningLabel = diningPreference === "DINE_IN" ? "Dine In" : "Take Out";
-  printer.println(`Service: ${diningLabel}`);
-  if (order.order_type) {
-    const orderTypeLabels = {
-      "POS": "In-Store",
-      "WEB": "Website",
-      "APP": "App",
-      "DOORDASH": "DoorDash",
-      "UBER_EATS": "Uber Eats"
-    };
-    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
-    printer.println(`Source: ${sourceLabel}`);
-  }
-  if (isTransaction) {
-    printer.alignCenter();
-    printer.bold(true);
-    printer.println("--- TRANSACTION RECEIPT ---");
-    printer.bold(false);
-    printer.alignLeft();
-    if (order.status) {
-      printer.println(`Order Status: ${order.status}`);
-    }
-    printer.println("** Payment Not Yet Processed **");
-  }
-  printer.println("");
-  printer.alignCenter();
-  printer.bold(true);
-  printer.println("ITEMS");
-  printer.bold(false);
-  printer.drawLine();
-  printer.alignLeft();
-  for (const item of order.items) {
-    const price = parseFloat(item.price_at_sale) * item.quantity;
-    const itemText = `${item.quantity}x ${item.product.name}`;
-    printLine(printer, itemText, `$${price.toFixed(2)}`);
-    if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
-      for (const modifier of item.selected_modifiers_snapshot) {
-        const modPrice = parseFloat(modifier.price_at_sale) * modifier.quantity * item.quantity;
-        let modText = `   - ${modifier.option_name}`;
-        if (modifier.quantity > 1) {
-          modText += ` (${modifier.quantity}x)`;
-        }
-        if (parseFloat(modifier.price_at_sale) !== 0) {
-          printLine(printer, modText, `$${modPrice.toFixed(2)}`);
-        } else {
-          printer.println(modText);
-        }
-      }
-    }
-  }
-  printer.drawLine();
-  printLine(printer, "Subtotal:", `$${parseFloat(order.subtotal).toFixed(2)}`);
-  if (parseFloat(order.total_discounts_amount) > 0) {
-    printLine(
-      printer,
-      "Discount:",
-      `-$${parseFloat(order.total_discounts_amount).toFixed(2)}`
-    );
-  }
-  if (parseFloat(order.surcharges_total) > 0) {
-    printLine(
-      printer,
-      "Service Fee:",
-      `$${parseFloat(order.surcharges_total).toFixed(2)}`
-    );
-  }
-  printLine(printer, "Tax:", `$${parseFloat(order.tax_total).toFixed(2)}`);
-  const tip = ((_c = order.payment_details) == null ? void 0 : _c.tip) ? parseFloat(order.payment_details.tip) : 0;
-  if (tip > 0) {
-    printLine(printer, "Tip:", `$${tip.toFixed(2)}`);
-  }
-  printer.bold(true);
-  printLine(
-    printer,
-    "TOTAL:",
-    `$${parseFloat(order.total_with_tip).toFixed(2)}`
-  );
-  printer.bold(false);
-  printer.println("");
-  if (!isTransaction) {
-    const transactions = ((_d = order.payment_details) == null ? void 0 : _d.transactions) || [];
-    if (transactions.length > 0) {
-      printer.bold(true);
-      printer.println("Payment Details:");
-      printer.bold(false);
-      for (const [index, txn] of transactions.entries()) {
-        const method = (txn.method || "N/A").toUpperCase();
-        const amount = parseFloat(txn.amount).toFixed(2);
-        printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
-        if (method === "CASH") {
-          const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
-          const change = parseFloat(txn.change || 0).toFixed(2);
-          if (parseFloat(tendered) > 0) {
-            printLine(printer, "   Tendered:", `$${tendered}`);
-            printLine(printer, "   Change:", `$${change}`);
-          }
-        } else if (method === "CREDIT" && txn.metadata) {
-          const brand = txn.metadata.card_brand || "";
-          const last4 = txn.metadata.card_last4 || "";
-          if (brand && last4) {
-            printer.println(`    ${brand} ****${last4}`);
-          }
-        }
-      }
-    }
-  } else {
-    printer.bold(true);
-    printer.println("Payment Information:");
-    printer.bold(false);
-    printer.println("This is a transaction receipt.");
-    printer.println("Payment will be processed separately.");
-  }
-  printer.println("");
-  printer.alignCenter();
-  const receiptFooter = (storeSettings == null ? void 0 : storeSettings.receipt_footer) || "Thank you for your business!";
-  {
-    const footerLines = receiptFooter.split("\n");
-    footerLines.forEach((line) => {
-      if (line.trim()) printer.println(line.trim());
+  const n = (o == null ? void 0 : o.store_address) || `2105 Cliff Rd #300
+Eagan, MN 55122`, i = (o == null ? void 0 : o.store_phone) || "(651) 412-5336";
+  if (n.includes("\\n"))
+    n.split("\\n").forEach((l) => {
+      l.trim() && e.println(l.trim());
     });
+  else {
+    const s = n.split(",");
+    if (s.length > 1) {
+      const l = s.shift().trim(), d = s.join(",").trim();
+      l && e.println(l), d && e.println(d);
+    } else
+      e.println(n);
   }
-  if (!(storeSettings == null ? void 0 : storeSettings.receipt_footer)) {
-    printer.println("Visit us at bakeajeen.com");
+  e.println(`Tel: ${i}`), e.println(""), e.alignLeft();
+  const c = r.order_number || r.id || "N/A", h = new Date(r.created_at).toLocaleString("en-US", {
+    timeZone: "America/Chicago"
+  }), p = r.customer_display_name || r.guest_first_name || ((f = r.payment_details) == null ? void 0 : f.customer_name) || ((a = r.customer) == null ? void 0 : a.full_name);
+  p && e.println(`Customer: ${p}`), e.println(`Order #: ${c}`), e.println(`Date: ${h}`);
+  const u = (r.dining_preference || "TAKE_OUT") === "DINE_IN" ? "Dine In" : "Take Out";
+  if (e.println(`Service: ${u}`), r.order_type) {
+    const l = {
+      POS: "In-Store",
+      WEB: "Website",
+      APP: "App",
+      DOORDASH: "DoorDash",
+      UBER_EATS: "Uber Eats"
+    }[r.order_type] || r.order_type;
+    e.println(`Source: ${l}`);
   }
-  printer.println("");
-  printer.println("");
-  printer.cut();
-  return printer.getBuffer();
+  t && (e.alignCenter(), e.bold(!0), e.println("--- TRANSACTION RECEIPT ---"), e.bold(!1), e.alignLeft(), r.status && e.println(`Order Status: ${r.status}`), e.println("** Payment Not Yet Processed **")), e.println(""), e.alignCenter(), e.bold(!0), e.println("ITEMS"), e.bold(!1), e.drawLine(), e.alignLeft();
+  for (const s of r.items) {
+    const l = parseFloat(s.price_at_sale) * s.quantity, d = s.product ? s.product.name : s.custom_name || "Custom Item", b = `${s.quantity}x ${d}`;
+    if (w(e, b, `$${l.toFixed(2)}`), s.selected_modifiers_snapshot && s.selected_modifiers_snapshot.length > 0)
+      for (const $ of s.selected_modifiers_snapshot) {
+        const D = parseFloat($.price_at_sale) * $.quantity * s.quantity;
+        let v = `   - ${$.option_name}`;
+        $.quantity > 1 && (v += ` (${$.quantity}x)`), parseFloat($.price_at_sale) !== 0 ? w(e, v, `$${D.toFixed(2)}`) : e.println(v);
+      }
+  }
+  e.drawLine(), w(e, "Subtotal:", `$${parseFloat(r.subtotal).toFixed(2)}`), parseFloat(r.total_discounts_amount) > 0 && w(
+    e,
+    "Discount:",
+    `-$${parseFloat(r.total_discounts_amount).toFixed(2)}`
+  ), parseFloat(r.surcharges_total) > 0 && w(
+    e,
+    "Service Fee:",
+    `$${parseFloat(r.surcharges_total).toFixed(2)}`
+  ), w(e, "Tax:", `$${parseFloat(r.tax_total).toFixed(2)}`);
+  const C = (E = r.payment_details) != null && E.tip ? parseFloat(r.payment_details.tip) : 0;
+  if (C > 0 && w(e, "Tip:", `$${C.toFixed(2)}`), e.bold(!0), w(
+    e,
+    "TOTAL:",
+    `$${parseFloat(r.total_with_tip).toFixed(2)}`
+  ), e.bold(!1), e.println(""), t)
+    e.bold(!0), e.println("Payment Information:"), e.bold(!1), e.println("This is a transaction receipt."), e.println("Payment will be processed separately.");
+  else {
+    const s = ((O = r.payment_details) == null ? void 0 : O.transactions) || [];
+    if (s.length > 0) {
+      e.bold(!0), e.println("Payment Details:"), e.bold(!1);
+      for (const [l, d] of s.entries()) {
+        const b = (d.method || "N/A").toUpperCase(), $ = parseFloat(d.amount).toFixed(2);
+        if (w(e, ` ${b} (${l + 1})`, `$${$}`), b === "CASH") {
+          const D = parseFloat(d.cashTendered || 0).toFixed(2), v = parseFloat(d.change || 0).toFixed(2);
+          parseFloat(D) > 0 && (w(e, "   Tendered:", `$${D}`), w(e, "   Change:", `$${v}`));
+        } else if (b === "CREDIT" && d.metadata) {
+          const D = d.metadata.card_brand || "", v = d.metadata.card_last4 || "";
+          D && v && e.println(`    ${D} ****${v}`);
+        }
+      }
+    }
+  }
+  return e.println(""), e.alignCenter(), ((o == null ? void 0 : o.receipt_footer) || "Thank you for your business!").split(`
+`).forEach((l) => {
+    l.trim() && e.println(l.trim());
+  }), o != null && o.receipt_footer || e.println("Visit us at bakeajeen.com"), e.println(""), e.println(""), e.cut(), e.getBuffer();
 }
 function formatOpenCashDrawer() {
   let printerInstance = new ThermalPrinter({
@@ -208,134 +111,76 @@ function formatOpenCashDrawer() {
   printerInstance.openCashDrawer();
   return printerInstance.getBuffer();
 }
-function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
-  var _a, _b;
-  let itemsToPrint = order.items || [];
-  if (filterConfig) {
-    itemsToPrint = itemsToPrint.filter((item) => {
-      var _a2, _b2;
-      const product = item.product;
-      if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
-        if (!filterConfig.productTypes.includes("ALL")) {
-          const productTypeMatch = filterConfig.productTypes.includes(
-            (_a2 = product.product_type) == null ? void 0 : _a2.id
-          );
-          if (!productTypeMatch) return false;
-        }
-      }
-      if (filterConfig.categories && filterConfig.categories.length > 0) {
-        if (!filterConfig.categories.includes("ALL")) {
-          const categoryMatch = filterConfig.categories.includes(
-            (_b2 = product.category) == null ? void 0 : _b2.id
-          );
-          if (!categoryMatch) return false;
-        }
-      }
-      return true;
-    });
-  }
-  if (itemsToPrint.length === 0) {
-    console.log(
-      `[formatKitchenTicket] No items match filter for zone "${zoneName}" - skipping ticket`
-    );
-    return null;
-  }
-  let printer = new ThermalPrinter({
-    type: PrinterTypes.EPSON,
+function ee(r, o = "KITCHEN", t = null) {
+  var u, C;
+  let e = r.items || [];
+  if (t && (e = e.filter((T) => {
+    var a, E;
+    const f = T.product;
+    return f ? !(t.productTypes && t.productTypes.length > 0 && !t.productTypes.includes("ALL") && !t.productTypes.includes(
+      (a = f.product_type) == null ? void 0 : a.id
+    ) || t.categories && t.categories.length > 0 && !t.categories.includes("ALL") && !t.categories.includes(
+      (E = f.category) == null ? void 0 : E.id
+    )) : !0;
+  })), e.length === 0)
+    return console.log(
+      `[formatKitchenTicket] No items match filter for zone "${o}" - skipping ticket`
+    ), null;
+  let n = new U({
+    type: A.EPSON,
     characterSet: "PC437_USA",
     interface: "tcp://dummy"
   });
-  printer.println("");
-  printer.println("");
-  printer.println("");
-  printer.println("");
-  printer.alignCenter();
-  printer.bold(true);
-  printer.setTextSize(1, 1);
-  printer.println(`${zoneName.toUpperCase()} TICKET`);
-  printer.setTextNormal();
-  printer.bold(false);
-  printer.alignLeft();
-  printer.println("");
-  printer.setTextSize(2, 2);
-  printer.bold(true);
-  printer.println(`${order.order_number || order.id}`);
-  printer.bold(false);
-  printer.setTextNormal();
-  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
-  if (customerName) {
-    printer.println(`Customer: ${customerName}`);
-  }
-  const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
+  n.println(""), n.println(""), n.println(""), n.println(""), n.alignCenter(), n.bold(!0), n.setTextSize(1, 1), n.println(`${o.toUpperCase()} TICKET`), n.setTextNormal(), n.bold(!1), n.alignLeft(), n.println(""), n.setTextSize(2, 2), n.bold(!0), n.println(`${r.order_number || r.id}`), n.bold(!1), n.setTextNormal();
+  const i = r.customer_display_name || r.guest_first_name || ((u = r.payment_details) == null ? void 0 : u.customer_name) || ((C = r.customer) == null ? void 0 : C.full_name);
+  i && n.println(`Customer: ${i}`);
+  const c = new Date(r.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
     timeZone: "America/Chicago"
   });
-  printer.println(`Time: ${orderDate}`);
-  const diningPreference = order.dining_preference || "TAKE_OUT";
-  const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
-  printer.bold(true);
-  printer.println(`SERVICE: ${diningLabel}`);
-  if (order.order_type) {
-    const orderTypeLabels = {
-      "POS": "IN-STORE",
-      "WEB": "WEBSITE",
-      "APP": "APP",
-      "DOORDASH": "DOORDASH",
-      "UBER_EATS": "UBER EATS"
-    };
-    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
-    printer.println(`SOURCE: ${sourceLabel}`);
+  n.println(`Time: ${c}`);
+  const p = (r.dining_preference || "TAKE_OUT") === "DINE_IN" ? "DINE IN" : "TAKE OUT";
+  if (n.bold(!0), n.println(`SERVICE: ${p}`), r.order_type) {
+    const f = {
+      POS: "IN-STORE",
+      WEB: "WEBSITE",
+      APP: "APP",
+      DOORDASH: "DOORDASH",
+      UBER_EATS: "UBER EATS"
+    }[r.order_type] || r.order_type;
+    n.println(`SOURCE: ${f}`);
   }
-  printer.bold(false);
-  printer.drawLine();
-  const groupedItems = itemsToPrint.reduce((acc, item) => {
-    var _a2;
-    const categoryName = ((_a2 = item.product.category) == null ? void 0 : _a2.name) || "Miscellaneous";
-    if (!acc[categoryName]) {
-      acc[categoryName] = [];
-    }
-    acc[categoryName].push(item);
-    return acc;
+  n.bold(!1), n.drawLine();
+  const g = e.reduce((T, f) => {
+    var E;
+    const a = f.product ? ((E = f.product.category) == null ? void 0 : E.name) || "Miscellaneous" : "Custom Items";
+    return T[a] || (T[a] = []), T[a].push(f), T;
   }, {});
-  for (const categoryName in groupedItems) {
-    printer.bold(true);
-    printer.underline(true);
-    printer.println(`${categoryName.toUpperCase()}:`);
-    printer.underline(false);
-    printer.bold(false);
-    const itemsInCategory = groupedItems[categoryName];
-    for (const item of itemsInCategory) {
-      printer.bold(true);
-      printer.setTextSize(1, 1);
-      printer.println(`${item.quantity}x ${item.product.name}`);
-      printer.setTextNormal();
-      printer.bold(false);
-      if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
-        const modifiersBySet = item.selected_modifiers_snapshot.reduce((acc, modifier) => {
-          const setName = modifier.modifier_set_name || "Other";
-          if (!acc[setName]) acc[setName] = [];
-          acc[setName].push(modifier);
-          return acc;
+  for (const T in g) {
+    n.bold(!0), n.underline(!0), n.println(`${T.toUpperCase()}:`), n.underline(!1), n.bold(!1);
+    const f = g[T];
+    for (const a of f) {
+      n.bold(!0), n.setTextSize(1, 1);
+      const E = a.product ? a.product.name : a.custom_name || "Custom Item";
+      if (n.println(`${a.quantity}x ${E}`), n.setTextNormal(), n.bold(!1), a.selected_modifiers_snapshot && a.selected_modifiers_snapshot.length > 0) {
+        const O = a.selected_modifiers_snapshot.reduce((s, l) => {
+          const d = l.modifier_set_name || "Other";
+          return s[d] || (s[d] = []), s[d].push(l), s;
         }, {});
-        for (const [setName, modifiers] of Object.entries(modifiersBySet)) {
-          const optionsList = modifiers.map((modifier) => {
-            let optionText = modifier.option_name;
-            if (modifier.quantity > 1) {
-              optionText += ` (${modifier.quantity}x)`;
-            }
-            return optionText;
+        for (const [s, l] of Object.entries(O)) {
+          const d = l.map((b) => {
+            let $ = b.option_name;
+            return b.quantity > 1 && ($ += ` (${b.quantity}x)`), $;
           }).join(", ");
-          printer.println(`   ${setName} - ${optionsList}`);
+          n.println(`   ${s} - ${d}`);
         }
       }
-      if (item.notes && item.notes.trim()) {
-        printer.println(`   NOTES: ${item.notes.trim()}`);
-      }
+      a.notes && a.notes.trim() && n.println(`   NOTES: ${a.notes.trim()}`);
     }
-    printer.println("");
+    n.println("");
   }
   printer.cut();
   return printer.getBuffer();
@@ -355,21 +200,20 @@ function requireMain() {
       var o = r[n] = { i: n, l: false, exports: {} };
       return e[n].call(o.exports, o, o.exports, t), o.l = true, o.exports;
     }
-    return t.m = e, t.c = r, t.d = function(e2, r2, n) {
-      t.o(e2, r2) || Object.defineProperty(e2, r2, { enumerable: true, get: n });
-    }, t.r = function(e2) {
-      "undefined" != typeof Symbol && Symbol.toStringTag && Object.defineProperty(e2, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e2, "__esModule", { value: true });
-    }, t.t = function(e2, r2) {
-      if (1 & r2 && (e2 = t(e2)), 8 & r2) return e2;
-      if (4 & r2 && "object" == typeof e2 && e2 && e2.__esModule) return e2;
-      var n = /* @__PURE__ */ Object.create(null);
-      if (t.r(n), Object.defineProperty(n, "default", { enumerable: true, value: e2 }), 2 & r2 && "string" != typeof e2) for (var o in e2) t.d(n, o, (function(r3) {
-        return e2[r3];
-      }).bind(null, o));
-      return n;
-    }, t.n = function(e2) {
-      var r2 = e2 && e2.__esModule ? function() {
-        return e2.default;
+    return t.m = r, t.c = o, t.d = function(e, n, i) {
+      t.o(e, n) || Object.defineProperty(e, n, { enumerable: !0, get: i });
+    }, t.r = function(e) {
+      typeof Symbol < "u" && Symbol.toStringTag && Object.defineProperty(e, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e, "__esModule", { value: !0 });
+    }, t.t = function(e, n) {
+      if (1 & n && (e = t(e)), 8 & n || 4 & n && typeof e == "object" && e && e.__esModule) return e;
+      var i = /* @__PURE__ */ Object.create(null);
+      if (t.r(i), Object.defineProperty(i, "default", { enumerable: !0, value: e }), 2 & n && typeof e != "string") for (var c in e) t.d(i, c, (function(h) {
+        return e[h];
+      }).bind(null, c));
+      return i;
+    }, t.n = function(e) {
+      var n = e && e.__esModule ? function() {
+        return e.default;
       } : function() {
         return e2;
       };
@@ -377,14 +221,14 @@ function requireMain() {
     }, t.o = function(e2, r2) {
       return Object.prototype.hasOwnProperty.call(e2, r2);
     }, t.p = "", t(t.s = 0);
-  }([function(e, r, t) {
-    const { exec: n } = t(1), o = t(2).promisify(n);
-    e.exports = { play: async (e2, r2 = 0.5) => {
-      const t2 = "darwin" === process.platform ? Math.min(2, 2 * r2) : r2, n2 = "darwin" === process.platform ? ((e3, r3) => `afplay "${e3}" -v ${r3}`)(e2, t2) : ((e3, r3) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((e4) => `$player.open('${e4}');`)(e3)} $player.Volume = ${r3}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(e2, t2);
+  }([function(r, o, t) {
+    const { exec: e } = t(1), n = t(2).promisify(e);
+    r.exports = { play: async (i, c = 0.5) => {
+      const h = process.platform === "darwin" ? Math.min(2, 2 * c) : c, p = process.platform === "darwin" ? ((g, u) => `afplay "${g}" -v ${u}`)(i, h) : ((g, u) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((C) => `$player.open('${C}');`)(g)} $player.Volume = ${u}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(i, h);
       try {
-        await o(n2);
-      } catch (e3) {
-        throw e3;
+        await n(p);
+      } catch (g) {
+        throw g;
       }
     } };
   }, function(e, r) {
@@ -394,33 +238,25 @@ function requireMain() {
   }]);
   return main;
 }
-var mainExports = requireMain();
-const sound = /* @__PURE__ */ getDefaultExportFromCjs(mainExports);
-const { machineIdSync } = nodeMachineId;
-const require2 = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const isDev = process$1.env.NODE_ENV === "development";
-process$1.env.DIST = path.join(__dirname, "../dist");
-process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
-let mainWindow;
-let customerWindow;
-let lastKnownState = null;
-const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
-function createMainWindow() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const persistentSession = session.defaultSession;
-  mainWindow = new BrowserWindow({
-    icon: path.join(process$1.env.PUBLIC, "logo.png"),
-    x: primaryDisplay.bounds.x,
-    y: primaryDisplay.bounds.y,
-    fullscreen: true,
+var re = ne();
+const oe = /* @__PURE__ */ te(re), { machineIdSync: ie } = W, F = q(import.meta.url), se = H(import.meta.url), k = _.dirname(se), ce = P.env.NODE_ENV === "development";
+P.env.DIST = _.join(k, "../dist");
+P.env.PUBLIC = I.isPackaged ? P.env.DIST : _.join(P.env.DIST, "../public");
+let m, S, M = null;
+const R = P.env.VITE_DEV_SERVER_URL;
+function ae() {
+  const r = L.getPrimaryDisplay(), o = V.defaultSession;
+  m = new B({
+    icon: _.join(P.env.PUBLIC, "logo.png"),
+    x: r.bounds.x,
+    y: r.bounds.y,
+    fullscreen: !0,
     webPreferences: {
-      session: persistentSession,
-      preload: path.join(__dirname, "../dist-electron/preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
+      session: o,
+      preload: _.join(k, "../dist-electron/preload.js"),
+      nodeIntegration: !1,
+      contextIsolation: !0,
+      enableRemoteModule: !1,
       // Production security settings
       allowRunningInsecureContent: false,
       webSecurity: true,
@@ -432,17 +268,8 @@ function createMainWindow() {
       "main-process-message",
       (/* @__PURE__ */ new Date()).toLocaleString()
     );
-  });
-  if (VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(process$1.env.DIST, "index.html"));
-  }
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-    if (customerWindow) {
-      customerWindow.close();
-    }
+  }), R ? m.loadURL(R) : m.loadFile(_.join(P.env.DIST, "index.html")), m.on("closed", () => {
+    m = null, S && S.close();
   });
 }
 function createCustomerWindow() {
@@ -454,31 +281,20 @@ function createCustomerWindow() {
     console.log("No secondary display found, not creating customer window.");
     return;
   }
-  customerWindow = new BrowserWindow({
-    icon: path.join(process$1.env.PUBLIC, "logo.png"),
-    x: secondaryDisplay.bounds.x,
-    y: secondaryDisplay.bounds.y,
-    fullscreen: true,
+  S = new B({
+    icon: _.join(P.env.PUBLIC, "logo.png"),
+    x: o.bounds.x,
+    y: o.bounds.y,
+    fullscreen: !0,
     webPreferences: {
-      preload: path.join(__dirname, "../dist-electron/preload.js")
+      preload: _.join(k, "../dist-electron/preload.js")
     }
-  });
-  if (VITE_DEV_SERVER_URL) {
-    customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
-  } else {
-    customerWindow.loadFile(path.join(process$1.env.DIST, "customer.html"));
-  }
-  customerWindow.on("closed", () => {
-    customerWindow = null;
+  }), R ? S.loadURL(`${R}customer.html`) : S.loadFile(_.join(P.env.DIST, "customer.html")), S.on("closed", () => {
+    S = null;
   });
 }
-ipcMain.on("to-customer-display", (event, { channel, data }) => {
-  if (channel === "POS_TO_CUSTOMER_STATE") {
-    lastKnownState = data;
-  }
-  if (customerWindow) {
-    customerWindow.webContents.send(channel, data);
-  }
+y.on("to-customer-display", (r, { channel: o, data: t }) => {
+  o === "POS_TO_CUSTOMER_STATE" && (M = t), S && S.webContents.send(o, t);
 });
 ipcMain.on("from-customer-display", (event, { channel, data }) => {
   if (mainWindow) {
@@ -492,14 +308,10 @@ ipcMain.on("CUSTOMER_REQUESTS_STATE", (event) => {
 });
 ipcMain.handle("play-notification-sound", async (event, soundFile) => {
   try {
-    const soundName = soundFile || "notification.wav";
-    const soundPath = path.join(process$1.env.PUBLIC, "sounds", soundName);
-    console.log(`[IPC] Attempting to play sound: ${soundPath}`);
-    await sound.play(soundPath);
-    return { success: true };
-  } catch (error) {
-    console.error("[IPC] Error playing sound:", error);
-    return { success: false, error: error.message };
+    const t = o || "notification.wav", e = _.join(P.env.PUBLIC, "sounds", t);
+    return console.log(`[IPC] Attempting to play sound: ${e}`), await oe.play(e), { success: !0 };
+  } catch (t) {
+    return console.error("[IPC] Error playing sound:", t), { success: !1, error: t.message };
   }
 });
 ipcMain.on("CUSTOMER_TO_POS_TIP", (event, amount) => {
@@ -559,25 +371,20 @@ async function sendBufferToPrinter(printer, buffer) {
           printer
         )}`
       );
-    }
-    const devices = usb.getDeviceList();
-    device = devices.find(
-      (d) => d.deviceDescriptor.idVendor === vendorId && d.deviceDescriptor.idProduct === productId
-    );
-    if (!device) {
+    if (t = x.getDeviceList().find(
+      (p) => p.deviceDescriptor.idVendor === e && p.deviceDescriptor.idProduct === n
+    ), !t)
       throw new Error("USB Printer not found. It may be disconnected.");
-    }
-    device.open();
-    const an_interface = device.interfaces[0];
-    an_interface.claim();
-    const endpoint = an_interface.endpoints.find((e) => e.direction === "out");
-    if (!endpoint) {
+    t.open();
+    const c = t.interfaces[0];
+    c.claim();
+    const h = c.endpoints.find((p) => p.direction === "out");
+    if (!h)
       throw new Error("Could not find an OUT endpoint on the printer.");
-    }
-    await new Promise((resolve, reject) => {
-      endpoint.transfer(buffer, (err) => {
-        if (err) return reject(err);
-        resolve();
+    await new Promise((p, g) => {
+      h.transfer(o, (u) => {
+        if (u) return g(u);
+        p();
       });
     });
   } finally {
@@ -630,16 +437,13 @@ ipcMain.handle(
     try {
       if ((printer == null ? void 0 : printer.connection_type) !== "network" || !printer.ip_address) {
         throw new Error("Invalid network printer configuration provided.");
-      }
-      const thermalPrinter2 = require2("node-thermal-printer");
-      const { printer: ThermalPrinter2, types: PrinterTypes2 } = thermalPrinter2;
-      let printerInstance = new ThermalPrinter2({
-        type: PrinterTypes2.EPSON,
-        interface: `tcp://${printer.ip_address}`,
+      const i = F("node-thermal-printer"), { printer: c, types: h } = i;
+      let p = new c({
+        type: h.EPSON,
+        interface: `tcp://${o.ip_address}`,
         timeout: 5e3
       });
-      const isConnected = await printerInstance.isPrinterConnected();
-      if (!isConnected) {
+      if (!await p.isPrinterConnected())
         throw new Error(
           `Could not connect to kitchen printer at ${printer.ip_address}`
         );
@@ -647,22 +451,14 @@ ipcMain.handle(
       console.log(
         `Successfully connected to kitchen printer at ${printer.ip_address}`
       );
-      const buffer = formatKitchenTicket(order, zoneName, filterConfig);
-      if (!buffer) {
-        console.log(`No items to print for zone "${zoneName}" - skipping`);
-        return {
-          success: true,
-          message: "No items matched filter - ticket skipped"
-        };
-      }
-      console.log(`Sending kitchen ticket buffer (size: ${buffer.length})`);
-      await printerInstance.raw(buffer);
-      console.log("Kitchen ticket sent successfully.");
-      return { success: true };
-    } catch (error) {
-      console.error("\n--- [Main Process] ERROR IN KITCHEN TICKET HANDLER ---");
-      console.error(error);
-      return { success: false, error: error.message };
+      const u = ee(t, e, n);
+      return u ? (console.log(`Sending kitchen ticket buffer (size: ${u.length})`), await p.raw(u), console.log("Kitchen ticket sent successfully."), { success: !0 }) : (console.log(`No items to print for zone "${e}" - skipping`), {
+        success: !0,
+        message: "No items matched filter - ticket skipped"
+      });
+    } catch (i) {
+      return console.error(`
+--- [Main Process] ERROR IN KITCHEN TICKET HANDLER ---`), console.error(i), { success: !1, error: i.message };
     }
   }
 );
@@ -711,9 +507,8 @@ ipcMain.handle("test-network-printer", async (event, { ip_address }) => {
 ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
   console.log("\n--- [Main Process] Using HYBRID open-drawer method ---");
   try {
-    const devices = usb.getDeviceList();
-    const foundDevice = devices.find(
-      (d) => (d.product || `USB Device ${d.deviceDescriptor.idVendor}:${d.deviceDescriptor.idProduct}`) === printerName
+    const e = x.getDeviceList().find(
+      (c) => (c.product || `USB Device ${c.deviceDescriptor.idVendor}:${c.deviceDescriptor.idProduct}`) === o
     );
     if (!foundDevice) {
       throw new Error(`Printer with name "${printerName}" not found.`);
@@ -736,12 +531,10 @@ ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
 });
 ipcMain.handle("get-session-cookies", async (event, url) => {
   try {
-    const { session: session2 } = require2("electron");
-    const cookies = await session2.defaultSession.cookies.get({ url });
-    console.log(`[Main Process] Found ${cookies.length} cookies for ${url}`);
-    cookies.forEach((cookie, index) => {
+    const { session: t } = F("electron"), e = await t.defaultSession.cookies.get({ url: o });
+    console.log(`[Main Process] Found ${e.length} cookies for ${o}`), e.forEach((i, c) => {
       console.log(
-        `[Main Process] Cookie ${index + 1}: ${cookie.name} (${cookie.httpOnly ? "HttpOnly" : "Regular"})`
+        `[Main Process] Cookie ${c + 1}: ${i.name} (${i.httpOnly ? "HttpOnly" : "Regular"})`
       );
     });
     const cookieString = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
@@ -758,28 +551,13 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
     throw error;
   }
 });
-ipcMain.handle("get-machine-id", () => {
-  return machineIdSync({ original: true });
+y.handle("get-machine-id", () => ie({ original: !0 }));
+y.on("shutdown-app", () => {
+  I.quit();
 });
-ipcMain.on("shutdown-app", () => {
-  app.quit();
+I.whenReady().then(async () => {
+  console.log("[Main Process] Starting Electron app - online-only mode"), ce ? (I.commandLine.appendSwitch("--ignore-certificate-errors"), I.commandLine.appendSwitch("--allow-running-insecure-content"), console.log("[Main Process] Development mode - security switches enabled")) : (I.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor"), I.commandLine.appendSwitch("--force-color-profile", "srgb"), console.log("[Main Process] Production mode - security features enabled")), ae(), le();
 });
-app.whenReady().then(async () => {
-  console.log("[Main Process] Starting Electron app - online-only mode");
-  if (!isDev) {
-    app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
-    app.commandLine.appendSwitch("--force-color-profile", "srgb");
-    console.log("[Main Process] Production mode - security features enabled");
-  } else {
-    app.commandLine.appendSwitch("--ignore-certificate-errors");
-    app.commandLine.appendSwitch("--allow-running-insecure-content");
-    console.log("[Main Process] Development mode - security switches enabled");
-  }
-  createMainWindow();
-  createCustomerWindow();
-});
-app.on("window-all-closed", () => {
-  if (process$1.platform !== "darwin") {
-    app.quit();
-  }
+I.on("window-all-closed", () => {
+  P.platform !== "darwin" && I.quit();
 });

@@ -66,6 +66,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         if message_type == "add_item":
             await self.add_item(payload)
+        elif message_type == "add_custom_item":
+            await self.add_custom_item(payload)
         elif message_type == "update_item_quantity":
             await self.update_item_quantity(payload)
         elif message_type == "update_item":
@@ -173,6 +175,54 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 )
                 return
 
+    async def add_custom_item(self, payload):
+        """
+        Handle adding a custom item to the order via WebSocket.
+        """
+        name = payload.get("name")
+        price = payload.get("price")
+        quantity = payload.get("quantity", 1)
+        notes = payload.get("notes", "")
+
+        try:
+            from decimal import Decimal
+            order = await sync_to_async(Order.objects.get)(id=self.order_id)
+
+            # Convert price to Decimal
+            price_decimal = Decimal(str(price))
+
+            # Add the custom item using OrderService
+            await sync_to_async(OrderService.add_custom_item_to_order)(
+                order=order,
+                name=name,
+                price=price_decimal,
+                quantity=quantity,
+                notes=notes
+            )
+
+            logging.info(
+                f"OrderConsumer: Successfully added custom item '{name}' to order {self.order_id}"
+            )
+
+        except ValueError as e:
+            logging.warning(f"OrderConsumer: Failed to add custom item: {e}")
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "error",
+                        "message": str(e),
+                        "error_type": "validation"
+                    }
+                )
+            )
+        except Exception as e:
+            logging.error(f"OrderConsumer: Error adding custom item: {e}")
+            await self.send(
+                text_data=json.dumps(
+                    {"type": "error", "message": str(e), "error_type": "general"}
+                )
+            )
+
     async def update_item_quantity(self, payload):
         item_id = payload.get("item_id")
         new_quantity = payload.get("quantity")
@@ -183,19 +233,22 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 item = await sync_to_async(OrderItem.objects.get)(id=item_id)
                 current_quantity = item.quantity
 
+                # Check if this is a custom item (no product reference)
+                is_custom_item = await sync_to_async(lambda: item.product is None)()
+
                 # Smart conversion: If increasing quantity on an item with modifiers,
                 # create new individual items instead of just incrementing quantity
-                if new_quantity > current_quantity:
+                if new_quantity > current_quantity and not is_custom_item:
                     has_modifiers = await sync_to_async(
                         lambda: item.selected_modifiers_snapshot.exists()
                     )()
-                    
+
                     if has_modifiers:
                         # Create new individual items for the additional quantity
                         additional_quantity = new_quantity - current_quantity
                         product = await sync_to_async(lambda: item.product)()
                         order = await sync_to_async(lambda: item.order)()
-                        
+
                         # Check stock for the additional items
                         if not force_update:
                             from inventory.services import InventoryService
@@ -289,8 +342,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         return
 
                 # Regular quantity update logic for items without modifiers
-                # If increasing quantity, check stock for the additional amount
-                if new_quantity > current_quantity and not force_update:
+                # If increasing quantity, check stock for the additional amount (skip for custom items)
+                if new_quantity > current_quantity and not force_update and not is_custom_item:
                     additional_quantity = new_quantity - current_quantity
 
                     # Import here to avoid circular imports
@@ -348,15 +401,27 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 await sync_to_async(OrderService.recalculate_order_totals)(order_obj)
 
                 if force_update:
-                    product_name = await sync_to_async(lambda: item.product.name)()
-                    logging.info(
-                        f"OrderConsumer: FORCE OVERRIDE - Updated {product_name} quantity to {new_quantity}"
-                    )
+                    if is_custom_item:
+                        item_name = await sync_to_async(lambda: item.custom_name)()
+                        logging.info(
+                            f"OrderConsumer: FORCE OVERRIDE - Updated custom item '{item_name}' quantity to {new_quantity}"
+                        )
+                    else:
+                        product_name = await sync_to_async(lambda: item.product.name)()
+                        logging.info(
+                            f"OrderConsumer: FORCE OVERRIDE - Updated {product_name} quantity to {new_quantity}"
+                        )
                 else:
-                    product_name = await sync_to_async(lambda: item.product.name)()
-                    logging.info(
-                        f"OrderConsumer: Updated {product_name} quantity from {current_quantity} to {new_quantity}"
-                    )
+                    if is_custom_item:
+                        item_name = await sync_to_async(lambda: item.custom_name)()
+                        logging.info(
+                            f"OrderConsumer: Updated custom item '{item_name}' quantity from {current_quantity} to {new_quantity}"
+                        )
+                    else:
+                        product_name = await sync_to_async(lambda: item.product.name)()
+                        logging.info(
+                            f"OrderConsumer: Updated {product_name} quantity from {current_quantity} to {new_quantity}"
+                        )
                 
                 # Send updated order state
                 await self.send_full_order_state()
