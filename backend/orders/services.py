@@ -742,17 +742,37 @@ class OrderService:
     def mark_items_sent_to_kitchen(order_id):
         """
         Mark all items in an order as sent to kitchen (sets kitchen_printed_at timestamp).
+        Also creates KDS items for kitchen workflow.
         Only updates items that haven't been marked yet.
         """
         from django.utils import timezone
-        
+
         order = Order.objects.get(id=order_id)
         items_to_update = order.items.filter(kitchen_printed_at__isnull=True)
-        
+
         now = timezone.now()
         updated_count = items_to_update.update(kitchen_printed_at=now)
-        
-        return updated_count
+
+        # NEW: Create KDS items for kitchen workflow
+        try:
+            from kds.services import KDSService
+            kds_result = KDSService.manual_send_to_kitchen(order)
+
+            return {
+                'updated_count': updated_count,
+                'kds_success': kds_result.get('success', False),
+                'kds_items_created': kds_result.get('items_created', 0),
+                'kds_message': kds_result.get('message', '')
+            }
+        except Exception as e:
+            # If KDS fails, still return the successful receipt printing count
+            logger.warning(f"KDS integration failed for order {order_id}: {e}")
+            return {
+                'updated_count': updated_count,
+                'kds_success': False,
+                'kds_items_created': 0,
+                'kds_message': f'KDS error: {str(e)}'
+            }
 
 
 class GuestSessionService:

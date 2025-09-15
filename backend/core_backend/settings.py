@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "settings",
     "integrations",
     "notifications",
+    "kds.apps.KdsConfig",
     "reports",
     "core_backend.apps.CoreBackendConfig",
 ]
@@ -149,7 +150,7 @@ DATABASES = {
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
 # Use X-Forwarded-For in production, but disable rate limiting if header issues occur
-RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
+# RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
 # Default view for blocked rate-limited requests
 RATELIMIT_VIEW = "core_backend.views.ratelimited429"
 

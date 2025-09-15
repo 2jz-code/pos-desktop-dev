@@ -469,22 +469,40 @@ class OrderViewSet(BaseViewSet):
     def mark_sent_to_kitchen(self, request, pk=None):
         """
         Mark all items in this order as sent to kitchen.
-        This prevents duplicate kitchen ticket printing.
+        This prevents duplicate kitchen ticket printing and creates KDS items.
         """
         try:
-            updated_count = OrderService.mark_items_sent_to_kitchen(pk)
-            return Response({
-                "message": f"Marked {updated_count} items as sent to kitchen",
-                "updated_count": updated_count
-            }, status=status.HTTP_200_OK)
+            result = OrderService.mark_items_sent_to_kitchen(pk)
+
+            # Handle both old return format (just count) and new format (dict)
+            if isinstance(result, dict):
+                response_data = {
+                    "message": f"Marked {result['updated_count']} items as sent to kitchen",
+                    "updated_count": result['updated_count'],
+                    "kds_success": result.get('kds_success', False),
+                    "kds_items_created": result.get('kds_items_created', 0),
+                    "kds_message": result.get('kds_message', '')
+                }
+            else:
+                # Backward compatibility for old format
+                response_data = {
+                    "message": f"Marked {result} items as sent to kitchen",
+                    "updated_count": result,
+                    "kds_success": False,
+                    "kds_items_created": 0,
+                    "kds_message": "KDS not integrated"
+                }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
         except Order.DoesNotExist:
             return Response(
-                {"error": "Order not found"}, 
+                {"error": "Order not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
             return Response(
-                {"error": str(e)}, 
+                {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

@@ -262,7 +262,7 @@ class PrinterConfiguration(models.Model):
     kitchen_zones = models.JSONField(
         default=list,
         blank=True,
-        help_text="Kitchen zone configurations with category filters (e.g., [{'name': 'Grill Station', 'printer_name': 'Kitchen Printer', 'category_ids': [1, 2]}])",
+        help_text="Kitchen zone configurations with category filters and QC status (e.g., [{'name': 'Grill Station', 'printer_name': 'Kitchen Printer', 'category_ids': [1, 2], 'is_qc_zone': false}])",
     )
 
     def clean(self):

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui";
-import { ChefHat, Settings, RefreshCw, ArrowLeft } from "lucide-react";
+import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff } from "lucide-react";
 import { OrderCard } from "../components/OrderCard";
 import { ZoneSwitcher } from "../components/ZoneSwitcher";
+import { useKDSWebSocket } from "../hooks/useKDSWebSocket";
 
 /**
  * Main KDS Display Page
@@ -14,64 +15,23 @@ export function KDSPage() {
 	const [selectedZone, setSelectedZone] = useState(() => {
 		return localStorage.getItem("kds-selected-zone") || "";
 	});
-	const [orders, setOrders] = useState([]);
-	const [isLoading, setIsLoading] = useState(true);
 
-	// Simulate loading orders (will be replaced with real API call)
+	// Use WebSocket hook for real-time KDS data
+	const {
+		categorizedOrders,
+		alerts,
+		isQCStation,
+		connectionStatus,
+		isConnected,
+		updateItemStatus,
+		markItemPriority,
+		addKitchenNote,
+		reconnect
+	} = useKDSWebSocket(selectedZone);
+
+	// Redirect to zone selection if no zone is selected
 	useEffect(() => {
-		const loadOrders = () => {
-			setIsLoading(true);
-			// Simulate API delay
-			setTimeout(() => {
-				// Mock orders data
-				const mockOrders = [
-					{
-						id: "001",
-						orderNumber: "POS-001",
-						customerName: "John Doe",
-						orderType: "dine-in",
-						status: "new",
-						timeReceived: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
-						items: [
-							{ name: "Burger", quantity: 1, specialInstructions: "No onions" },
-							{ name: "Fries", quantity: 1, specialInstructions: "" },
-							{ name: "Coke", quantity: 1, specialInstructions: "" }
-						]
-					},
-					{
-						id: "002",
-						orderNumber: "POS-002",
-						customerName: "Jane Smith",
-						orderType: "takeout",
-						status: "preparing",
-						timeReceived: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
-						items: [
-							{ name: "Pizza Margherita", quantity: 1, specialInstructions: "Extra cheese" },
-							{ name: "Garlic Bread", quantity: 2, specialInstructions: "" }
-						]
-					},
-					{
-						id: "003",
-						orderNumber: "WEB-003",
-						customerName: "Bob Wilson",
-						orderType: "delivery",
-						status: "ready",
-						timeReceived: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
-						items: [
-							{ name: "Pasta Carbonara", quantity: 1, specialInstructions: "Less salt" },
-							{ name: "Caesar Salad", quantity: 1, specialInstructions: "Dressing on side" }
-						]
-					}
-				];
-				setOrders(mockOrders);
-				setIsLoading(false);
-			}, 1000);
-		};
-
-		if (selectedZone) {
-			loadOrders();
-		} else {
-			// If no zone selected, redirect to zone selection
+		if (!selectedZone) {
 			navigate("/kds-zone-selection");
 		}
 	}, [selectedZone, navigate]);
@@ -82,11 +42,8 @@ export function KDSPage() {
 	};
 
 	const handleOrderStatusChange = (orderId, newStatus) => {
-		setOrders(prevOrders =>
-			prevOrders.map(order =>
-				order.id === orderId ? { ...order, status: newStatus } : order
-			)
-		);
+		// Use WebSocket to update item status
+		updateItemStatus(orderId, newStatus);
 	};
 
 	const handleBackToZoneSelection = () => {
@@ -94,15 +51,24 @@ export function KDSPage() {
 	};
 
 	const handleRefresh = () => {
-		// Trigger a refresh of orders
-		setIsLoading(true);
-		setTimeout(() => setIsLoading(false), 500);
+		// Reconnect WebSocket to refresh data
+		reconnect();
 	};
 
-	// Filter orders by status for display organization
-	const newOrders = orders.filter(order => order.status === "new");
-	const preparingOrders = orders.filter(order => order.status === "preparing");
-	const readyOrders = orders.filter(order => order.status === "ready");
+	// Get connection status indicator
+	const getConnectionStatusIcon = () => {
+		switch (connectionStatus) {
+			case 'connected':
+				return <Wifi className="h-4 w-4 text-green-500" />;
+			case 'connecting':
+				return <RefreshCw className="h-4 w-4 text-yellow-500 animate-spin" />;
+			case 'disconnected':
+			case 'error':
+				return <WifiOff className="h-4 w-4 text-red-500" />;
+			default:
+				return <WifiOff className="h-4 w-4 text-gray-500" />;
+		}
+	};
 
 	return (
 		<div className="min-h-screen bg-gray-50">
@@ -117,8 +83,19 @@ export function KDSPage() {
 									Kitchen Display System
 								</h1>
 							</div>
-							<div className="text-sm text-gray-500">
-								Zone: <span className="font-medium text-gray-900">{selectedZone}</span>
+							<div className="flex items-center space-x-4">
+								<div className="text-sm text-gray-500">
+									Zone: <span className="font-medium text-gray-900">{selectedZone}</span>
+									{isQCStation && (
+										<span className="ml-2 bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
+											QC Station
+										</span>
+									)}
+								</div>
+								<div className="flex items-center space-x-2 text-sm text-gray-500">
+									{getConnectionStatusIcon()}
+									<span className="capitalize">{connectionStatus}</span>
+								</div>
 							</div>
 						</div>
 
@@ -131,9 +108,9 @@ export function KDSPage() {
 								onClick={handleRefresh}
 								variant="outline"
 								size="sm"
-								disabled={isLoading}
+								disabled={connectionStatus === 'connecting'}
 							>
-								<RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+								<RefreshCw className={`h-4 w-4 mr-2 ${connectionStatus === 'connecting' ? 'animate-spin' : ''}`} />
 								Refresh
 							</Button>
 							<Button
@@ -151,10 +128,23 @@ export function KDSPage() {
 
 			{/* Main Content */}
 			<div className="p-6">
-				{isLoading ? (
+				{connectionStatus === 'connecting' ? (
 					<div className="flex items-center justify-center py-12">
 						<RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
-						<span className="ml-2 text-gray-600">Loading orders...</span>
+						<span className="ml-2 text-gray-600">Connecting to kitchen display...</span>
+					</div>
+				) : connectionStatus === 'disconnected' || connectionStatus === 'error' ? (
+					<div className="flex items-center justify-center py-12">
+						<WifiOff className="h-8 w-8 text-red-400" />
+						<span className="ml-2 text-gray-600">
+							Connection lost.
+							<button
+								onClick={handleRefresh}
+								className="ml-2 text-blue-600 hover:text-blue-800 underline"
+							>
+								Reconnect
+							</button>
+						</span>
 					</div>
 				) : (
 					<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -164,16 +154,16 @@ export function KDSPage() {
 								<h2 className="font-semibold text-blue-900 flex items-center">
 									New Orders
 									<span className="ml-2 bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
-										{newOrders.length}
+										{categorizedOrders.new.length}
 									</span>
 								</h2>
 							</div>
-							{newOrders.length === 0 ? (
+							{categorizedOrders.new.length === 0 ? (
 								<Card className="p-6 text-center text-gray-500">
 									No new orders
 								</Card>
 							) : (
-								newOrders.map(order => (
+								categorizedOrders.new.map(order => (
 									<OrderCard
 										key={order.id}
 										order={order}
@@ -189,16 +179,16 @@ export function KDSPage() {
 								<h2 className="font-semibold text-yellow-900 flex items-center">
 									Preparing
 									<span className="ml-2 bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
-										{preparingOrders.length}
+										{categorizedOrders.preparing.length}
 									</span>
 								</h2>
 							</div>
-							{preparingOrders.length === 0 ? (
+							{categorizedOrders.preparing.length === 0 ? (
 								<Card className="p-6 text-center text-gray-500">
 									No orders being prepared
 								</Card>
 							) : (
-								preparingOrders.map(order => (
+								categorizedOrders.preparing.map(order => (
 									<OrderCard
 										key={order.id}
 										order={order}
@@ -214,16 +204,16 @@ export function KDSPage() {
 								<h2 className="font-semibold text-green-900 flex items-center">
 									Ready
 									<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
-										{readyOrders.length}
+										{categorizedOrders.ready.length}
 									</span>
 								</h2>
 							</div>
-							{readyOrders.length === 0 ? (
+							{categorizedOrders.ready.length === 0 ? (
 								<Card className="p-6 text-center text-gray-500">
 									No orders ready
 								</Card>
 							) : (
-								readyOrders.map(order => (
+								categorizedOrders.ready.map(order => (
 									<OrderCard
 										key={order.id}
 										order={order}

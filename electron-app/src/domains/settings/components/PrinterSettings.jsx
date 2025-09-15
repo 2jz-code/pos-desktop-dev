@@ -28,6 +28,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { Input } from "@/shared/components/ui/input";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { Trash2, PlusCircle, Usb, Wifi } from "lucide-react";
 import {
@@ -51,6 +52,7 @@ const zoneSchema = z.object({
 	printer_name: z.string().min(1, "A printer must be selected"),
 	// Now using proper array of category IDs with CategoryMultiSelect component
 	category_ids: z.array(z.number()).optional(),
+	is_qc_zone: z.boolean().optional(),
 });
 
 const formSchema = z.object({
@@ -164,6 +166,7 @@ export function PrinterSettings() {
 				name: z.name,
 				printer_name: z.printer_name || printerNameById[z.printerId] || "",
 				category_ids: z.categories || [],
+				is_qc_zone: z.is_qc_zone || false,
 			}));
 
 			form.reset({
@@ -219,6 +222,7 @@ export function PrinterSettings() {
 				name: z.name.trim(),
 				printer_name: z.printer_name,
 				categories: z.category_ids || [],
+				is_qc_zone: z.is_qc_zone || false,
 			})),
 		};
 
@@ -536,6 +540,28 @@ export function PrinterSettings() {
 												</FormItem>
 											)}
 										/>
+										<FormField
+											control={form.control}
+											name={`kitchen_zones.${index}.is_qc_zone`}
+											render={({ field }) => (
+												<FormItem className="flex flex-row items-start space-x-3 space-y-0">
+													<FormControl>
+														<Checkbox
+															checked={field.value || false}
+															onCheckedChange={field.onChange}
+														/>
+													</FormControl>
+													<div className="space-y-1 leading-none">
+														<FormLabel>
+															QC/Expo Station
+														</FormLabel>
+														<FormDescription>
+															Mark this zone as a Quality Control or Expo station. QC stations see all items for final review and service.
+														</FormDescription>
+													</div>
+												</FormItem>
+											)}
+										/>
 									</div>
 								))}
 								<Button
@@ -547,6 +573,7 @@ export function PrinterSettings() {
 											name: "",
 											printer_name: "",
 											category_ids: [],
+											is_qc_zone: false,
 										})
 									}
 								>
