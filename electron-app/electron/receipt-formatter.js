@@ -151,7 +151,8 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 	printer.alignLeft();
 	for (const item of order.items) {
 		const price = parseFloat(item.price_at_sale) * item.quantity;
-		const itemText = `${item.quantity}x ${item.product.name}`;
+		const itemName = item.product ? item.product.name : (item.custom_name || 'Custom Item');
+		const itemText = `${item.quantity}x ${itemName}`;
 		printLine(printer, itemText, `$${price.toFixed(2)}`);
 		
 		// Print modifiers if they exist
@@ -309,6 +310,11 @@ export function formatKitchenTicket(
 		itemsToPrint = itemsToPrint.filter((item) => {
 			const product = item.product;
 
+			// Custom items (without product reference) are always included in kitchen tickets
+			if (!product) {
+				return true;
+			}
+
 			// Filter by product type
 			if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
 				if (!filterConfig.productTypes.includes("ALL")) {
@@ -414,7 +420,7 @@ export function formatKitchenTicket(
 
 	// --- Group items by category ---
 	const groupedItems = itemsToPrint.reduce((acc, item) => {
-		const categoryName = item.product.category?.name || "Miscellaneous";
+		const categoryName = item.product ? (item.product.category?.name || "Miscellaneous") : "Custom Items";
 		if (!acc[categoryName]) {
 			acc[categoryName] = [];
 		}
@@ -435,7 +441,8 @@ export function formatKitchenTicket(
 		for (const item of itemsInCategory) {
 			printer.bold(true);
 			printer.setTextSize(1, 1);
-			printer.println(`${item.quantity}x ${item.product.name}`);
+			const itemName = item.product ? item.product.name : (item.custom_name || 'Custom Item');
+			printer.println(`${item.quantity}x ${itemName}`);
 			printer.setTextNormal();
 			printer.bold(false);
 

@@ -362,7 +362,12 @@ class OrderService:
         
         for group_name, items in grouped_items.items():
             # Access pre-fetched product name (no additional query needed)
-            product_name = items[0].product.name.upper()
+            # Handle both product items and custom items
+            first_item = items[0]
+            if first_item.product:
+                product_name = first_item.product.name.upper()
+            else:
+                product_name = (first_item.custom_name or 'CUSTOM ITEM').upper()
             
             if len(items) > 1:
                 # Multiple variations
