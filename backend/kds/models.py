@@ -232,3 +232,114 @@ class KDSAlert(models.Model):
         self.is_active = False
         self.resolved_at = timezone.now()
         self.save(update_fields=["is_active", "resolved_at"])
+
+
+class QCOrderView(models.Model):
+    """
+    Quality Control view of orders - aggregates items from all kitchen zones
+    for order-level completion workflow in QC stations
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(
+        "orders.Order", on_delete=models.CASCADE, related_name="qc_views"
+    )
+    qc_zone_printer_id = models.CharField(
+        max_length=100, help_text="QC zone this view is for"
+    )
+
+    # QC-specific status tracking
+    qc_status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "Pending Kitchen"),
+            ("ready_for_qc", "Ready for QC"),
+            ("in_qc", "In QC Review"),
+            ("completed", "Completed"),
+        ],
+        default="pending"
+    )
+
+    # QC timing
+    ready_for_qc_at = models.DateTimeField(null=True, blank=True)
+    qc_started_at = models.DateTimeField(null=True, blank=True)
+    qc_completed_at = models.DateTimeField(null=True, blank=True)
+
+    # QC notes and issues
+    qc_notes = models.TextField(
+        blank=True, help_text="QC notes or issues found"
+    )
+    requires_remake = models.BooleanField(
+        default=False, help_text="QC flagged items for remake"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["order", "qc_zone_printer_id"]
+        ordering = ["ready_for_qc_at", "created_at"]
+
+    def __str__(self):
+        return f"QC View: {self.order.order_number} ({self.qc_zone_printer_id})"
+
+    @property
+    def all_kitchen_items_ready(self):
+        """
+        Check if all kitchen items for this order are ready
+        (excluding other QC zones)
+        """
+        from .services import KDSService
+
+        # Get all KDS items for this order
+        order_kds_items = KDSOrderItem.objects.filter(order_item__order=self.order)
+
+        # Exclude items from QC zones
+        kitchen_items = []
+        for item in order_kds_items:
+            if KDSService.get_zone_type(item.zone_printer_id) == 'kitchen':
+                kitchen_items.append(item)
+
+        if not kitchen_items:
+            return True  # No kitchen items means ready for QC
+
+        # Check if all kitchen items are ready or completed
+        return all(item.kds_status in ['ready', 'completed'] for item in kitchen_items)
+
+    @property
+    def kitchen_item_statuses(self):
+        """
+        Get a summary of all kitchen items and their statuses
+        Returns dict with zone -> items mapping
+        """
+        from .services import KDSService
+
+        order_kds_items = KDSOrderItem.objects.select_related(
+            'order_item'
+        ).filter(order_item__order=self.order)
+
+        kitchen_zones = {}
+        for item in order_kds_items:
+            zone_type = KDSService.get_zone_type(item.zone_printer_id)
+            if zone_type == 'kitchen':
+                if item.zone_printer_id not in kitchen_zones:
+                    kitchen_zones[item.zone_printer_id] = []
+
+                kitchen_zones[item.zone_printer_id].append({
+                    'id': str(item.id),
+                    'product_name': getattr(item.order_item, 'product_name', 'Custom Item'),
+                    'status': item.kds_status,
+                    'quantity': item.order_item.quantity,
+                    'special_instructions': item.order_item.special_instructions,
+                })
+
+        return kitchen_zones
+
+    def update_qc_status(self):
+        """
+        Update QC status based on kitchen item readiness
+        """
+        if self.qc_status == 'pending' and self.all_kitchen_items_ready:
+            self.qc_status = 'ready_for_qc'
+            self.ready_for_qc_at = timezone.now()
+            self.save(update_fields=['qc_status', 'ready_for_qc_at', 'updated_at'])

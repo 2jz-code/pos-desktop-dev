@@ -119,64 +119,80 @@ class KDSService:
             return []
 
     @staticmethod
-    def is_qc_zone(zone_printer_id):
+    def get_zone_type(zone_printer_id):
         """
-        Check if a zone is marked as QC in the printer configuration
-        Sync version - use is_qc_zone_async for async contexts
+        Get the zone type ('kitchen' or 'qc') for a given zone
+        Returns 'kitchen' by default for backward compatibility
         """
         try:
             from settings.models import PrinterConfiguration
 
             config = PrinterConfiguration.objects.first()
             if not config or not config.kitchen_zones:
-                return False
+                return 'kitchen'
 
-            # Find the zone and check its is_qc_zone flag
+            # Find the zone and check its zone_type
             for zone in config.kitchen_zones:
                 if zone.get('name') == zone_printer_id or zone.get('printer_name') == zone_printer_id:
-                    return zone.get('is_qc_zone', False)
+                    # Check new zone_type field first, fallback to is_qc_zone for backward compatibility
+                    zone_type = zone.get('zone_type')
+                    if zone_type in ['kitchen', 'qc']:
+                        return zone_type
+                    # Backward compatibility: if is_qc_zone is True, return 'qc'
+                    return 'qc' if zone.get('is_qc_zone', False) else 'kitchen'
 
-            return False
+            return 'kitchen'
         except Exception as e:
-            print(f"Error checking QC zone: {e}")
-            return False
+            print(f"Error getting zone type: {e}")
+            return 'kitchen'
+
+    @staticmethod
+    def is_qc_zone(zone_printer_id):
+        """
+        Check if a zone is marked as QC in the printer configuration
+        Sync version - use is_qc_zone_async for async contexts
+        """
+        return KDSService.get_zone_type(zone_printer_id) == 'qc'
+
+    @staticmethod
+    async def get_zone_type_async(zone_printer_id):
+        """
+        Async version of get_zone_type for use in WebSocket consumers
+        Returns 'kitchen' by default for backward compatibility
+        """
+        try:
+            from settings.models import PrinterConfiguration
+            from asgiref.sync import sync_to_async
+
+            # Create an async version of the database query
+            get_config = sync_to_async(PrinterConfiguration.objects.first)
+            config = await get_config()
+
+            if not config or not config.kitchen_zones:
+                return 'kitchen'
+
+            # Find the zone and check its zone_type
+            for zone in config.kitchen_zones:
+                if zone.get('name') == zone_printer_id or zone.get('printer_name') == zone_printer_id:
+                    # Check new zone_type field first, fallback to is_qc_zone for backward compatibility
+                    zone_type = zone.get('zone_type')
+                    if zone_type in ['kitchen', 'qc']:
+                        return zone_type
+                    # Backward compatibility: if is_qc_zone is True, return 'qc'
+                    return 'qc' if zone.get('is_qc_zone', False) else 'kitchen'
+
+            return 'kitchen'
+        except Exception as e:
+            print(f"Error getting zone type async: {e}")
+            return 'kitchen'
 
     @staticmethod
     async def is_qc_zone_async(zone_printer_id):
         """
         Async version of is_qc_zone for use in WebSocket consumers
         """
-        try:
-            print(f"[KDS Service] is_qc_zone_async: Starting for zone {zone_printer_id}")
-            from settings.models import PrinterConfiguration
-            from asgiref.sync import sync_to_async
-
-            # Create an async version of the database query
-            print("[KDS Service] is_qc_zone_async: Getting printer configuration...")
-            get_config = sync_to_async(PrinterConfiguration.objects.first)
-            config = await get_config()
-            print(f"[KDS Service] is_qc_zone_async: Config retrieved, has kitchen_zones: {bool(config and config.kitchen_zones)}")
-
-            if not config or not config.kitchen_zones:
-                print("[KDS Service] is_qc_zone_async: No config or kitchen zones, returning False")
-                return False
-
-            # Find the zone and check its is_qc_zone flag
-            print(f"[KDS Service] is_qc_zone_async: Searching through {len(config.kitchen_zones)} zones")
-            for i, zone in enumerate(config.kitchen_zones):
-                print(f"[KDS Service] is_qc_zone_async: Zone {i}: name={zone.get('name')}, printer_name={zone.get('printer_name')}, is_qc_zone={zone.get('is_qc_zone')}")
-                if zone.get('name') == zone_printer_id or zone.get('printer_name') == zone_printer_id:
-                    result = zone.get('is_qc_zone', False)
-                    print(f"[KDS Service] is_qc_zone_async: Found matching zone, returning {result}")
-                    return result
-
-            print("[KDS Service] is_qc_zone_async: No matching zone found, returning False")
-            return False
-        except Exception as e:
-            print(f"[KDS Service] is_qc_zone_async: ERROR - {e}")
-            import traceback
-            print(f"[KDS Service] is_qc_zone_async: TRACEBACK - {traceback.format_exc()}")
-            return False
+        zone_type = await KDSService.get_zone_type_async(zone_printer_id)
+        return zone_type == 'qc'
 
     @staticmethod
     def get_zone_alerts(zone_printer_id):
@@ -320,20 +336,20 @@ class KDSService:
                         # For regular stations, ready items were completed, so show as completed
                         reappear_status = 'completed'
 
-                        reappeared_item = KDSOrderItem.objects.create(
-                            order_item=existing_kds_item.order_item,
-                            zone_printer_id=zone_id,
-                            kds_status=reappear_status,
-                            is_reappeared_completed=True,
-                            original_completion_time=existing_kds_item.completed_at or existing_kds_item.ready_at,
-                            received_at=existing_kds_item.received_at,
-                            started_preparing_at=existing_kds_item.started_preparing_at,
-                            ready_at=existing_kds_item.ready_at,
-                            completed_at=existing_kds_item.completed_at,
-                            kitchen_notes=existing_kds_item.kitchen_notes
-                        )
-                        kds_items.append(reappeared_item)
-                    # else: Items still in progress or zones not affected - leave them as-is
+                    reappeared_item = KDSOrderItem.objects.create(
+                        order_item=existing_kds_item.order_item,
+                        zone_printer_id=zone_id,
+                        kds_status=reappear_status,
+                        is_reappeared_completed=True,
+                        original_completion_time=existing_kds_item.completed_at or existing_kds_item.ready_at,
+                        received_at=existing_kds_item.received_at,
+                        started_preparing_at=existing_kds_item.started_preparing_at,
+                        ready_at=existing_kds_item.ready_at,
+                        completed_at=existing_kds_item.completed_at,
+                        kitchen_notes=existing_kds_item.kitchen_notes
+                    )
+                    kds_items.append(reappeared_item)
+                # else: Items still in progress or zones not affected - leave them as-is
 
             # Add new items that don't have KDS items yet
             for order_item in order.items.all():
@@ -579,3 +595,208 @@ class KDSService:
         }
 
         return summary
+
+    @staticmethod
+    def get_kitchen_zone_data(zone_printer_id):
+        """
+        Get data for kitchen zones - order cards with items for this zone
+        """
+        # Ensure this is a kitchen zone
+        if KDSService.get_zone_type(zone_printer_id) != 'kitchen':
+            return []
+
+        items = KDSService.get_zone_items(zone_printer_id)
+
+        # Group items by order
+        orders_dict = {}
+        for item in items:
+            order_id = str(item.order_item.order.id)
+            if order_id not in orders_dict:
+                orders_dict[order_id] = {
+                    'id': order_id,
+                    'order_number': item.order_item.order.order_number,
+                    'customer_name': item.order_item.order.customer_display_name,
+                    'order_type': item.order_item.order.order_type,
+                    'created_at': item.order_item.order.created_at.isoformat(),
+                    'items': [],
+                    'overall_status': 'received',  # Will be calculated
+                    'earliest_received_at': item.received_at,
+                }
+
+            # Add item details for this zone
+            orders_dict[order_id]['items'].append({
+                'id': str(item.id),
+                'product_name': item.order_item.product.name if item.order_item.product else (item.order_item.custom_name or 'Custom Item'),
+                'quantity': item.order_item.quantity,
+                'status': item.kds_status,
+                'special_instructions': item.order_item.notes or '',
+                'kitchen_notes': item.kitchen_notes or '',
+                'is_priority': item.is_priority,
+                'is_overdue': item.is_overdue,
+                'estimated_prep_time': item.estimated_prep_time,
+                'received_at': item.received_at.isoformat() if item.received_at else None,
+                'started_preparing_at': item.started_preparing_at.isoformat() if item.started_preparing_at else None,
+                'ready_at': item.ready_at.isoformat() if item.ready_at else None,
+            })
+
+            # Track earliest received time
+            if item.received_at and (not orders_dict[order_id]['earliest_received_at'] or
+                                   item.received_at < orders_dict[order_id]['earliest_received_at']):
+                orders_dict[order_id]['earliest_received_at'] = item.received_at
+
+        # Calculate overall status for each order based on items in this zone
+        for order_data in orders_dict.values():
+            items = order_data['items']
+            if all(item['status'] == 'ready' for item in items):
+                order_data['overall_status'] = 'ready'
+            elif any(item['status'] == 'preparing' for item in items):
+                order_data['overall_status'] = 'preparing'
+            else:
+                order_data['overall_status'] = 'received'
+
+            # Convert earliest_received_at to ISO string
+            if order_data['earliest_received_at']:
+                order_data['earliest_received_at'] = order_data['earliest_received_at'].isoformat()
+
+        return list(orders_dict.values())
+
+    @staticmethod
+    def get_qc_zone_data(zone_printer_id):
+        """
+        Get data for QC zones - all orders with KDS items
+        QC sees all orders from the beginning and can complete them when all kitchen items are ready
+        """
+        # Ensure this is a QC zone
+        if KDSService.get_zone_type(zone_printer_id) != 'qc':
+            return []
+
+        # Get all orders that have KDS items
+        from orders.models import Order
+
+        orders_with_kds_items = Order.objects.filter(
+            items__kds_items__isnull=False
+        ).distinct().select_related().prefetch_related('items__kds_items')
+
+        qc_data = []
+
+        for order in orders_with_kds_items:
+            # Skip completed orders
+            if order.status == 'completed':
+                continue
+
+            # Get all KDS items for this order
+            all_kds_items = KDSOrderItem.objects.filter(order_item__order=order)
+
+            # Filter to only kitchen zones (exclude other QC zones)
+            kitchen_items = []
+            kitchen_zones = {}
+
+            for item in all_kds_items:
+                if KDSService.get_zone_type(item.zone_printer_id) == 'kitchen':
+                    kitchen_items.append(item)
+
+                    zone_name = item.zone_printer_id
+                    if zone_name not in kitchen_zones:
+                        kitchen_zones[zone_name] = []
+
+                    kitchen_zones[zone_name].append({
+                        'id': str(item.id),
+                        'product_name': item.order_item.product.name if item.order_item.product else (item.order_item.custom_name or 'Custom Item'),
+                        'quantity': item.order_item.quantity,
+                        'status': item.kds_status,
+                        'special_instructions': item.order_item.notes or '',
+                    })
+
+            if not kitchen_items:
+                continue  # No kitchen items for this order
+
+            # Check if ALL kitchen items are ready
+            all_kitchen_items_ready = all(item.kds_status == 'ready' for item in kitchen_items)
+
+            # Only show in QC if all kitchen items are ready OR if already being processed by QC
+            order_data = {
+                'id': str(order.id),
+                'order_number': order.order_number,
+                'customer_name': order.customer_display_name,
+                'order_type': order.order_type,
+                'created_at': order.created_at.isoformat(),
+                'all_kitchen_items_ready': all_kitchen_items_ready,
+                'kitchen_zones': kitchen_zones,
+                'total_items': len(kitchen_items),
+                'can_complete': all_kitchen_items_ready,
+            }
+
+            # Show all orders with KDS items in QC (from the beginning)
+            # QC can see progress and complete when ready
+            qc_data.append(order_data)
+
+        return qc_data
+
+    @staticmethod
+    def complete_order_qc(order_id, notes=None):
+        """
+        Complete an order from QC - simple workflow
+        """
+        try:
+            with transaction.atomic():
+                from orders.models import Order
+
+                order = Order.objects.get(id=order_id)
+
+                # Mark the entire order as completed
+                order.status = 'completed'
+                order.save(update_fields=['status'])
+
+                # Optional: Add completion notes to any QC views
+                if notes:
+                    from .models import QCOrderView
+                    qc_views = QCOrderView.objects.filter(order=order)
+                    for qc_view in qc_views:
+                        qc_view.qc_notes = notes
+                        qc_view.qc_status = 'completed'
+                        qc_view.qc_completed_at = timezone.now()
+                        qc_view.save()
+
+                return order
+        except Exception as e:
+            print(f"Error completing order in QC: {e}")
+            return None
+
+    @staticmethod
+    def create_or_update_qc_views_for_order(order):
+        """
+        Create or update QC views when an order is created or items are added
+        """
+        from .models import QCOrderView
+        from settings.models import PrinterConfiguration
+
+        try:
+            # Get all QC zones
+            config = PrinterConfiguration.objects.first()
+            if not config or not config.kitchen_zones:
+                return
+
+            qc_zones = [
+                zone for zone in config.kitchen_zones
+                if KDSService.get_zone_type(zone.get('name', '')) == 'qc'
+            ]
+
+            # Create QC views for each QC zone
+            for qc_zone in qc_zones:
+                zone_name = qc_zone.get('name', '')
+                if not zone_name:
+                    continue
+
+                qc_view, created = QCOrderView.objects.get_or_create(
+                    order=order,
+                    qc_zone_printer_id=zone_name,
+                    defaults={
+                        'qc_status': 'pending'
+                    }
+                )
+
+                # Update status based on kitchen readiness
+                qc_view.update_qc_status()
+
+        except Exception as e:
+            print(f"Error creating/updating QC views: {e}")

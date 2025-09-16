@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 /**
  * Hook for managing KDS WebSocket connections and real-time order updates
  */
 export function useKDSWebSocket(zoneId) {
-	const [orders, setOrders] = useState([]);
+	const [zoneData, setZoneData] = useState([]); // Kitchen items or QC orders
 	const [connectionStatus, setConnectionStatus] = useState("disconnected"); // disconnected, connecting, connected, error
+	const [zoneType, setZoneType] = useState("kitchen"); // kitchen or qc
 	const [isQCStation, setIsQCStation] = useState(false);
 	const [alerts, setAlerts] = useState([]);
 	const socketRef = useRef(null);
@@ -95,23 +96,78 @@ export function useKDSWebSocket(zoneId) {
 		switch (data.type) {
 			case "initial_data":
 				console.log("Received initial KDS data:", data.data);
-				setOrders(data.data.items || []);
+				setZoneData(data.data.zone_data || []);
 				setAlerts(data.data.alerts || []);
+				setZoneType(data.data.zone_type || "kitchen");
 				setIsQCStation(data.data.is_qc_station || false);
 				break;
 
 			case "item_updated":
-				console.log("Order item updated:", data.data);
-				setOrders((prevOrders) =>
-					prevOrders.map((order) =>
-						order.id === data.data.id ? data.data : order
-					)
-				);
+				console.log("Kitchen item updated:", data.data);
+				// For kitchen zones - update the item within its order
+				if (zoneType === "kitchen") {
+					setZoneData((prevOrders) =>
+						prevOrders.map((order) => {
+							// Find if this order contains the updated item
+							const updatedItems = order.items.map((item) =>
+								item.id === data.data.id ? { ...item, ...data.data } : item
+							);
+
+							// Check if any item was actually updated
+							const itemWasUpdated = order.items.some(item => item.id === data.data.id);
+
+							if (itemWasUpdated) {
+								// Recalculate order overall status based on updated items
+								let newOverallStatus = 'received';
+								if (updatedItems.every(item => item.status === 'ready')) {
+									newOverallStatus = 'ready';
+								} else if (updatedItems.some(item => item.status === 'preparing')) {
+									newOverallStatus = 'preparing';
+								}
+
+								return {
+									...order,
+									items: updatedItems,
+									overall_status: newOverallStatus
+								};
+							}
+
+							return order;
+						})
+					);
+				}
+				break;
+
+			case "qc_data_updated":
+				console.log("QC zone data updated:", data.data);
+				// Only for QC zones - replace entire order list
+				if (zoneType === "qc") {
+					setZoneData(data.data.zone_data || []);
+				}
+				break;
+
+			case "zone_data_updated":
+				console.log("Zone data updated:", data.data);
+				// For kitchen zones - replace entire zone data
+				if (zoneType === "kitchen") {
+					setZoneData(data.data.zone_data || []);
+				}
 				break;
 
 			case "new_order":
-				console.log("New order received:", data.data);
-				setOrders((prevOrders) => [...prevOrders, data.data]);
+				console.log("New order/item received:", data.data);
+				// Add new item/order based on zone type
+				setZoneData((prevData) => [...prevData, data.data]);
+				break;
+
+			case "order_completed_by_qc":
+				console.log("Order completed by QC:", data.data);
+				// For kitchen zones - remove completed items or mark them differently
+				if (zoneType === "kitchen") {
+					setZoneData((prevItems) =>
+						prevItems.filter(item => item.order_id !== data.data.order_id)
+					);
+				}
 				break;
 
 			case "alert":
@@ -130,7 +186,7 @@ export function useKDSWebSocket(zoneId) {
 			default:
 				console.log("Unknown WebSocket message type:", data.type);
 		}
-	}, []);
+	}, [zoneType]);
 
 	// Send WebSocket message
 	const sendMessage = useCallback((message) => {
@@ -179,6 +235,32 @@ export function useKDSWebSocket(zoneId) {
 		[sendMessage]
 	);
 
+	// QC-specific functions
+	const updateQCStatus = useCallback(
+		(orderId, newStatus, notes = null) => {
+			// For the simplified QC workflow, we only complete orders
+			if (newStatus === 'completed') {
+				return sendMessage({
+					action: "complete_order_qc",
+					order_id: orderId,
+					notes: notes,
+				});
+			}
+			// For other statuses, just return without action since we simplified the workflow
+			return Promise.resolve();
+		},
+		[sendMessage]
+	);
+
+	const addQCNote = useCallback(
+		(orderId, note) => {
+			// QC notes removed in simplified workflow
+			console.warn("QC notes not supported in simplified workflow");
+			return Promise.resolve();
+		},
+		[sendMessage]
+	);
+
 	// Disconnect WebSocket
 	const disconnect = useCallback(() => {
 		if (reconnectTimeoutRef.current) {
@@ -208,30 +290,51 @@ export function useKDSWebSocket(zoneId) {
 		};
 	}, [zoneId, connect, disconnect]);
 
-	// Categorize orders by status for easy display
-	const categorizedOrders = {
-		new: orders.filter((order) => order.status === "received"),
-		preparing: orders.filter((order) => order.status === "preparing"),
-		ready: orders.filter((order) => order.status === "ready"),
-		completed: orders.filter((order) => order.status === "completed"),
-		held: orders.filter((order) => order.status === "held"),
-	};
+	// Categorize data by status for easy display (zone-type aware)
+	const categorizedData = useMemo(() => {
+		if (zoneType === "qc") {
+			// For QC zones, show ALL orders (not just completed ones)
+			// QC can see progress and complete when ready
+			return {
+				ready_for_qc: zoneData.filter((order) => order.status !== "completed"),
+				completed: zoneData.filter((order) => order.status === "completed"),
+			};
+		} else {
+			// For kitchen zones, categorize by order overall_status
+			return {
+				new: zoneData.filter((order) => order.overall_status === "received"),
+				preparing: zoneData.filter((order) => order.overall_status === "preparing"),
+				ready: zoneData.filter((order) => order.overall_status === "ready"),
+				completed: zoneData.filter((order) => order.overall_status === "completed"),
+				held: zoneData.filter((order) => order.overall_status === "held"),
+			};
+		}
+	}, [zoneData, zoneType]);
 
 	return {
-		// Data
-		orders,
-		categorizedOrders,
-		alerts,
+		// Zone-specific data
+		zoneData,
+		categorizedData,
+		zoneType,
 		isQCStation,
+		alerts,
+
+		// Legacy support (backward compatibility)
+		orders: zoneData, // For existing code that expects 'orders'
+		categorizedOrders: categorizedData, // For existing code
 
 		// Connection state
 		connectionStatus,
 		isConnected: connectionStatus === "connected",
 
-		// Actions
+		// Kitchen zone actions
 		updateItemStatus,
 		markItemPriority,
 		addKitchenNote,
+
+		// QC zone actions
+		updateQCStatus,
+		addQCNote,
 
 		// Connection control
 		connect,

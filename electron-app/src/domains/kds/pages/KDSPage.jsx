@@ -2,7 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui";
 import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff } from "lucide-react";
-import { OrderCard } from "../components/OrderCard";
+import { KitchenOrderCard } from "../components/KitchenOrderCard";
+import { KitchenZoneOrderCard } from "../components/KitchenZoneOrderCard";
+import { QCOrderCard } from "../components/QCOrderCard";
 import { ZoneSwitcher } from "../components/ZoneSwitcher";
 import { useKDSWebSocket } from "../hooks/useKDSWebSocket";
 
@@ -18,14 +20,18 @@ export function KDSPage() {
 
 	// Use WebSocket hook for real-time KDS data
 	const {
-		categorizedOrders,
-		alerts,
+		zoneData,
+		categorizedData,
+		zoneType,
 		isQCStation,
+		alerts,
 		connectionStatus,
 		isConnected,
 		updateItemStatus,
 		markItemPriority,
 		addKitchenNote,
+		updateQCStatus,
+		addQCNote,
 		reconnect
 	} = useKDSWebSocket(selectedZone);
 
@@ -41,9 +47,22 @@ export function KDSPage() {
 		localStorage.setItem("kds-selected-zone", newZone);
 	};
 
-	const handleOrderStatusChange = (orderId, newStatus) => {
-		// Use WebSocket to update item status
-		updateItemStatus(orderId, newStatus);
+	const handleItemStatusChange = (itemId, newStatus) => {
+		// For kitchen zones - update individual item status
+		updateItemStatus(itemId, newStatus);
+	};
+
+	const handleQCStatusChange = (qcViewId, newStatus, notes = null) => {
+		// For QC zones - update order QC status
+		updateQCStatus(qcViewId, newStatus, notes);
+	};
+
+	const handleAddNote = (id, note) => {
+		if (zoneType === "qc") {
+			addQCNote(id, note);
+		} else {
+			addKitchenNote(id, note);
+		}
 	};
 
 	const handleBackToZoneSelection = () => {
@@ -86,11 +105,13 @@ export function KDSPage() {
 							<div className="flex items-center space-x-4">
 								<div className="text-sm text-gray-500">
 									Zone: <span className="font-medium text-gray-900">{selectedZone}</span>
-									{isQCStation && (
-										<span className="ml-2 bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
-											QC Station
-										</span>
-									)}
+									<span className={`ml-2 text-xs px-2 py-1 rounded-full ${
+										zoneType === 'qc'
+											? 'bg-purple-100 text-purple-800'
+											: 'bg-blue-100 text-blue-800'
+									}`}>
+										{zoneType === 'qc' ? 'QC Station' : 'Kitchen Station'}
+									</span>
 								</div>
 								<div className="flex items-center space-x-2 text-sm text-gray-500">
 									{getConnectionStatusIcon()}
@@ -146,83 +167,116 @@ export function KDSPage() {
 							</button>
 						</span>
 					</div>
+				) : zoneType === 'qc' ? (
+						/* QC Zone Layout - Single grid with all orders */
+						<div>
+							<div className="mb-6 bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500">
+								<h2 className="font-semibold text-purple-900 flex items-center">
+									Quality Control Station
+									<span className="ml-2 bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full">
+										{categorizedData.ready_for_qc?.length || 0} orders
+									</span>
+								</h2>
+								<p className="text-sm text-purple-700 mt-1">Tap ready orders to complete and serve</p>
+							</div>
+
+							<div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+								{!categorizedData.ready_for_qc?.length ? (
+									<Card className="p-6 text-center text-gray-500 col-span-full">
+										No orders ready for quality control
+									</Card>
+								) : (
+									categorizedData.ready_for_qc.map(order => (
+										<QCOrderCard
+											key={order.id}
+											order={order}
+											onStatusChange={handleQCStatusChange}
+										/>
+									))
+								)}
+							</div>
+						</div>
 				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-						{/* New Orders Column */}
-						<div className="space-y-4">
-							<div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500">
-								<h2 className="font-semibold text-blue-900 flex items-center">
-									New Orders
-									<span className="ml-2 bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
-										{categorizedOrders.new.length}
-									</span>
-								</h2>
+						/* Kitchen Zone Layout - Order-level cards with item management */
+						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+							{/* New Orders Column */}
+							<div className="space-y-4">
+								<div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500">
+									<h2 className="font-semibold text-blue-900 flex items-center">
+										New Orders
+										<span className="ml-2 bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
+											{categorizedData.new?.length || 0}
+										</span>
+									</h2>
+								</div>
+								{!categorizedData.new?.length ? (
+									<Card className="p-6 text-center text-gray-500">
+										No new orders
+									</Card>
+								) : (
+									categorizedData.new.map(order => (
+										<KitchenZoneOrderCard
+											key={order.id}
+											order={order}
+											onItemStatusChange={handleItemStatusChange}
+											onAddNote={handleAddNote}
+										/>
+									))
+								)}
 							</div>
-							{categorizedOrders.new.length === 0 ? (
-								<Card className="p-6 text-center text-gray-500">
-									No new orders
-								</Card>
-							) : (
-								categorizedOrders.new.map(order => (
-									<OrderCard
-										key={order.id}
-										order={order}
-										onStatusChange={handleOrderStatusChange}
-									/>
-								))
-							)}
-						</div>
 
-						{/* Preparing Orders Column */}
-						<div className="space-y-4">
-							<div className="bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500">
-								<h2 className="font-semibold text-yellow-900 flex items-center">
-									Preparing
-									<span className="ml-2 bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
-										{categorizedOrders.preparing.length}
-									</span>
-								</h2>
+							{/* Preparing Orders Column */}
+							<div className="space-y-4">
+								<div className="bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500">
+									<h2 className="font-semibold text-yellow-900 flex items-center">
+										Preparing
+										<span className="ml-2 bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
+											{categorizedData.preparing?.length || 0}
+										</span>
+									</h2>
+								</div>
+								{!categorizedData.preparing?.length ? (
+									<Card className="p-6 text-center text-gray-500">
+										No orders being prepared
+									</Card>
+								) : (
+									categorizedData.preparing.map(order => (
+										<KitchenZoneOrderCard
+											key={order.id}
+											order={order}
+											onItemStatusChange={handleItemStatusChange}
+											onAddNote={handleAddNote}
+										/>
+									))
+								)}
 							</div>
-							{categorizedOrders.preparing.length === 0 ? (
-								<Card className="p-6 text-center text-gray-500">
-									No orders being prepared
-								</Card>
-							) : (
-								categorizedOrders.preparing.map(order => (
-									<OrderCard
-										key={order.id}
-										order={order}
-										onStatusChange={handleOrderStatusChange}
-									/>
-								))
-							)}
-						</div>
 
-						{/* Ready Orders Column */}
-						<div className="space-y-4">
-							<div className="bg-green-50 p-3 rounded-lg border-l-4 border-green-500">
-								<h2 className="font-semibold text-green-900 flex items-center">
-									Ready
-									<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
-										{categorizedOrders.ready.length}
-									</span>
-								</h2>
+							{/* Ready Orders Column */}
+							<div className="space-y-4">
+								<div className="bg-green-50 p-3 rounded-lg border-l-4 border-green-500">
+									<h2 className="font-semibold text-green-900 flex items-center">
+										Ready
+										<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
+											{categorizedData.ready?.length || 0}
+										</span>
+									</h2>
+								</div>
+								{!categorizedData.ready?.length ? (
+									<Card className="p-6 text-center text-gray-500">
+										No orders ready
+									</Card>
+								) : (
+									categorizedData.ready.map(order => (
+										<KitchenZoneOrderCard
+											key={order.id}
+											order={order}
+											onItemStatusChange={handleItemStatusChange}
+											onAddNote={handleAddNote}
+										/>
+									))
+								)}
 							</div>
-							{categorizedOrders.ready.length === 0 ? (
-								<Card className="p-6 text-center text-gray-500">
-									No orders ready
-								</Card>
-							) : (
-								categorizedOrders.ready.map(order => (
-									<OrderCard
-										key={order.id}
-										order={order}
-										onStatusChange={handleOrderStatusChange}
-									/>
-								))
-							)}
 						</div>
-					</div>
 				)}
 			</div>
 		</div>
