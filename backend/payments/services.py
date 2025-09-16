@@ -312,7 +312,9 @@ class PaymentService:
 
         # Emit payment_completed signal for event-driven architecture
         # Pass both payment and order for receiver flexibility
+        print(f"[Payments Service] *** ABOUT TO EMIT payment_completed SIGNAL *** for payment {payment.id}, order {order.order_number}")
         payment_completed.send(sender=PaymentService, payment=payment, order=order)
+        print(f"[Payments Service] *** SIGNAL EMITTED *** payment_completed for payment {payment.id}, order {order.order_number}")
 
     # === LEGACY METHODS - TO BE DEPRECATED ===
     # These methods are kept for backward compatibility during transition
@@ -603,7 +605,9 @@ class PaymentService:
             order.save(update_fields=["status"])
 
             # Handle payment completion (signals, etc.)
+            print(f"[Payments Service] complete_payment: *** CALLING _handle_payment_completion *** for payment {payment.id}")
             PaymentService._handle_payment_completion(payment)
+            print(f"[Payments Service] complete_payment: *** FINISHED _handle_payment_completion *** for payment {payment.id}")
         elif payment.amount_paid > 0:
             payment.status = Payment.PaymentStatus.PARTIALLY_PAID
             payment.save(update_fields=["status"])

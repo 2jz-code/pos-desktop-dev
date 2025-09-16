@@ -747,16 +747,24 @@ class OrderService:
         """
         from django.utils import timezone
 
+        print(f"[Orders Service] mark_items_sent_to_kitchen: *** MANUAL SEND TO KITCHEN *** for order {order_id}")
+
         order = Order.objects.get(id=order_id)
         items_to_update = order.items.filter(kitchen_printed_at__isnull=True)
+
+        print(f"[Orders Service] mark_items_sent_to_kitchen: Found {items_to_update.count()} items to send to kitchen")
 
         now = timezone.now()
         updated_count = items_to_update.update(kitchen_printed_at=now)
 
+        print(f"[Orders Service] mark_items_sent_to_kitchen: Updated {updated_count} items with kitchen_printed_at timestamp")
+
         # NEW: Create KDS items for kitchen workflow
         try:
+            print(f"[Orders Service] mark_items_sent_to_kitchen: Calling KDSService.manual_send_to_kitchen")
             from kds.services import KDSService
             kds_result = KDSService.manual_send_to_kitchen(order)
+            print(f"[Orders Service] mark_items_sent_to_kitchen: KDS result: {kds_result}")
 
             return {
                 'updated_count': updated_count,

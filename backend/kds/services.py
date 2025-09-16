@@ -86,30 +86,43 @@ class KDSService:
         Get all KDS items for a specific zone
         Auto-removes ready items for regular stations, keeps them for QC
         """
-        queryset = KDSOrderItem.objects.select_related(
-            'order_item__order'
-        ).filter(
-            zone_printer_id=zone_printer_id
-        )
+        print(f"[KDS Service] get_zone_items: Starting for zone {zone_printer_id}, is_qc_station={is_qc_station}")
+        try:
+            queryset = KDSOrderItem.objects.select_related(
+                'order_item__order'
+            ).filter(
+                zone_printer_id=zone_printer_id
+            )
 
-        if is_qc_station:
-            # QC station sees ready items (from kitchen) but not completed ones
-            queryset = queryset.exclude(kds_status='completed')
-        else:
-            # Regular kitchen stations don't see ready or completed items
-            queryset = queryset.exclude(kds_status__in=['ready', 'completed'])
+            if is_qc_station:
+                # QC station sees ready items (from kitchen) but not completed ones
+                queryset = queryset.exclude(kds_status='completed')
+                print("[KDS Service] get_zone_items: QC station - excluding completed items")
+            else:
+                # Regular kitchen stations don't see ready or completed items
+                queryset = queryset.exclude(kds_status__in=['ready', 'completed'])
+                print("[KDS Service] get_zone_items: Regular station - excluding ready and completed items")
 
-        queryset = queryset.order_by('is_priority', 'received_at')
+            queryset = queryset.order_by('is_priority', 'received_at')
 
-        if statuses:
-            queryset = queryset.filter(kds_status__in=statuses)
+            if statuses:
+                queryset = queryset.filter(kds_status__in=statuses)
+                print(f"[KDS Service] get_zone_items: Filtering by statuses: {statuses}")
 
-        return queryset
+            items = list(queryset)
+            print(f"[KDS Service] get_zone_items: Found {len(items)} items")
+            return items
+        except Exception as e:
+            print(f"[KDS Service] get_zone_items: ERROR - {e}")
+            import traceback
+            print(f"[KDS Service] get_zone_items: TRACEBACK - {traceback.format_exc()}")
+            return []
 
     @staticmethod
     def is_qc_zone(zone_printer_id):
         """
         Check if a zone is marked as QC in the printer configuration
+        Sync version - use is_qc_zone_async for async contexts
         """
         try:
             from settings.models import PrinterConfiguration
@@ -129,14 +142,62 @@ class KDSService:
             return False
 
     @staticmethod
+    async def is_qc_zone_async(zone_printer_id):
+        """
+        Async version of is_qc_zone for use in WebSocket consumers
+        """
+        try:
+            print(f"[KDS Service] is_qc_zone_async: Starting for zone {zone_printer_id}")
+            from settings.models import PrinterConfiguration
+            from asgiref.sync import sync_to_async
+
+            # Create an async version of the database query
+            print("[KDS Service] is_qc_zone_async: Getting printer configuration...")
+            get_config = sync_to_async(PrinterConfiguration.objects.first)
+            config = await get_config()
+            print(f"[KDS Service] is_qc_zone_async: Config retrieved, has kitchen_zones: {bool(config and config.kitchen_zones)}")
+
+            if not config or not config.kitchen_zones:
+                print("[KDS Service] is_qc_zone_async: No config or kitchen zones, returning False")
+                return False
+
+            # Find the zone and check its is_qc_zone flag
+            print(f"[KDS Service] is_qc_zone_async: Searching through {len(config.kitchen_zones)} zones")
+            for i, zone in enumerate(config.kitchen_zones):
+                print(f"[KDS Service] is_qc_zone_async: Zone {i}: name={zone.get('name')}, printer_name={zone.get('printer_name')}, is_qc_zone={zone.get('is_qc_zone')}")
+                if zone.get('name') == zone_printer_id or zone.get('printer_name') == zone_printer_id:
+                    result = zone.get('is_qc_zone', False)
+                    print(f"[KDS Service] is_qc_zone_async: Found matching zone, returning {result}")
+                    return result
+
+            print("[KDS Service] is_qc_zone_async: No matching zone found, returning False")
+            return False
+        except Exception as e:
+            print(f"[KDS Service] is_qc_zone_async: ERROR - {e}")
+            import traceback
+            print(f"[KDS Service] is_qc_zone_async: TRACEBACK - {traceback.format_exc()}")
+            return False
+
+    @staticmethod
     def get_zone_alerts(zone_printer_id):
         """
         Get active alerts for a specific zone
         """
-        return KDSAlert.objects.filter(
-            zone_printer_id=zone_printer_id,
-            is_active=True
-        ).order_by('-priority', '-created_at')
+        print(f"[KDS Service] get_zone_alerts: Starting for zone {zone_printer_id}")
+        try:
+            queryset = KDSAlert.objects.filter(
+                zone_printer_id=zone_printer_id,
+                is_active=True
+            ).order_by('-priority', '-created_at')
+
+            alerts = list(queryset)
+            print(f"[KDS Service] get_zone_alerts: Found {len(alerts)} alerts")
+            return alerts
+        except Exception as e:
+            print(f"[KDS Service] get_zone_alerts: ERROR - {e}")
+            import traceback
+            print(f"[KDS Service] get_zone_alerts: TRACEBACK - {traceback.format_exc()}")
+            return []
 
     @staticmethod
     def create_kds_items_for_order(order, zone_assignments):
@@ -149,11 +210,6 @@ class KDSService:
 
         try:
             with transaction.atomic():
-                # Check if this order has any existing KDS items (any status)
-                has_existing_kds_items = KDSOrderItem.objects.filter(
-                    order_item__order=order
-                ).exists()
-
                 # Get current active KDS items to avoid duplicates
                 existing_kds_items = set(
                     KDSOrderItem.objects.filter(
@@ -161,24 +217,50 @@ class KDSService:
                     ).values_list('order_item_id', flat=True)
                 )
 
-                if has_existing_kds_items:
+                # Check if this is a true order addition:
+                # - Has existing KDS items that are beyond "received" status (in progress/completed)
+                # - AND has new items that need to be added
+                existing_active_kds_items = KDSOrderItem.objects.filter(
+                    order_item__order=order,
+                    kds_status__in=['preparing', 'ready', 'completed']
+                ).exists()
+
+                new_items_exist = any(
+                    order_item.id not in existing_kds_items
+                    for order_item in order.items.all()
+                )
+
+                is_order_addition = existing_active_kds_items and new_items_exist
+
+                print(f"[KDS Service] create_kds_items_for_order: existing_active_kds_items={existing_active_kds_items}, new_items_exist={new_items_exist}, is_order_addition={is_order_addition}")
+
+                if is_order_addition:
                     # This is an order addition - bring back existing items for context
+                    print("[KDS Service] create_kds_items_for_order: Handling as order addition - bringing back existing items for context")
                     kds_items.extend(KDSService._handle_order_addition(order, zone_assignments))
                 else:
-                    # Regular order creation
+                    # Regular order creation - just create KDS items for items that don't have them
+                    print("[KDS Service] create_kds_items_for_order: Regular creation - creating KDS items for new items only")
                     for order_item in order.items.all():
                         # Skip items that already have active KDS items
                         if order_item.id in existing_kds_items:
+                            print(f"[KDS Service] create_kds_items_for_order: Skipping item {order_item.id} - already has KDS items")
                             continue
 
-                        zone_id = zone_assignments.get(str(order_item.id))
-                        if zone_id:
-                            kds_item = KDSOrderItem.objects.create(
-                                order_item=order_item,
-                                zone_printer_id=zone_id,
-                                kds_status='received'
-                            )
-                            kds_items.append(kds_item)
+                        assigned_zones = zone_assignments.get(str(order_item.id))
+                        if assigned_zones:
+                            # Handle both single zone (string) and multiple zones (list)
+                            if isinstance(assigned_zones, str):
+                                assigned_zones = [assigned_zones]
+
+                            # Create KDS item for each assigned zone
+                            for zone_id in assigned_zones:
+                                kds_item = KDSOrderItem.objects.create(
+                                    order_item=order_item,
+                                    zone_printer_id=zone_id,
+                                    kds_status='received'
+                                )
+                                kds_items.append(kds_item)
 
         except Exception as e:
             print(f"Error creating KDS items: {e}")
@@ -206,28 +288,37 @@ class KDSService:
             new_item_zones = set()
             for order_item in order.items.all():
                 if order_item.id not in existing_order_item_ids:
-                    zone_id = zone_assignments.get(str(order_item.id))
-                    if zone_id:
-                        new_item_zones.add(zone_id)
+                    assigned_zones = zone_assignments.get(str(order_item.id))
+                    if assigned_zones:
+                        # Handle both single zone (string) and multiple zones (list)
+                        if isinstance(assigned_zones, str):
+                            assigned_zones = [assigned_zones]
+                        for zone_id in assigned_zones:
+                            new_item_zones.add(zone_id)
 
             # For existing items, determine what to do based on zone logic
+            # Note: This gets complex because items can be in multiple zones
             for existing_kds_item in existing_kds_items:
-                zone_id = zone_assignments.get(str(existing_kds_item.order_item.id))
-                if zone_id:
-                    is_qc_zone = KDSService.is_qc_zone(zone_id)
-                    zone_getting_new_items = zone_id in new_item_zones
+                # The existing KDS item is already assigned to a specific zone
+                zone_id = existing_kds_item.zone_printer_id
 
-                    # Reappear completed items if:
-                    # 1. This zone is getting new items (needs context), OR
-                    # 2. This is a QC zone (always gets full context)
-                    if (existing_kds_item.kds_status in ['ready', 'completed'] and
-                        (zone_getting_new_items or is_qc_zone)):
+                # Check if this specific zone is getting new items
+                zone_getting_new_items = zone_id in new_item_zones
 
-                        # Determine appropriate status for reappeared item
-                        reappear_status = existing_kds_item.kds_status
-                        if existing_kds_item.kds_status == 'ready' and not is_qc_zone:
-                            # For regular stations, ready items were completed, so show as completed
-                            reappear_status = 'completed'
+                # Use sync version - this method should only be called from sync contexts
+                is_qc_zone = KDSService.is_qc_zone(zone_id)
+
+                # Reappear completed items if:
+                # 1. This zone is getting new items (needs context), OR
+                # 2. This is a QC zone (always gets full context)
+                if (existing_kds_item.kds_status in ['ready', 'completed'] and
+                    (zone_getting_new_items or is_qc_zone)):
+
+                    # Determine appropriate status for reappeared item
+                    reappear_status = existing_kds_item.kds_status
+                    if existing_kds_item.kds_status == 'ready' and not is_qc_zone:
+                        # For regular stations, ready items were completed, so show as completed
+                        reappear_status = 'completed'
 
                         reappeared_item = KDSOrderItem.objects.create(
                             order_item=existing_kds_item.order_item,
@@ -247,15 +338,21 @@ class KDSService:
             # Add new items that don't have KDS items yet
             for order_item in order.items.all():
                 if order_item.id not in existing_order_item_ids:
-                    zone_id = zone_assignments.get(str(order_item.id))
-                    if zone_id:
-                        new_item = KDSOrderItem.objects.create(
-                            order_item=order_item,
-                            zone_printer_id=zone_id,
-                            kds_status='received',
-                            is_addition=True
-                        )
-                        kds_items.append(new_item)
+                    assigned_zones = zone_assignments.get(str(order_item.id))
+                    if assigned_zones:
+                        # Handle both single zone (string) and multiple zones (list)
+                        if isinstance(assigned_zones, str):
+                            assigned_zones = [assigned_zones]
+
+                        # Create KDS item for each assigned zone
+                        for zone_id in assigned_zones:
+                            new_item = KDSOrderItem.objects.create(
+                                order_item=order_item,
+                                zone_printer_id=zone_id,
+                                kds_status='received',
+                                is_addition=True
+                            )
+                            kds_items.append(new_item)
 
         except Exception as e:
             print(f"Error handling order addition: {e}")
@@ -269,15 +366,22 @@ class KDSService:
         Handles both new orders and order additions
         """
         try:
-            from .signals import get_zone_assignments_for_order, broadcast_new_order_to_zone
+            print(f"[KDS Service] manual_send_to_kitchen: *** MANUAL SEND TRIGGERED *** for order {order.order_number}")
+            from .signals import get_zone_assignments_for_order
+
+            # Check if KDS items already exist
+            from .models import KDSOrderItem
+            existing_items = KDSOrderItem.objects.filter(order_item__order=order)
+            print(f"[KDS Service] manual_send_to_kitchen: Found {existing_items.count()} existing KDS items")
 
             zone_assignments = get_zone_assignments_for_order(order)
+            print(f"[KDS Service] manual_send_to_kitchen: Zone assignments: {zone_assignments}")
+
             if zone_assignments:
                 kds_items = KDSService.create_kds_items_for_order(order, zone_assignments)
+                print(f"[KDS Service] manual_send_to_kitchen: Created {len(kds_items)} KDS items")
 
-                # Broadcast to relevant KDS zones
-                for kds_item in kds_items:
-                    broadcast_new_order_to_zone(kds_item)
+                # Note: Broadcasting handled automatically by post_save signal
 
                 return {
                     'success': True,
@@ -286,13 +390,16 @@ class KDSService:
                     'kds_items': kds_items
                 }
             else:
+                print("[KDS Service] manual_send_to_kitchen: No zone assignments found")
                 return {
                     'success': False,
                     'message': 'No zone assignments found for order items'
                 }
 
         except Exception as e:
-            print(f"Error manually sending order to kitchen: {e}")
+            print(f"[KDS Service] manual_send_to_kitchen: ERROR - {e}")
+            import traceback
+            print(f"[KDS Service] manual_send_to_kitchen: TRACEBACK - {traceback.format_exc()}")
             return {
                 'success': False,
                 'message': f'Error sending to kitchen: {str(e)}'

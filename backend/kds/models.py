@@ -54,8 +54,8 @@ class KDSOrderItem(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order_item = models.OneToOneField(
-        "orders.OrderItem", on_delete=models.CASCADE, related_name="kds_item"
+    order_item = models.ForeignKey(
+        "orders.OrderItem", on_delete=models.CASCADE, related_name="kds_items"
     )
     zone_printer_id = models.CharField(
         max_length=100, help_text="References existing printer ID from settings app"
@@ -96,6 +96,7 @@ class KDSOrderItem(models.Model):
 
     class Meta:
         ordering = ["received_at"]
+        unique_together = ["order_item", "zone_printer_id"]
 
     def __str__(self):
         return f"{self.order_item.order.order_number} - {self.order_item.product_name if hasattr(self.order_item, 'product_name') else 'Custom Item'}"

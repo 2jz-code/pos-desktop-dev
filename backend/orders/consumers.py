@@ -82,6 +82,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await self.remove_discount(payload)
         elif message_type == "clear_cart":
             await self.clear_cart(payload)
+        elif message_type == "send_to_kitchen":
+            await self.send_to_kitchen(payload)
 
         await self.send_full_order_state()
         
@@ -551,6 +553,38 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
         await sync_to_async(OrderService.clear_order_items)(order)
+
+    async def send_to_kitchen(self, payload):
+        """
+        Send order items to kitchen - marks items as sent and creates KDS items
+        """
+        try:
+            logging.info(f"OrderConsumer: *** SEND TO KITCHEN *** triggered for order {self.order_id}")
+
+            # Call the existing service method that handles marking items and creating KDS items
+            result = await sync_to_async(OrderService.mark_items_sent_to_kitchen)(self.order_id)
+
+            logging.info(f"OrderConsumer: Send to kitchen result: {result}")
+
+            # Send success response to frontend
+            await self.send(text_data=json.dumps({
+                'type': 'send_to_kitchen_response',
+                'success': True,
+                'message': 'Order sent to kitchen successfully',
+                'data': result,
+                'operationId': getattr(self, '_current_operation_id', None)
+            }))
+
+        except Exception as e:
+            logging.error(f"OrderConsumer: Error sending to kitchen: {e}")
+
+            # Send error response to frontend
+            await self.send(text_data=json.dumps({
+                'type': 'send_to_kitchen_response',
+                'success': False,
+                'message': f'Failed to send to kitchen: {str(e)}',
+                'operationId': getattr(self, '_current_operation_id', None)
+            }))
 
     async def send_full_order_state(self):
         """

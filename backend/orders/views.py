@@ -471,8 +471,10 @@ class OrderViewSet(BaseViewSet):
         Mark all items in this order as sent to kitchen.
         This prevents duplicate kitchen ticket printing and creates KDS items.
         """
+        print(f"[Orders Views] mark_sent_to_kitchen: *** ENDPOINT CALLED *** for order {pk}")
         try:
             result = OrderService.mark_items_sent_to_kitchen(pk)
+            print(f"[Orders Views] mark_sent_to_kitchen: Service returned: {result}")
 
             # Handle both old return format (just count) and new format (dict)
             if isinstance(result, dict):

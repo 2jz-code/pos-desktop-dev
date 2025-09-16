@@ -195,14 +195,23 @@ const CartSummary = () => {
 				}
 			}
 
-			if (ticketsPrinted > 0) {
-				// Mark items as sent to kitchen in the backend
-				try {
-					await markSentToKitchen(orderId);
-				} catch (error) {
-					console.error("Failed to mark items as sent to kitchen:", error);
-				}
+			// Always mark items as sent to kitchen in the backend (creates KDS items)
+			// regardless of printer success/failure
+			try {
+				console.log("Calling markSentToKitchen API for orderId:", orderId);
+				await markSentToKitchen(orderId);
+				console.log("markSentToKitchen API call successful");
+			} catch (error) {
+				console.error("Failed to mark items as sent to kitchen:", error);
+				toast({
+					title: "Backend Error",
+					description: "Failed to send order to kitchen system. Please try again.",
+					variant: "destructive",
+				});
+				return; // Exit early if backend fails
+			}
 
+			if (ticketsPrinted > 0) {
 				toast({
 					title: "Order Sent to Kitchen",
 					description: `${ticketsPrinted} kitchen ticket(s) printed successfully. Customer can continue shopping while food is prepared.`,
@@ -220,10 +229,10 @@ const CartSummary = () => {
 
 			if (ticketsPrinted === 0) {
 				toast({
-					title: "No Kitchen Tickets Printed",
+					title: "Order Sent to Kitchen (Digital Only)",
 					description:
-						"No items matched the configured kitchen zones or no printers are available.",
-					variant: "destructive",
+						"Order sent to kitchen system successfully. Physical tickets failed to print - check printer connections.",
+					variant: "warning",
 				});
 			}
 		} catch (error) {

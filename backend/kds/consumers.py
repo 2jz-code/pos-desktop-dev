@@ -32,17 +32,24 @@ class KDSConsumer(AsyncWebsocketConsumer):
         """
         Handle WebSocket connection
         """
+        print(f"[KDS] WebSocket connect started for zone: {self.scope['url_route']['kwargs'].get('zone_id')}")
+
         # Extract zone and terminal info from URL or query params
         self.zone_printer_id = self.scope['url_route']['kwargs'].get('zone_id')
         self.terminal_id = self.scope.get('query_string', b'').decode().split('terminal_id=')[-1] or str(uuid.uuid4())
 
+        print(f"[KDS] Zone ID: {self.zone_printer_id}, Terminal ID: {self.terminal_id}")
+
         if not self.zone_printer_id:
+            print("[KDS] No zone_printer_id provided, closing connection")
             await self.close()
             return
 
         # Create KDS group name for this zone (sanitized for Channels)
         sanitized_zone_id = self.sanitize_group_name(self.zone_printer_id)
         self.kds_group_name = f'kds_zone_{sanitized_zone_id}'
+
+        print(f"[KDS] Joining group: {self.kds_group_name}")
 
         # Join KDS group
         await self.channel_layer.group_add(
@@ -52,11 +59,14 @@ class KDSConsumer(AsyncWebsocketConsumer):
 
         # Accept WebSocket connection
         await self.accept()
+        print("[KDS] WebSocket connection accepted")
 
         # Create or update KDS session
+        print("[KDS] Creating KDS session...")
         await self.create_kds_session()
 
         # Send initial data
+        print("[KDS] Sending initial data...")
         await self.send_initial_data()
 
     async def disconnect(self, close_code):
@@ -229,33 +239,59 @@ class KDSConsumer(AsyncWebsocketConsumer):
         Send initial KDS data when client connects
         """
         try:
+            print(f"[KDS] send_initial_data: Starting for zone {self.zone_printer_id}")
+
             # Determine if this is a QC station
-            is_qc_station = await database_sync_to_async(
-                KDSService.is_qc_zone
-            )(self.zone_printer_id)
+            print("[KDS] send_initial_data: Checking if QC zone...")
+            is_qc_station = await KDSService.is_qc_zone_async(self.zone_printer_id)
+            print(f"[KDS] send_initial_data: is_qc_station = {is_qc_station}")
 
             # Get all active items for this zone
+            print("[KDS] send_initial_data: Getting zone items...")
             items = await database_sync_to_async(
                 KDSService.get_zone_items
             )(self.zone_printer_id, is_qc_station=is_qc_station)
+            print(f"[KDS] send_initial_data: Found {len(items)} items")
 
             # Get active alerts for this zone
+            print("[KDS] send_initial_data: Getting zone alerts...")
             alerts = await database_sync_to_async(
                 KDSService.get_zone_alerts
             )(self.zone_printer_id)
+            print(f"[KDS] send_initial_data: Found {len(alerts)} alerts")
 
+            # Serialize items and alerts
+            print("[KDS] send_initial_data: Serializing items...")
+            serialized_items = []
+            for i, item in enumerate(items):
+                print(f"[KDS] send_initial_data: Serializing item {i+1}/{len(items)}")
+                serialized_item = await self.serialize_kds_item(item)
+                serialized_items.append(serialized_item)
+
+            print("[KDS] send_initial_data: Serializing alerts...")
+            serialized_alerts = []
+            for i, alert in enumerate(alerts):
+                print(f"[KDS] send_initial_data: Serializing alert {i+1}/{len(alerts)}")
+                serialized_alert = await self.serialize_alert(alert)
+                serialized_alerts.append(serialized_alert)
+
+            print("[KDS] send_initial_data: Sending data to client...")
             await self.send(text_data=json.dumps({
                 'type': 'initial_data',
                 'data': {
-                    'items': [await self.serialize_kds_item(item) for item in items],
-                    'alerts': [await self.serialize_alert(alert) for alert in alerts],
+                    'items': serialized_items,
+                    'alerts': serialized_alerts,
                     'zone_id': self.zone_printer_id,
                     'terminal_id': self.terminal_id,
                     'is_qc_station': is_qc_station
                 }
             }))
+            print("[KDS] send_initial_data: Successfully sent initial data")
 
         except Exception as e:
+            print(f"[KDS] send_initial_data: ERROR - {str(e)}")
+            import traceback
+            print(f"[KDS] send_initial_data: TRACEBACK - {traceback.format_exc()}")
             await self.send_error(f"Error loading initial data: {str(e)}")
 
     async def send_error(self, message):
@@ -316,31 +352,56 @@ class KDSConsumer(AsyncWebsocketConsumer):
         """
         Serialize KDS item for WebSocket transmission
         """
-        return {
-            'id': str(kds_item.id),
-            'order_number': kds_item.order_item.order.order_number,
-            'customer_name': kds_item.order_item.order.customer_display_name,
-            'order_type': kds_item.order_item.order.order_type,
-            'status': kds_item.kds_status,
-            'is_priority': kds_item.is_priority,
-            'kitchen_notes': kds_item.kitchen_notes,
-            'estimated_prep_time': kds_item.estimated_prep_time,
-            'received_at': kds_item.received_at.isoformat(),
-            'prep_time_minutes': kds_item.prep_time_minutes,
-            'total_time_minutes': kds_item.total_time_minutes,
-            'is_overdue': kds_item.is_overdue,
-            # Order addition fields
-            'is_addition': kds_item.is_addition,
-            'is_reappeared_completed': kds_item.is_reappeared_completed,
-            'original_completion_time': kds_item.original_completion_time.isoformat() if kds_item.original_completion_time else None,
-            'order_item': {
-                'id': str(kds_item.order_item.id),
-                'product_name': getattr(kds_item.order_item, 'product_name', 'Custom Item'),
-                'quantity': kds_item.order_item.quantity,
-                'special_instructions': kds_item.order_item.special_instructions or '',
-                'modifiers': kds_item.order_item.modifier_snapshot or []
+        try:
+            print(f"[KDS Consumer] serialize_kds_item: Starting for item {kds_item.id}")
+
+            # Access related objects that might trigger sync calls
+            order_item = kds_item.order_item
+            order = order_item.order
+
+            print(f"[KDS Consumer] serialize_kds_item: Got order {order.order_number}")
+
+            result = {
+                'id': str(kds_item.id),
+                'order_number': order.order_number,
+                'customer_name': order.customer_display_name,
+                'order_type': order.order_type,
+                'status': kds_item.kds_status,
+                'is_priority': kds_item.is_priority,
+                'kitchen_notes': kds_item.kitchen_notes,
+                'estimated_prep_time': kds_item.estimated_prep_time,
+                'received_at': kds_item.received_at.isoformat(),
+                'prep_time_minutes': kds_item.prep_time_minutes,
+                'total_time_minutes': kds_item.total_time_minutes,
+                'is_overdue': kds_item.is_overdue,
+                # Order addition fields
+                'is_addition': kds_item.is_addition,
+                'is_reappeared_completed': kds_item.is_reappeared_completed,
+                'original_completion_time': kds_item.original_completion_time.isoformat() if kds_item.original_completion_time else None,
+                'order_item': {
+                    'id': str(order_item.id),
+                    'product_name': order_item.product.name if order_item.product else 'Custom Item',
+                    'quantity': order_item.quantity,
+                    'special_instructions': getattr(order_item, 'notes', '') or '',
+                    'modifiers': [
+                        {
+                            'modifier_set_name': mod.modifier_set_name,
+                            'option_name': mod.option_name,
+                            'price_at_sale': str(mod.price_at_sale)
+                        }
+                        for mod in order_item.selected_modifiers_snapshot.all()
+                    ] if hasattr(order_item, 'selected_modifiers_snapshot') else []
+                }
             }
-        }
+
+            print(f"[KDS Consumer] serialize_kds_item: Successfully serialized item {kds_item.id}")
+            return result
+
+        except Exception as e:
+            print(f"[KDS Consumer] serialize_kds_item: ERROR - {e}")
+            import traceback
+            print(f"[KDS Consumer] serialize_kds_item: TRACEBACK - {traceback.format_exc()}")
+            raise
 
     @database_sync_to_async
     def serialize_alert(self, alert):

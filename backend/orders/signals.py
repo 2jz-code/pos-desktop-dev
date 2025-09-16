@@ -49,6 +49,23 @@ def handle_payment_completion(sender, **kwargs):
         # Call the service method to handle payment completion business logic
         OrderService.mark_as_fully_paid(payment.order)
 
+        # Auto-send to kitchen if not already sent (fallback behavior)
+        try:
+            # Check if any items have already been sent to kitchen
+            has_kitchen_items = payment.order.items.filter(kitchen_printed_at__isnull=False).exists()
+
+            if not has_kitchen_items:
+                # No items sent to kitchen yet, auto-send all items
+                items_to_send = payment.order.items.filter(kitchen_printed_at__isnull=True)
+                if items_to_send.exists():
+                    OrderService.mark_items_sent_to_kitchen(
+                        order_id=payment.order.id,
+                        item_ids=list(items_to_send.values_list('id', flat=True))
+                    )
+                    logger.info(f"Auto-sent {items_to_send.count()} items to kitchen for paid order {payment.order.order_number}")
+        except Exception as e:
+            logger.error(f"Failed to auto-send items to kitchen for order {payment.order.id}: {e}")
+
 
 @receiver(post_save, sender=Order)
 def handle_order_completion_inventory(sender, instance, created, **kwargs):
