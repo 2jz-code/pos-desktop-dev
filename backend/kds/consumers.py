@@ -36,7 +36,18 @@ class KDSConsumer(AsyncWebsocketConsumer):
 
         # Extract zone and terminal info from URL or query params
         self.zone_printer_id = self.scope['url_route']['kwargs'].get('zone_id')
-        self.terminal_id = self.scope.get('query_string', b'').decode().split('terminal_id=')[-1] or str(uuid.uuid4())
+
+        # Generate a consistent terminal ID based on session or create a persistent one
+        query_string = self.scope.get('query_string', b'').decode()
+        if 'terminal_id=' in query_string:
+            self.terminal_id = query_string.split('terminal_id=')[-1].split('&')[0]
+        else:
+            # Create a browser-session-specific terminal ID
+            # Use the zone + a hash of user agent and IP for consistency within a session
+            user_agent = dict(self.scope.get('headers', {})).get(b'user-agent', b'').decode()
+            client_ip = dict(self.scope.get('headers', {})).get(b'x-forwarded-for', b'').decode().split(',')[0]
+            session_hash = hash(f"{user_agent}{client_ip}")
+            self.terminal_id = f"{self.zone_printer_id}_terminal_{abs(session_hash) % 1000000}"
 
         print(f"[KDS] Zone ID: {self.zone_printer_id}, Terminal ID: {self.terminal_id}")
 
@@ -137,10 +148,9 @@ class KDSConsumer(AsyncWebsocketConsumer):
                     }
                 )
 
-                # If this is a kitchen zone and item became ready, notify QC zones
-                if (await KDSService.get_zone_type_async(self.zone_printer_id) == 'kitchen'
-                    and new_status == 'ready'):
-                    await self.notify_qc_zones_kitchen_item_ready(updated_item)
+                # If this is a kitchen zone, notify QC zones of any status change
+                if await KDSService.get_zone_type_async(self.zone_printer_id) == 'kitchen':
+                    await self.notify_qc_zones_kitchen_item_changed(updated_item)
 
                 # Update session activity
                 await self.update_session_activity()
@@ -241,7 +251,9 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 )
 
                 # Notify kitchen zones that order was completed
-                await self.notify_kitchen_zones_order_completed(completed_order)
+                # Extract the order from the result dict
+                order = completed_order.get('order') if isinstance(completed_order, dict) else completed_order
+                await self.notify_kitchen_zones_order_completed(order)
 
             else:
                 await self.send_error("Failed to complete order")
@@ -285,6 +297,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
         Notify all kitchen zones that an order has been completed by QC
         """
         try:
+            print(f"[KDS] Notifying kitchen zones of order completion: {order.order_number}")
             from settings.models import PrinterConfiguration
 
             config = await database_sync_to_async(
@@ -292,12 +305,15 @@ class KDSConsumer(AsyncWebsocketConsumer):
             )()
 
             if config and config.kitchen_zones:
+                kitchen_zones_notified = 0
                 for zone in config.kitchen_zones:
                     zone_name = zone.get('name', '')
                     if zone_name and await KDSService.get_zone_type_async(zone_name) == 'kitchen':
                         # Send completion notification to kitchen zone
                         sanitized_zone_id = self.sanitize_group_name(zone_name)
                         kitchen_group_name = f'kds_zone_{sanitized_zone_id}'
+
+                        print(f"[KDS] Sending completion notification to kitchen zone: {zone_name}")
 
                         await self.channel_layer.group_send(
                             kitchen_group_name,
@@ -309,13 +325,64 @@ class KDSConsumer(AsyncWebsocketConsumer):
                                 }
                             }
                         )
+                        kitchen_zones_notified += 1
+
+                print(f"[KDS] Notified {kitchen_zones_notified} kitchen zones of order completion")
+            else:
+                print("[KDS] No printer configuration or kitchen zones found for completion notification")
 
         except Exception as e:
             print(f"Error notifying kitchen zones of completion: {e}")
 
-    async def notify_qc_zones_kitchen_item_ready(self, updated_item):
+    async def notify_qc_zones_kitchen_item_changed(self, updated_item):
         """
-        Notify all QC zones when a kitchen item becomes ready
+        Notify all QC zones when any kitchen item status changes
+        """
+        try:
+            print(f"[KDS] Notifying QC zones of kitchen item change: {updated_item.id} -> {updated_item.kds_status}")
+            from settings.models import PrinterConfiguration
+
+            config = await database_sync_to_async(
+                PrinterConfiguration.objects.first
+            )()
+
+            if config and config.kitchen_zones:
+                qc_zones_notified = 0
+                for zone in config.kitchen_zones:
+                    zone_name = zone.get('name', '')
+                    if zone_name and await KDSService.get_zone_type_async(zone_name) == 'qc':
+                        # Send updated QC data to QC zone
+                        sanitized_zone_id = self.sanitize_group_name(zone_name)
+                        qc_group_name = f'kds_zone_{sanitized_zone_id}'
+
+                        print(f"[KDS] Sending QC update to zone: {zone_name} (group: {qc_group_name})")
+
+                        # Get fresh QC zone data
+                        qc_zone_data = await database_sync_to_async(
+                            KDSService.get_qc_zone_data
+                        )(zone_name)
+
+                        print(f"[KDS] QC zone {zone_name} data: {len(qc_zone_data)} orders")
+
+                        await self.channel_layer.group_send(
+                            qc_group_name,
+                            {
+                                'type': 'qc_data_updated',
+                                'zone_data': qc_zone_data
+                            }
+                        )
+                        qc_zones_notified += 1
+
+                print(f"[KDS] Notified {qc_zones_notified} QC zones of kitchen item change")
+            else:
+                print("[KDS] No printer configuration or kitchen zones found")
+
+        except Exception as e:
+            print(f"Error notifying QC zones of kitchen item ready: {e}")
+
+    async def broadcast_to_all_zones(self, message_type, data):
+        """
+        Broadcast a message to all KDS zones
         """
         try:
             from settings.models import PrinterConfiguration
@@ -327,26 +394,20 @@ class KDSConsumer(AsyncWebsocketConsumer):
             if config and config.kitchen_zones:
                 for zone in config.kitchen_zones:
                     zone_name = zone.get('name', '')
-                    if zone_name and await KDSService.get_zone_type_async(zone_name) == 'qc':
-                        # Send updated QC data to QC zone
+                    if zone_name:
                         sanitized_zone_id = self.sanitize_group_name(zone_name)
-                        qc_group_name = f'kds_zone_{sanitized_zone_id}'
-
-                        # Get fresh QC zone data
-                        qc_zone_data = await database_sync_to_async(
-                            KDSService.get_qc_zone_data
-                        )(zone_name)
+                        group_name = f'kds_zone_{sanitized_zone_id}'
 
                         await self.channel_layer.group_send(
-                            qc_group_name,
+                            group_name,
                             {
-                                'type': 'qc_data_updated',
-                                'zone_data': qc_zone_data
+                                'type': message_type,
+                                **data
                             }
                         )
 
         except Exception as e:
-            print(f"Error notifying QC zones of kitchen item ready: {e}")
+            print(f"Error broadcasting to all zones: {e}")
 
     # Group message handlers
     async def kds_item_updated(self, event):
@@ -391,21 +452,48 @@ class KDSConsumer(AsyncWebsocketConsumer):
         """
         Send QC zone data update to WebSocket
         """
+        zone_data = event['zone_data']
+        print(f"[KDS] Sending QC data update to client: {len(zone_data)} orders for zone {self.zone_printer_id}")
+
         await self.send(text_data=json.dumps({
             'type': 'qc_data_updated',
             'data': {
-                'zone_data': event['zone_data']
+                'zone_data': zone_data
             }
         }))
 
     async def order_completed_by_qc(self, event):
         """
-        Send order completion notification to kitchen zones
+        Send order completion notification to kitchen zones and refresh data
         """
-        await self.send(text_data=json.dumps({
-            'type': 'order_completed_by_qc',
-            'data': event['order_data']
-        }))
+        order_data = event['order_data']
+        print(f"[KDS] Received order completion notification for zone {self.zone_printer_id}: {order_data['order_number']}")
+
+        # Refresh kitchen zone data after order completion
+        zone_type = await KDSService.get_zone_type_async(self.zone_printer_id)
+
+        if zone_type == 'kitchen':
+            print(f"[KDS] Refreshing kitchen zone data for {self.zone_printer_id} after order completion")
+            # Get fresh kitchen zone data
+            kitchen_zone_data = await database_sync_to_async(
+                KDSService.get_kitchen_zone_data
+            )(self.zone_printer_id)
+
+            print(f"[KDS] Sending kitchen data refresh: {len(kitchen_zone_data)} orders")
+
+            await self.send(text_data=json.dumps({
+                'type': 'kitchen_data_updated',
+                'data': {
+                    'zone_data': kitchen_zone_data,
+                    'completed_order': order_data
+                }
+            }))
+        else:
+            # For non-kitchen zones, just send the completion notification
+            await self.send(text_data=json.dumps({
+                'type': 'order_completed_by_qc',
+                'data': order_data
+            }))
 
     # Helper methods
     async def send_initial_data(self):

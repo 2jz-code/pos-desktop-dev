@@ -269,14 +269,16 @@ class KDSService:
                             if isinstance(assigned_zones, str):
                                 assigned_zones = [assigned_zones]
 
-                            # Create KDS item for each assigned zone
+                            # Create KDS item for each assigned zone (kitchen zones only)
                             for zone_id in assigned_zones:
-                                kds_item = KDSOrderItem.objects.create(
-                                    order_item=order_item,
-                                    zone_printer_id=zone_id,
-                                    kds_status='received'
-                                )
-                                kds_items.append(kds_item)
+                                # Skip QC zones - they observe kitchen items, don't create duplicates
+                                if KDSService.get_zone_type(zone_id) == 'kitchen':
+                                    kds_item = KDSOrderItem.objects.create(
+                                        order_item=order_item,
+                                        zone_printer_id=zone_id,
+                                        kds_status='received'
+                                    )
+                                    kds_items.append(kds_item)
 
         except Exception as e:
             print(f"Error creating KDS items: {e}")
@@ -324,16 +326,18 @@ class KDSService:
                 # Use sync version - this method should only be called from sync contexts
                 is_qc_zone = KDSService.is_qc_zone(zone_id)
 
-                # Reappear completed items if:
-                # 1. This zone is getting new items (needs context), OR
-                # 2. This is a QC zone (always gets full context)
+                # Skip QC zones entirely in reappearing logic - they observe kitchen items directly
+                if is_qc_zone:
+                    continue
+
+                # Reappear completed items for kitchen zones if this zone is getting new items
                 if (existing_kds_item.kds_status in ['ready', 'completed'] and
-                    (zone_getting_new_items or is_qc_zone)):
+                    zone_getting_new_items):
 
                     # Determine appropriate status for reappeared item
                     reappear_status = existing_kds_item.kds_status
-                    if existing_kds_item.kds_status == 'ready' and not is_qc_zone:
-                        # For regular stations, ready items were completed, so show as completed
+                    if existing_kds_item.kds_status == 'ready':
+                        # For kitchen stations, ready items were completed, so show as completed
                         reappear_status = 'completed'
 
                     reappeared_item = KDSOrderItem.objects.create(
@@ -360,15 +364,17 @@ class KDSService:
                         if isinstance(assigned_zones, str):
                             assigned_zones = [assigned_zones]
 
-                        # Create KDS item for each assigned zone
+                        # Create KDS item for each assigned zone (kitchen zones only)
                         for zone_id in assigned_zones:
-                            new_item = KDSOrderItem.objects.create(
-                                order_item=order_item,
-                                zone_printer_id=zone_id,
-                                kds_status='received',
-                                is_addition=True
-                            )
-                            kds_items.append(new_item)
+                            # Skip QC zones - they observe kitchen items, don't create duplicates
+                            if KDSService.get_zone_type(zone_id) == 'kitchen':
+                                new_item = KDSOrderItem.objects.create(
+                                    order_item=order_item,
+                                    zone_printer_id=zone_id,
+                                    kds_status='received',
+                                    is_addition=True
+                                )
+                                kds_items.append(new_item)
 
         except Exception as e:
             print(f"Error handling order addition: {e}")
@@ -663,31 +669,32 @@ class KDSService:
     @staticmethod
     def get_qc_zone_data(zone_printer_id):
         """
-        Get data for QC zones - all orders with KDS items
-        QC sees all orders from the beginning and can complete them when all kitchen items are ready
+        Get data for QC zones - observes kitchen items without duplication
+        QC zones watch kitchen zone items directly and can complete orders when all items are ready
         """
         # Ensure this is a QC zone
         if KDSService.get_zone_type(zone_printer_id) != 'qc':
             return []
 
-        # Get all orders that have KDS items
+        # Get all orders that have KDS items in kitchen zones only
         from orders.models import Order
 
-        orders_with_kds_items = Order.objects.filter(
+        # Find orders with kitchen zone items
+        orders_with_kitchen_items = Order.objects.filter(
             items__kds_items__isnull=False
         ).distinct().select_related().prefetch_related('items__kds_items')
 
         qc_data = []
 
-        for order in orders_with_kds_items:
+        for order in orders_with_kitchen_items:
             # Skip completed orders
             if order.status == 'completed':
                 continue
 
-            # Get all KDS items for this order
+            # Get all KDS items for this order from kitchen zones only
             all_kds_items = KDSOrderItem.objects.filter(order_item__order=order)
 
-            # Filter to only kitchen zones (exclude other QC zones)
+            # Filter to only kitchen zones (exclude QC zones entirely)
             kitchen_items = []
             kitchen_zones = {}
 
@@ -705,37 +712,54 @@ class KDSService:
                         'quantity': item.order_item.quantity,
                         'status': item.kds_status,
                         'special_instructions': item.order_item.notes or '',
+                        'is_priority': item.is_priority,
+                        'is_overdue': item.is_overdue,
+                        'received_at': item.received_at.isoformat() if item.received_at else None,
+                        'ready_at': item.ready_at.isoformat() if item.ready_at else None,
                     })
 
             if not kitchen_items:
                 continue  # No kitchen items for this order
 
-            # Check if ALL kitchen items are ready
-            all_kitchen_items_ready = all(item.kds_status == 'ready' for item in kitchen_items)
+            # Check kitchen item readiness
+            all_kitchen_items_ready = all(item.kds_status in ['ready', 'completed'] for item in kitchen_items)
+            any_items_preparing = any(item.kds_status == 'preparing' for item in kitchen_items)
 
-            # Only show in QC if all kitchen items are ready OR if already being processed by QC
-            order_data = {
-                'id': str(order.id),
-                'order_number': order.order_number,
-                'customer_name': order.customer_display_name,
-                'order_type': order.order_type,
-                'created_at': order.created_at.isoformat(),
-                'all_kitchen_items_ready': all_kitchen_items_ready,
-                'kitchen_zones': kitchen_zones,
-                'total_items': len(kitchen_items),
-                'can_complete': all_kitchen_items_ready,
-            }
+            # QC workflow logic:
+            # - Show orders that have started preparation (not just received)
+            # - Prioritize orders that are ready for completion
+            has_started_items = any(item.kds_status in ['preparing', 'ready', 'completed'] for item in kitchen_items)
 
-            # Show all orders with KDS items in QC (from the beginning)
-            # QC can see progress and complete when ready
-            qc_data.append(order_data)
+            if has_started_items:
+                order_data = {
+                    'id': str(order.id),
+                    'order_number': order.order_number,
+                    'customer_name': order.customer_display_name,
+                    'order_type': order.order_type,
+                    'created_at': order.created_at.isoformat(),
+                    'all_kitchen_items_ready': all_kitchen_items_ready,
+                    'any_items_preparing': any_items_preparing,
+                    'kitchen_zones': kitchen_zones,
+                    'total_kitchen_items': len(kitchen_items),
+                    'can_complete': all_kitchen_items_ready,
+                    'qc_status': 'ready_for_completion' if all_kitchen_items_ready else 'waiting_for_kitchen',
+                    'earliest_received': min((item.received_at for item in kitchen_items if item.received_at), default=None),
+                }
+
+                if order_data['earliest_received']:
+                    order_data['earliest_received'] = order_data['earliest_received'].isoformat()
+
+                qc_data.append(order_data)
+
+        # Sort by completion readiness, then by time
+        qc_data.sort(key=lambda x: (not x['can_complete'], x['earliest_received'] or ''))
 
         return qc_data
 
     @staticmethod
     def complete_order_qc(order_id, notes=None):
         """
-        Complete an order from QC - simple workflow
+        Complete an order from QC - transitions kitchen items from ready to completed
         """
         try:
             with transaction.atomic():
@@ -743,21 +767,44 @@ class KDSService:
 
                 order = Order.objects.get(id=order_id)
 
+                # Mark all kitchen zone items as completed
+                kitchen_items = KDSOrderItem.objects.filter(
+                    order_item__order=order,
+                    kds_status='ready'
+                )
+
+                completion_time = timezone.now()
+                updated_items = []
+
+                for item in kitchen_items:
+                    if KDSService.get_zone_type(item.zone_printer_id) == 'kitchen':
+                        item.kds_status = 'completed'
+                        item.completed_at = completion_time
+                        item.save()
+                        updated_items.append(item)
+
+                        # Update metrics for each completed item
+                        KDSService._update_metrics_for_item(item)
+
                 # Mark the entire order as completed
                 order.status = 'completed'
                 order.save(update_fields=['status'])
 
-                # Optional: Add completion notes to any QC views
+                # Optional: Update QC views with completion notes
                 if notes:
                     from .models import QCOrderView
                     qc_views = QCOrderView.objects.filter(order=order)
                     for qc_view in qc_views:
                         qc_view.qc_notes = notes
                         qc_view.qc_status = 'completed'
-                        qc_view.qc_completed_at = timezone.now()
+                        qc_view.qc_completed_at = completion_time
                         qc_view.save()
 
-                return order
+                return {
+                    'order': order,
+                    'completed_items': updated_items,
+                    'notes': notes
+                }
         except Exception as e:
             print(f"Error completing order in QC: {e}")
             return None
