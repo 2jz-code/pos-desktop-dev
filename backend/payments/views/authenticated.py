@@ -309,6 +309,7 @@ class CreateUserPaymentIntentView(
         """Handles the creation of a payment intent."""
         order_id = request.data.get("order_id")
         amount = request.data.get("amount")
+        tip = request.data.get("tip", 0)
         currency = request.data.get("currency", "usd")
 
         if not all([order_id, amount]):
@@ -318,10 +319,11 @@ class CreateUserPaymentIntentView(
             order = self.get_order_or_404(order_id)
             self.validate_order_access(order, request)
             amount_decimal = self.validate_amount(amount)
+            tip_decimal = self.validate_amount(tip) if tip else Decimal("0.00")
 
             # Delegate creation to the PaymentService
             intent_details = PaymentService.create_online_payment_intent(
-                order=order, amount=amount_decimal, currency=currency, user=request.user
+                order=order, amount=amount_decimal, currency=currency, user=request.user, tip=tip_decimal
             )
 
             return self.create_success_response(intent_details, status.HTTP_201_CREATED)

@@ -248,24 +248,13 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								</div>
 							)}
 
-							{/* Service Fee */}
-							{orderData.surcharges_total && orderData.surcharges_total > 0 && (
-								<div className="flex justify-between text-sm">
-									<span className="text-accent-dark-brown">Service Fee</span>
-									<span className="text-accent-dark-brown">
-										${formatPrice(orderData.surcharges_total)}
-									</span>
-								</div>
-							)}
-
-							{/* Service Fee */}
+							{/* Service Fee - Use payment transaction data for accuracy */}
 							{(() => {
-								// Use surchargeDisplay if available, otherwise calculate from payment transactions
-								const serviceFee = surchargeDisplay?.surcharge_total ||
-									(orderData.payment_details?.transactions
-										?.filter(t => t.surcharge > 0)
-										?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0)) || 0;
-								
+								// Calculate service fee from payment transactions (most accurate)
+								const serviceFee = orderData.payment_details?.transactions
+									?.filter(t => t.surcharge > 0)
+									?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0) || 0;
+
 								return serviceFee > 0 && (
 									<div className="flex justify-between text-sm">
 										<span className="text-accent-dark-brown">Service Fee</span>
@@ -299,21 +288,36 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								<span className="text-accent-dark-green">
 									${formatPrice(
 										(() => {
-											// For completed orders, use actual payment data
-											if (orderData.payment_details?.amount_paid !== undefined) {
-												return orderData.payment_details.amount_paid;
+											// Calculate total from all payment transactions (most accurate)
+											const totalCollected = orderData.payment_details?.total_collected;
+											if (totalCollected !== undefined) {
+												return totalCollected;
 											}
-											
-											// Fallback: Calculate the total including tip from order data
-											const baseTotal = parseFloat(orderData.grand_total);
+
+											// Fallback: sum all transaction amounts including tips and surcharges
+											const transactionTotal = orderData.payment_details?.transactions
+												?.reduce((sum, t) => {
+													const amount = parseFloat(t.amount || 0);
+													const tip = parseFloat(t.tip || 0);
+													const surcharge = parseFloat(t.surcharge || 0);
+													return sum + amount + tip + surcharge;
+												}, 0) || 0;
+
+											if (transactionTotal > 0) {
+												return transactionTotal;
+											}
+
+											// Final fallback: calculate manually
+											const subtotal = parseFloat(orderData.subtotal || 0);
+											const tax = parseFloat(orderData.tax_total || 0);
 											const surcharges = orderData.payment_details?.transactions
 												?.filter(t => t.surcharge > 0)
 												?.reduce((sum, t) => sum + parseFloat(t.surcharge || 0), 0) || 0;
 											const tips = orderData.payment_details?.transactions
 												?.filter(t => t.tip > 0)
 												?.reduce((sum, t) => sum + parseFloat(t.tip || 0), 0) || 0;
-											
-											return baseTotal + surcharges + tips;
+
+											return subtotal + tax + surcharges + tips;
 										})()
 									)}
 								</span>

@@ -583,10 +583,12 @@ class PaymentService:
 
         # Mark transaction as successful and add tip if provided
         transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-        if tip and tip > 0:
+        # Only update tip if one wasn't already set (for backward compatibility)
+        if tip and tip > 0 and transaction.tip == Decimal("0.00"):
             transaction.tip = Decimal(str(tip))
-        
-        transaction.save(update_fields=["status", "tip"])
+            transaction.save(update_fields=["status", "tip"])
+        else:
+            transaction.save(update_fields=["status"])
 
         # Get the payment and recalculate amounts
         payment = transaction.payment
@@ -694,15 +696,18 @@ class PaymentService:
     @staticmethod
     @transaction.atomic
     def create_online_payment_intent(
-        order: Order, amount: Decimal, currency: str, user
+        order: Order, amount: Decimal, currency: str, user, tip: Decimal = None
     ) -> dict:
         """
         Creates a Stripe Payment Intent for an online payment for an authenticated user.
-        Includes surcharge calculation for card payments.
+        Includes surcharge calculation for card payments and optional tip.
         """
+        # Convert tip to Decimal if provided
+        tip_decimal = tip if tip else Decimal("0.00")
+
         # Calculate surcharge for online card payments
         surcharge = PaymentService.calculate_surcharge(amount)
-        total_amount_with_surcharge = amount + surcharge
+        total_amount_with_surcharge_and_tip = amount + tip_decimal + surcharge
 
         # Use the existing service method to get or create the payment record
         payment = PaymentService.get_or_create_payment(order)
@@ -722,7 +727,7 @@ class PaymentService:
         description = f"Order payment for {user_name}"
 
         intent_data = {
-            "amount": int(total_amount_with_surcharge * 100),  # Convert to cents
+            "amount": int(total_amount_with_surcharge_and_tip * 100),  # Convert to cents
             "currency": currency,
             "automatic_payment_methods": {"enabled": True},
             "description": description,
@@ -742,6 +747,7 @@ class PaymentService:
         PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
+            tip=tip_decimal,
             surcharge=surcharge,
             method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
             status=PaymentTransaction.TransactionStatus.PENDING,
@@ -753,8 +759,9 @@ class PaymentService:
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id,
             "payment_id": str(payment.id),
+            "tip": tip_decimal,
             "surcharge": surcharge,
-            "total_with_surcharge": total_amount_with_surcharge,
+            "total_with_surcharge_and_tip": total_amount_with_surcharge_and_tip,
         }
 
     @staticmethod

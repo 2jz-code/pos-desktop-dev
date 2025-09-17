@@ -320,6 +320,7 @@ export const useCheckout = () => {
 				const paymentData = {
 					order_id: order.id,
 					amount: totals.total,
+					tip: formData.tip || 0,
 					currency: "usd",
 					customer_email: formData.email,
 					customer_name: `${formData.firstName} ${formData.lastName}`,
@@ -369,10 +370,12 @@ export const useCheckout = () => {
 
 				// Step 1: Create payment intent for authenticated user
 				console.log("Creating authenticated payment intent...");
+				console.log('🎯 Creating authenticated payment intent with tip:', tipAmount);
 				const paymentIntentData =
 					await paymentsAPI.createAuthenticatedPaymentIntent({
 						order_id: cart.id,
 						amount: cart.grand_total,
+						tip: tipAmount || 0,
 						currency: "usd",
 					});
 
