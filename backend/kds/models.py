@@ -1,345 +1,215 @@
 from django.db import models
 from django.utils import timezone
-import uuid
+from orders.models import Order, OrderItem
+
+
+class KDSOrderStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    IN_PROGRESS = 'in_progress', 'In Progress'
+    READY = 'ready', 'Ready'
+    COMPLETED = 'completed', 'Completed'
+
+
+class KDSOrder(models.Model):
+    """Single KDS order that all zones can observe"""
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='kds_order')
+    status = models.CharField(max_length=20, choices=KDSOrderStatus.choices, default=KDSOrderStatus.PENDING)
+
+    # Timestamps for workflow tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    # Kitchen workflow tracking
+    assigned_kitchen_zones = models.JSONField(default=list)  # ['grill', 'fryer']
+    is_priority = models.BooleanField(default=False)
+
+    # Legacy migration support
+    legacy_id = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-is_priority', 'created_at']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['-is_priority', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"KDS-{self.order.order_number}"
+
+    @property
+    def prep_time_minutes(self):
+        """Calculate preparation time in minutes"""
+        if self.started_at and self.ready_at:
+            return int((self.ready_at - self.started_at).total_seconds() / 60)
+        return 0
+
+    @property
+    def total_time_minutes(self):
+        """Calculate total time from creation to completion"""
+        if self.completed_at:
+            return int((self.completed_at - self.created_at).total_seconds() / 60)
+        return int((timezone.now() - self.created_at).total_seconds() / 60)
+
+    @property
+    def is_overdue(self):
+        """Check if order is overdue based on estimated prep time"""
+        if self.status == KDSOrderStatus.COMPLETED:
+            return False
+        # Simple overdue logic - more than 30 minutes
+        return self.total_time_minutes > 30
+
+    def transition_to(self, new_status):
+        """State machine for status transitions"""
+        from .services.order_service import KDSOrderService
+        return KDSOrderService.transition_order_status(self, new_status)
+
+    def get_zone_items(self, zone_id):
+        """Get items for a specific zone"""
+        return self.items.filter(assigned_zone=zone_id)
+
+    def get_kitchen_zones_data(self):
+        """Get data grouped by kitchen zones for QC view"""
+        zones = {}
+        for item in self.items.all():
+            zone = item.assigned_zone
+            if zone not in zones:
+                zones[zone] = []
+            zones[zone].append({
+                'id': str(item.id),
+                'product_name': item.order_item.product.name if item.order_item.product else item.order_item.custom_name or 'Custom Item',
+                'quantity': item.order_item.quantity,
+                'status': item.status,
+                'special_instructions': item.order_item.notes or '',
+                'is_priority': item.is_priority,
+                'started_at': item.started_at.isoformat() if item.started_at else None,
+                'completed_at': item.completed_at.isoformat() if item.completed_at else None,
+            })
+        return zones
+
+
+class KDSOrderItem(models.Model):
+    """Individual items within a KDS order"""
+    kds_order = models.ForeignKey(KDSOrder, on_delete=models.CASCADE, related_name='items')
+    order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE, related_name='kds_items')
+    assigned_zone = models.CharField(max_length=50)  # Which kitchen zone handles this item
+    status = models.CharField(max_length=20, choices=KDSOrderStatus.choices, default=KDSOrderStatus.PENDING)
+
+    # Item-specific attributes
+    notes = models.TextField(blank=True)
+    is_priority = models.BooleanField(default=False)
+
+    # Timing for individual items
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    # Legacy migration support
+    legacy_id = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-is_priority', 'kds_order__created_at']
+        indexes = [
+            models.Index(fields=['assigned_zone', 'status']),
+            models.Index(fields=['-is_priority']),
+        ]
+        # Ensure one item per zone per order item
+        unique_together = ['order_item', 'assigned_zone']
+
+    def __str__(self):
+        product_name = self.order_item.product.name if self.order_item.product else self.order_item.custom_name or 'Custom Item'
+        return f"{self.kds_order.order.order_number} - {product_name} ({self.assigned_zone})"
+
+    @property
+    def prep_time_minutes(self):
+        """Calculate prep time for this specific item"""
+        if self.started_at and self.completed_at:
+            return int((self.completed_at - self.started_at).total_seconds() / 60)
+        return 0
+
+    @property
+    def total_time_minutes(self):
+        """Total time since item was created"""
+        if self.completed_at:
+            return int((self.completed_at - self.kds_order.created_at).total_seconds() / 60)
+        return int((timezone.now() - self.kds_order.created_at).total_seconds() / 60)
+
+    @property
+    def is_overdue(self):
+        """Check if this specific item is overdue"""
+        if self.status == KDSOrderStatus.COMPLETED:
+            return False
+        return self.total_time_minutes > 20  # Items should be done in 20 minutes
+
+    def transition_to(self, new_status):
+        """Transition this item's status"""
+        from .services.order_service import KDSOrderService
+        return KDSOrderService.transition_item_status(self, new_status)
+
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        return {
+            'id': str(self.id),
+            'product_name': self.order_item.product.name if self.order_item.product else self.order_item.custom_name or 'Custom Item',
+            'quantity': self.order_item.quantity,
+            'status': self.status,
+            'assigned_zone': self.assigned_zone,
+            'special_instructions': self.order_item.notes or '',
+            'notes': self.notes,
+            'is_priority': self.is_priority,
+            'is_overdue': self.is_overdue,
+            'prep_time_minutes': self.prep_time_minutes,
+            'total_time_minutes': self.total_time_minutes,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'modifiers': self._get_modifiers_data(),
+        }
+
+    def _get_modifiers_data(self):
+        """Get modifier data for this item"""
+        try:
+            if hasattr(self.order_item, 'selected_modifiers_snapshot'):
+                return [
+                    {
+                        'modifier_set_name': mod.modifier_set_name,
+                        'option_name': mod.option_name,
+                        'price_at_sale': str(mod.price_at_sale)
+                    }
+                    for mod in self.order_item.selected_modifiers_snapshot.all()
+                ]
+        except:
+            pass
+        return []
 
 
 class KDSSession(models.Model):
-    """
-    Tracks active KDS terminal sessions
-    Links to existing printer/zone configuration from settings app
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    zone_printer_id = models.CharField(
-        max_length=100, help_text="References existing printer ID from settings app"
-    )
-    terminal_id = models.CharField(
-        max_length=100, help_text="Unique identifier for the terminal/device"
-    )
-
-    # Session tracking
-    started_at = models.DateTimeField(auto_now_add=True)
-    last_activity = models.DateTimeField(auto_now=True)
+    """Track active KDS terminal sessions"""
+    zone_id = models.CharField(max_length=50)
+    terminal_id = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
-
-    # Display preferences for this terminal
-    max_orders_per_column = models.PositiveIntegerField(default=10)
-    show_customer_names = models.BooleanField(default=True)
-    show_order_type = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ["zone_printer_id", "terminal_id"]
+        unique_together = ['zone_id', 'terminal_id']
+        ordering = ['-last_activity']
 
     def __str__(self):
-        return f"Zone {self.zone_printer_id} - {self.terminal_id}"
+        return f"{self.zone_id} - {self.terminal_id}"
 
     def update_activity(self):
         """Update last activity timestamp"""
         self.last_activity = timezone.now()
-        self.save(update_fields=["last_activity"])
+        self.save(update_fields=['last_activity'])
 
+    @classmethod
+    def cleanup_old_sessions(cls, hours=24):
+        """Clean up old inactive sessions"""
+        cutoff_time = timezone.now() - timezone.timedelta(hours=hours)
+        return cls.objects.filter(last_activity__lt=cutoff_time).delete()
 
-class KDSOrderItem(models.Model):
-    """
-    KDS-specific tracking for order items
-    Extends OrderItem with kitchen workflow data
-    """
-
-    STATUS_CHOICES = [
-        ("received", "Received"),
-        ("preparing", "Preparing"),
-        ("ready", "Ready"),
-        ("completed", "Completed"),
-        ("held", "Held"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order_item = models.ForeignKey(
-        "orders.OrderItem", on_delete=models.CASCADE, related_name="kds_items"
-    )
-    zone_printer_id = models.CharField(
-        max_length=100, help_text="References existing printer ID from settings app"
-    )
-
-    # Kitchen workflow status
-    kds_status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES, default="received"
-    )
-
-    # Timing tracking
-    received_at = models.DateTimeField(auto_now_add=True)
-    started_preparing_at = models.DateTimeField(null=True, blank=True)
-    ready_at = models.DateTimeField(null=True, blank=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    held_at = models.DateTimeField(null=True, blank=True)
-
-    # Notes and special handling
-    kitchen_notes = models.TextField(blank=True)
-    is_priority = models.BooleanField(default=False)
-    estimated_prep_time = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Estimated prep time in minutes"
-    )
-
-    # Order addition tracking
-    is_addition = models.BooleanField(
-        default=False, help_text="Item added to existing order"
-    )
-    is_reappeared_completed = models.BooleanField(
-        default=False, help_text="Previously completed item brought back for context"
-    )
-    original_completion_time = models.DateTimeField(
-        null=True, blank=True, help_text="When item was originally completed"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["received_at"]
-        unique_together = ["order_item", "zone_printer_id"]
-
-    def __str__(self):
-        return f"{self.order_item.order.order_number} - {self.order_item.product_name if hasattr(self.order_item, 'product_name') else 'Custom Item'}"
-
-    @property
-    def prep_time_minutes(self):
-        """Calculate actual prep time in minutes"""
-        if self.started_preparing_at and self.ready_at:
-            return int((self.ready_at - self.started_preparing_at).total_seconds() / 60)
-        return None
-
-    @property
-    def total_time_minutes(self):
-        """Calculate total time from received to ready in minutes"""
-        if self.received_at and self.ready_at:
-            return int((self.ready_at - self.received_at).total_seconds() / 60)
-        return None
-
-    @property
-    def is_overdue(self):
-        """Check if item is overdue based on estimated prep time"""
-        if not self.estimated_prep_time or self.kds_status in ["ready", "completed"]:
-            return False
-
-        time_elapsed = timezone.now() - self.received_at
-        return time_elapsed.total_seconds() / 60 > self.estimated_prep_time
-
-
-class KitchenMetrics(models.Model):
-    """
-    Daily/shift metrics for kitchen performance by zone
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    zone_printer_id = models.CharField(
-        max_length=100, help_text="References existing printer ID from settings app"
-    )
-    date = models.DateField()
-    shift = models.CharField(
-        max_length=20,
-        choices=[
-            ("morning", "Morning"),
-            ("afternoon", "Afternoon"),
-            ("evening", "Evening"),
-            ("overnight", "Overnight"),
-        ],
-        default="morning",
-    )
-
-    # Performance metrics
-    total_items = models.PositiveIntegerField(default=0)
-    completed_items = models.PositiveIntegerField(default=0)
-    average_prep_time = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True
-    )
-    items_on_time = models.PositiveIntegerField(default=0)
-    overdue_items = models.PositiveIntegerField(default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ["zone_printer_id", "date", "shift"]
-        ordering = ["-date", "shift"]
-
-    def __str__(self):
-        return f"Zone {self.zone_printer_id} - {self.date} ({self.shift})"
-
-    @property
-    def completion_rate(self):
-        """Calculate completion rate as percentage"""
-        if self.total_items == 0:
-            return 0
-        return (self.completed_items / self.total_items) * 100
-
-    @property
-    def on_time_rate(self):
-        """Calculate on-time completion rate as percentage"""
-        if self.completed_items == 0:
-            return 0
-        return (self.items_on_time / self.completed_items) * 100
-
-
-class KDSAlert(models.Model):
-    """
-    Simple system alerts for KDS (overdue orders, system issues, etc.)
-    No user authentication required - alerts are automatically resolved
-    """
-
-    ALERT_TYPES = [
-        ("overdue", "Overdue Order"),
-        ("system", "System Alert"),
-    ]
-
-    PRIORITY_CHOICES = [
-        ("low", "Low"),
-        ("medium", "Medium"),
-        ("high", "High"),
-        ("critical", "Critical"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    zone_printer_id = models.CharField(
-        max_length=100, help_text="References existing printer ID from settings app"
-    )
-    alert_type = models.CharField(max_length=20, choices=ALERT_TYPES)
-    priority = models.CharField(
-        max_length=10, choices=PRIORITY_CHOICES, default="medium"
-    )
-
-    title = models.CharField(max_length=200)
-    message = models.TextField()
-
-    # Reference to related objects
-    order_item = models.ForeignKey(
-        "orders.OrderItem", on_delete=models.CASCADE, null=True, blank=True
-    )
-
-    # Alert lifecycle
-    is_active = models.BooleanField(default=True)
-    resolved_at = models.DateTimeField(null=True, blank=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at", "-priority"]
-
-    def __str__(self):
-        return f"{self.title} (Zone {self.zone_printer_id})"
-
-    def resolve(self):
-        """Mark alert as resolved"""
-        self.is_active = False
-        self.resolved_at = timezone.now()
-        self.save(update_fields=["is_active", "resolved_at"])
-
-
-class QCOrderView(models.Model):
-    """
-    Quality Control view of orders - aggregates items from all kitchen zones
-    for order-level completion workflow in QC stations
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(
-        "orders.Order", on_delete=models.CASCADE, related_name="qc_views"
-    )
-    qc_zone_printer_id = models.CharField(
-        max_length=100, help_text="QC zone this view is for"
-    )
-
-    # QC-specific status tracking
-    qc_status = models.CharField(
-        max_length=20,
-        choices=[
-            ("pending", "Pending Kitchen"),
-            ("ready_for_qc", "Ready for QC"),
-            ("in_qc", "In QC Review"),
-            ("completed", "Completed"),
-        ],
-        default="pending"
-    )
-
-    # QC timing
-    ready_for_qc_at = models.DateTimeField(null=True, blank=True)
-    qc_started_at = models.DateTimeField(null=True, blank=True)
-    qc_completed_at = models.DateTimeField(null=True, blank=True)
-
-    # QC notes and issues
-    qc_notes = models.TextField(
-        blank=True, help_text="QC notes or issues found"
-    )
-    requires_remake = models.BooleanField(
-        default=False, help_text="QC flagged items for remake"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ["order", "qc_zone_printer_id"]
-        ordering = ["ready_for_qc_at", "created_at"]
-
-    def __str__(self):
-        return f"QC View: {self.order.order_number} ({self.qc_zone_printer_id})"
-
-    @property
-    def all_kitchen_items_ready(self):
-        """
-        Check if all kitchen items for this order are ready
-        (excluding other QC zones)
-        """
-        from .services import KDSService
-
-        # Get all KDS items for this order
-        order_kds_items = KDSOrderItem.objects.filter(order_item__order=self.order)
-
-        # Exclude items from QC zones
-        kitchen_items = []
-        for item in order_kds_items:
-            if KDSService.get_zone_type(item.zone_printer_id) == 'kitchen':
-                kitchen_items.append(item)
-
-        if not kitchen_items:
-            return True  # No kitchen items means ready for QC
-
-        # Check if all kitchen items are ready or completed
-        return all(item.kds_status in ['ready', 'completed'] for item in kitchen_items)
-
-    @property
-    def kitchen_item_statuses(self):
-        """
-        Get a summary of all kitchen items and their statuses
-        Returns dict with zone -> items mapping
-        """
-        from .services import KDSService
-
-        order_kds_items = KDSOrderItem.objects.select_related(
-            'order_item'
-        ).filter(order_item__order=self.order)
-
-        kitchen_zones = {}
-        for item in order_kds_items:
-            zone_type = KDSService.get_zone_type(item.zone_printer_id)
-            if zone_type == 'kitchen':
-                if item.zone_printer_id not in kitchen_zones:
-                    kitchen_zones[item.zone_printer_id] = []
-
-                kitchen_zones[item.zone_printer_id].append({
-                    'id': str(item.id),
-                    'product_name': getattr(item.order_item, 'product_name', 'Custom Item'),
-                    'status': item.kds_status,
-                    'quantity': item.order_item.quantity,
-                    'special_instructions': item.order_item.special_instructions,
-                })
-
-        return kitchen_zones
-
-    def update_qc_status(self):
-        """
-        Update QC status based on kitchen item readiness
-        """
-        if self.qc_status == 'pending' and self.all_kitchen_items_ready:
-            self.qc_status = 'ready_for_qc'
-            self.ready_for_qc_at = timezone.now()
-            self.save(update_fields=['qc_status', 'ready_for_qc_at', 'updated_at'])
+    @classmethod
+    def get_active_sessions(cls):
+        """Get all active sessions"""
+        return cls.objects.filter(is_active=True)

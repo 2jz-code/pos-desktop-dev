@@ -39,12 +39,14 @@ export function QCOrderCard({ order, onStatusChange }) {
 
 	const getItemStatusBadge = (status) => {
 		switch (status) {
-			case "received":
+			case "pending":
 				return "bg-blue-100 text-blue-800";
-			case "preparing":
+			case "in_progress":
 				return "bg-yellow-100 text-yellow-800";
 			case "ready":
 				return "bg-green-100 text-green-800";
+			case "completed":
+				return "bg-gray-100 text-gray-800";
 			default:
 				return "bg-gray-100 text-gray-800";
 		}
@@ -54,7 +56,7 @@ export function QCOrderCard({ order, onStatusChange }) {
 		switch (status) {
 			case "ready":
 				return <CheckCircle className="h-3 w-3" />;
-			case "preparing":
+			case "in_progress":
 				return <AlertTriangle className="h-3 w-3" />;
 			default:
 				return <div className="h-3 w-3 rounded-full border-2 border-current" />;

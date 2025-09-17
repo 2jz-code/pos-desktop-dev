@@ -404,6 +404,11 @@ class KDSService:
                 print(f"[KDS Service] manual_send_to_kitchen: Created {len(kds_items)} KDS items")
 
                 # Note: Broadcasting handled automatically by post_save signal
+                # Also ensure QC zones are immediately notified
+                if kds_items:
+                    print("[KDS Service] manual_send_to_kitchen: Ensuring QC zones see manually sent order")
+                    from .signals import notify_all_qc_zones_new_order
+                    notify_all_qc_zones_new_order(order)
 
                 return {
                     'success': True,
@@ -612,6 +617,7 @@ class KDSService:
             return []
 
         items = KDSService.get_zone_items(zone_printer_id)
+        print(f"[KDS Service] get_kitchen_zone_data: Found {len(items)} items for zone {zone_printer_id}")
 
         # Group items by order
         orders_dict = {}
@@ -726,11 +732,11 @@ class KDSService:
             any_items_preparing = any(item.kds_status == 'preparing' for item in kitchen_items)
 
             # QC workflow logic:
-            # - Show orders that have started preparation (not just received)
+            # - Show ALL orders including newly received ones (QC needs full visibility)
             # - Prioritize orders that are ready for completion
-            has_started_items = any(item.kds_status in ['preparing', 'ready', 'completed'] for item in kitchen_items)
+            has_any_items = len(kitchen_items) > 0
 
-            if has_started_items:
+            if has_any_items:
                 order_data = {
                     'id': str(order.id),
                     'order_number': order.order_number,
@@ -767,17 +773,18 @@ class KDSService:
 
                 order = Order.objects.get(id=order_id)
 
-                # Mark all kitchen zone items as completed
+                # Mark all kitchen zone items as completed (regardless of current status)
+                # When QC completes an order, all items are considered done
                 kitchen_items = KDSOrderItem.objects.filter(
-                    order_item__order=order,
-                    kds_status='ready'
-                )
+                    order_item__order=order
+                ).exclude(kds_status='completed')
 
                 completion_time = timezone.now()
                 updated_items = []
 
                 for item in kitchen_items:
                     if KDSService.get_zone_type(item.zone_printer_id) == 'kitchen':
+                        print(f"[KDS Service] complete_order_qc: Marking item {item.id} as completed (was {item.kds_status})")
                         item.kds_status = 'completed'
                         item.completed_at = completion_time
                         item.save()
@@ -785,6 +792,8 @@ class KDSService:
 
                         # Update metrics for each completed item
                         KDSService._update_metrics_for_item(item)
+
+                print(f"[KDS Service] complete_order_qc: Marked {len(updated_items)} items as completed for order {order.order_number}")
 
                 # Mark the entire order as completed
                 order.status = 'completed'

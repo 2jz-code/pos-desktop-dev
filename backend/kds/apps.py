@@ -6,4 +6,10 @@ class KdsConfig(AppConfig):
     name = 'kds'
 
     def ready(self):
-        import kds.signals
+        # Import the new event handlers
+        import kds.events.handlers
+        # Keep backward compatibility with old signals for now
+        try:
+            import kds.signals
+        except ImportError:
+            pass

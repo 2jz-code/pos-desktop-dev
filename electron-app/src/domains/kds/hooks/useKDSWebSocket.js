@@ -96,78 +96,31 @@ export function useKDSWebSocket(zoneId) {
 		switch (data.type) {
 			case "initial_data":
 				console.log("Received initial KDS data:", data.data);
-				setZoneData(data.data.zone_data || []);
+				setZoneData(data.data.orders || []);
 				setAlerts(data.data.alerts || []);
 				setZoneType(data.data.zone_type || "kitchen");
 				setIsQCStation(data.data.is_qc_station || false);
 				break;
 
-			case "item_updated":
-				console.log("Kitchen item updated:", data.data);
-				// For kitchen zones - update the item within its order
-				if (zoneType === "kitchen") {
-					setZoneData((prevOrders) =>
-						prevOrders.map((order) => {
-							// Find if this order contains the updated item
-							const updatedItems = order.items.map((item) =>
-								item.id === data.data.id ? { ...item, ...data.data } : item
-							);
-
-							// Check if any item was actually updated
-							const itemWasUpdated = order.items.some(item => item.id === data.data.id);
-
-							if (itemWasUpdated) {
-								// Recalculate order overall status based on updated items
-								let newOverallStatus = 'received';
-								if (updatedItems.every(item => item.status === 'ready')) {
-									newOverallStatus = 'ready';
-								} else if (updatedItems.some(item => item.status === 'preparing')) {
-									newOverallStatus = 'preparing';
-								}
-
-								return {
-									...order,
-									items: updatedItems,
-									overall_status: newOverallStatus
-								};
-							}
-
-							return order;
-						})
-					);
-				}
-				break;
-
-			case "qc_data_updated":
-				console.log("QC zone data updated:", data.data);
-				// Only for QC zones - replace entire order list
-				if (zoneType === "qc") {
-					setZoneData(data.data.zone_data || []);
-				}
-				break;
-
 			case "zone_data_updated":
 				console.log("Zone data updated:", data.data);
-				// For kitchen zones - replace entire zone data
-				if (zoneType === "kitchen") {
-					setZoneData(data.data.zone_data || []);
-				}
+				// Replace entire zone data with fresh data
+				setZoneData(data.data.orders || []);
+				setZoneType(data.data.zone_type || zoneType);
+				setIsQCStation(data.data.is_qc_station || isQCStation);
 				break;
 
-			case "new_order":
-				console.log("New order/item received:", data.data);
-				// Add new item/order based on zone type
-				setZoneData((prevData) => [...prevData, data.data]);
+			case "order_completed":
+				console.log("Order completed:", data.data);
+				// Refresh data will come via zone_data_updated
 				break;
 
-			case "order_completed_by_qc":
-				console.log("Order completed by QC:", data.data);
-				// For kitchen zones - remove completed items or mark them differently
-				if (zoneType === "kitchen") {
-					setZoneData((prevItems) =>
-						prevItems.filter(item => item.order_id !== data.data.order_id)
-					);
-				}
+			case "success":
+				console.log("Action successful:", data.message);
+				break;
+
+			case "error":
+				console.error("Action failed:", data.message);
 				break;
 
 			case "alert":
@@ -204,7 +157,7 @@ export function useKDSWebSocket(zoneId) {
 		(itemId, newStatus) => {
 			return sendMessage({
 				action: "update_item_status",
-				kds_item_id: itemId,
+				item_id: itemId,
 				status: newStatus,
 			});
 		},
@@ -216,7 +169,7 @@ export function useKDSWebSocket(zoneId) {
 		(itemId, isPriority = true) => {
 			return sendMessage({
 				action: "mark_priority",
-				kds_item_id: itemId,
+				item_id: itemId,
 				is_priority: isPriority,
 			});
 		},
@@ -227,8 +180,8 @@ export function useKDSWebSocket(zoneId) {
 	const addKitchenNote = useCallback(
 		(itemId, note) => {
 			return sendMessage({
-				action: "add_kitchen_note",
-				kds_item_id: itemId,
+				action: "add_note",
+				item_id: itemId,
 				note: note,
 			});
 		},
@@ -241,7 +194,7 @@ export function useKDSWebSocket(zoneId) {
 			// For the simplified QC workflow, we only complete orders
 			if (newStatus === 'completed') {
 				return sendMessage({
-					action: "complete_order_qc",
+					action: "complete_order",
 					order_id: orderId,
 					notes: notes,
 				});
@@ -293,20 +246,19 @@ export function useKDSWebSocket(zoneId) {
 	// Categorize data by status for easy display (zone-type aware)
 	const categorizedData = useMemo(() => {
 		if (zoneType === "qc") {
-			// For QC zones, show ALL orders (not just completed ones)
-			// QC can see progress and complete when ready
+			// For QC zones, show orders based on completion readiness
 			return {
-				ready_for_qc: zoneData.filter((order) => order.status !== "completed"),
+				ready_for_qc: zoneData.filter((order) => order.can_complete || order.status === "ready"),
+				waiting: zoneData.filter((order) => !order.can_complete && order.status !== "ready" && order.status !== "completed"),
 				completed: zoneData.filter((order) => order.status === "completed"),
 			};
 		} else {
-			// For kitchen zones, categorize by order overall_status
+			// For kitchen zones, categorize by order status
 			return {
-				new: zoneData.filter((order) => order.overall_status === "received"),
-				preparing: zoneData.filter((order) => order.overall_status === "preparing"),
-				ready: zoneData.filter((order) => order.overall_status === "ready"),
-				completed: zoneData.filter((order) => order.overall_status === "completed"),
-				held: zoneData.filter((order) => order.overall_status === "held"),
+				new: zoneData.filter((order) => order.status === "pending"),
+				preparing: zoneData.filter((order) => order.status === "in_progress"),
+				ready: zoneData.filter((order) => order.status === "ready"),
+				completed: zoneData.filter((order) => order.status === "completed"),
 			};
 		}
 	}, [zoneData, zoneType]);

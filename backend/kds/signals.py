@@ -39,6 +39,11 @@ def create_kds_items_on_payment(sender, order, **kwargs):
                 print(f"[KDS Signals] create_kds_items_on_payment: Created {len(kds_items)} KDS items")
 
                 # Note: Broadcasting handled automatically by post_save signal
+                # Ensure QC zones are immediately notified of new order
+                if kds_items:
+                    print("[KDS Signals] create_kds_items_on_payment: Ensuring QC zones see new order")
+                    # Force QC zone updates for all QC zones since they observe all kitchen items
+                    notify_all_qc_zones_new_order(order)
 
         elif order.order_type == 'POS':
             print("[KDS Signals] create_kds_items_on_payment: POS order - checking if backup needed")
@@ -52,6 +57,10 @@ def create_kds_items_on_payment(sender, order, **kwargs):
                     kds_items = KDSService.create_kds_items_for_order(order, zone_assignments)
 
                     # Note: Broadcasting handled automatically by post_save signal
+                    # Ensure QC zones are immediately notified of new order
+                    if kds_items:
+                        print("[KDS Signals] create_kds_items_on_payment: Ensuring QC zones see new POS order")
+                        notify_all_qc_zones_new_order(order)
             else:
                 print(f"[KDS Signals] create_kds_items_on_payment: Found {existing_items.count()} existing items - skipping backup")
 
@@ -70,7 +79,12 @@ def broadcast_kds_item_update(sender, instance, created, **kwargs):
     Now handles order-level data for kitchen zones and notifies all QC zones
     """
     try:
-        print(f"[KDS Signals] broadcast_kds_item_update: Starting for item {instance.id}, created={created}")
+        print(f"[KDS Signals] broadcast_kds_item_update: Starting for item {instance.id}, created={created}, status={instance.kds_status}")
+
+        # Don't broadcast updates for completed items to kitchen zones (they should disappear)
+        if instance.kds_status == 'completed' and not created:
+            print(f"[KDS Signals] broadcast_kds_item_update: Skipping broadcast for completed item {instance.id}")
+            return
 
         if channel_layer:
             # Get the zone type for the current zone
@@ -119,7 +133,8 @@ def broadcast_kds_item_update(sender, instance, created, **kwargs):
                     }
                 )
 
-            # Also notify ALL QC zones when any kitchen item changes (for cross-zone coordination)
+            # Always notify ALL QC zones when any kitchen item changes (for cross-zone coordination)
+            # QC zones need to see both new orders and status updates from kitchen zones
             if zone_type == 'kitchen':
                 print("[KDS Signals] broadcast_kds_item_update: Notifying all QC zones about kitchen item change")
                 notify_all_qc_zones(instance, created)
@@ -178,6 +193,53 @@ def notify_all_qc_zones(kds_item, created):
         print(f"[KDS Signals] notify_all_qc_zones: ERROR - {e}")
         import traceback
         print(f"[KDS Signals] notify_all_qc_zones: TRACEBACK - {traceback.format_exc()}")
+
+
+def notify_all_qc_zones_new_order(order):
+    """
+    Notify all QC zones immediately when a new order is created
+    This ensures QC zones see orders as soon as they're placed and kitchen starts working
+    """
+    try:
+        print(f"[KDS Signals] notify_all_qc_zones_new_order: Notifying QC zones for new order {order.order_number}")
+
+        # Get all QC zones from printer configuration
+        from settings.models import PrinterConfiguration
+        config = PrinterConfiguration.objects.first()
+
+        if not config or not config.kitchen_zones:
+            print("[KDS Signals] notify_all_qc_zones_new_order: No printer configuration found")
+            return
+
+        for zone in config.kitchen_zones:
+            zone_name = zone.get('name')
+            if not zone_name:
+                continue
+
+            # Check if this is a QC zone
+            if KDSService.get_zone_type(zone_name) == 'qc':
+                print(f"[KDS Signals] notify_all_qc_zones_new_order: Updating QC zone {zone_name}")
+
+                # Get fresh QC data for this zone
+                qc_data = KDSService.get_qc_zone_data(zone_name)
+
+                # Broadcast to the QC zone
+                sanitized_zone_name = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in zone_name)
+                qc_group_name = f'kds_zone_{sanitized_zone_name}'
+
+                async_to_sync(channel_layer.group_send)(
+                    qc_group_name,
+                    {
+                        'type': 'qc_data_updated',
+                        'zone_data': qc_data
+                    }
+                )
+                print(f"[KDS Signals] notify_all_qc_zones_new_order: Updated QC zone {zone_name}")
+
+    except Exception as e:
+        print(f"[KDS Signals] notify_all_qc_zones_new_order: ERROR - {e}")
+        import traceback
+        print(f"[KDS Signals] notify_all_qc_zones_new_order: TRACEBACK - {traceback.format_exc()}")
 
 
 def get_zone_assignments_for_order(order):

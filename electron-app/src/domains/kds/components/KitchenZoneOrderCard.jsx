@@ -53,9 +53,9 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 
 	const getItemStatusColor = (status) => {
 		switch (status) {
-			case "received":
+			case "pending":
 				return "bg-blue-100 text-blue-800";
-			case "preparing":
+			case "in_progress":
 				return "bg-yellow-100 text-yellow-800";
 			case "ready":
 				return "bg-green-100 text-green-800";
@@ -66,9 +66,9 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 
 	const getNextStatus = (currentStatus) => {
 		switch (currentStatus) {
-			case "received":
-				return "preparing";
-			case "preparing":
+			case "pending":
+				return "in_progress";
+			case "in_progress":
 				return "ready";
 			default:
 				return currentStatus;
@@ -77,9 +77,9 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 
 	const getStatusActionText = (status) => {
 		switch (status) {
-			case "received":
+			case "pending":
 				return "Start Preparing";
-			case "preparing":
+			case "in_progress":
 				return "Mark Ready";
 			default:
 				return "Update Status";
