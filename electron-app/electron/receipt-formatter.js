@@ -186,34 +186,37 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 			`-$${parseFloat(order.total_discounts_amount).toFixed(2)}`
 		);
 	}
-	if (parseFloat(order.surcharges_total) > 0) {
+	if (parseFloat(order.total_surcharges || 0) > 0) {
 		printLine(
 			printer,
 			"Service Fee:",
-			`$${parseFloat(order.surcharges_total).toFixed(2)}`
+			`$${parseFloat(order.total_surcharges).toFixed(2)}`
 		);
 	}
 	printLine(printer, "Tax:", `$${parseFloat(order.tax_total).toFixed(2)}`);
 
-	const tip = order.payment_details?.tip
-		? parseFloat(order.payment_details.tip)
-		: 0;
-	if (tip > 0) {
-		printLine(printer, "Tip:", `$${tip.toFixed(2)}`);
+	if (parseFloat(order.total_tips || 0) > 0) {
+		printLine(printer, "Tip:", `$${parseFloat(order.total_tips).toFixed(2)}`);
 	}
 
 	printer.bold(true);
 	printLine(
 		printer,
 		"TOTAL:",
-		`$${parseFloat(order.total_with_tip).toFixed(2)}`
+		`$${parseFloat(order.total_collected || order.grand_total || 0).toFixed(2)}`
 	);
 	printer.bold(false);
 	printer.println("");
 
 	// --- Payment Details ---
 	if (!isTransaction) {
-		const transactions = order.payment_details?.transactions || [];
+		let transactions = order.payment_details?.transactions || [];
+
+		// For online orders, only show successful transactions to avoid showing failed attempts
+		if (order.order_type === "WEB") {
+			transactions = transactions.filter(txn => txn.status === "SUCCESSFUL");
+		}
+
 		if (transactions.length > 0) {
 			printer.bold(true);
 			printer.println("Payment Details:");
@@ -221,8 +224,30 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 
 			for (const [index, txn] of transactions.entries()) {
 				const method = (txn.method || "N/A").toUpperCase();
-				const amount = parseFloat(txn.amount).toFixed(2);
-				printLine(printer, ` ${method} (${index + 1})`, `$${amount}`);
+
+				// Calculate total transaction amount (amount + surcharge + tip)
+				const baseAmount = parseFloat(txn.amount || 0);
+				const surcharge = parseFloat(txn.surcharge || 0);
+				const tip = parseFloat(txn.tip || 0);
+				const totalAmount = (baseAmount + surcharge + tip).toFixed(2);
+
+				// For card transactions, show card brand and last 4 digits if available
+				if (method === "CARD_ONLINE" || method === "CARD_TERMINAL") {
+					const cardBrand = txn.card_brand || "";
+					const cardLast4 = txn.card_last4 || "";
+
+					if (cardBrand && cardLast4) {
+						// Show "Visa ******1234" instead of "CARD_ONLINE (1)"
+						const displayName = `${cardBrand.toUpperCase()} ******${cardLast4}`;
+						printLine(printer, ` ${displayName}`, `$${totalAmount}`);
+					} else {
+						// Fallback to original format if card details aren't available
+						printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+					}
+				} else {
+					// Non-card transactions use original format
+					printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+				}
 
 				if (method === "CASH") {
 					const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
@@ -230,12 +255,6 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 					if (parseFloat(tendered) > 0) {
 						printLine(printer, "   Tendered:", `$${tendered}`);
 						printLine(printer, "   Change:", `$${change}`);
-					}
-				} else if (method === "CREDIT" && txn.metadata) {
-					const brand = txn.metadata.card_brand || "";
-					const last4 = txn.metadata.card_last4 || "";
-					if (brand && last4) {
-						printer.println(`    ${brand} ****${last4}`);
 					}
 				}
 			}
