@@ -112,19 +112,6 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 						</span>
 					</div>
 
-					{surchargeAmount > 0 && (
-						<div className="flex justify-between">
-							<span className="text-accent-dark-brown/70">
-								Service Fee ({surchargeRateDisplay})
-							</span>
-							<span className="text-accent-dark-brown">
-								${formatPrice(surchargeAmount)}
-							</span>
-						</div>
-					)}
-
-
-
 					{taxAmount > 0 && (
 						<div className="flex justify-between">
 							<span className="text-accent-dark-brown/70">
@@ -135,16 +122,21 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 							</span>
 						</div>
 					)}
-					{surchargeDisplay && (
-						<div className="flex justify-between">
-							<span className="text-accent-dark-brown/70">
-								Service Fee
-							</span>
-							<span className="text-accent-dark-brown">
-								${formatPrice(surchargeDisplay.amount)}
-							</span>
-						</div>
-					)}
+
+					{/* Service Fee - use surchargeDisplay if available, otherwise cart data */}
+					{(() => {
+						const serviceFeeAmount = surchargeDisplay?.amount || surchargeAmount;
+						return serviceFeeAmount > 0 && (
+							<div className="flex justify-between">
+								<span className="text-accent-dark-brown/70">
+									Service Fee ({surchargeRateDisplay})
+								</span>
+								<span className="text-accent-dark-brown">
+									${formatPrice(serviceFeeAmount)}
+								</span>
+							</div>
+						);
+					})()}
 
 					{tip > 0 && (
 						<div className="flex justify-between">

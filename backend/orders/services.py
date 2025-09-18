@@ -648,15 +648,18 @@ class OrderService:
                     Decimal("1.0") - proportional_discount_rate
                 )
 
-                # Skip tax calculation for custom items (no product reference)
                 if item.product:
                     # Access pre-fetched taxes to prevent additional queries
                     product_taxes = item.product.taxes.all()
                     if product_taxes:
+                        # Use product-specific taxes if defined
                         for tax in product_taxes:
                             tax_total += discounted_item_price * (
                                 tax.rate / Decimal("100.0")
                             )
+                    else:
+                        # If product has no specific taxes, use default tax rate
+                        tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
                 else:
                     # Custom items use the default tax rate from settings
                     tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
