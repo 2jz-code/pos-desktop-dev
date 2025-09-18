@@ -51,7 +51,8 @@ class GlobalNotificationService extends EventEmitter {
 			return;
 		}
 
-		const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8001/";
+		const wsBaseUrl =
+			import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8001/";
 		const wsUrl = `${wsBaseUrl}ws/notifications/?device_id=${this.deviceId}`;
 		console.log(`GlobalNotificationService: Connecting to ${wsUrl}`);
 		this.setStatus("connecting");
@@ -89,12 +90,17 @@ class GlobalNotificationService extends EventEmitter {
 				event.reason
 			);
 			this.setStatus("disconnected");
-			
+
 			// Only attempt reconnection if it wasn't a manual disconnect (code 1000)
-			if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+			if (
+				event.code !== 1000 &&
+				this.reconnectAttempts < this.maxReconnectAttempts
+			) {
 				this.scheduleReconnect();
 			} else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-				console.warn("GlobalNotificationService: Max reconnection attempts reached");
+				console.warn(
+					"GlobalNotificationService: Max reconnection attempts reached"
+				);
 			}
 		};
 	}
@@ -110,19 +116,21 @@ class GlobalNotificationService extends EventEmitter {
 
 	scheduleReconnect() {
 		this.reconnectAttempts++;
-		
+
 		// Calculate delay with exponential backoff
 		const delay = Math.min(
 			this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
 			this.maxReconnectDelay
 		);
-		
+
 		console.log(
 			`GlobalNotificationService: Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
 		);
-		
+
 		this.reconnectTimeout = setTimeout(() => {
-			console.log(`GlobalNotificationService: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+			console.log(
+				`GlobalNotificationService: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
+			);
 			this.connect();
 		}, delay);
 	}
@@ -242,11 +250,26 @@ class GlobalNotificationService extends EventEmitter {
 					// The filterConfig for a zone defines which categories/products go to which printer.
 					// This logic is encapsulated in the main process 'print-kitchen-ticket' handler,
 					// which will filter order items based on the zone's config.
+
+					// Create proper filter config matching POS format
+					const filterConfig = {
+						categories: zone.categories || zone.category_ids || [],
+						productTypes: zone.productTypes || [],
+					};
+
+					// Skip zones with no categories configured
+					if (!filterConfig.categories.length) {
+						console.log(
+							`Zone "${zone.name}" has no categories configured, skipping kitchen ticket`
+						);
+						continue;
+					}
+
 					await printKitchenTicket(
 						zone.printer,
 						order,
 						zone.name,
-						zone.product_categories // Pass categories to filter by
+						filterConfig // Pass properly formatted filter config
 					);
 					console.log(
 						`Sent kitchen ticket for zone '${zone.name}' to printer ${zone.printer.name}`
