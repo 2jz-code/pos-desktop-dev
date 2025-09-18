@@ -62,6 +62,7 @@ class CreateGuestPaymentIntentView(
     def post(self, request, *args, **kwargs):
         order_id = request.data.get("order_id")
         amount = request.data.get("amount")
+        tip = request.data.get("tip", 0)
         currency = request.data.get("currency", "usd")
         customer_email = request.data.get("customer_email")
         customer_name = request.data.get("customer_name")
@@ -80,13 +81,14 @@ class CreateGuestPaymentIntentView(
             # Validate order access using the mixin
             self.validate_order_access(order, request)
 
-            # Convert amount to Decimal for consistency
+            # Convert amount and tip to Decimal for consistency
             amount_decimal = self.validate_amount(amount)
+            tip_decimal = self.validate_amount(tip) if tip else Decimal("0.00")
 
             # Calculate surcharge for online card payments
             from ..services import PaymentService
             surcharge = PaymentService.calculate_surcharge(amount_decimal)
-            total_amount_with_surcharge = amount_decimal + surcharge
+            total_amount_with_surcharge_and_tip = amount_decimal + tip_decimal + surcharge
 
             # Create or get payment object
             # The total_amount_due should be the base amount (without surcharge)
@@ -111,7 +113,7 @@ class CreateGuestPaymentIntentView(
             stripe.api_key = settings.STRIPE_SECRET_KEY
 
             intent_data = {
-                "amount": int(total_amount_with_surcharge * 100),  # Convert to cents
+                "amount": int(total_amount_with_surcharge_and_tip * 100),  # Convert to cents
                 "currency": currency,
                 "automatic_payment_methods": {
                     "enabled": True,
@@ -141,6 +143,7 @@ class CreateGuestPaymentIntentView(
             PaymentTransaction.objects.create(
                 payment=payment,
                 amount=amount_decimal,
+                tip=tip_decimal,
                 surcharge=surcharge,
                 method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
                 status=PaymentTransaction.TransactionStatus.PENDING,
@@ -152,8 +155,9 @@ class CreateGuestPaymentIntentView(
                     "client_secret": intent.client_secret,
                     "payment_intent_id": intent.id,
                     "payment_id": str(payment.id),
+                    "tip": tip_decimal,
                     "surcharge": surcharge,
-                    "total_with_surcharge": total_amount_with_surcharge,
+                    "total_with_surcharge_and_tip": total_amount_with_surcharge_and_tip,
                 },
                 status.HTTP_201_CREATED,
             )
