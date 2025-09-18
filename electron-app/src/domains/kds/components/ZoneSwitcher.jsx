@@ -15,8 +15,7 @@ export function ZoneSwitcher({ selectedZone, onZoneChange }) {
 	}
 
 	return (
-		<div className="flex items-center space-x-2">
-			<ChefHat className="h-4 w-4 text-gray-400" />
+		<div className="flex items-center">
 			<Select
 				value={selectedZone}
 				onValueChange={onZoneChange}
@@ -30,10 +29,7 @@ export function ZoneSwitcher({ selectedZone, onZoneChange }) {
 							key={zone.name}
 							value={zone.name}
 						>
-							<div className="flex items-center space-x-2">
-								<ChefHat className="h-4 w-4 text-green-600" />
-								<span>{zone.name}</span>
-							</div>
+							{zone.name}
 						</SelectItem>
 					))}
 				</SelectContent>

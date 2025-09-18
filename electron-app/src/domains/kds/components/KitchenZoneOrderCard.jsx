@@ -28,13 +28,13 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 	const getStatusColor = (status) => {
 		switch (status) {
 			case "received":
-				return "border-blue-200 bg-blue-50";
+				return "border-blue-200/50 bg-gradient-to-br from-blue-50 to-blue-100/30";
 			case "preparing":
-				return "border-yellow-200 bg-yellow-50";
+				return "border-amber-200/50 bg-gradient-to-br from-amber-50 to-amber-100/30";
 			case "ready":
-				return "border-green-200 bg-green-50";
+				return "border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-emerald-100/30";
 			default:
-				return "border-gray-200 bg-white";
+				return "border-gray-200/50 bg-gradient-to-br from-white to-gray-50/30";
 		}
 	};
 
@@ -54,13 +54,13 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 	const getItemStatusColor = (status) => {
 		switch (status) {
 			case "pending":
-				return "bg-blue-100 text-blue-800";
+				return "bg-blue-100 text-blue-800 border border-blue-200/50";
 			case "in_progress":
-				return "bg-yellow-100 text-yellow-800";
+				return "bg-amber-100 text-amber-800 border border-amber-200/50";
 			case "ready":
-				return "bg-green-100 text-green-800";
+				return "bg-emerald-100 text-emerald-800 border border-emerald-200/50";
 			default:
-				return "bg-gray-100 text-gray-800";
+				return "bg-gray-100 text-gray-800 border border-gray-200/50";
 		}
 	};
 
@@ -116,81 +116,89 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 
 	return (
 		<div
-			className={`mb-4 transition-all duration-200 cursor-pointer hover:shadow-lg ${order.overall_status !== 'ready' ? 'hover:scale-[1.02]' : ''}`}
+			className="cursor-pointer"
 			onClick={handleOrderStatusAdvance}
 		>
-			<Card className={getStatusColor(order.overall_status)}>
-			<CardHeader className="pb-2">
+			<Card className={`${getStatusColor(order.overall_status)} shadow-sm border border-gray-300/30 overflow-hidden`}>
+			<CardHeader className="pb-1 px-3 pt-3">
 				<div className="flex justify-between items-start">
-					<div className="flex items-center space-x-2">
-						<h3 className="text-lg font-semibold">#{order.order_number}</h3>
-						<span className="text-lg">{getOrderTypeIcon(order.order_type)}</span>
-						<span className={`text-xs px-2 py-1 rounded-full ${getItemStatusColor(order.overall_status)}`}>
-							{order.overall_status.charAt(0).toUpperCase() + order.overall_status.slice(1)}
+					<div>
+						<h3 className="text-base font-bold text-gray-800">#{order.order_number}</h3>
+						<span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getItemStatusColor(order.overall_status)} inline-block mt-1`}>
+							{order.overall_status === 'in_progress' ? 'Preparing' : order.overall_status.charAt(0).toUpperCase() + order.overall_status.slice(1)}
 						</span>
 					</div>
-					<div className="text-right text-sm text-gray-600">
-						<div className="flex items-center space-x-1">
-							<Clock className="h-4 w-4" />
+					<div className="text-right">
+						<div className="text-xs text-gray-500 flex items-center space-x-1 justify-end">
+							<Clock className="h-3 w-3" />
 							<span>{getOrderAge(order.earliest_received_at || order.created_at)}</span>
+						</div>
+						<div className="mt-1">
+							<span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${
+								order.dining_preference === 'DINE_IN'
+									? 'bg-slate-600 text-white border-slate-700'
+									: 'bg-orange-500 text-white border-orange-600'
+							}`}>
+								{order.dining_preference === 'DINE_IN' ? 'DINE IN' : 'TAKE OUT'}
+							</span>
 						</div>
 					</div>
 				</div>
 
 				{/* Customer Info */}
-				<div className="flex items-center space-x-1 text-sm text-gray-600">
-					<User className="h-4 w-4" />
-					<span>{order.customer_name || "Guest"}</span>
+				<div className="flex items-center space-x-1 text-xs text-gray-600 mt-1">
+					<User className="h-3 w-3" />
+					<span className="font-medium">{order.customer_name || "Guest"}</span>
 				</div>
 			</CardHeader>
 
-			<CardContent className="pt-0">
+			<CardContent className="pt-0 px-3 pb-3">
 				{/* Items for this Zone */}
-				<div className="space-y-3">
-					<h4 className="text-sm font-medium text-gray-700">Items for this station:</h4>
+				<div className="space-y-2 mt-2">
 
 					{order.items.map((item, index) => (
-						<div key={item.id} className="bg-white bg-opacity-50 rounded p-3 border">
-							<div className="flex items-center justify-between mb-2">
+						<div key={item.id} className="bg-white/70 backdrop-blur-sm rounded-lg p-2.5 border border-gray-200/50">
+							<div className="flex items-center justify-between">
 								<div className="flex items-center space-x-2">
-									<span className="font-medium">{item.quantity}x {item.product_name}</span>
+									<span className="font-semibold text-gray-800 text-sm">{item.quantity}×</span>
+									<span className="font-medium text-gray-800 text-sm">{item.product_name}</span>
 									{item.is_priority && (
-										<span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
+										<span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-medium">
 											PRIORITY
 										</span>
 									)}
 									{item.is_overdue && (
-										<AlertTriangle className="h-4 w-4 text-red-500" />
+										<AlertTriangle className="h-3 w-3 text-red-500" />
 									)}
 								</div>
-								<span className={`text-xs px-2 py-1 rounded-full ${getItemStatusColor(item.status)}`}>
-									{item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+								<span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getItemStatusColor(item.status)}`}>
+									{item.status === 'in_progress' ? 'Preparing' : item.status.charAt(0).toUpperCase() + item.status.slice(1)}
 								</span>
 							</div>
 
 							{/* Special Instructions */}
 							{item.special_instructions && (
-								<div className="mb-2 text-sm text-gray-600 bg-yellow-50 p-2 rounded">
-									<strong>Instructions:</strong> {item.special_instructions}
+								<div className="mt-2 text-xs text-amber-700 bg-amber-50/50 p-1.5 rounded border-l-2 border-amber-200">
+									<span className="font-medium">Instructions:</span> {item.special_instructions}
 								</div>
 							)}
 
 							{/* Kitchen Notes */}
 							{item.kitchen_notes && (
-								<div className="mb-2 text-sm text-blue-600 bg-blue-50 p-2 rounded">
-									<strong>Notes:</strong> {item.kitchen_notes}
+								<div className="mt-2 text-xs text-blue-700 bg-blue-50/50 p-1.5 rounded border-l-2 border-blue-200">
+									<span className="font-medium">Notes:</span> {item.kitchen_notes}
 								</div>
 							)}
 
 
 							{/* Timing Info */}
-							{item.status !== "received" && (
-								<div className="mt-2 text-xs text-gray-600 space-y-1">
+							{item.status !== "pending" && (
+								<div className="mt-2 flex space-x-3 text-xs text-gray-500">
 									{item.started_preparing_at && (
-										<div>Started: {new Date(item.started_preparing_at).toLocaleTimeString()}</div>
+										<span>Started: {new Date(item.started_preparing_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
 									)}
 									{item.ready_at && (
-										<div>Ready: {new Date(item.ready_at).toLocaleTimeString()}</div>
+										<span>Ready: {new Date(item.ready_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
 									)}
 								</div>
 							)}
@@ -198,14 +206,6 @@ export function KitchenZoneOrderCard({ order, onItemStatusChange }) {
 					))}
 				</div>
 
-				{/* Order Action Indicator */}
-				{order.overall_status !== 'ready' && (
-					<div className="mt-4 text-center p-2 bg-white bg-opacity-70 rounded border-2 border-dashed border-gray-300">
-						<span className="text-sm font-medium text-gray-700">
-							Tap to {getOrderActionText(order.overall_status)}
-						</span>
-					</div>
-				)}
 
 			</CardContent>
 		</Card>

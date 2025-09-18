@@ -90,18 +90,12 @@ export function KDSPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gray-50">
+		<div className="min-h-screen" style={{ backgroundColor: '#FFFFF0' }}>
 			{/* Header */}
-			<div className="bg-white shadow-sm border-b">
+			<div className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-gray-200/50">
 				<div className="px-6 py-4">
 					<div className="flex items-center justify-between">
 						<div className="flex items-center space-x-4">
-							<div className="flex items-center space-x-2">
-								<ChefHat className="h-8 w-8 text-green-600" />
-								<h1 className="text-2xl font-bold text-gray-900">
-									Kitchen Display System
-								</h1>
-							</div>
 							<div className="flex items-center space-x-4">
 								<div className="text-sm text-gray-500">
 									Zone: <span className="font-medium text-gray-900">{selectedZone}</span>
@@ -170,25 +164,19 @@ export function KDSPage() {
 				) : zoneType === 'qc' ? (
 						/* QC Zone Layout - Single grid with all orders (watcher mode) */
 						<div>
-							<div className="mb-6 bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500">
-								<h2 className="font-semibold text-purple-900 flex items-center">
-									Quality Control Station - Watcher Mode
-									<span className="ml-2 bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full">
-										{(categorizedData.ready_for_qc?.length || 0) + (categorizedData.waiting?.length || 0)} orders
-									</span>
-									<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
-										{categorizedData.ready_for_qc?.length || 0} ready
-									</span>
+							<div className="pb-2 border-b-2 border-purple-400 mb-6">
+								<h2 className="text-sm font-medium text-gray-700 mb-1">
+									Quality Control Station ({(categorizedData.ready_for_qc?.length || 0) + (categorizedData.waiting?.length || 0)} orders)
 								</h2>
-								<p className="text-sm text-purple-700 mt-1">Monitoring all orders - tap ready orders to complete and serve</p>
+								<p className="text-xs text-gray-500">Monitoring all orders - tap ready orders to complete and serve</p>
 							</div>
 
 							<div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
 								{/* Show all orders: both waiting and ready */}
 								{[...(categorizedData.waiting || []), ...(categorizedData.ready_for_qc || [])].length === 0 ? (
-									<Card className="p-6 text-center text-gray-500 col-span-full">
+									<div className="text-center text-gray-400 text-sm mt-8 col-span-full">
 										No active orders to monitor
-									</Card>
+									</div>
 								) : (
 									<>
 										{/* Waiting Orders First */}
@@ -216,18 +204,15 @@ export function KDSPage() {
 						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 							{/* New Orders Column */}
 							<div className="space-y-4">
-								<div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500">
-									<h2 className="font-semibold text-blue-900 flex items-center">
-										New Orders
-										<span className="ml-2 bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
-											{categorizedData.new?.length || 0}
-										</span>
+								<div className="pb-2 border-b-2 border-blue-300 mb-4">
+									<h2 className="text-sm font-medium text-gray-700">
+										New Orders ({categorizedData.new?.length || 0})
 									</h2>
 								</div>
 								{!categorizedData.new?.length ? (
-									<Card className="p-6 text-center text-gray-500">
+									<div className="text-center text-gray-400 text-sm mt-8">
 										No new orders
-									</Card>
+									</div>
 								) : (
 									categorizedData.new.map(order => (
 										<KitchenZoneOrderCard
@@ -242,18 +227,15 @@ export function KDSPage() {
 
 							{/* Preparing Orders Column */}
 							<div className="space-y-4">
-								<div className="bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-500">
-									<h2 className="font-semibold text-yellow-900 flex items-center">
-										Preparing
-										<span className="ml-2 bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
-											{categorizedData.preparing?.length || 0}
-										</span>
+								<div className="pb-2 border-b-2 border-amber-400 mb-4">
+									<h2 className="text-sm font-medium text-gray-700">
+										Preparing ({categorizedData.preparing?.length || 0})
 									</h2>
 								</div>
 								{!categorizedData.preparing?.length ? (
-									<Card className="p-6 text-center text-gray-500">
+									<div className="text-center text-gray-400 text-sm mt-8">
 										No orders being prepared
-									</Card>
+									</div>
 								) : (
 									categorizedData.preparing.map(order => (
 										<KitchenZoneOrderCard
@@ -268,18 +250,15 @@ export function KDSPage() {
 
 							{/* Ready Orders Column */}
 							<div className="space-y-4">
-								<div className="bg-green-50 p-3 rounded-lg border-l-4 border-green-500">
-									<h2 className="font-semibold text-green-900 flex items-center">
-										Ready
-										<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
-											{categorizedData.ready?.length || 0}
-										</span>
+								<div className="pb-2 border-b-2 border-emerald-400 mb-4">
+									<h2 className="text-sm font-medium text-gray-700">
+										Ready ({categorizedData.ready?.length || 0})
 									</h2>
 								</div>
 								{!categorizedData.ready?.length ? (
-									<Card className="p-6 text-center text-gray-500">
+									<div className="text-center text-gray-400 text-sm mt-8">
 										No orders ready
-									</Card>
+									</div>
 								) : (
 									categorizedData.ready.map(order => (
 										<KitchenZoneOrderCard
