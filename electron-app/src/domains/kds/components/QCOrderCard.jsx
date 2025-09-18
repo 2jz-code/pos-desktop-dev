@@ -72,21 +72,41 @@ export function QCOrderCard({ order, onStatusChange }) {
 
 	// Check if all items are ready across all kitchen zones
 	const allItemsReady = order.can_complete;
+	const hasStartedItems = order.has_started_items;
+
+	// Determine card styling based on order state
+	const getCardStyling = () => {
+		if (allItemsReady) {
+			return 'border-green-300 bg-green-50';
+		} else if (hasStartedItems) {
+			return 'border-yellow-300 bg-yellow-50';
+		} else {
+			return 'border-gray-200 bg-gray-50';
+		}
+	};
 
 	return (
 		<div
 			className={`transition-all duration-200 ${allItemsReady ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02]' : 'cursor-default'}`}
 			onClick={allItemsReady ? handleCompleteOrder : undefined}
 		>
-			<Card className={`${allItemsReady ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+			<Card className={getCardStyling()}>
 				<CardHeader className="pb-2">
 					<div className="flex justify-between items-start">
 						<div className="flex items-center space-x-2">
 							<h3 className="text-lg font-semibold">#{order.order_number}</h3>
 							<span className="text-lg">{getOrderTypeIcon(order.order_type)}</span>
-							{allItemsReady && (
+							{allItemsReady ? (
 								<span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full">
 									READY TO SERVE
+								</span>
+							) : hasStartedItems ? (
+								<span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">
+									IN PROGRESS
+								</span>
+							) : (
+								<span className="text-xs bg-gray-500 text-white px-2 py-1 rounded-full">
+									PENDING
 								</span>
 							)}
 						</div>
@@ -142,9 +162,12 @@ export function QCOrderCard({ order, onStatusChange }) {
 					)}
 
 					{!allItemsReady && (
-						<div className="mt-4 text-center p-2 bg-yellow-50 rounded border border-yellow-200">
-							<span className="text-xs text-yellow-700">
-								Waiting for kitchen stations to complete items...
+						<div className={`mt-4 text-center p-2 rounded border ${hasStartedItems ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
+							<span className={`text-xs ${hasStartedItems ? 'text-yellow-700' : 'text-gray-600'}`}>
+								{hasStartedItems
+									? 'Kitchen stations are preparing items...'
+									: 'Order received - waiting for kitchen to start...'
+								}
 							</span>
 						</div>
 					)}

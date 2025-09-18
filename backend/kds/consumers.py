@@ -110,7 +110,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 return
 
             success = await database_sync_to_async(
-                KDSOrderService.transition_item_status
+                self._transition_item_status_by_id
             )(item_id, new_status)
 
             if success:
@@ -123,6 +123,19 @@ class KDSConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error updating item status: {e}")
             await self.send_error(f"Error updating item status: {str(e)}")
 
+    def _transition_item_status_by_id(self, item_id, new_status):
+        """Helper method to transition item status by ID"""
+        try:
+            from .models import KDSOrderItem
+            kds_item = KDSOrderItem.objects.get(id=item_id)
+            return KDSOrderService.transition_item_status(kds_item, new_status)
+        except KDSOrderItem.DoesNotExist:
+            logger.error(f"KDS item {item_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error transitioning item status: {e}")
+            return False
+
     async def handle_complete_order(self, data):
         """Handle QC order completion"""
         try:
@@ -133,7 +146,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 return
 
             success = await database_sync_to_async(
-                KDSOrderService.complete_order_from_qc
+                self._complete_order_by_id
             )(order_id)
 
             if success:
@@ -146,6 +159,19 @@ class KDSConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error completing order: {e}")
             await self.send_error(f"Error completing order: {str(e)}")
 
+    def _complete_order_by_id(self, order_id):
+        """Helper method to complete order by ID"""
+        try:
+            from .models import KDSOrder
+            kds_order = KDSOrder.objects.get(id=order_id)
+            return KDSOrderService.complete_order_from_qc(kds_order.id)
+        except KDSOrder.DoesNotExist:
+            logger.error(f"KDS order {order_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error completing order: {e}")
+            return False
+
     async def handle_mark_priority(self, data):
         """Handle item priority marking"""
         try:
@@ -157,7 +183,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 return
 
             success = await database_sync_to_async(
-                KDSOrderService.mark_item_priority
+                self._mark_item_priority_by_id
             )(item_id, is_priority)
 
             if success:
@@ -170,6 +196,19 @@ class KDSConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error marking priority: {e}")
             await self.send_error(f"Error marking priority: {str(e)}")
 
+    def _mark_item_priority_by_id(self, item_id, is_priority):
+        """Helper method to mark item priority by ID"""
+        try:
+            from .models import KDSOrderItem
+            kds_item = KDSOrderItem.objects.get(id=item_id)
+            return KDSOrderService.mark_item_priority(kds_item.id, is_priority)
+        except KDSOrderItem.DoesNotExist:
+            logger.error(f"KDS item {item_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error marking item priority: {e}")
+            return False
+
     async def handle_add_note(self, data):
         """Handle adding note to item"""
         try:
@@ -181,7 +220,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 return
 
             success = await database_sync_to_async(
-                KDSOrderService.add_item_note
+                self._add_item_note_by_id
             )(item_id, note)
 
             if success:
@@ -193,6 +232,19 @@ class KDSConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error adding note: {e}")
             await self.send_error(f"Error adding note: {str(e)}")
+
+    def _add_item_note_by_id(self, item_id, note):
+        """Helper method to add note to item by ID"""
+        try:
+            from .models import KDSOrderItem
+            kds_item = KDSOrderItem.objects.get(id=item_id)
+            return KDSOrderService.add_item_note(kds_item.id, note)
+        except KDSOrderItem.DoesNotExist:
+            logger.error(f"KDS item {item_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error adding note to item: {e}")
+            return False
 
     async def handle_ping(self):
         """Handle ping to keep connection alive"""
@@ -312,6 +364,19 @@ class KDSConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error updating session inactive: {e}")
 
+    @database_sync_to_async
+    def _order_has_items_in_zone(self, order_id):
+        """Check if an order has items assigned to this zone"""
+        try:
+            from .models import KDSOrderItem
+            return KDSOrderItem.objects.filter(
+                kds_order__id=order_id,
+                assigned_zone=self.zone_id
+            ).exists()
+        except Exception as e:
+            logger.error(f"Error checking if order {order_id} has items in zone {self.zone_id}: {e}")
+            return False
+
     # Event handlers for group messages
     async def kds_notification(self, event):
         """Handle KDS notifications from the event system"""
@@ -319,15 +384,39 @@ class KDSConsumer(AsyncWebsocketConsumer):
             message_type = event['message_type']
             data = event['data']
 
-            logger.debug(f"Received notification: {message_type} for zone {self.zone_id}")
+            print(f"🔔 Zone {self.zone_id} received notification: {message_type}")
+            print(f"🔔 Data: {data}")
 
             # Handle different notification types
-            if message_type in ['order_created', 'order_status_changed', 'item_status_changed',
-                               'item_priority_changed', 'item_note_changed', 'refresh_data']:
-                # For all these events, refresh the zone data
+            if message_type == 'refresh_data':
+                # Always refresh for explicit refresh requests
+                print(f"🔄 Zone {self.zone_id}: Refreshing for explicit refresh request")
                 await self.send_zone_data_update()
+            elif message_type == 'order_created':
+                # Always refresh for new orders
+                print(f"🔄 Zone {self.zone_id}: Refreshing for order creation")
+                await self.send_zone_data_update()
+            elif message_type == 'order_status_changed':
+                # Only refresh if this order has items in this zone
+                order_id = data.get('order_id')
+                has_items_in_zone = await self._order_has_items_in_zone(order_id)
+                if has_items_in_zone:
+                    print(f"✅ Zone {self.zone_id}: Order {data.get('order_number')} has items in this zone, refreshing")
+                    await self.send_zone_data_update()
+                else:
+                    print(f"❌ Zone {self.zone_id}: Order {data.get('order_number')} has no items in this zone, ignoring")
+            elif message_type in ['item_status_changed', 'item_priority_changed', 'item_note_changed']:
+                # Only refresh if the item belongs to this zone
+                item_zone_id = data.get('zone_id')
+                print(f"🎯 Zone {self.zone_id}: Item belongs to zone {item_zone_id}")
+                if item_zone_id == self.zone_id:
+                    print(f"✅ Zone {self.zone_id}: Item {data.get('item_id')} belongs to this zone, refreshing data")
+                    await self.send_zone_data_update()
+                else:
+                    print(f"❌ Zone {self.zone_id}: Item {data.get('item_id')} belongs to zone {item_zone_id}, ignoring")
             elif message_type == 'order_completed':
                 # Special handling for order completion
+                print(f"🔄 Zone {self.zone_id}: Refreshing for order completion")
                 await self.send_zone_data_update()
                 await self.send(text_data=json.dumps({
                     'type': 'order_completed',
@@ -335,6 +424,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 }))
             else:
                 # Forward other notifications as-is
+                print(f"📤 Zone {self.zone_id}: Forwarding notification: {message_type}")
                 await self.send(text_data=json.dumps({
                     'type': message_type,
                     'data': data
@@ -342,6 +432,7 @@ class KDSConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error(f"Error handling notification: {e}")
+            print(f"❌ Zone {self.zone_id}: Error handling notification: {e}")
 
     async def send_zone_data_update(self):
         """Send updated zone data"""

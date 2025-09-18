@@ -13,10 +13,28 @@ class KDSEventPublisher:
         """Publish order created event"""
         try:
             logger.info(f"Publishing order_created event for {kds_order.order.order_number}")
+
+            # Ensure the database transaction is committed before broadcasting
+            from django.db import transaction
+            if transaction.get_connection().in_atomic_block:
+                logger.info("Still in atomic block, deferring notification")
+                transaction.on_commit(lambda: KDSEventPublisher._send_order_created_notification(kds_order))
+            else:
+                logger.info("Not in atomic block, sending notification immediately")
+                KDSEventPublisher._send_order_created_notification(kds_order)
+
+        except Exception as e:
+            logger.error(f"Error publishing order_created event: {e}")
+
+    @staticmethod
+    def _send_order_created_notification(kds_order):
+        """Actually send the notification after transaction commit"""
+        try:
+            logger.info(f"Sending order_created notification for {kds_order.order.order_number}")
             notification_service.order_created_notification(kds_order)
             notification_service.refresh_all_zones()
         except Exception as e:
-            logger.error(f"Error publishing order_created event: {e}")
+            logger.error(f"Error sending order_created notification: {e}")
 
     @staticmethod
     def order_status_changed(kds_order, old_status: str, new_status: str):

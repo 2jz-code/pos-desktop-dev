@@ -93,9 +93,11 @@ export function useKDSWebSocket(zoneId) {
 
 	// Handle incoming WebSocket messages
 	const handleWebSocketMessage = useCallback((data) => {
+		console.log(`🎯 Zone ${zoneId} received WebSocket message:`, data.type, data);
+
 		switch (data.type) {
 			case "initial_data":
-				console.log("Received initial KDS data:", data.data);
+				console.log(`✅ Zone ${zoneId}: Setting initial data with ${data.data.orders?.length || 0} orders`);
 				setZoneData(data.data.orders || []);
 				setAlerts(data.data.alerts || []);
 				setZoneType(data.data.zone_type || "kitchen");
@@ -103,7 +105,7 @@ export function useKDSWebSocket(zoneId) {
 				break;
 
 			case "zone_data_updated":
-				console.log("Zone data updated:", data.data);
+				console.log(`🔄 Zone ${zoneId}: Updating zone data with ${data.data.orders?.length || 0} orders`);
 				// Replace entire zone data with fresh data
 				setZoneData(data.data.orders || []);
 				setZoneType(data.data.zone_type || zoneType);
@@ -111,20 +113,20 @@ export function useKDSWebSocket(zoneId) {
 				break;
 
 			case "order_completed":
-				console.log("Order completed:", data.data);
+				console.log(`✅ Zone ${zoneId}: Order completed notification received`);
 				// Refresh data will come via zone_data_updated
 				break;
 
 			case "success":
-				console.log("Action successful:", data.message);
+				console.log(`✅ Zone ${zoneId}: Action successful:`, data.message);
 				break;
 
 			case "error":
-				console.error("Action failed:", data.message);
+				console.error(`❌ Zone ${zoneId}: Action failed:`, data.message);
 				break;
 
 			case "alert":
-				console.log("New alert received:", data.data);
+				console.log(`🚨 Zone ${zoneId}: New alert received:`, data.data);
 				setAlerts((prevAlerts) => [...prevAlerts, data.data]);
 				break;
 
@@ -132,14 +134,16 @@ export function useKDSWebSocket(zoneId) {
 				// Connection is alive
 				break;
 
-			case "error":
-				console.error("KDS WebSocket error message:", data.message);
+			case "item_status_changed":
+			case "item_priority_changed":
+			case "item_note_changed":
+				console.log(`📝 Zone ${zoneId}: Received ${data.type} notification but not handling it directly`);
 				break;
 
 			default:
-				console.log("Unknown WebSocket message type:", data.type);
+				console.log(`❓ Zone ${zoneId}: Unknown WebSocket message type:`, data.type);
 		}
-	}, [zoneType]);
+	}, [zoneType, zoneId]);
 
 	// Send WebSocket message
 	const sendMessage = useCallback((message) => {
@@ -253,12 +257,12 @@ export function useKDSWebSocket(zoneId) {
 				completed: zoneData.filter((order) => order.status === "completed"),
 			};
 		} else {
-			// For kitchen zones, categorize by order status
+			// For kitchen zones, categorize by zone-specific order status
 			return {
-				new: zoneData.filter((order) => order.status === "pending"),
-				preparing: zoneData.filter((order) => order.status === "in_progress"),
-				ready: zoneData.filter((order) => order.status === "ready"),
-				completed: zoneData.filter((order) => order.status === "completed"),
+				new: zoneData.filter((order) => order.overall_status === "pending"),
+				preparing: zoneData.filter((order) => order.overall_status === "in_progress"),
+				ready: zoneData.filter((order) => order.overall_status === "ready"),
+				completed: zoneData.filter((order) => order.overall_status === "completed"),
 			};
 		}
 	}, [zoneData, zoneType]);

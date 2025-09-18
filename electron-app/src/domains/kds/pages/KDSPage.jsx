@@ -168,31 +168,46 @@ export function KDSPage() {
 						</span>
 					</div>
 				) : zoneType === 'qc' ? (
-						/* QC Zone Layout - Single grid with all orders */
+						/* QC Zone Layout - Single grid with all orders (watcher mode) */
 						<div>
 							<div className="mb-6 bg-purple-50 p-3 rounded-lg border-l-4 border-purple-500">
 								<h2 className="font-semibold text-purple-900 flex items-center">
-									Quality Control Station
+									Quality Control Station - Watcher Mode
 									<span className="ml-2 bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full">
-										{categorizedData.ready_for_qc?.length || 0} orders
+										{(categorizedData.ready_for_qc?.length || 0) + (categorizedData.waiting?.length || 0)} orders
+									</span>
+									<span className="ml-2 bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
+										{categorizedData.ready_for_qc?.length || 0} ready
 									</span>
 								</h2>
-								<p className="text-sm text-purple-700 mt-1">Tap ready orders to complete and serve</p>
+								<p className="text-sm text-purple-700 mt-1">Monitoring all orders - tap ready orders to complete and serve</p>
 							</div>
 
 							<div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-								{!categorizedData.ready_for_qc?.length ? (
+								{/* Show all orders: both waiting and ready */}
+								{[...(categorizedData.waiting || []), ...(categorizedData.ready_for_qc || [])].length === 0 ? (
 									<Card className="p-6 text-center text-gray-500 col-span-full">
-										No orders ready for quality control
+										No active orders to monitor
 									</Card>
 								) : (
-									categorizedData.ready_for_qc.map(order => (
-										<QCOrderCard
-											key={order.id}
-											order={order}
-											onStatusChange={handleQCStatusChange}
-										/>
-									))
+									<>
+										{/* Waiting Orders First */}
+										{(categorizedData.waiting || []).map(order => (
+											<QCOrderCard
+												key={order.id}
+												order={order}
+												onStatusChange={handleQCStatusChange}
+											/>
+										))}
+										{/* Ready Orders */}
+										{(categorizedData.ready_for_qc || []).map(order => (
+											<QCOrderCard
+												key={order.id}
+												order={order}
+												onStatusChange={handleQCStatusChange}
+											/>
+										))}
+									</>
 								)}
 							</div>
 						</div>

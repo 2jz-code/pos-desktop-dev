@@ -17,15 +17,18 @@ class KDSOrderService:
     def create_from_order(cls, order: Order, zone_assignments: Dict[str, List[str]]) -> Optional[KDSOrder]:
         """Create KDS order from regular order"""
         try:
-            logger.info(f"Creating KDS order for {order.order_number}")
+            logger.info(f"📋 Creating KDS order for {order.order_number}")
+            print(f"📋 Creating KDS order for {order.order_number}")
 
             # Check if KDS order already exists
             if hasattr(order, 'kds_order') and order.kds_order:
                 logger.warning(f"KDS order already exists for {order.order_number}")
+                print(f"KDS order already exists for {order.order_number}")
                 return order.kds_order
 
             # Get all assigned zones
             all_zones = list(set().union(*zone_assignments.values())) if zone_assignments else []
+            print(f"All zones: {all_zones}")
 
             # Create single KDS order
             kds_order = KDSOrder.objects.create(
@@ -33,45 +36,59 @@ class KDSOrderService:
                 assigned_kitchen_zones=all_zones,
                 status=KDSOrderStatus.PENDING
             )
+            print(f"✅ Created KDSOrder {kds_order.id}")
 
             # Create items with zone assignments
             items_created = 0
             for order_item in order.items.all():
                 zones = zone_assignments.get(str(order_item.id), [])
+                print(f"Order item {order_item.id} ({order_item.product.name if order_item.product else 'Custom'}) assigned to zones: {zones}")
+
                 for zone in zones:
                     # Only create items for kitchen zones
                     from .zone_service import KDSZoneService
                     try:
                         zone_instance = KDSZoneService.get_zone(zone)
                         if zone_instance.zone_type == 'kitchen':
-                            KDSOrderItem.objects.create(
+                            kds_item = KDSOrderItem.objects.create(
                                 kds_order=kds_order,
                                 order_item=order_item,
                                 assigned_zone=zone,
                                 status=KDSOrderStatus.PENDING
                             )
                             items_created += 1
+                            print(f"✅ Created KDSOrderItem {kds_item.id} for zone {zone}")
+                        else:
+                            print(f"⏭️ Skipping QC zone {zone}")
                     except Exception as e:
                         logger.warning(f"Could not determine zone type for {zone}: {e}")
+                        print(f"⚠️ Could not determine zone type for {zone}: {e}, defaulting to kitchen")
                         # Default to kitchen for backward compatibility
-                        KDSOrderItem.objects.create(
+                        kds_item = KDSOrderItem.objects.create(
                             kds_order=kds_order,
                             order_item=order_item,
                             assigned_zone=zone,
                             status=KDSOrderStatus.PENDING
                         )
                         items_created += 1
+                        print(f"✅ Created KDSOrderItem {kds_item.id} for zone {zone} (fallback)")
 
             logger.info(f"Created KDS order {kds_order.id} with {items_created} items for {order.order_number}")
+            print(f"✅ Created KDS order {kds_order.id} with {items_created} items for {order.order_number}")
 
             # Publish event
+            print(f"📢 Publishing order_created event for KDS order {kds_order.id}")
             from ..events.publishers import KDSEventPublisher
             KDSEventPublisher.order_created(kds_order)
+            print(f"✅ Published order_created event")
 
             return kds_order
 
         except Exception as e:
             logger.error(f"Error creating KDS order for {order.order_number}: {e}")
+            print(f"❌ Error creating KDS order for {order.order_number}: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             return None
 
     @classmethod
@@ -150,6 +167,8 @@ class KDSOrderService:
                 # Also transition order if it's still pending
                 if kds_item.kds_order.status == KDSOrderStatus.PENDING:
                     cls.transition_order_status(kds_item.kds_order, KDSOrderStatus.IN_PROGRESS)
+            elif new_status == KDSOrderStatus.READY:
+                kds_item.completed_at = now  # Mark as completed when ready (for kitchen zones)
             elif new_status == KDSOrderStatus.COMPLETED:
                 kds_item.completed_at = now
 
@@ -269,7 +288,7 @@ class KDSOrderService:
                 if kds_order.status not in [KDSOrderStatus.READY, KDSOrderStatus.COMPLETED]:
                     cls.transition_order_status(kds_order, KDSOrderStatus.READY)
 
-            # Any items in progress -> order in progress
+            # Any items in progress -> order in progress (only if no items are ready/completed)
             elif any(status == KDSOrderStatus.IN_PROGRESS for status in item_statuses):
                 if kds_order.status == KDSOrderStatus.PENDING:
                     cls.transition_order_status(kds_order, KDSOrderStatus.IN_PROGRESS)

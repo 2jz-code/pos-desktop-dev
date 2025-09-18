@@ -61,20 +61,24 @@ class QCZone(BaseKDSZone):
             # Check if order has started (not all items are pending)
             has_started_items = any(item.status in [KDSOrderStatus.IN_PROGRESS, KDSOrderStatus.READY, KDSOrderStatus.COMPLETED] for item in kitchen_items)
 
-            # Only show orders that have started
-            if not has_started_items:
-                return None
-
             order_data = self._format_base_order_data(kds_order)
             order_data.update({
                 'can_complete': all_kitchen_items_ready and kds_order.status == KDSOrderStatus.READY,
                 'all_kitchen_items_ready': all_kitchen_items_ready,
                 'any_items_preparing': any_items_preparing,
+                'has_started_items': has_started_items,
                 'kitchen_zones': self._group_items_by_zone(kitchen_items),
                 'total_kitchen_items': len(kitchen_items),
-                'qc_status': 'ready_for_completion' if all_kitchen_items_ready else 'waiting_for_kitchen',
+                'qc_status': 'ready_for_completion' if all_kitchen_items_ready else ('in_progress' if has_started_items else 'pending'),
                 'zone_id': self.zone_id,
             })
+
+            print(f"🎯 QC Zone formatted order {kds_order.order.order_number}:")
+            print(f"   - Kitchen items: {len(kitchen_items)}")
+            print(f"   - Has started: {has_started_items}")
+            print(f"   - All ready: {all_kitchen_items_ready}")
+            print(f"   - QC status: {order_data['qc_status']}")
+            print(f"   - Kitchen zones: {list(order_data['kitchen_zones'].keys())}")
 
             return order_data
 

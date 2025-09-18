@@ -16,6 +16,7 @@ class KDSNotificationService:
         """Send notification to a specific zone"""
         if not self.channel_layer:
             logger.warning("No channel layer available for notifications")
+            print("⚠️ No channel layer available for notifications")
             return
 
         try:
@@ -24,6 +25,7 @@ class KDSNotificationService:
             group_name = f'kds_zone_{sanitized_zone_id}'
 
             logger.debug(f"Sending {message_type} to zone {zone_id} (group: {group_name})")
+            print(f"📡 Sending {message_type} to zone {zone_id} (group: {group_name})")
 
             async_to_sync(self.channel_layer.group_send)(
                 group_name,
@@ -34,9 +36,11 @@ class KDSNotificationService:
                     'zone_id': zone_id,
                 }
             )
+            print(f"✅ Successfully sent {message_type} to zone {zone_id}")
 
         except Exception as e:
             logger.error(f"Error sending notification to zone {zone_id}: {e}")
+            print(f"❌ Error sending notification to zone {zone_id}: {e}")
 
     def notify_all_zones(self, message_type: str, data: Dict[str, Any]):
         """Send notification to all configured zones"""
