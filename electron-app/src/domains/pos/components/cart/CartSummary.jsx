@@ -76,7 +76,7 @@ const CartSummary = () => {
 	const { data: kitchenZones = [] } = useKitchenZones();
 
 	const [isLoading, setIsLoading] = useState(false);
-	const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
+	// Removed isSendingToKitchen state - kitchen operations are now background/parallel
 
 	const handleCharge = async () => {
 		if (!orderId || items.length === 0) return;
@@ -109,7 +109,7 @@ const CartSummary = () => {
 	const handleSendToKitchen = async () => {
 		if (!orderId || items.length === 0) return;
 
-		setIsSendingToKitchen(true);
+		// No loading state - operations run in background for instant UX
 
 		try {
 			const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
@@ -134,75 +134,47 @@ const CartSummary = () => {
 				return;
 			}
 
-			let ticketsPrinted = 0;
-			const errors = [];
-
-			for (const zone of kitchenZones) {
-				try {
+			// Create printer operations for all zones
+			const printerOperations = kitchenZones
+				.filter(zone => {
 					if (!zone.printer) {
-						console.warn(
-							`No printer configured for zone "${zone.name}", skipping`
-						);
-						continue;
+						console.warn(`No printer configured for zone "${zone.name}", skipping`);
+						return false;
 					}
-
+					const filterConfig = {
+						categories: zone.categories || zone.category_ids || [],
+						productTypes: zone.productTypes || [],
+					};
+					if (!filterConfig.categories.length) {
+						console.log(`Zone "${zone.name}" has no categories configured, skipping`);
+						return false;
+					}
+					return true;
+				})
+				.map(zone => {
 					const filterConfig = {
 						categories: zone.categories || zone.category_ids || [],
 						productTypes: zone.productTypes || [],
 					};
 
-					if (!filterConfig.categories.length) {
-						console.log(
-							`Zone "${zone.name}" has no categories configured, skipping`
-						);
-						continue;
-					}
+					console.log(`Preparing to print kitchen ticket for zone "${zone.name}" with filter:`, filterConfig);
 
-					console.log(
-						`Printing kitchen ticket for zone "${zone.name}" with filter:`,
-						filterConfig
-					);
+					return printKitchenTicket(zone.printer, kitchenOrder, zone.name, filterConfig)
+						.then(result => ({ zone: zone.name, result }))
+						.catch(error => ({ zone: zone.name, error }));
+				});
 
-					const result = await printKitchenTicket(
-						zone.printer,
-						kitchenOrder,
-						zone.name,
-						filterConfig
-					);
+			// Run backend API and printer operations in parallel
+			const [backendResult, ...printerResults] = await Promise.allSettled([
+				// Backend API call (fast, critical)
+				markSentToKitchen(orderId),
+				// All printer operations (slow, non-critical)
+				...printerOperations
+			]);
 
-					if (result.success) {
-						if (result.message) {
-							console.log(`Zone "${zone.name}": ${result.message}`);
-						} else {
-							console.log(
-								`Kitchen ticket for zone "${zone.name}" printed successfully`
-							);
-						}
-						ticketsPrinted++;
-					} else {
-						console.error(
-							`Failed to print kitchen ticket for zone "${zone.name}":`,
-							result.error
-						);
-						errors.push(`${zone.name}: ${result.error}`);
-					}
-				} catch (error) {
-					console.error(
-						`Error printing kitchen ticket for zone "${zone.name}":`,
-						error
-					);
-					errors.push(`${zone.name}: ${error.message}`);
-				}
-			}
-
-			// Always mark items as sent to kitchen in the backend (creates KDS items)
-			// regardless of printer success/failure
-			try {
-				console.log("Calling markSentToKitchen API for orderId:", orderId);
-				await markSentToKitchen(orderId);
-				console.log("markSentToKitchen API call successful");
-			} catch (error) {
-				console.error("Failed to mark items as sent to kitchen:", error);
+			// Handle backend result first (critical)
+			if (backendResult.status === 'rejected') {
+				console.error("Failed to mark items as sent to kitchen:", backendResult.reason);
 				toast({
 					title: "Backend Error",
 					description: "Failed to send order to kitchen system. Please try again.",
@@ -210,6 +182,36 @@ const CartSummary = () => {
 				});
 				return; // Exit early if backend fails
 			}
+
+			console.log("✅ markSentToKitchen API call successful (parallel execution)");
+
+			// Process printer results (non-critical)
+			let ticketsPrinted = 0;
+			const errors = [];
+
+			printerResults.forEach((settledResult, index) => {
+				if (settledResult.status === 'fulfilled' && settledResult.value) {
+					const { zone, result, error } = settledResult.value;
+
+					if (error) {
+						console.error(`Error printing kitchen ticket for zone "${zone}":`, error);
+						errors.push(`${zone}: ${error.message}`);
+					} else if (result && result.success) {
+						if (result.message) {
+							console.log(`Zone "${zone}": ${result.message}`);
+						} else {
+							console.log(`Kitchen ticket for zone "${zone}" printed successfully`);
+						}
+						ticketsPrinted++;
+					} else {
+						console.error(`Failed to print kitchen ticket for zone "${zone}":`, result?.error);
+						errors.push(`${zone}: ${result?.error || 'Unknown error'}`);
+					}
+				} else {
+					console.error('Printer operation failed:', settledResult.reason);
+					errors.push(`Unknown zone: ${settledResult.reason?.message || 'Unknown error'}`);
+				}
+			});
 
 			if (ticketsPrinted > 0) {
 				toast({
@@ -243,9 +245,8 @@ const CartSummary = () => {
 					error.response?.data?.detail || "An unexpected error occurred.",
 				variant: "destructive",
 			});
-		} finally {
-			setIsSendingToKitchen(false);
 		}
+		// No finally block needed - no loading state to reset
 	};
 
 	const hasItems = items.length > 0;
@@ -314,27 +315,18 @@ const CartSummary = () => {
 						<Button
 							variant="outline"
 							className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
-							disabled={!hasItems || isLoading || isSendingToKitchen}
+							disabled={!hasItems || isLoading}
 							onClick={handleSendToKitchen}
 						>
-							{isSendingToKitchen ? (
-								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									Kitchen...
-								</>
-							) : (
-								<>
-									<ChefHat className="mr-2 h-4 w-4" />
-									Kitchen
-								</>
-							)}
+							<ChefHat className="mr-2 h-4 w-4" />
+							Kitchen
 						</Button>
 					)}
 
 					<Button
 						variant="outline"
 						className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
-						disabled={!hasItems || isLoading || isSendingToKitchen}
+						disabled={!hasItems || isLoading}
 						onClick={() => setIsDiscountDialogOpen(true)}
 					>
 						<Tag className="mr-2 h-4 w-4" />
@@ -343,7 +335,7 @@ const CartSummary = () => {
 
 					<Button
 						className="h-12 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-semibold"
-						disabled={!hasItems || isLoading || isSendingToKitchen}
+						disabled={!hasItems || isLoading}
 						onClick={handleCharge}
 					>
 						{isLoading ? (

@@ -764,9 +764,9 @@ class OrderService:
 
         # NEW: Create KDS items for kitchen workflow
         try:
-            print(f"[Orders Service] mark_items_sent_to_kitchen: Calling KDSService.manual_send_to_kitchen")
-            from kds.services import KDSService
-            kds_result = KDSService.manual_send_to_kitchen(order)
+            print(f"[Orders Service] mark_items_sent_to_kitchen: Calling KDSOrderService.manual_send_to_kitchen")
+            from kds.services import KDSOrderService
+            kds_result = KDSOrderService.manual_send_to_kitchen(order)
             print(f"[Orders Service] mark_items_sent_to_kitchen: KDS result: {kds_result}")
 
             return {

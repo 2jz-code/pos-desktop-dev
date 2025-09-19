@@ -51,6 +51,7 @@ class BaseKDSZone(ABC):
             'order_number': kds_order.order.order_number,
             'customer_name': kds_order.order.customer_display_name or 'Guest',
             'order_type': kds_order.order.order_type,
+            'dining_preference': kds_order.order.dining_preference,
             'status': kds_order.status,
             'is_priority': kds_order.is_priority,
             'created_at': kds_order.created_at.isoformat(),

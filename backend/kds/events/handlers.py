@@ -19,6 +19,11 @@ def handle_payment_completed(sender, order, **kwargs):
         if hasattr(order, 'kds_order') and order.kds_order:
             logger.info(f"KDS order already exists for {order.order_number}")
             print(f"KDS order already exists for {order.order_number}")
+
+            # Handle potential quantity changes for existing KDS orders
+            result = KDSOrderService._add_new_items_to_existing_kds_order(order, order.kds_order)
+            logger.info(f"Payment completion KDS update result: {result}")
+            print(f"💰 Payment completion KDS update result: {result}")
             return
 
         # For web/app orders, always create KDS items on payment

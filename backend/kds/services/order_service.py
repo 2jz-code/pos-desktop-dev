@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from django.db import transaction
 from django.utils import timezone
 import logging
@@ -119,9 +119,9 @@ class KDSOrderService:
                 kds_order.ready_at = now
             elif new_status == KDSOrderStatus.COMPLETED:
                 kds_order.completed_at = now
-                # Mark underlying order as completed
-                kds_order.order.status = 'completed'
-                kds_order.order.save(update_fields=['status'])
+                # NOTE: We don't change the main order status here
+                # Main order stays as-is (COMPLETED after payment)
+                # KDS order completion only indicates kitchen workflow is done
 
             kds_order.save()
 
@@ -324,3 +324,223 @@ class KDSOrderService:
         except Exception as e:
             logger.error(f"Error getting zone assignments for order {order.order_number}: {e}")
             return {}
+
+    @classmethod
+    def manual_send_to_kitchen(cls, order: Order) -> Dict[str, Any]:
+        """Handle manual send to kitchen from POS (follows existing patterns)"""
+        try:
+            logger.info(f"Manual send to kitchen for order {order.order_number}")
+            print(f"📋 Manual send to kitchen for order {order.order_number}")
+
+            # Check if KDS order already exists
+            if hasattr(order, 'kds_order') and order.kds_order:
+                logger.info(f"KDS order already exists for {order.order_number}, checking for new items")
+                print(f"KDS order already exists for {order.order_number}, checking for new items")
+
+                # Handle adding new items to existing KDS order
+                return cls._add_new_items_to_existing_kds_order(order, order.kds_order)
+
+            # Get zone assignments using existing logic
+            zone_assignments = cls.get_zone_assignments_for_order(order)
+            print(f"Zone assignments: {zone_assignments}")
+
+            if not zone_assignments:
+                logger.warning(f"No zone assignments found for order {order.order_number}")
+                print(f"⚠️ No zone assignments found for order {order.order_number}")
+                return {
+                    'success': False,
+                    'message': f'No kitchen zones configured for items in order {order.order_number}',
+                    'items_created': 0
+                }
+
+            # Create KDS order using existing method
+            kds_order = cls.create_from_order(order, zone_assignments)
+
+            if kds_order:
+                logger.info(f"✅ Successfully created KDS order {kds_order.id} for manual send")
+                print(f"✅ Successfully created KDS order {kds_order.id} for manual send")
+
+                return {
+                    'success': True,
+                    'message': f'Successfully sent order {order.order_number} to kitchen',
+                    'items_created': kds_order.items.count(),
+                    'kds_order_id': str(kds_order.id)
+                }
+            else:
+                logger.error(f"❌ Failed to create KDS order for manual send")
+                print(f"❌ Failed to create KDS order for manual send")
+                return {
+                    'success': False,
+                    'message': f'Failed to create KDS order for {order.order_number}',
+                    'items_created': 0
+                }
+
+        except Exception as e:
+            logger.error(f"Error in manual send to kitchen for {order.order_number}: {e}")
+            print(f"❌ Error in manual send to kitchen for {order.order_number}: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+
+            return {
+                'success': False,
+                'message': f'Error sending order to kitchen: {str(e)}',
+                'items_created': 0
+            }
+
+    @classmethod
+    def _add_new_items_to_existing_kds_order(cls, order: Order, kds_order) -> Dict[str, Any]:
+        """Add new items to an existing KDS order"""
+        try:
+            logger.info(f"Adding new items to existing KDS order {kds_order.id}")
+            print(f"📋 Adding new items to existing KDS order {kds_order.id}")
+
+            # Get all order items that DON'T have KDS items yet
+            existing_kds_item_order_ids = set(
+                kds_order.items.values_list('order_item_id', flat=True)
+            )
+
+            new_order_items = [
+                item for item in order.items.all()
+                if item.id not in existing_kds_item_order_ids
+            ]
+
+            print(f"Found {len(new_order_items)} new items to add to KDS")
+            logger.info(f"Found {len(new_order_items)} new items to add to KDS")
+
+            if not new_order_items:
+                # No new items, but might have quantity changes - still send refresh
+                print(f"🔄 No new items, but sending refresh for potential quantity changes")
+
+                # Send refresh notification for quantity changes
+                from django.db import transaction
+                from ..events.publishers import KDSEventPublisher
+
+                def send_refresh_notification():
+                    print(f"🔄 About to send KDS refresh notification for quantity changes...")
+                    try:
+                        KDSEventPublisher.global_data_refresh_requested()
+                        print(f"✅ Sent KDS refresh for quantity/order changes")
+                    except Exception as e:
+                        print(f"❌ Failed to send KDS refresh: {e}")
+
+                print(f"🔄 Checking transaction state...")
+                if transaction.get_connection().in_atomic_block:
+                    print(f"🔄 In atomic block, scheduling refresh for commit")
+                    transaction.on_commit(send_refresh_notification)
+                else:
+                    print(f"🔄 Not in atomic block, sending refresh immediately")
+                    send_refresh_notification()
+
+                return {
+                    'success': True,
+                    'message': f'No new items to add to KDS for order {order.order_number}',
+                    'items_created': 0,
+                    'kds_order_id': str(kds_order.id)
+                }
+
+            # Get zone assignments for new items only
+            zone_assignments = {}
+            from .zone_service import KDSZoneService
+            zones = KDSZoneService.get_all_zones()
+
+            for order_item in new_order_items:
+                assigned_zones = []
+                for zone_id, zone in zones.items():
+                    if zone.can_handle_item(order_item):
+                        assigned_zones.append(zone_id)
+
+                if assigned_zones:
+                    zone_assignments[str(order_item.id)] = assigned_zones
+
+            print(f"Zone assignments for new items: {zone_assignments}")
+
+            if not zone_assignments:
+                return {
+                    'success': False,
+                    'message': f'No kitchen zones configured for new items in order {order.order_number}',
+                    'items_created': 0,
+                    'kds_order_id': str(kds_order.id)
+                }
+
+            # Create KDS items for new order items
+            items_created = 0
+            for order_item in new_order_items:
+                zones = zone_assignments.get(str(order_item.id), [])
+
+                for zone in zones:
+                    # Only create items for kitchen zones
+                    try:
+                        zone_instance = KDSZoneService.get_zone(zone)
+                        if zone_instance and zone_instance.zone_type == 'kitchen':
+                            KDSOrderItem.objects.create(
+                                kds_order=kds_order,
+                                order_item=order_item,
+                                assigned_zone=zone,
+                                status=KDSOrderStatus.PENDING
+                            )
+                            items_created += 1
+                            print(f"✅ Created KDS item for new order item {order_item.id} in zone {zone}")
+                    except Exception as e:
+                        logger.warning(f"Could not determine zone type for {zone}: {e}")
+                        # Default to kitchen for backward compatibility
+                        KDSOrderItem.objects.create(
+                            kds_order=kds_order,
+                            order_item=order_item,
+                            assigned_zone=zone,
+                            status=KDSOrderStatus.PENDING
+                        )
+                        items_created += 1
+                        print(f"✅ Created KDS item for new order item {order_item.id} in zone {zone} (fallback)")
+
+            logger.info(f"Created {items_created} new KDS items for order {order.order_number}")
+            print(f"✅ Created {items_created} new KDS items for order {order.order_number}")
+
+            # If new items were added to a completed order, reactivate it
+            if items_created > 0 and kds_order.status == KDSOrderStatus.COMPLETED:
+                kds_order.status = KDSOrderStatus.IN_PROGRESS
+                kds_order.save()
+                print(f"🔄 Reactivated completed order {order.order_number} due to new items")
+                logger.info(f"Reactivated KDS order {kds_order.id} from COMPLETED to IN_PROGRESS")
+
+            # Publish refresh event after transaction commits (for new items OR quantity changes)
+            from django.db import transaction
+            from ..events.publishers import KDSEventPublisher
+
+            def send_refresh_notification():
+                print(f"🔄 About to send KDS refresh notification...")
+                try:
+                    KDSEventPublisher.global_data_refresh_requested()
+                    if items_created > 0:
+                        print(f"✅ Sent KDS refresh for {items_created} new items")
+                    else:
+                        print(f"✅ Sent KDS refresh for quantity/order changes")
+                except Exception as e:
+                    print(f"❌ Failed to send KDS refresh: {e}")
+
+            print(f"🔄 Checking transaction state...")
+            if transaction.get_connection().in_atomic_block:
+                print(f"🔄 In atomic block, scheduling refresh for commit")
+                transaction.on_commit(send_refresh_notification)
+            else:
+                print(f"🔄 Not in atomic block, sending refresh immediately")
+                send_refresh_notification()
+
+            return {
+                'success': True,
+                'message': f'Successfully added {items_created} new items to kitchen for order {order.order_number}',
+                'items_created': items_created,
+                'kds_order_id': str(kds_order.id)
+            }
+
+        except Exception as e:
+            logger.error(f"Error adding new items to KDS order: {e}")
+            print(f"❌ Error adding new items to KDS order: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+
+            return {
+                'success': False,
+                'message': f'Error adding new items to kitchen: {str(e)}',
+                'items_created': 0,
+                'kds_order_id': str(kds_order.id) if kds_order else None
+            }
