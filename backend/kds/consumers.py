@@ -6,6 +6,7 @@ import logging
 
 from .models import KDSSession
 from .services import KDSOrderService, KDSZoneService
+from .services.history_service import KDSHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,12 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 await self.handle_ping()
             elif action == 'refresh_data':
                 await self.send_initial_data()
+            elif action == 'get_history':
+                await self.handle_get_history(data)
+            elif action == 'search_history':
+                await self.handle_search_history(data)
+            elif action == 'get_order_timeline':
+                await self.handle_get_order_timeline(data)
             else:
                 await self.send_error(f"Unknown action: {action}")
 
@@ -253,6 +260,121 @@ class KDSConsumer(AsyncWebsocketConsumer):
             'type': 'pong',
             'timestamp': timezone.now().isoformat()
         }))
+
+    async def handle_get_history(self, data):
+        """Handle getting paginated history for this zone"""
+        try:
+            page = data.get('page', 1)
+            page_size = data.get('page_size', 50)
+            date_from_str = data.get('date_from')
+            date_to_str = data.get('date_to')
+
+            # Parse date filters
+            date_from, date_to = await database_sync_to_async(
+                KDSHistoryService.parse_date_filters
+            )(date_from_str, date_to_str)
+
+            # Get history data
+            history_data = await database_sync_to_async(
+                KDSHistoryService.get_zone_history
+            )(
+                zone_id=self.zone_id,
+                page=page,
+                page_size=page_size,
+                date_from=date_from,
+                date_to=date_to
+            )
+
+            await self.update_session_activity()
+            await self.send(text_data=json.dumps({
+                'type': 'history_data',
+                'data': history_data
+            }))
+
+            logger.debug(f"Sent history data to zone {self.zone_id}: page {page}, {len(history_data.get('orders', []))} orders")
+
+        except Exception as e:
+            logger.error(f"Error getting history: {e}")
+            await self.send_error(f"Error loading history: {str(e)}")
+
+    async def handle_search_history(self, data):
+        """Handle searching history across zones or within current zone"""
+        try:
+            search_term = data.get('search_term', '').strip()
+            page = data.get('page', 1)
+            page_size = data.get('page_size', 50)
+            date_from_str = data.get('date_from')
+            date_to_str = data.get('date_to')
+            search_all_zones = data.get('search_all_zones', False)
+
+            if not search_term or len(search_term) < 2:
+                await self.send_error("Search term must be at least 2 characters")
+                return
+
+            # Parse date filters
+            date_from, date_to = await database_sync_to_async(
+                KDSHistoryService.parse_date_filters
+            )(date_from_str, date_to_str)
+
+            # Choose search method based on scope
+            if search_all_zones:
+                search_data = await database_sync_to_async(
+                    KDSHistoryService.search_all_zones
+                )(
+                    search_term=search_term,
+                    page=page,
+                    page_size=page_size,
+                    date_from=date_from,
+                    date_to=date_to
+                )
+            else:
+                search_data = await database_sync_to_async(
+                    KDSHistoryService.get_zone_history
+                )(
+                    zone_id=self.zone_id,
+                    page=page,
+                    page_size=page_size,
+                    date_from=date_from,
+                    date_to=date_to,
+                    search_term=search_term
+                )
+
+            await self.update_session_activity()
+            await self.send(text_data=json.dumps({
+                'type': 'search_results',
+                'data': search_data
+            }))
+
+            logger.debug(f"Sent search results to zone {self.zone_id}: '{search_term}', {len(search_data.get('orders', []))} results")
+
+        except Exception as e:
+            logger.error(f"Error searching history: {e}")
+            await self.send_error(f"Error searching history: {str(e)}")
+
+    async def handle_get_order_timeline(self, data):
+        """Handle getting detailed timeline for a specific order"""
+        try:
+            order_id = data.get('order_id')
+
+            if not order_id:
+                await self.send_error("Missing order_id")
+                return
+
+            timeline_data = await database_sync_to_async(
+                KDSHistoryService.get_order_timeline
+            )(order_id)
+
+            await self.update_session_activity()
+            await self.send(text_data=json.dumps({
+                'type': 'order_timeline',
+                'data': timeline_data
+            }))
+
+            logger.debug(f"Sent timeline data for order {order_id} to zone {self.zone_id}")
+
+        except Exception as e:
+            logger.error(f"Error getting order timeline: {e}")
+            await self.send_error(f"Error loading order timeline: {str(e)}")
 
     async def send_initial_data(self):
         """Send initial zone data"""

@@ -263,9 +263,19 @@ class KDSOrderService:
     def _complete_all_items(cls, kds_order: KDSOrder):
         """Mark all items as completed when order is completed"""
         now = timezone.now()
-        kds_order.items.exclude(status=KDSOrderStatus.COMPLETED).update(
+        # Only update items that don't have completed_at timestamp yet
+        # This preserves the original completion timestamps from kitchen zones
+        kds_order.items.filter(
+            status__in=[KDSOrderStatus.PENDING, KDSOrderStatus.IN_PROGRESS]
+        ).update(
             status=KDSOrderStatus.COMPLETED,
             completed_at=now
+        )
+
+        # For items that are already READY (have completed_at), just update status
+        kds_order.items.filter(status=KDSOrderStatus.READY).update(
+            status=KDSOrderStatus.COMPLETED
+            # Don't update completed_at - preserve original timestamp
         )
 
     @classmethod

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui";
-import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff } from "lucide-react";
+import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff, History } from "lucide-react";
 import { KitchenOrderCard } from "../components/KitchenOrderCard";
 import { KitchenZoneOrderCard } from "../components/KitchenZoneOrderCard";
 import { QCOrderCard } from "../components/QCOrderCard";
 import { ZoneSwitcher } from "../components/ZoneSwitcher";
+import { HistoryPanel } from "../components/HistoryPanel";
 import { useKDSWebSocket } from "../hooks/useKDSWebSocket";
 
 /**
@@ -17,6 +18,9 @@ export function KDSPage() {
 	const [selectedZone, setSelectedZone] = useState(() => {
 		return localStorage.getItem("kds-selected-zone") || "";
 	});
+
+	// History panel state
+	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
 	// Use WebSocket hook for real-time KDS data
 	const {
@@ -32,7 +36,16 @@ export function KDSPage() {
 		addKitchenNote,
 		updateQCStatus,
 		addQCNote,
-		reconnect
+		reconnect,
+		// History functionality
+		historyData,
+		searchResults,
+		timelineData,
+		historyLoading,
+		getHistory,
+		searchHistory,
+		getOrderTimeline,
+		clearHistoryData
 	} = useKDSWebSocket(selectedZone);
 
 	// Redirect to zone selection if no zone is selected
@@ -45,6 +58,9 @@ export function KDSPage() {
 	const handleZoneChange = (newZone) => {
 		setSelectedZone(newZone);
 		localStorage.setItem("kds-selected-zone", newZone);
+		// Close history panel when zone changes
+		setIsHistoryOpen(false);
+		clearHistoryData();
 	};
 
 	const handleItemStatusChange = (itemId, newStatus) => {
@@ -72,6 +88,28 @@ export function KDSPage() {
 	const handleRefresh = () => {
 		// Reconnect WebSocket to refresh data
 		reconnect();
+	};
+
+	// History panel handlers
+	const handleOpenHistory = () => {
+		setIsHistoryOpen(true);
+	};
+
+	const handleCloseHistory = () => {
+		setIsHistoryOpen(false);
+		clearHistoryData();
+	};
+
+	const handleGetHistory = (filters) => {
+		getHistory(filters);
+	};
+
+	const handleSearchHistory = (filters) => {
+		searchHistory(filters);
+	};
+
+	const handleGetOrderTimeline = (orderId) => {
+		getOrderTimeline(orderId);
 	};
 
 	// Get connection status indicator
@@ -119,6 +157,15 @@ export function KDSPage() {
 								selectedZone={selectedZone}
 								onZoneChange={handleZoneChange}
 							/>
+							<Button
+								onClick={handleOpenHistory}
+								variant="outline"
+								size="sm"
+								disabled={connectionStatus !== 'connected'}
+							>
+								<History className="h-4 w-4 mr-2" />
+								History
+							</Button>
 							<Button
 								onClick={handleRefresh}
 								variant="outline"
@@ -273,6 +320,21 @@ export function KDSPage() {
 						</div>
 				)}
 			</div>
+
+			{/* History Panel */}
+			<HistoryPanel
+				isOpen={isHistoryOpen}
+				onClose={handleCloseHistory}
+				zoneId={selectedZone}
+				isQCStation={isQCStation}
+				onGetHistory={handleGetHistory}
+				onSearchHistory={handleSearchHistory}
+				onGetOrderTimeline={handleGetOrderTimeline}
+				historyData={historyData}
+				searchResults={searchResults}
+				timelineData={timelineData}
+				isLoading={historyLoading}
+			/>
 		</div>
 	);
 }
