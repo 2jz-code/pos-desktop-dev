@@ -9,7 +9,8 @@
 	"scripts": {
 		"dev": "vite",
 		"dev:kds": "cross-env ELECTRON_KDS_MODE=true vite",
-		"dev:multi-kds": "concurrently \"npm run dev:kds-zone1\" \"npm run dev:kds-zone2\" \"npm run dev:kds-qc\"",
+		"dev:overview": "cross-env ELECTRON_OVERVIEW_MODE=true vite --port 5177",
+		"dev:multi-kds": "concurrently \"npm run dev:kds-zone1\" \"npm run dev:kds-zone2\" \"npm run dev:kds-qc\" \"npm run dev:overview\"",
 		"dev:kds-zone1": "cross-env ELECTRON_KDS_ZONE=grill ELECTRON_PORT=5174 vite --port 5174",
 		"dev:kds-zone2": "cross-env ELECTRON_KDS_ZONE=prep ELECTRON_PORT=5175 vite --port 5175",
 		"dev:kds-qc": "cross-env ELECTRON_KDS_ZONE=qc ELECTRON_PORT=5176 vite --port 5176",

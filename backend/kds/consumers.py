@@ -7,6 +7,7 @@ import logging
 from .models import KDSSession
 from .services import KDSOrderService, KDSZoneService
 from .services.history_service import KDSHistoryService
+from .services.overview_service import KDSOverviewService
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,15 @@ class KDSConsumer(AsyncWebsocketConsumer):
             sanitized_zone_id = self.sanitize_group_name(self.zone_id)
             self.group_name = f'kds_zone_{sanitized_zone_id}'
 
-            # Join group
+            # Join zone-specific group
             await self.channel_layer.group_add(self.group_name, self.channel_name)
+
+            # For overview connections, also join the overview broadcast group
+            if self.zone_id == 'overview':
+                self.overview_group_name = 'kds_overview_broadcast'
+                await self.channel_layer.group_add(self.overview_group_name, self.channel_name)
+                logger.info(f"Overview connection joined broadcast group: {self.overview_group_name}")
+
             await self.accept()
 
             # Create session and send initial data
@@ -60,8 +68,13 @@ class KDSConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         """Handle WebSocket disconnection"""
         try:
-            # Leave group
+            # Leave zone-specific group
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+            # For overview connections, also leave the overview broadcast group
+            if self.zone_id == 'overview' and hasattr(self, 'overview_group_name'):
+                await self.channel_layer.group_discard(self.overview_group_name, self.channel_name)
+                logger.info(f"Overview connection left broadcast group: {self.overview_group_name}")
 
             # Update session as inactive
             await self.update_session_inactive()
@@ -97,6 +110,8 @@ class KDSConsumer(AsyncWebsocketConsumer):
                 await self.handle_search_history(data)
             elif action == 'get_order_timeline':
                 await self.handle_get_order_timeline(data)
+            elif action == 'get_kitchen_overview':
+                await self.handle_get_kitchen_overview(data)
             else:
                 await self.send_error(f"Unknown action: {action}")
 
@@ -376,6 +391,30 @@ class KDSConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error getting order timeline: {e}")
             await self.send_error(f"Error loading order timeline: {str(e)}")
 
+    async def handle_get_kitchen_overview(self, data):
+        """Handle getting kitchen overview with all zones and metrics"""
+        try:
+            logger.info(f"Getting kitchen overview data from zone {self.zone_id}")
+
+            overview_data = await database_sync_to_async(
+                KDSOverviewService.get_kitchen_overview
+            )()
+
+            await self.update_session_activity()
+            await self.send(text_data=json.dumps({
+                'type': 'kitchen_overview_response',
+                'data': overview_data
+            }))
+
+            logger.debug(f"Sent kitchen overview data with {len(overview_data.get('zones', []))} zones")
+
+        except Exception as e:
+            logger.error(f"Error getting kitchen overview: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'kitchen_overview_error',
+                'error': f"Error loading kitchen overview: {str(e)}"
+            }))
+
     async def send_initial_data(self):
         """Send initial zone data"""
         try:
@@ -410,6 +449,17 @@ class KDSConsumer(AsyncWebsocketConsumer):
     def get_zone_data(self):
         """Get data for this zone"""
         try:
+            # Handle special "overview" zone
+            if self.zone_id == 'overview':
+                return {
+                    'zone_id': 'overview',
+                    'zone_type': 'overview',
+                    'is_qc_station': False,
+                    'orders': [],
+                    'terminal_id': self.terminal_id,
+                    'message': 'Overview zone - use get_kitchen_overview action for data'
+                }
+
             zone = KDSZoneService.get_zone(self.zone_id)
             if not zone:
                 logger.error(f"Zone {self.zone_id} not found")
@@ -509,7 +559,18 @@ class KDSConsumer(AsyncWebsocketConsumer):
             print(f"🔔 Zone {self.zone_id} received notification: {message_type}")
             print(f"🔔 Data: {data}")
 
-            # Handle different notification types
+            # Special handling for overview connections
+            if self.zone_id == 'overview':
+                # For overview, refresh on any order/item changes for real-time updates
+                if message_type in ['order_created', 'order_status_changed', 'item_status_changed',
+                                   'item_priority_changed', 'item_note_changed', 'order_completed', 'refresh_data']:
+                    print(f"🔄 Overview: Refreshing kitchen overview for {message_type}")
+                    await self.send_overview_update()
+                else:
+                    print(f"📤 Overview: Ignoring notification: {message_type}")
+                return
+
+            # Handle different notification types for regular zones
             if message_type == 'refresh_data':
                 # Always refresh for explicit refresh requests
                 print(f"🔄 Zone {self.zone_id}: Refreshing for explicit refresh request")
@@ -568,3 +629,20 @@ class KDSConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error(f"Error sending zone data update: {e}")
+
+    async def send_overview_update(self):
+        """Send updated kitchen overview data for real-time updates"""
+        try:
+            overview_data = await database_sync_to_async(
+                KDSOverviewService.get_kitchen_overview
+            )()
+
+            await self.send(text_data=json.dumps({
+                'type': 'kitchen_overview_update',
+                'data': overview_data
+            }))
+
+            logger.debug(f"Sent real-time overview update with {len(overview_data.get('zones', []))} zones")
+
+        except Exception as e:
+            logger.error(f"Error sending overview update: {e}")

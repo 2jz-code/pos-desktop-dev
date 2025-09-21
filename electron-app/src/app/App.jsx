@@ -30,7 +30,7 @@ import { ProductsPage, ProductDetailsPage, ModifierManagementPage } from "@/doma
 import { InventoryPage, StockHistoryPage } from "@/domains/inventory";
 import { DiscountsPage } from "@/domains/discounts";
 import { SettingsPage } from "@/domains/settings";
-import { KDSPage } from "@/domains/kds";
+import { KDSPage, KitchenOverviewPage } from "@/domains/kds";
 
 // Mode Selection Pages
 import { ModeSelectionPage } from "../pages/ModeSelectionPage";
@@ -182,6 +182,10 @@ function AppRoutes() {
 					<Route
 						path="/kds"
 						element={<KDSPage />}
+					/>
+					<Route
+						path="/kds-overview"
+						element={<KitchenOverviewPage />}
 					/>
 				</>
 			)}

@@ -42,17 +42,48 @@ class KDSNotificationService:
             logger.error(f"Error sending notification to zone {zone_id}: {e}")
             print(f"❌ Error sending notification to zone {zone_id}: {e}")
 
+    def notify_overview(self, message_type: str, data: Dict[str, Any]):
+        """Send notification to kitchen overview broadcast group"""
+        if not self.channel_layer:
+            logger.warning("No channel layer available for overview notifications")
+            return
+
+        try:
+            group_name = 'kds_overview_broadcast'
+
+            logger.debug(f"Sending {message_type} to overview group")
+            print(f"📊 Sending {message_type} to overview group")
+
+            async_to_sync(self.channel_layer.group_send)(
+                group_name,
+                {
+                    'type': 'kds_notification',
+                    'message_type': message_type,
+                    'data': data
+                }
+            )
+            print(f"✅ Successfully sent {message_type} to overview")
+
+        except Exception as e:
+            logger.error(f"Error sending notification to overview: {e}")
+            print(f"❌ Error sending notification to overview: {e}")
+
     def notify_all_zones(self, message_type: str, data: Dict[str, Any]):
-        """Send notification to all configured zones"""
+        """Send notification to all configured zones and overview"""
         try:
             from .zone_service import KDSZoneService
 
             zones = KDSZoneService.get_all_zones()
             logger.info(f"notify_all_zones: Sending {message_type} to {len(zones)} zones: {list(zones.keys())}")
+
+            # Send to all individual zones
             for zone_id in zones.keys():
                 self.notify_zone(zone_id, message_type, data)
 
-            logger.info(f"notify_all_zones: Completed sending {message_type} to {len(zones)} zones")
+            # Also send to overview for real-time updates
+            self.notify_overview(message_type, data)
+
+            logger.info(f"notify_all_zones: Completed sending {message_type} to {len(zones)} zones and overview")
 
         except Exception as e:
             logger.error(f"Error sending notification to all zones: {e}")

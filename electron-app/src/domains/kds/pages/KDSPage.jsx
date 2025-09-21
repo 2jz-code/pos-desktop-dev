@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui";
-import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff, History } from "lucide-react";
+import { ChefHat, Settings, RefreshCw, ArrowLeft, Wifi, WifiOff, History, BarChart3 } from "lucide-react";
 import { KitchenOrderCard } from "../components/KitchenOrderCard";
 import { KitchenZoneOrderCard } from "../components/KitchenZoneOrderCard";
 import { QCOrderCard } from "../components/QCOrderCard";
@@ -85,6 +85,10 @@ export function KDSPage() {
 		navigate("/kds-zone-selection");
 	};
 
+	const handleKitchenOverview = () => {
+		navigate("/kds-overview");
+	};
+
 	const handleRefresh = () => {
 		// Reconnect WebSocket to refresh data
 		reconnect();
@@ -157,6 +161,15 @@ export function KDSPage() {
 								selectedZone={selectedZone}
 								onZoneChange={handleZoneChange}
 							/>
+							<Button
+								onClick={handleKitchenOverview}
+								variant="outline"
+								size="sm"
+								className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+							>
+								<BarChart3 className="h-4 w-4 mr-2" />
+								Overview
+							</Button>
 							<Button
 								onClick={handleOpenHistory}
 								variant="outline"

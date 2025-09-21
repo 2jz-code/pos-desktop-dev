@@ -13,7 +13,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/shared/components/ui";
-import { ChefHat, ArrowLeft, Monitor } from "lucide-react";
+import { ChefHat, ArrowLeft, Monitor, BarChart3 } from "lucide-react";
 import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
 import FullScreenLoader from "@/shared/components/common/FullScreenLoader";
 
@@ -45,6 +45,11 @@ export function KDSZoneSelectionPage() {
 		// Switch to POS mode and navigate to login
 		localStorage.setItem("app-mode", "pos");
 		navigate("/login");
+	};
+
+	const handleKitchenOverview = () => {
+		// Navigate to kitchen overview page
+		navigate("/kds-overview");
 	};
 
 	if (isLoading) {
@@ -155,23 +160,41 @@ export function KDSZoneSelectionPage() {
 								)}
 
 								{/* Action Buttons */}
-								<div className="flex space-x-4 pt-4">
-									<Button
-										onClick={handleBackToModeSelection}
-										variant="outline"
-										className="flex-1"
-									>
-										<ArrowLeft className="h-4 w-4 mr-2" />
-										Back to Mode Selection
-									</Button>
-									<Button
-										onClick={handleZoneSelection}
-										disabled={!selectedZone}
-										className="flex-1 bg-green-600 hover:bg-green-700"
-										size="lg"
-									>
-										Enter KDS
-									</Button>
+								<div className="space-y-4 pt-4">
+									<div className="flex space-x-4">
+										<Button
+											onClick={handleBackToModeSelection}
+											variant="outline"
+											className="flex-1"
+										>
+											<ArrowLeft className="h-4 w-4 mr-2" />
+											Back to Mode Selection
+										</Button>
+										<Button
+											onClick={handleZoneSelection}
+											disabled={!selectedZone}
+											className="flex-1 bg-green-600 hover:bg-green-700"
+											size="lg"
+										>
+											Enter KDS
+										</Button>
+									</div>
+
+									{/* Kitchen Overview Button */}
+									<div className="text-center">
+										<Button
+											onClick={handleKitchenOverview}
+											variant="outline"
+											className="w-full bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+											size="lg"
+										>
+											<BarChart3 className="h-5 w-5 mr-2" />
+											Kitchen Overview Dashboard
+										</Button>
+										<p className="text-xs text-gray-500 mt-2">
+											View all zones and kitchen performance metrics
+										</p>
+									</div>
 								</div>
 							</>
 						)}
