@@ -607,3 +607,27 @@ class ProductCreateSerializer(BaseModelSerializer):
             ImageService.process_image_async(product.id, image)
 
         return product
+
+    def update(self, instance, validated_data):
+        """
+        Handle updates, including writable extras like category_id and tax_ids.
+        Image updates are processed by signals; inventory adjustments are handled separately.
+        """
+        # Extract write-only helper fields
+        category_id = validated_data.pop("category_id", None)
+        tax_ids = validated_data.pop("tax_ids", None)
+        # Standard model fields update
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        # Handle category change if provided
+        if category_id is not None:
+            instance.category = Category.objects.get(id=category_id) if category_id else None
+
+        instance.save()
+
+        # Handle taxes update if provided
+        if tax_ids is not None:
+            instance.taxes.set(Tax.objects.filter(id__in=tax_ids))
+
+        return instance
