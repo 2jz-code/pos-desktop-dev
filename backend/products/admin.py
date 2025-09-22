@@ -26,9 +26,72 @@ class ProductModifierSetInline(admin.TabularInline):
 
 @admin.register(ProductType)
 class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "description", "is_active")
-    list_filter = ("is_active",)
-    search_fields = ("name",)
+    list_display = (
+        "name",
+        "inventory_behavior",
+        "stock_enforcement",
+        "pricing_method",
+        "tax_inclusive",
+        "available_online",
+        "available_pos",
+        "is_active",
+    )
+    list_filter = (
+        "is_active",
+        "inventory_behavior",
+        "stock_enforcement",
+        "pricing_method",
+        "tax_inclusive",
+        "available_online",
+        "available_pos",
+    )
+    search_fields = ("name", "description")
+    filter_horizontal = ("default_taxes",)
+
+    fieldsets = (
+        (
+            "Basics",
+            {
+                "fields": (
+                    "name",
+                    "description",
+                )
+            },
+        ),
+        (
+            "Inventory Policy",
+            {
+                "fields": (
+                    "inventory_behavior",
+                    "stock_enforcement",
+                    "allow_negative_stock",
+                    "low_stock_threshold",
+                    "critical_stock_threshold",
+                )
+            },
+        ),
+        (
+            "Tax & Pricing",
+            {
+                "fields": (
+                    "tax_inclusive",
+                    "default_taxes",
+                    "pricing_method",
+                    "default_markup_percent",
+                )
+            },
+        ),
+        (
+            "Availability & Prep",
+            {
+                "fields": (
+                    "available_online",
+                    "available_pos",
+                    "standard_prep_minutes",
+                )
+            },
+        ),
+    )
     
     def get_queryset(self, request):
         """

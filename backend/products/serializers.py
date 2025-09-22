@@ -201,11 +201,62 @@ class BasicProductSerializer(BaseModelSerializer):
         fields = ["id", "name", "barcode"]
 
 
+class BasicTaxSerializer(BaseModelSerializer):
+    class Meta:
+        model = Tax
+        fields = ["id", "name", "rate"]
+
+
 class ProductTypeSerializer(BaseModelSerializer):
+    default_taxes = BasicTaxSerializer(many=True, read_only=True)
+    default_taxes_ids = serializers.PrimaryKeyRelatedField(
+        source="default_taxes",
+        many=True,
+        queryset=Tax.objects.all(),
+        required=False,
+        write_only=True,
+        allow_empty=True,
+    )
+
     class Meta:
         model = ProductType
-        fields = ["id", "name", "description", "is_active"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "is_active",
+            # Inventory policy
+            "inventory_behavior",
+            "stock_enforcement",
+            "allow_negative_stock",
+            "low_stock_threshold",
+            "critical_stock_threshold",
+            # Tax & pricing
+            "tax_inclusive",
+            "default_taxes",
+            "default_taxes_ids",
+            "pricing_method",
+            "default_markup_percent",
+            # Availability & prep
+            "available_online",
+            "available_pos",
+            "standard_prep_minutes",
+        ]
         # No relationships to optimize
+
+    def create(self, validated_data):
+        taxes = validated_data.pop("default_taxes", None)
+        instance = super().create(validated_data)
+        if taxes is not None:
+            instance.default_taxes.set(taxes)
+        return instance
+
+    def update(self, instance, validated_data):
+        taxes = validated_data.pop("default_taxes", None)
+        instance = super().update(instance, validated_data)
+        if taxes is not None:
+            instance.default_taxes.set(taxes)
+        return instance
 
 
 class CategorySerializer(BaseModelSerializer):

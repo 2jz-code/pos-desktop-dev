@@ -271,6 +271,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                                 )()
                                 product_type_name = product_with_type.product_type.name.lower()
 
+                                # TODO(policy): Replace name-based check with ProductTypePolicy.validate_stock()
                                 if product_type_name != "menu":
                                     await self.send(
                                         text_data=json.dumps(
@@ -372,6 +373,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         )()
                         product_type_name = product_with_type.product_type.name.lower()
 
+                        # TODO(policy): Replace name-based check with ProductTypePolicy.validate_stock()
                         if product_type_name != "menu":
                             # Regular product - strict validation, send error
                             logging.warning(

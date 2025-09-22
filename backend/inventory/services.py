@@ -387,6 +387,7 @@ class InventoryService:
         # Check if this is a menu item with a recipe
         if hasattr(product, 'recipe') and product.recipe:
             return InventoryService.check_recipe_availability(product, location, required_quantity)
+        # TODO(policy): Prefer ProductTypePolicy inventory_behavior == RECIPE instead of name 'menu'
         elif product.product_type.name.lower() == 'menu':
             # Menu item without recipe - assume can always be made to order
             return True
