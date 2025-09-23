@@ -61,8 +61,6 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
                     "inventory_behavior",
                     "stock_enforcement",
                     "allow_negative_stock",
-                    "low_stock_threshold",
-                    "critical_stock_threshold",
                 )
             },
         ),

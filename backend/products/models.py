@@ -194,14 +194,6 @@ class ProductType(SoftDeleteMixin):
         default=False,
         help_text=_("Allow sales below zero stock (never blocks)."),
     )
-    low_stock_threshold = models.IntegerField(
-        default=10,
-        help_text=_("Warn when stock is at or below this level."),
-    )
-    critical_stock_threshold = models.IntegerField(
-        default=5,
-        help_text=_("Critical warning when stock is at or below this level."),
-    )
 
     # Tax defaults
     default_taxes = models.ManyToManyField(

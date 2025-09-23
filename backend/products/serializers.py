@@ -229,8 +229,6 @@ class ProductTypeSerializer(BaseModelSerializer):
             "inventory_behavior",
             "stock_enforcement",
             "allow_negative_stock",
-            "low_stock_threshold",
-            "critical_stock_threshold",
             # Tax & pricing
             "tax_inclusive",
             "default_taxes",
