@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from decimal import Decimal  # 1. Import Decimal
 from uuid import UUID
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -29,7 +30,12 @@ def convert_complex_types_to_str(data):
 
 
 class OrderConsumer(AsyncWebsocketConsumer):
-    # ... (connect, disconnect, receive, and all the action methods remain the same) ...
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cached_order_instance = None
+        self._cached_serialized_payload = None
+        self._cached_payload_metadata = None
+
     async def connect(self):
         logging.info("OrderConsumer: Attempting to connect...")
         self.order_id = self.scope["url_route"]["kwargs"]["order_id"]
@@ -51,6 +57,39 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         await self.send_full_order_state()
         logging.info("OrderConsumer: Connection established and initial state sent.")
+
+    async def recalculate_and_cache_order(self, order):
+        cached_state = getattr(order, "_recalculated_order_instance", None)
+        if cached_state is not None:
+            try:
+                delattr(order, "_recalculated_order_instance")
+            except AttributeError:
+                pass
+            order_instance = cached_state
+        else:
+            order_instance = await sync_to_async(OrderService.recalculate_order_totals)(order)
+
+        serialize_start = time.monotonic()
+        serialized_order = await self.serialize_order(order_instance)
+        serialize_elapsed_ms = (time.monotonic() - serialize_start) * 1000
+
+        clean_start = time.monotonic()
+        final_payload = convert_complex_types_to_str(serialized_order)
+        clean_elapsed_ms = (time.monotonic() - clean_start) * 1000
+
+        payload_json = json.dumps(final_payload)
+        payload_bytes = len(payload_json.encode('utf-8'))
+
+        self._cached_order_instance = order_instance
+        self._cached_serialized_payload = final_payload
+        self._cached_payload_metadata = {
+            'serialize_ms': serialize_elapsed_ms,
+            'clean_ms': clean_elapsed_ms,
+            'payload_bytes': payload_bytes,
+            'payload_json': payload_json,
+        }
+
+        return order_instance
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.order_group_name, self.channel_name)
@@ -113,6 +152,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     notes=payload.get("notes", ""),
                     force_add=True
                 )
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully force-added {quantity} of {product.name}"
                 )
@@ -139,6 +179,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 await sync_to_async(OrderService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}"
                 )
@@ -199,6 +240,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 quantity=quantity,
                 notes=notes
             )
+            await self.recalculate_and_cache_order(order)
 
             logging.info(
                 f"OrderConsumer: Successfully added custom item '{name}' to order {self.order_id}"
@@ -359,7 +401,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                             )
                         
                         # Recalculate totals
-                        await sync_to_async(OrderService.recalculate_order_totals)(order)
+                        await self.recalculate_and_cache_order(order)
                         
                         product_name = await sync_to_async(lambda: product.name)()
                         logging.info(
@@ -464,7 +506,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 item.quantity = new_quantity
                 await sync_to_async(item.save)()
                 order_obj = await sync_to_async(lambda i: i.order)(item)
-                await sync_to_async(OrderService.recalculate_order_totals)(order_obj)
+                await self.recalculate_and_cache_order(order_obj)
 
                 if force_update:
                     if is_custom_item:
@@ -531,6 +573,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 selected_modifiers=selected_modifiers,
                 notes=notes
             )
+            await self.recalculate_and_cache_order(order)
 
             logging.info(f"OrderConsumer: Successfully updated item {item_id}")
 
@@ -552,7 +595,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
         item = await sync_to_async(OrderItem.objects.get)(id=item_id)
         order = await sync_to_async(lambda i: i.order)(item)
         await sync_to_async(item.delete)()
-        await sync_to_async(OrderService.recalculate_order_totals)(order)
+        await self.recalculate_and_cache_order(order)
 
     async def apply_discount(self, payload):
         discount_id = payload.get("discount_id")
@@ -566,6 +609,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.apply_discount_to_order_by_id)(
                 order=order, discount_id=discount_id
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount {discount_id} to order {self.order_id}"
             )
@@ -584,6 +628,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.apply_discount_to_order_by_code)(
                 order=order, code=code
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount with code {code} to order {self.order_id}"
             )
@@ -602,6 +647,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Removed discount {discount_id} from order {self.order_id}"
             )
@@ -617,29 +663,78 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
         await sync_to_async(OrderService.clear_order_items)(order)
+        await self.recalculate_and_cache_order(order)
 
-    async def send_full_order_state(self):
+    async def send_full_order_state(self, order=None):
         """
         Fetches, serializes, and cleans the order data before sending it.
         """
-        order = await self.get_order_instance()
-        serialized_order_data = await self.serialize_order(order)
+        total_start = time.monotonic()
 
-        # 3. Convert all complex types (UUID, Decimal) to strings in one go.
-        final_payload = convert_complex_types_to_str(serialized_order_data)
+        order_instance = order
+        fetch_elapsed_ms = 0.0
+        serialize_elapsed_ms = 0.0
+        clean_elapsed_ms = 0.0
+        payload_bytes = 0
 
-        # This payload is now "safe" for any serializer (json, msgpack, etc.)
+        if order_instance is None:
+            if self._cached_order_instance is not None:
+                order_instance = self._cached_order_instance
+            else:
+                fetch_start = time.monotonic()
+                order_instance = await self.get_order_instance()
+                fetch_elapsed_ms = (time.monotonic() - fetch_start) * 1000
+
+        final_payload = None
+        if self._cached_serialized_payload is not None:
+            final_payload = self._cached_serialized_payload
+            metadata = self._cached_payload_metadata or {}
+            serialize_elapsed_ms = metadata.get('serialize_ms', 0.0)
+            clean_elapsed_ms = metadata.get('clean_ms', 0.0)
+            payload_bytes = metadata.get('payload_bytes', 0)
+        else:
+            serialize_start = time.monotonic()
+            serialized_order_data = await self.serialize_order(order_instance)
+            serialize_elapsed_ms = (time.monotonic() - serialize_start) * 1000
+
+            clean_start = time.monotonic()
+            final_payload = convert_complex_types_to_str(serialized_order_data)
+            clean_elapsed_ms = (time.monotonic() - clean_start) * 1000
+
+            payload_json = json.dumps(final_payload)
+            payload_bytes = len(payload_json.encode('utf-8'))
+
+            self._cached_order_instance = order_instance
+            self._cached_serialized_payload = final_payload
+            self._cached_payload_metadata = {
+                'serialize_ms': serialize_elapsed_ms,
+                'clean_ms': clean_elapsed_ms,
+                'payload_bytes': payload_bytes,
+                'payload_json': payload_json,
+            }
+
+        item_count = len(final_payload.get('items') or []) if final_payload else 0
+        total_elapsed_ms = (time.monotonic() - total_start) * 1000
+
         logging.info(
-            f"OrderConsumer: Sending initial state: {json.dumps(final_payload, indent=2)}"
+            "OrderConsumer: send_full_order_state order_id=%s items=%d fetch_ms=%.2f serialize_ms=%.2f clean_ms=%.2f total_ms=%.2f payload_bytes=%d",
+            self.order_id,
+            item_count,
+            fetch_elapsed_ms,
+            serialize_elapsed_ms,
+            clean_elapsed_ms,
+            total_elapsed_ms,
+            payload_bytes,
         )
 
         await self.channel_layer.group_send(
             self.order_group_name, {
-                "type": "cart_update", 
+                "type": "cart_update",
                 "payload": final_payload,
                 "operationId": getattr(self, '_current_operation_id', None)
             }
         )
+
 
     async def cart_update(self, event):
         """

@@ -9,6 +9,7 @@ from products.services import ModifierValidationService
 from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
 import hashlib
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -613,19 +614,25 @@ class OrderService:
         are performed in the correct sequence.
         Surcharges are excluded from cart totals and only calculated during payment.
         """
+        start_time = time.monotonic()
+
         # Import app_settings locally to ensure we always get the fresh configuration
         # This avoids Python's module-level import caching that could cause stale config
         from settings.config import app_settings
 
         # Re-fetch the full order context to ensure data is fresh
         # FIX: Add select_related for product to prevent N+1 queries when accessing item.product.price
+        original_order_reference = order
         order = Order.objects.prefetch_related(
             "items__product__taxes", "applied_discounts__discount"
         ).select_related().get(id=order.id)
+        setattr(original_order_reference, "_recalculated_order_instance", order)
 
         # Pre-fetch items with related data to prevent N+1 queries
         # Note: Some items may not have products (custom items), so we use nullable relations
-        items = order.items.select_related('product').prefetch_related('product__taxes').all()
+        items_queryset = order.items.select_related("product").prefetch_related("product__taxes").all()
+        items = list(items_queryset)
+        item_count = len(items)
 
         # 1. Calculate the pre-discount subtotal from all items
         # FIX: Use pre-fetched items to prevent additional queries
@@ -635,8 +642,9 @@ class OrderService:
         total_discount_amount = Decimal("0.00")
         from discounts.factories import DiscountStrategyFactory
 
-        if order.applied_discounts.exists():
-            for order_discount in order.applied_discounts.all():
+        applied_discounts = list(order.applied_discounts.all())
+        if applied_discounts:
+            for order_discount in applied_discounts:
                 strategy = DiscountStrategyFactory.get_strategy(order_discount.discount)
                 calculated_amount = strategy.apply(order, order_discount.discount)
                 if calculated_amount != order_discount.amount:
@@ -710,6 +718,18 @@ class OrderService:
                 "updated_at",
             ]
         )
+
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        discount_count = len(applied_discounts)
+        logger.info(
+            "OrderService.recalculate_order_totals order_id=%s items=%d discounts=%d elapsed_ms=%.2f",
+            order.id,
+            item_count,
+            discount_count,
+            elapsed_ms,
+        )
+
+        return order
 
     @staticmethod
     @transaction.atomic
