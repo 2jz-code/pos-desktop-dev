@@ -32,8 +32,6 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
         "stock_enforcement",
         "pricing_method",
         "tax_inclusive",
-        "available_online",
-        "available_pos",
         "is_active",
     )
     list_filter = (
@@ -42,8 +40,6 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
         "stock_enforcement",
         "pricing_method",
         "tax_inclusive",
-        "available_online",
-        "available_pos",
     )
     search_fields = ("name", "description")
     filter_horizontal = ("default_taxes",)
@@ -82,11 +78,9 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
             },
         ),
         (
-            "Availability & Prep",
+            "Prep Metadata",
             {
                 "fields": (
-                    "available_online",
-                    "available_pos",
                     "standard_prep_minutes",
                 )
             },

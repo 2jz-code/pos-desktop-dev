@@ -92,13 +92,3 @@ class ProductTypePolicy:
 
         return base_price
 
-    @staticmethod
-    def is_available(product, context: Dict[str, Any]) -> bool:
-        """
-        Basic channel availability check.
-        """
-        pt: ProductType = product.product_type
-        channel = (context or {}).get("channel", "pos").lower()
-        if channel == "online":
-            return bool(pt.available_online)
-        return bool(pt.available_pos)

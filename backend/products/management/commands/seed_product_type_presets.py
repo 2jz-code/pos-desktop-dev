@@ -12,8 +12,6 @@ PRESETS = [
         "stock_enforcement": ProductType.StockEnforcement.IGNORE,
         "allow_negative_stock": False,
         "tax_inclusive": False,
-        "available_online": True,
-        "available_pos": True,
         "standard_prep_minutes": 10,
     },
     {
@@ -23,8 +21,6 @@ PRESETS = [
         "stock_enforcement": ProductType.StockEnforcement.BLOCK,
         "allow_negative_stock": False,
         "tax_inclusive": False,
-        "available_online": True,
-        "available_pos": True,
         "standard_prep_minutes": 0,
     },
     {
@@ -34,8 +30,6 @@ PRESETS = [
         "stock_enforcement": ProductType.StockEnforcement.IGNORE,
         "allow_negative_stock": False,
         "tax_inclusive": False,
-        "available_online": True,
-        "available_pos": True,
         "standard_prep_minutes": 0,
     },
     {
@@ -45,8 +39,6 @@ PRESETS = [
         "stock_enforcement": ProductType.StockEnforcement.IGNORE,
         "allow_negative_stock": False,
         "tax_inclusive": False,
-        "available_online": True,
-        "available_pos": True,
         "standard_prep_minutes": 0,
     },
 ]

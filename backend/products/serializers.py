@@ -237,9 +237,7 @@ class ProductTypeSerializer(BaseModelSerializer):
             "default_taxes_ids",
             "pricing_method",
             "default_markup_percent",
-            # Availability & prep
-            "available_online",
-            "available_pos",
+            # Prep metadata
             "standard_prep_minutes",
         ]
         # No relationships to optimize

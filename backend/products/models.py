@@ -225,15 +225,6 @@ class ProductType(SoftDeleteMixin):
         help_text=_("Default markup percent for COST_PLUS pricing."),
     )
 
-    # Availability
-    available_online = models.BooleanField(
-        default=True,
-        help_text=_("Available for online ordering."),
-    )
-    available_pos = models.BooleanField(
-        default=True,
-        help_text=_("Available for POS ordering."),
-    )
 
     # Prep metadata (kept simple; routing stays in Category)
     standard_prep_minutes = models.PositiveIntegerField(
