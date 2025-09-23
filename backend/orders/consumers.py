@@ -251,28 +251,56 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
                         # Check stock for the additional items
                         if not force_update:
+                            from django.conf import settings
                             from inventory.services import InventoryService
                             from settings.config import app_settings
+                            from django.db.models import Sum
+                            from decimal import Decimal
 
-                            default_location = await sync_to_async(
-                                app_settings.get_default_location
-                            )()
+                            default_location = await sync_to_async(app_settings.get_default_location)()
 
-                            stock_available = await sync_to_async(
-                                InventoryService.check_stock_availability
-                            )(product, default_location, additional_quantity)
-
-                            if not stock_available:
-                                # Same stock validation logic as before
-                                product_with_type = await sync_to_async(
-                                    lambda: Product.objects.select_related("product_type").get(
-                                        id=product.id
-                                    )
-                                )()
-                                product_type_name = product_with_type.product_type.name.lower()
-
-                                # TODO(policy): Replace name-based check with ProductTypePolicy.validate_stock()
-                                if product_type_name != "menu":
+                            if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                                # Only enforce for inventory-tracked and BLOCK enforcement
+                                product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                                enforcement = product_with_type.product_type.stock_enforcement
+                                if getattr(product, 'track_inventory', False) and enforcement == 'BLOCK':
+                                    # Compute cumulative availability: stock - already reserved in this order
+                                    stock_level = await sync_to_async(InventoryService.get_stock_level)(product, default_location)
+                                    reserved = await sync_to_async(lambda: OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0)()
+                                    available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+                                    insufficient = Decimal(str(additional_quantity)) > available_to_add
+                                    if insufficient:
+                                        from products.policies import ProductTypePolicy
+                                        decision = ProductTypePolicy.decide_from_availability(product_with_type, insufficient=True, context={"channel": "pos"})
+                                        if not decision.valid:
+                                            await self.send(text_data=json.dumps({
+                                                "type": "stock_error",
+                                                "message": f"Not enough stock to add {additional_quantity} more {product.name}",
+                                                "error_type": "stock_validation",
+                                                "item_id": item_id,
+                                                "current_quantity": current_quantity,
+                                                "requested_quantity": new_quantity,
+                                                "can_override": True,
+                                                "action_type": "quantity_update",
+                                            }))
+                                            return
+                            else:
+                                stock_available = await sync_to_async(InventoryService.check_stock_availability)(product, default_location, additional_quantity)
+                                if not stock_available:
+                                    product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                                    product_type_name = product_with_type.product_type.name.lower()
+                                    if product_type_name != "menu":
+                                        await self.send(text_data=json.dumps({
+                                            "type": "stock_error",
+                                            "message": f"Not enough stock to add {additional_quantity} more {product.name}",
+                                            "error_type": "stock_validation",
+                                            "item_id": item_id,
+                                            "current_quantity": current_quantity,
+                                            "requested_quantity": new_quantity,
+                                            "can_override": True,
+                                            "action_type": "quantity_update",
+                                        }))
+                                        return
                                     await self.send(
                                         text_data=json.dumps(
                                             {
@@ -358,23 +386,59 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     # Get the product with relations loaded
                     product = await sync_to_async(lambda: item.product)()
 
-                    # Check if there's enough stock for the additional quantity
-                    stock_available = await sync_to_async(
-                        InventoryService.check_stock_availability
-                    )(product, default_location, additional_quantity)
-
-                    if not stock_available:
-                        # Check if this is a regular product (strict validation) or menu item
-                        # We need to access the product_type with proper async handling
-                        product_with_type = await sync_to_async(
-                            lambda: Product.objects.select_related("product_type").get(
-                                id=product.id
-                            )
-                        )()
-                        product_type_name = product_with_type.product_type.name.lower()
-
-                        # TODO(policy): Replace name-based check with ProductTypePolicy.validate_stock()
-                        if product_type_name != "menu":
+                    from django.conf import settings
+                    if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                        # Only enforce for inventory-tracked and BLOCK enforcement
+                        product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                        enforcement = product_with_type.product_type.stock_enforcement
+                        if getattr(product, 'track_inventory', False) and enforcement == 'BLOCK':
+                            from django.db.models import Sum
+                            from decimal import Decimal
+                            # Compute cumulative availability
+                            stock_level = await sync_to_async(InventoryService.get_stock_level)(product, default_location)
+                            order_for_calc = await sync_to_async(lambda: item.order)()
+                            reserved = await sync_to_async(lambda: OrderItem.objects.filter(order=order_for_calc, product=product).aggregate(total=Sum('quantity'))['total'] or 0)()
+                            available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+                            insufficient = Decimal(str(additional_quantity)) > available_to_add
+                            if insufficient:
+                                from products.policies import ProductTypePolicy
+                                decision = ProductTypePolicy.decide_from_availability(product_with_type, insufficient=True, context={"channel": "pos"})
+                                if not decision.valid:
+                                    logging.warning(
+                                        f"OrderConsumer: Insufficient stock to increase {product.name} quantity from {current_quantity} to {new_quantity}"
+                                    )
+                                    await self.send(text_data=json.dumps({
+                                        "type": "stock_error",
+                                        "message": f"Not enough stock to increase {product.name} to {new_quantity} units",
+                                        "error_type": "stock_validation",
+                                        "item_id": item_id,
+                                        "current_quantity": current_quantity,
+                                        "requested_quantity": new_quantity,
+                                        "can_override": True,
+                                        "action_type": "quantity_update",
+                                    }))
+                                    return
+                    else:
+                        # Legacy: check stock per requested chunk
+                        stock_available = await sync_to_async(InventoryService.check_stock_availability)(product, default_location, additional_quantity)
+                        if not stock_available:
+                            product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                            product_type_name = product_with_type.product_type.name.lower()
+                            if product_type_name != "menu":
+                                logging.warning(
+                                    f"OrderConsumer: Insufficient stock to increase {product.name} quantity from {current_quantity} to {new_quantity}"
+                                )
+                                await self.send(text_data=json.dumps({
+                                    "type": "stock_error",
+                                    "message": f"Not enough stock to increase {product.name} to {new_quantity} units",
+                                    "error_type": "stock_validation",
+                                    "item_id": item_id,
+                                    "current_quantity": current_quantity,
+                                    "requested_quantity": new_quantity,
+                                    "can_override": True,
+                                    "action_type": "quantity_update",
+                                }))
+                                return  # Don't update quantity if validation fails
                             # Regular product - strict validation, send error
                             logging.warning(
                                 f"OrderConsumer: Insufficient stock to increase {product.name} quantity from {current_quantity} to {new_quantity}"

@@ -244,6 +244,9 @@ else:
 # Base URL for building absolute URLs when no request context is available
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8001")
 
+# Feature flags (env-driven; may later move to DB-backed flags)
+USE_PRODUCT_TYPE_POLICY = True
+
 # You might also want to add STATICFILES_DIRS if you have project-specific static files
 # not tied to a particular app, though it's not strictly necessary for Jazzmin to work
 # STATICFILES_DIRS = [

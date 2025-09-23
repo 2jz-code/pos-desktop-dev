@@ -56,6 +56,27 @@ class ProductTypePolicy:
         return PolicyResult(True)
 
     @staticmethod
+    def decide_from_availability(product, insufficient: bool, context: Dict[str, Any] | None = None) -> PolicyResult:
+        """
+        Given a boolean indicating insufficient stock, decide per type policy
+        whether to allow (possibly warn) or block.
+        This does not perform stock math; callers supply insufficiency.
+        """
+        pt: ProductType = product.product_type
+        if not insufficient:
+            return PolicyResult(True)
+
+        # If negative stock is allowed or ignoring enforcement, always allow
+        if pt.allow_negative_stock or pt.stock_enforcement == ProductType.StockEnforcement.IGNORE:
+            return PolicyResult(True)
+
+        if pt.stock_enforcement == ProductType.StockEnforcement.WARN:
+            return PolicyResult(True, warning="Low/insufficient stock (policy: warn)")
+
+        # BLOCK
+        return PolicyResult(False, error="Insufficient stock (policy: block)")
+
+    @staticmethod
     def apply_pricing(product, base_price: Decimal, context: Dict[str, Any]) -> Decimal:
         """
         Calculate price according to product type pricing policy.
@@ -81,4 +102,3 @@ class ProductTypePolicy:
         if channel == "online":
             return bool(pt.available_online)
         return bool(pt.available_pos)
-

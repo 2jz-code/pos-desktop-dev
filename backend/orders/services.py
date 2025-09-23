@@ -149,16 +149,30 @@ class OrderService:
             if product.track_inventory:
                 try:
                     default_location = app_settings.get_default_location()
-                    # Check if we have enough stock for the requested quantity
-                    is_available = InventoryService.check_stock_availability(product, default_location, quantity)
-                    
-                    if not is_available:
+                    from django.conf import settings as dj_settings
+                    # When policy is enabled, enforce cumulative availability within the order
+                    if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                        from django.db.models import Sum
+                        # How many of this product are already reserved in this order?
+                        reserved = OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0
                         stock_level = InventoryService.get_stock_level(product, default_location)
-                        if stock_level <= 0:
-                            raise ValueError(f"'{product.name}' is out of stock. No items available.")
-                        else:
-                            raise ValueError(f"'{product.name}' has low stock. Only {stock_level} items available, but {quantity} requested.")
-                            
+                        # Work with Decimal for consistency
+                        available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+                        if Decimal(str(quantity)) > available_to_add:
+                            if available_to_add <= 0:
+                                raise ValueError(f"'{product.name}' is out of stock. No items available.")
+                            else:
+                                raise ValueError(f"'{product.name}' has low stock. Only {available_to_add} items available, but {quantity} requested.")
+                    else:
+                        # Legacy: check only the requested chunk against stock
+                        is_available = InventoryService.check_stock_availability(product, default_location, quantity)
+                        if not is_available:
+                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            if stock_level <= 0:
+                                raise ValueError(f"'{product.name}' is out of stock. No items available.")
+                            else:
+                                raise ValueError(f"'{product.name}' has low stock. Only {stock_level} items available, but {quantity} requested.")
+                    
                 except AttributeError:
                     # If InventoryService methods don't exist, fall back to basic stock level check
                     from inventory.models import InventoryStock
@@ -658,8 +672,24 @@ class OrderService:
                                 tax.rate / Decimal("100.0")
                             )
                     else:
-                        # If product has no specific taxes, use default tax rate
-                        tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
+                        # Feature-flagged: consider product type default taxes
+                        from django.conf import settings as dj_settings
+                        if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                            try:
+                                from products.policies import ProductTypePolicy
+                                type_taxes = list(ProductTypePolicy.get_applicable_taxes(item.product))
+                            except Exception:
+                                type_taxes = []
+                            if type_taxes:
+                                for tax in type_taxes:
+                                    tax_total += discounted_item_price * (
+                                        tax.rate / Decimal("100.0")
+                                    )
+                            else:
+                                tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
+                        else:
+                            # Legacy: use global tax rate
+                            tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
                 else:
                     # Custom items use the default tax rate from settings
                     tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))

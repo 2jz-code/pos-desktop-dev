@@ -507,13 +507,9 @@ export const createCartSlice = (set, get) => {
 			});
 		},
 
-		updateItemQuantityViaSocket: (itemId, quantity) => {
-			set((state) => ({
-				updatingItems: [...state.updatingItems, itemId],
-			}));
-
-			const operationId = `update-quantity-${itemId}-${Date.now()}`;
-			get().addPendingOperation(operationId);
+        updateItemQuantityViaSocket: (itemId, quantity) => {
+            const operationId = `update-quantity-${itemId}-${Date.now()}`;
+            get().addPendingOperation(operationId);
 
 			cartSocket.sendMessage({
 				type: "update_item_quantity",
