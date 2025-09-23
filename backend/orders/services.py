@@ -151,19 +151,35 @@ class OrderService:
                 try:
                     default_location = app_settings.get_default_location()
                     from django.conf import settings as dj_settings
-                    # When policy is enabled, enforce cumulative availability within the order
+
+                    # When policy is enabled, use policy-aware stock checking with cumulative enforcement
                     if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
-                        from django.db.models import Sum
-                        # How many of this product are already reserved in this order?
-                        reserved = OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0
-                        stock_level = InventoryService.get_stock_level(product, default_location)
-                        # Work with Decimal for consistency
-                        available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
-                        if Decimal(str(quantity)) > available_to_add:
-                            if available_to_add <= 0:
-                                raise ValueError(f"'{product.name}' is out of stock. No items available.")
-                            else:
-                                raise ValueError(f"'{product.name}' has low stock. Only {available_to_add} items available, but {quantity} requested.")
+                        pt = product.product_type
+                        behavior = getattr(pt, 'inventory_behavior', 'QUANTITY')
+                        enforcement = getattr(pt, 'stock_enforcement', 'BLOCK')
+
+                        # NONE behavior: always allow (no stock validation)
+                        if behavior == 'NONE':
+                            pass  # Skip all stock validation
+                        # IGNORE enforcement: always allow (regardless of stock)
+                        elif enforcement == 'IGNORE':
+                            pass  # Skip all stock validation
+                        # WARN enforcement: always allow (could add warning logging here)
+                        elif enforcement == 'WARN':
+                            pass  # Skip stock validation, item will be added
+                        # BLOCK enforcement: enforce stock limits
+                        elif enforcement == 'BLOCK':
+                            from django.db.models import Sum
+                            # How many of this product are already reserved in this order?
+                            reserved = OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0
+                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            # Work with Decimal for consistency
+                            available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+                            if Decimal(str(quantity)) > available_to_add:
+                                if available_to_add <= 0:
+                                    raise ValueError(f"'{product.name}' is out of stock. No items available.")
+                                else:
+                                    raise ValueError(f"'{product.name}' has low stock. Only {available_to_add} items available, but {quantity} requested.")
                     else:
                         # Legacy: check only the requested chunk against stock
                         is_available = InventoryService.check_stock_availability(product, default_location, quantity)
@@ -739,6 +755,93 @@ class OrderService:
         """
         order.items.all().delete()
         OrderService.recalculate_order_totals(order)
+
+    @staticmethod
+    @transaction.atomic
+    def update_item_quantity(order_item: 'OrderItem', new_quantity: int):
+        """
+        Updates the quantity of an existing order item with policy-aware stock validation.
+
+        Args:
+            order_item: The OrderItem to update
+            new_quantity: The new quantity (must be > 0)
+
+        Raises:
+            ValueError: If stock validation fails or quantity is invalid
+        """
+        if new_quantity <= 0:
+            raise ValueError("Quantity must be greater than 0")
+
+        current_quantity = order_item.quantity
+        if new_quantity == current_quantity:
+            return  # No change needed
+
+        # Only validate stock if increasing quantity and product tracks inventory
+        if new_quantity > current_quantity and order_item.product and order_item.product.track_inventory:
+            additional_quantity = new_quantity - current_quantity
+
+            try:
+                from inventory.services import InventoryService
+                from settings.config import app_settings
+                from django.conf import settings as dj_settings
+
+                default_location = app_settings.get_default_location()
+
+                # When policy is enabled, use policy-aware stock checking with cumulative enforcement
+                if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                    pt = order_item.product.product_type
+                    behavior = getattr(pt, 'inventory_behavior', 'QUANTITY')
+                    enforcement = getattr(pt, 'stock_enforcement', 'BLOCK')
+
+                    # NONE behavior: always allow (no stock validation)
+                    if behavior == 'NONE':
+                        pass  # Skip all stock validation
+                    # IGNORE enforcement: always allow (regardless of stock)
+                    elif enforcement == 'IGNORE':
+                        pass  # Skip all stock validation
+                    # WARN enforcement: always allow (could add warning logging here)
+                    elif enforcement == 'WARN':
+                        pass  # Skip stock validation, item will be updated
+                    # BLOCK enforcement: enforce stock limits with cumulative checking
+                    elif enforcement == 'BLOCK':
+                        from django.db.models import Sum
+                        # How many of this product are already reserved in this order?
+                        reserved = OrderItem.objects.filter(
+                            order=order_item.order,
+                            product=order_item.product
+                        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        # Work with Decimal for consistency
+                        available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+
+                        if Decimal(str(additional_quantity)) > available_to_add:
+                            if available_to_add <= 0:
+                                raise ValueError(f"'{order_item.product.name}' is out of stock. No items available.")
+                            else:
+                                raise ValueError(f"'{order_item.product.name}' has low stock. Only {available_to_add} items available to add.")
+                else:
+                    # Legacy: check only the additional quantity against stock
+                    is_available = InventoryService.check_stock_availability(
+                        order_item.product, default_location, additional_quantity
+                    )
+                    if not is_available:
+                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        if stock_level <= 0:
+                            raise ValueError(f"'{order_item.product.name}' is out of stock. No items available.")
+                        else:
+                            raise ValueError(f"'{order_item.product.name}' has low stock. Only {stock_level} items available.")
+
+            except AttributeError:
+                # If InventoryService methods don't exist, fall back to basic check
+                logger.warning(f"InventoryService methods not available for stock validation")
+
+        # Update the quantity
+        order_item.quantity = new_quantity
+        order_item.save()
+
+        # Recalculate order totals
+        OrderService.recalculate_order_totals(order_item.order)
 
     @staticmethod
     @transaction.atomic
