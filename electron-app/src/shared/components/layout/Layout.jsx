@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useNavigationRoutes } from "@/shared/hooks/useNavigationRoutes";
@@ -15,6 +15,8 @@ import {
 	Wifi,
 	WifiOff,
 	Power,
+	Sun,
+	Moon,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -37,7 +39,7 @@ import {
 	TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 import PropTypes from "prop-types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/shared/lib/utils";
 import {
 	useSyncToCustomerDisplay,
@@ -47,19 +49,47 @@ import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
 import WebOrderNotification from "@/shared/components/notifications/WebOrderNotification";
 import { NotificationRetryButton } from "@/components/NotificationRetryButton";
 
+const resolveInitialTheme = () => {
+	if (typeof window === "undefined") {
+		return "dark";
+	}
+
+	const stored = localStorage.getItem("preferred-theme");
+	if (stored === "light" || stored === "dark") {
+		return stored;
+	}
+
+	return window.matchMedia("(prefers-color-scheme: dark)").matches
+		? "dark"
+		: "light";
+};
+
+const applyThemePreference = (theme) => {
+	if (typeof document === "undefined") {
+		return;
+	}
+
+	const root = document.documentElement;
+	root.classList.toggle("dark", theme === "dark");
+	root.dataset.theme = theme;
+};
 
 export function Layout({ children }) {
 	const { user, logout } = useAuth();
 	const permissions = useRolePermissions();
 	const navigationRoutes = useNavigationRoutes();
-	const [isCollapsed, setIsCollapsed] = useState(
-		JSON.parse(localStorage.getItem("sidebar-collapsed")) || false
-	);
+	const [isCollapsed, setIsCollapsed] = useState(() => {
+		try {
+			return JSON.parse(localStorage.getItem("sidebar-collapsed")) || false;
+		} catch (error) {
+			console.warn("Failed to read sidebar state", error);
+			return false;
+		}
+	});
+	const [theme, setTheme] = useState(() => resolveInitialTheme());
 
-	// Initialize notification system
 	const {
 		notifications,
-		// connectionStatus, // Available for future debugging/logging
 		dismissNotification,
 		clearAllNotifications,
 		handleViewOrder,
@@ -74,24 +104,33 @@ export function Layout({ children }) {
 		localStorage.setItem("sidebar-collapsed", JSON.stringify(isCollapsed));
 	}, [isCollapsed]);
 
+	useEffect(() => {
+		applyThemePreference(theme);
+		localStorage.setItem("preferred-theme", theme);
+	}, [theme]);
+
+	const toggleTheme = useCallback(() => {
+		setTheme((current) => (current === "dark" ? "light" : "dark"));
+	}, []);
+
 	return (
 		<div
 			className={cn(
-				"grid min-h-screen w-full transition-[grid-template-columns] duration-300 ease-in-out bg-slate-50 dark:bg-slate-900",
+				"grid min-h-screen w-full bg-background text-foreground transition-[grid-template-columns] duration-300 ease-standard",
 				isCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]"
 			)}
 		>
 			{/* Desktop Sidebar */}
-			<div className="hidden border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 lg:block">
-				<div className="flex h-full max-h-screen flex-col">
+			<div className="hidden border-r border-border/60 bg-sidebar/95 text-sidebar-foreground lg:block">
+				<div className="flex h-full max-h-screen flex-col backdrop-blur">
 					{/* Logo/Brand */}
-					<div className="flex h-[60px] items-center border-b border-slate-200 dark:border-slate-700 px-4">
+					<div className="flex h-[60px] items-center border-b border-sidebar-border/70 px-4">
 						<Link
 							to="/"
-							className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100"
+							className="flex items-center gap-2 font-semibold text-sidebar-foreground"
 						>
-							<div className="p-1.5 bg-slate-900 dark:bg-slate-100 rounded-lg">
-								<PanelLeft className="h-4 w-4 text-white dark:text-slate-900" />
+							<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
+								<PanelLeft className="h-4 w-4" />
 							</div>
 							{!isCollapsed && <span>Ajeen POS</span>}
 						</Link>
@@ -99,7 +138,7 @@ export function Layout({ children }) {
 
 					{/* Navigation */}
 					<div className="flex-1 overflow-auto py-4">
-						<nav className="grid items-start px-3 text-sm font-medium gap-1">
+						<nav className="grid items-start gap-1 px-3 text-sm font-medium">
 							{navigationRoutes.map((route) => (
 								<NavigationItem
 									key={route.path}
@@ -112,11 +151,11 @@ export function Layout({ children }) {
 					</div>
 
 					{/* Logout */}
-					<div className="border-t border-slate-200 dark:border-slate-700 p-3 mt-auto">
+					<div className="mt-auto border-t border-sidebar-border/70 p-3">
 						<button
 							onClick={logout}
 							className={cn(
-								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
+								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 								isCollapsed && "justify-center px-2"
 							)}
 						>
@@ -126,7 +165,7 @@ export function Layout({ children }) {
 						<button
 							onClick={() => window.electronAPI.shutdown()}
 							className={cn(
-								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-red-500 dark:text-red-400 transition-all hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 mt-1",
+								"mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors duration-200 hover:bg-destructive/15 hover:text-destructive",
 								isCollapsed && "justify-center px-2"
 							)}
 						>
@@ -138,15 +177,13 @@ export function Layout({ children }) {
 			</div>
 
 			{/* Main Content Area */}
-			<div className="flex flex-col h-screen">
-				{/* Top Header */}
-				<header className="flex h-14 lg:h-[60px] items-center gap-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 sticky top-0 z-30">
-					{/* Desktop Sidebar Toggle */}
+			<div className="flex h-screen flex-col">
+				<header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/60 bg-card/80 px-4 shadow-xs backdrop-blur lg:h-[60px] lg:px-6">
 					<Button
 						variant="outline"
 						size="icon"
-						className="hidden lg:inline-flex border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
 						onClick={() => setIsCollapsed(!isCollapsed)}
+						className="hidden border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:inline-flex"
 					>
 						{isCollapsed ? (
 							<PanelLeftOpen className="h-4 w-4" />
@@ -156,13 +193,12 @@ export function Layout({ children }) {
 						<span className="sr-only">Toggle sidebar</span>
 					</Button>
 
-					{/* Mobile Menu */}
 					<Sheet>
 						<SheetTrigger asChild>
 							<Button
 								variant="outline"
 								size="icon"
-								className="shrink-0 lg:hidden border-slate-200 dark:border-slate-700 bg-transparent"
+								className="shrink-0 border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:hidden"
 							>
 								<Menu className="h-4 w-4" />
 								<span className="sr-only">Toggle navigation menu</span>
@@ -170,15 +206,15 @@ export function Layout({ children }) {
 						</SheetTrigger>
 						<SheetContent
 							side="left"
-							className="flex flex-col bg-white dark:bg-slate-900"
+							className="flex flex-col gap-6 bg-sidebar text-sidebar-foreground"
 						>
-							<nav className="grid gap-2 text-lg font-medium">
+							<nav className="grid gap-2 text-base font-medium">
 								<Link
 									to="/"
-									className="flex items-center gap-2 text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100"
+									className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent/60"
 								>
-									<div className="p-1.5 bg-slate-900 dark:bg-slate-100 rounded-lg">
-										<PanelLeft className="h-4 w-4 text-white dark:text-slate-900" />
+									<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
+										<PanelLeft className="h-4 w-4" />
 									</div>
 									<span>Ajeen POS</span>
 								</Link>
@@ -193,17 +229,17 @@ export function Layout({ children }) {
 									/>
 								))}
 							</nav>
-							<div className="mt-auto p-4">
+							<div className="mt-auto space-y-2 border-t border-sidebar-border/70 pt-4">
 								<button
 									onClick={logout}
-									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
 								>
 									<LogOut className="h-4 w-4" />
 									<span className="truncate">Logout</span>
 								</button>
 								<button
 									onClick={() => window.electronAPI.shutdown()}
-									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-red-500 dark:text-red-400 transition-all hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 mt-1"
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/15"
 								>
 									<Power className="h-4 w-4" />
 									<span className="truncate">Shutdown</span>
@@ -212,25 +248,34 @@ export function Layout({ children }) {
 						</SheetContent>
 					</Sheet>
 
-					<div className="w-full flex-1">
-						{/* Search bar can be added here */}
-					</div>
+					<div className="flex-1" />
 
-					{/* Notification & Connection Status */}
+					<Button
+						variant="outline"
+						size="icon"
+						onClick={toggleTheme}
+						className="border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+					>
+						{theme === "dark" ? (
+							<Sun className="h-4 w-4" />
+						) : (
+							<Moon className="h-4 w-4" />
+						)}
+						<span className="sr-only">Toggle color theme</span>
+					</Button>
+
 					<div className="flex items-center gap-2">
-						{/* Notification Retry Button */}
 						<NotificationRetryButton />
 
-						{/* Connection Status Indicator */}
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<div className="flex items-center">
 									{isConnected ? (
-										<Wifi className="h-4 w-4 text-green-600 dark:text-green-400" />
+										<Wifi className="h-4 w-4 text-emerald-400" />
 									) : isConnecting ? (
-										<Wifi className="h-4 w-4 text-yellow-600 dark:text-yellow-400 animate-pulse" />
+										<Wifi className="h-4 w-4 text-amber-400 animate-pulse" />
 									) : (
-										<WifiOff className="h-4 w-4 text-red-600 dark:text-red-400" />
+										<WifiOff className="h-4 w-4 text-destructive" />
 									)}
 								</div>
 							</TooltipTrigger>
@@ -246,17 +291,16 @@ export function Layout({ children }) {
 							</TooltipContent>
 						</Tooltip>
 
-						{/* Notification Bell */}
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
 									variant="outline"
 									size="icon"
-									className="relative border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
+									className="relative border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
 								>
 									<Bell className="h-4 w-4" />
 									{notifications.length > 0 && (
-										<Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
+										<Badge className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
 											{notifications.length}
 										</Badge>
 									)}
@@ -264,29 +308,29 @@ export function Layout({ children }) {
 							</DropdownMenuTrigger>
 							<DropdownMenuContent
 								align="end"
-								className="w-[350px]"
+								className="w-[340px] border border-border/60 bg-card text-card-foreground"
 							>
-								<DropdownMenuLabel className="flex justify-between items-center">
+								<DropdownMenuLabel className="flex items-center justify-between text-sm">
 									<span>Web Order Notifications</span>
 									{notifications.length > 0 && (
 										<Button
 											variant="ghost"
 											size="sm"
 											onClick={clearAllNotifications}
-											className="h-auto px-2 py-1 text-xs"
+											className="h-auto px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
 										>
-											Clear All
+											Clear all
 										</Button>
 									)}
 								</DropdownMenuLabel>
-								<DropdownMenuSeparator />
+								<DropdownMenuSeparator className="-mx-1 border-border/60" />
 								{notifications.length > 0 ? (
-									<div className="max-h-[400px] overflow-y-auto">
+									<div className="max-h-[360px] space-y-1 overflow-y-auto">
 										{notifications.map((notification) => (
 											<DropdownMenuItem
 												key={notification.id}
 												className="p-0"
-												onSelect={(e) => e.preventDefault()}
+												onSelect={(event) => event.preventDefault()}
 											>
 												<WebOrderNotification
 													order={notification.data.order}
@@ -297,7 +341,7 @@ export function Layout({ children }) {
 										))}
 									</div>
 								) : (
-									<div className="p-4 text-sm text-center text-slate-500">
+									<div className="p-4 text-center text-sm text-muted-foreground">
 										No new notifications
 									</div>
 								)}
@@ -305,17 +349,16 @@ export function Layout({ children }) {
 						</DropdownMenu>
 					</div>
 
-					{/* User Menu */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
 								variant="ghost"
 								size="icon"
-								className="rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+								className="rounded-full bg-transparent hover:bg-muted/40"
 							>
-								<div className="relative flex-shrink-0">
+								<div className="relative">
 									<img
-										className="h-8 w-8 rounded-full border border-slate-200 dark:border-slate-700"
+										className="h-8 w-8 rounded-full border border-border/60"
 										src={`https://avatar.vercel.sh/${user?.username}.png`}
 										alt="Avatar"
 									/>
@@ -325,22 +368,22 @@ export function Layout({ children }) {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
 							align="end"
-							className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+							className="border border-border/60 bg-card text-card-foreground"
 						>
-							<DropdownMenuLabel className="text-slate-900 dark:text-slate-100">
-								My Account
+							<DropdownMenuLabel className="text-sm font-medium text-foreground">
+								My account
 							</DropdownMenuLabel>
-							<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
-							<DropdownMenuItem className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+							<DropdownMenuSeparator className="-mx-1 border-border/60" />
+							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
 								Settings
 							</DropdownMenuItem>
-							<DropdownMenuItem className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
 								Support
 							</DropdownMenuItem>
-							<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+							<DropdownMenuSeparator className="-mx-1 border-border/60" />
 							<DropdownMenuItem
 								onClick={logout}
-								className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+								className="text-muted-foreground hover:text-foreground"
 							>
 								<LogOut className="mr-2 h-4 w-4" />
 								<span>Logout</span>
@@ -349,8 +392,7 @@ export function Layout({ children }) {
 					</DropdownMenu>
 				</header>
 
-				{/* Main Content */}
-				<main className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
+				<main className="flex flex-1 flex-col overflow-hidden bg-background">
 					{children}
 				</main>
 			</div>
@@ -361,3 +403,4 @@ export function Layout({ children }) {
 Layout.propTypes = {
 	children: PropTypes.node.isRequired,
 };
+
