@@ -33,7 +33,7 @@ import { Label } from "@/shared/components/ui/label";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { ArchiveDependencyDialog } from "@/shared/components/ui/ArchiveDependencyDialog";
-import { Edit, Archive, ArchiveRestore, Package, DollarSign, Globe, ChevronDown, Check, X, Plus } from "lucide-react";
+import { Edit, Archive, ArchiveRestore, Package, DollarSign, Globe, ChevronDown, Check, X, Plus, ShieldCheck, Clock } from "lucide-react";
 import { getTaxes, createTax } from "@/domains/products/services/taxService";
 import {
     Select,
@@ -57,15 +57,13 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
         inventory_behavior: "QUANTITY",
         stock_enforcement: "BLOCK",
         allow_negative_stock: false,
-        low_stock_threshold: 10,
-        critical_stock_threshold: 5,
         tax_inclusive: false,
         default_taxes_ids: [],
         pricing_method: "FIXED",
         default_markup_percent: "",
-        available_online: true,
-        available_pos: true,
         standard_prep_minutes: 10,
+        max_quantity_per_item: "",
+        exclude_from_discounts: false,
     });
     const [taxOptions, setTaxOptions] = useState([]);
     const [isTaxDialogOpen, setIsTaxDialogOpen] = useState(false);
@@ -133,15 +131,13 @@ const openFormDialog = (type = null) => {
             inventory_behavior: type.inventory_behavior || "QUANTITY",
             stock_enforcement: type.stock_enforcement || "BLOCK",
             allow_negative_stock: !!type.allow_negative_stock,
-            low_stock_threshold: type.low_stock_threshold ?? 10,
-            critical_stock_threshold: type.critical_stock_threshold ?? 5,
             tax_inclusive: !!type.tax_inclusive,
             default_taxes_ids: (type.default_taxes || []).map((t) => t.id),
             pricing_method: type.pricing_method || "FIXED",
             default_markup_percent: type.default_markup_percent ?? "",
-            available_online: !!type.available_online,
-            available_pos: !!type.available_pos,
             standard_prep_minutes: type.standard_prep_minutes ?? 10,
+            max_quantity_per_item: type.max_quantity_per_item ?? "",
+            exclude_from_discounts: !!type.exclude_from_discounts,
         });
     } else {
         setFormData({
@@ -150,15 +146,13 @@ const openFormDialog = (type = null) => {
             inventory_behavior: "QUANTITY",
             stock_enforcement: "BLOCK",
             allow_negative_stock: false,
-            low_stock_threshold: 10,
-            critical_stock_threshold: 5,
             tax_inclusive: false,
             default_taxes_ids: [],
             pricing_method: "FIXED",
             default_markup_percent: "",
-            available_online: true,
-            available_pos: true,
             standard_prep_minutes: 10,
+            max_quantity_per_item: "",
+            exclude_from_discounts: false,
         });
     }
     setIsFormDialogOpen(true);
@@ -247,8 +241,6 @@ const handleFormSubmit = async (e) => {
             inventory_behavior: formData.inventory_behavior,
             stock_enforcement: formData.stock_enforcement,
             allow_negative_stock: !!formData.allow_negative_stock,
-            low_stock_threshold: Number(formData.low_stock_threshold) || 0,
-            critical_stock_threshold: Number(formData.critical_stock_threshold) || 0,
             tax_inclusive: !!formData.tax_inclusive,
             default_taxes_ids: formData.default_taxes_ids || [],
             pricing_method: formData.pricing_method,
@@ -256,9 +248,12 @@ const handleFormSubmit = async (e) => {
                 formData.default_markup_percent === "" || formData.default_markup_percent === null
                     ? null
                     : Number(formData.default_markup_percent),
-            available_online: !!formData.available_online,
-            available_pos: !!formData.available_pos,
             standard_prep_minutes: Number(formData.standard_prep_minutes) || 0,
+            max_quantity_per_item:
+                formData.max_quantity_per_item === "" || formData.max_quantity_per_item === null
+                    ? null
+                    : Number(formData.max_quantity_per_item),
+            exclude_from_discounts: !!formData.exclude_from_discounts,
         };
         if (editingType) {
             await updateProductType(editingType.id, payload);
@@ -500,33 +495,6 @@ const handleFormSubmit = async (e) => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-6">
-                                    <div className="space-y-3">
-                                        <Label>Low Stock Alert Level</Label>
-                                        <Input
-                                            type="number"
-                                            value={formData.low_stock_threshold}
-                                            onChange={(e) => setFormData({ ...formData, low_stock_threshold: e.target.value })}
-                                            placeholder="10"
-                                        />
-                                        <p className="text-xs text-muted-foreground">Warn when stock reaches this level</p>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <Label>Critical Stock Level</Label>
-                                        <Input
-                                            type="number"
-                                            value={formData.critical_stock_threshold}
-                                            onChange={(e) => setFormData({ ...formData, critical_stock_threshold: e.target.value })}
-                                            placeholder="5"
-                                        />
-                                        <p className="text-xs text-muted-foreground">Send urgent alerts at this level</p>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        {/* Empty third column for potential future fields */}
-                                    </div>
-                                </div>
                             </div>
 
                             {/* Tax & Pricing Section */}
@@ -689,44 +657,43 @@ const handleFormSubmit = async (e) => {
                                 </div>
                             </div>
 
-                            {/* Availability & Operations Section */}
+                            {/* Order Controls Section */}
                             <div className="border rounded-lg p-4 space-y-4">
                                 <div className="flex items-center gap-3">
-                                    <Globe className="h-5 w-5 text-purple-600" />
+                                    <ShieldCheck className="h-5 w-5 text-orange-600" />
                                     <div>
-                                        <h4 className="text-lg font-semibold">Availability & Operations</h4>
-                                        <p className="text-sm text-muted-foreground">Where and how products can be sold</p>
+                                        <h4 className="text-lg font-semibold">Order Controls</h4>
+                                        <p className="text-sm text-muted-foreground">Limits and restrictions for ordering</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-6">
                                     <div className="space-y-3">
-                                        <Label>Available Online</Label>
-                                        <div className="flex items-center gap-2">
-                                            <Checkbox
-                                                checked={!!formData.available_online}
-                                                onCheckedChange={(v) => setFormData({ ...formData, available_online: !!v })}
-                                                id="available_online"
-                                            />
-                                            <Label htmlFor="available_online" className="text-sm font-normal">Enable online ordering</Label>
-                                        </div>
+                                        <Label>Max Quantity Per Order</Label>
+                                        <Input
+                                            type="number"
+                                            value={formData.max_quantity_per_item}
+                                            onChange={(e) => setFormData({ ...formData, max_quantity_per_item: e.target.value })}
+                                            placeholder="e.g., 5"
+                                            min="1"
+                                        />
                                         <p className="text-xs text-muted-foreground">
-                                            Can customers order this online/mobile app?
+                                            Maximum quantity of this item type per order (prevents bulk ordering issues)
                                         </p>
                                     </div>
 
                                     <div className="space-y-3">
-                                        <Label>Available at POS</Label>
+                                        <Label>Discount Eligibility</Label>
                                         <div className="flex items-center gap-2">
                                             <Checkbox
-                                                checked={!!formData.available_pos}
-                                                onCheckedChange={(v) => setFormData({ ...formData, available_pos: !!v })}
-                                                id="available_pos"
+                                                checked={!!formData.exclude_from_discounts}
+                                                onCheckedChange={(v) => setFormData({ ...formData, exclude_from_discounts: !!v })}
+                                                id="exclude_from_discounts"
                                             />
-                                            <Label htmlFor="available_pos" className="text-sm font-normal">Enable POS sales</Label>
+                                            <Label htmlFor="exclude_from_discounts" className="text-sm font-normal">Block all discounts</Label>
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Can staff sell this through the POS system?
+                                            Check to prevent any discounts from applying to this product type (protects margins)
                                         </p>
                                     </div>
 
@@ -738,6 +705,7 @@ const handleFormSubmit = async (e) => {
                                                 value={formData.standard_prep_minutes}
                                                 onChange={(e) => setFormData({ ...formData, standard_prep_minutes: e.target.value })}
                                                 placeholder="10"
+                                                min="0"
                                             />
                                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">min</span>
                                         </div>

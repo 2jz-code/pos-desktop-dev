@@ -237,6 +237,9 @@ class ProductTypeSerializer(BaseModelSerializer):
             "default_markup_percent",
             # Prep metadata
             "standard_prep_minutes",
+            # Order controls
+            "max_quantity_per_item",
+            "exclude_from_discounts",
         ]
         # No relationships to optimize
 

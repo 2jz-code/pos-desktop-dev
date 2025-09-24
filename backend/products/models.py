@@ -224,6 +224,18 @@ class ProductType(SoftDeleteMixin):
         help_text=_("Typical preparation time in minutes."),
     )
 
+    # Order controls
+    max_quantity_per_item = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text=_("Maximum quantity of any individual product per order."),
+    )
+
+    # Discount controls
+    exclude_from_discounts = models.BooleanField(
+        default=False,
+        help_text=_("Prevent discounts from being applied to this product type."),
+    )
+
     class Meta:
         verbose_name = _("Product Type")
         verbose_name_plural = _("Product Types")

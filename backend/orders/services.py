@@ -136,9 +136,26 @@ class OrderService:
 
         selected_modifiers = selected_modifiers or []
         logger.debug(f"add_item_to_order called with product_id: {product.id}, modifier_count: {len(selected_modifiers)}")
-        
+
         # Skip validation if force_add is True
         if not force_add:
+            # Check max quantity per item limit from ProductType
+            pt = product.product_type
+            if pt and pt.max_quantity_per_item:
+                from django.db.models import Sum
+                # Get current quantity of this specific product in the order
+                current_quantity = OrderItem.objects.filter(
+                    order=order,
+                    product=product
+                ).aggregate(total=Sum('quantity'))['total'] or 0
+
+                total_after_add = current_quantity + quantity
+                if total_after_add > pt.max_quantity_per_item:
+                    raise ValueError(
+                        f"Cannot add {quantity} of '{product.name}'. "
+                        f"Maximum {pt.max_quantity_per_item} per order. "
+                        f"Currently have {current_quantity} in order."
+                    )
             option_ids = [mod.get('option_id') for mod in selected_modifiers if mod.get('option_id')]
             ModifierValidationService.validate_product_selection(product, option_ids)
             
@@ -646,7 +663,7 @@ class OrderService:
 
         # Pre-fetch items with related data to prevent N+1 queries
         # Note: Some items may not have products (custom items), so we use nullable relations
-        items_queryset = order.items.select_related("product").prefetch_related("product__taxes").all()
+        items_queryset = order.items.select_related("product", "product__product_type").prefetch_related("product__taxes").all()
         items = list(items_queryset)
         item_count = len(items)
 
@@ -687,6 +704,12 @@ class OrderService:
                 )
 
                 if item.product:
+                    # Check if product type has tax_inclusive flag set
+                    product_type = item.product.product_type
+                    if product_type and product_type.tax_inclusive:
+                        # Tax is already included in the product price, don't calculate additional tax
+                        continue
+
                     # Access pre-fetched taxes to prevent additional queries
                     product_taxes = item.product.taxes.all()
                     if product_taxes:

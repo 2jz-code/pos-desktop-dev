@@ -92,3 +92,43 @@ class ProductTypePolicy:
 
         return base_price
 
+    @staticmethod
+    def calculate_display_price(product, stored_price: Decimal) -> Decimal:
+        """
+        Calculate the display price based on whether tax is inclusive.
+        If tax_inclusive=True, the stored price includes tax and should be displayed as-is.
+        If tax_inclusive=False, the stored price excludes tax and tax should be added for display.
+        """
+        pt: ProductType = product.product_type
+
+        # If not tax inclusive, stored price is the display price (tax added separately)
+        if not pt.tax_inclusive:
+            return stored_price
+
+        # If tax inclusive, the stored price already includes tax
+        return stored_price
+
+    @staticmethod
+    def calculate_base_price_from_display(product, display_price: Decimal) -> Decimal:
+        """
+        Calculate the base price (excluding tax) from a display price.
+        If tax_inclusive=True, extract tax from the display price to get base price.
+        If tax_inclusive=False, the display price is already the base price.
+        """
+        pt: ProductType = product.product_type
+
+        # If not tax inclusive, display price equals base price
+        if not pt.tax_inclusive:
+            return display_price
+
+        # If tax inclusive, need to extract tax from display price
+        applicable_taxes = ProductTypePolicy.get_applicable_taxes(product)
+        total_tax_rate = sum(Decimal(str(tax.rate)) for tax in applicable_taxes) / 100
+
+        # Calculate base price: display_price / (1 + tax_rate)
+        if total_tax_rate > 0:
+            base_price = display_price / (1 + total_tax_rate)
+            return base_price.quantize(Decimal('0.01'))
+
+        return display_price
+

@@ -32,6 +32,8 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
         "stock_enforcement",
         "pricing_method",
         "tax_inclusive",
+        "max_quantity_per_item",
+        "exclude_from_discounts",
         "is_active",
     )
     list_filter = (
@@ -40,6 +42,7 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
         "stock_enforcement",
         "pricing_method",
         "tax_inclusive",
+        "exclude_from_discounts",
     )
     search_fields = ("name", "description")
     filter_horizontal = ("default_taxes",)
@@ -80,6 +83,15 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
             {
                 "fields": (
                     "standard_prep_minutes",
+                )
+            },
+        ),
+        (
+            "Order Controls",
+            {
+                "fields": (
+                    "max_quantity_per_item",
+                    "exclude_from_discounts",
                 )
             },
         ),
