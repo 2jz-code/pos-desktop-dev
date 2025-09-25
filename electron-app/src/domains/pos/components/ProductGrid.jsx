@@ -119,16 +119,16 @@ const ProductGrid = forwardRef((props, ref) => {
 	// Show loading state only when actually loading
 	if (isLoadingProducts) {
 		return (
-			<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col">
-				<div className="p-6 border-b border-slate-200 dark:border-slate-700">
-					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+			<div className="bg-card border border-border/60 rounded-xl h-full flex flex-col">
+				<div className="p-6 border-b border-border/60">
+					<h2 className="text-xl font-semibold text-foreground">
 						Products
 					</h2>
 				</div>
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center py-12">
-						<div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-4" />
-						<p className="text-slate-500 dark:text-slate-400 text-lg">
+						<div className="h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-blue-600 mx-auto mb-4" />
+						<p className="text-muted-foreground text-lg">
 							Loading products...
 						</p>
 					</div>
@@ -139,10 +139,10 @@ const ProductGrid = forwardRef((props, ref) => {
 
 
 	return (
-		<div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl h-full flex flex-col shadow-sm">
-			<div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+		<div className="bg-card border border-border/60 rounded-xl h-full flex flex-col shadow-sm">
+			<div className="p-6 border-b border-border/60 flex-shrink-0">
 				<div className="flex items-center justify-between mb-4">
-					<h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+					<h2 className="text-xl font-semibold text-foreground">
 						Products
 					</h2>
 					<div className="flex items-center gap-2">
@@ -156,21 +156,21 @@ const ProductGrid = forwardRef((props, ref) => {
 							Custom Item
 						</Button>
 						<div className="relative">
-							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 							<Input
 								ref={searchInputRef}
 								type="text"
 								placeholder="Search products..."
 								value={searchTerm}
 								onChange={handleSearchChange}
-								className="pl-9 pr-9 w-64 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+								className="pl-9 pr-9 w-64 border-border/60 bg-card hover:border-border transition-colors"
 							/>
 							{searchTerm && (
 								<Button
 									variant="ghost"
 									size="sm"
 									onClick={clearSearch}
-									className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-slate-100 dark:hover:bg-slate-800"
+									className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-muted/40"
 								>
 									<X className="h-3 w-3" />
 								</Button>
@@ -190,10 +190,10 @@ const ProductGrid = forwardRef((props, ref) => {
 						className="mb-10 last:mb-0"
 					>
 						<div className="flex items-center gap-3 mb-6">
-							<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 capitalize">
+							<h2 className="text-xl font-bold text-foreground capitalize">
 								{parentName}
 							</h2>
-							<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
+							<div className="flex-1 h-px bg-border/60"></div>
 						</div>
 
 						{/* Direct products under parent category */}
@@ -218,11 +218,11 @@ const ProductGrid = forwardRef((props, ref) => {
 									className="mb-8"
 								>
 									<div className="flex items-center gap-3 mb-4">
-										<h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 capitalize">
+										<h3 className="text-lg font-semibold text-foreground/80 capitalize">
 												{subcategoryName}
 										</h3>
-										<div className="flex-1 h-px bg-slate-200 dark:bg-slate-700"></div>
-										<span className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+										<div className="flex-1 h-px bg-border/60"></div>
+										<span className="text-sm text-muted-foreground bg-muted/40 px-2 py-1 rounded-full">
 												{subcategoryGroup.products.length} items
 										</span>
 									</div>
@@ -242,8 +242,8 @@ const ProductGrid = forwardRef((props, ref) => {
 				{(!Array.isArray(filteredProducts) || filteredProducts.length === 0) &&
 					Object.keys(groupedProducts).length === 0 && (
 						<div className="text-center py-12">
-							<Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-							<p className="text-slate-500 dark:text-slate-400 text-lg">
+							<Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+							<p className="text-muted-foreground text-lg">
 								{searchTerm ? `No products found for "${searchTerm}"` : "No products match the current filter."}
 							</p>
 						</div>

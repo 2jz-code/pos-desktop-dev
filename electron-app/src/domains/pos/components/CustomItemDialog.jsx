@@ -168,9 +168,9 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
           </div>
 
           {formData.price && formData.quantity && (
-            <div className="rounded-lg bg-gray-50 p-3">
+            <div className="rounded-lg bg-muted/40 p-3">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Total:</span>
+                <span className="text-muted-foreground">Total:</span>
                 <span className="font-semibold">
                   ${(parseFloat(formData.price || 0) * parseInt(formData.quantity || 1)).toFixed(2)}
                 </span>

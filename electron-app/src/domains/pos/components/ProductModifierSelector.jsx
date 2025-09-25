@@ -440,7 +440,7 @@ const ProductModifierSelectorContent = ({
         {/* Simple Header */}
         <div className="flex-shrink-0 pb-4 border-b">
           <h2 className="text-xl font-semibold">{product?.name || 'Item'}</h2>
-          <p className="text-sm text-slate-600 mt-1">Select your options</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Select your options</p>
         </div>
         
         {/* Main Content - Horizontal Layout */}
@@ -460,7 +460,7 @@ const ProductModifierSelectorContent = ({
                       <span className="text-red-600 text-sm font-medium">Required</span>
                     )}
                     {modifierSet.min_selections > 0 && status.status !== 'error' && (
-                      <span className="text-slate-500 text-sm">
+                      <span className="text-slate-500 dark:text-slate-400 text-sm">
                         {selectionCount}/{modifierSet.min_selections} selected
                       </span>
                     )}
@@ -483,7 +483,7 @@ const ProductModifierSelectorContent = ({
                             className={`p-4 rounded-lg border-2 transition-all text-center ${
                               isSelected 
                                 ? 'border-blue-500 bg-blue-50 text-blue-900' 
-                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
                             }`}
                             onClick={() => {
                               handleModifierSelection(modifierSet.id, option, !isSelected);
@@ -491,7 +491,7 @@ const ProductModifierSelectorContent = ({
                           >
                             <div className="font-medium">{option.name}</div>
                             {priceText && (
-                              <div className="text-sm text-slate-600 mt-1">{priceText}</div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">{priceText}</div>
                             )}
                             {isSelected && modifierSet.selection_type === 'MULTIPLE' && optionQuantity > 1 && (
                               <div className="text-xs mt-2 font-medium">×{optionQuantity}</div>
@@ -504,7 +504,7 @@ const ProductModifierSelectorContent = ({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
-                                  className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                                  className="w-7 h-7 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700"
                                   onClick={() => handleModifierQuantityChange(
                                     modifierSet.id, 
                                     option.id, 
@@ -515,7 +515,7 @@ const ProductModifierSelectorContent = ({
                                 </button>
                                 <span className="w-6 text-center font-medium">{optionQuantity}</span>
                                 <button
-                                  className="w-7 h-7 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                                  className="w-7 h-7 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700"
                                   onClick={() => handleModifierQuantityChange(
                                     modifierSet.id, 
                                     option.id, 
@@ -544,14 +544,14 @@ const ProductModifierSelectorContent = ({
               <span className="font-medium">Quantity:</span>
               <div className="flex items-center gap-2">
                 <button
-                  className="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                  className="w-8 h-8 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700"
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                 >
                   <Minus className="h-4 w-4" />
                 </button>
                 <span className="w-8 text-center font-semibold text-lg">{quantity}</span>
                 <button
-                  className="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center hover:bg-slate-100"
+                  className="w-8 h-8 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700"
                   onClick={() => setQuantity(quantity + 1)}
                 >
                   <Plus className="h-4 w-4" />
@@ -582,7 +582,7 @@ const ProductModifierSelectorContent = ({
                   ${totalPrice.toFixed(2)}
                 </div>
                 {quantity > 1 && (
-                  <div className="text-sm text-slate-500">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">
                     ${(totalPrice / quantity).toFixed(2)} each
                   </div>
                 )}

@@ -204,7 +204,7 @@ const POS = () => {
 	}, [scanBarcode, isTenderDialogOpen, isDiscountDialogOpen]);
 
 	return (
-		<div className="flex h-full bg-gray-100 p-4 gap-4">
+		<div className="flex h-full bg-muted/20 p-4 gap-4">
 			<div className="w-3/5 h-full">
 				<ProductGrid ref={productGridRef} />
 			</div>

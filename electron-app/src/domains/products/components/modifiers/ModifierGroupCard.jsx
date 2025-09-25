@@ -44,7 +44,7 @@ const ModifierGroupCard = ({
   const getModifierTypeColor = (type, isRequired) => {
     if (isRequired) return 'bg-blue-100 border-blue-300 text-blue-800';
     if (type === 'MULTIPLE') return 'bg-green-100 border-green-300 text-green-800';
-    return 'bg-gray-100 border-gray-300 text-gray-800';
+    return 'bg-muted border-border text-muted-foreground';
   };
 
   const getModifierTypeIcon = (type) => {
@@ -69,9 +69,9 @@ const ModifierGroupCard = ({
               className="flex items-center gap-2 flex-1 text-left"
             >
               {isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-gray-400" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-gray-400" />
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
               
               <div className="flex-1">
@@ -95,7 +95,7 @@ const ModifierGroupCard = ({
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {group.options?.length || 0} options
                   {hiddenCount > 0 && ` • ${hiddenCount} hidden`}
                 </p>
@@ -136,7 +136,7 @@ const ModifierGroupCard = ({
 
         <CollapsibleContent>
           <div className="px-4 pb-4 pt-0">
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="bg-muted/40 rounded-lg p-3">
               <OptionToggleGrid
                 options={group.options || []}
                 hiddenOptionIds={hiddenOptionIds}

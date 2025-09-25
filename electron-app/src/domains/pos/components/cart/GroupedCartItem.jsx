@@ -75,9 +75,9 @@ export default function GroupedCartItem({ baseProduct, items }) {
 					{hasItemModifiers && (
 						<div className="flex-shrink-0">
 							{expanded ? (
-								<ChevronDown className="h-4 w-4 text-slate-400" />
+								<ChevronDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 							) : (
-								<ChevronRight className="h-4 w-4 text-slate-400" />
+								<ChevronRight className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 							)}
 						</div>
 					)}
@@ -292,9 +292,9 @@ export default function GroupedCartItem({ baseProduct, items }) {
 				{/* Chevron Indicator */}
 				<div className="flex-shrink-0">
 					{expanded ? (
-						<ChevronDown className="h-4 w-4 text-slate-400" />
+						<ChevronDown className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 					) : (
-						<ChevronRight className="h-4 w-4 text-slate-400" />
+						<ChevronRight className="h-4 w-4 text-slate-400 dark:text-slate-500" />
 					)}
 				</div>
 

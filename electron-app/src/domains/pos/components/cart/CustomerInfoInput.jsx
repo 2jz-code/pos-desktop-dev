@@ -56,11 +56,11 @@ const CustomerInfoInput = () => {
 	};
 
 	return (
-		<div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
+		<div className="border-t border-border/60 bg-muted/20">
 			<div className="p-3">
 				{isEditing ? (
 					<div className="flex items-center space-x-2">
-						<User className="h-4 w-4 text-slate-500 dark:text-slate-400 flex-shrink-0" />
+						<User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 						<Input
 							ref={inputRef}
 							value={customerFirstName}
@@ -73,14 +73,14 @@ const CustomerInfoInput = () => {
 					</div>
 				) : (
 					<div 
-						className="flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded p-1 -m-1 transition-colors"
+						className="flex items-center justify-between cursor-pointer hover:bg-muted/40 rounded p-1 -m-1 transition-colors"
 						onClick={handleClick}
 					>
 						<div className="flex items-center space-x-2">
-							<User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-							<span className={`text-sm ${hasCustomerName 
-								? 'text-slate-900 dark:text-slate-100' 
-								: 'text-slate-500 dark:text-slate-400'
+							<User className="h-4 w-4 text-muted-foreground" />
+							<span className={`text-sm ${hasCustomerName
+								? 'text-foreground'
+								: 'text-muted-foreground'
 							}`}>
 								{displayText}
 							</span>

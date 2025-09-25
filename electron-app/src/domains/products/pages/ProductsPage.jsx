@@ -8,7 +8,12 @@ import {
 import { getCategories } from "@/domains/products/services/categoryService";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Skeleton } from "@/shared/components/ui/skeleton";
@@ -55,6 +60,7 @@ import { ProductFormDialog } from "@/domains/products/components/dialogs/Product
 import { CategoryManagementDialog } from "@/domains/products/components/dialogs/CategoryManagementDialog";
 import { ProductTypeManagementDialog } from "@/domains/products/components/dialogs/ProductTypeManagementDialog";
 import { ProductsTableView } from "@/domains/products/components/ProductsTableView";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
 
 const ProductsPage = () => {
 	const [products, setProducts] = useState([]);
@@ -65,7 +71,7 @@ const ProductsPage = () => {
 	const [error, setError] = useState(null);
 	const [showArchivedProducts, setShowArchivedProducts] = useState(false);
 	const [viewMode, setViewMode] = useState(() => {
-		return localStorage.getItem('productsViewMode') || 'grid';
+		return localStorage.getItem("productsViewMode") || "grid";
 	});
 
 	// Role-based permissions
@@ -124,7 +130,7 @@ const ProductsPage = () => {
 			const params = {};
 
 			if (showArchivedOnly) {
-				params.include_archived = 'only';
+				params.include_archived = "only";
 			}
 
 			if (modifierContext) {
@@ -246,7 +252,9 @@ const ProductsPage = () => {
 					}
 
 					if (childCategories.length > 0) {
-						const isChildCategory = childCategories.some(child => child.id === category.id);
+						const isChildCategory = childCategories.some(
+							(child) => child.id === category.id
+						);
 						if (isChildCategory) {
 							return true;
 						}
@@ -412,7 +420,7 @@ const ProductsPage = () => {
 
 	const handleViewModeChange = (mode) => {
 		setViewMode(mode);
-		localStorage.setItem('productsViewMode', mode);
+		localStorage.setItem("productsViewMode", mode);
 	};
 
 	const clearAllFilters = () => {
@@ -421,11 +429,8 @@ const ProductsPage = () => {
 		setSelectedChildCategory("all");
 	};
 
-	// Basic stats calculation
-	const activeProducts = allProducts.filter(product => product.is_active).length;
-	const archivedProducts = allProducts.filter(product => !product.is_active).length;
-
-	const hasActiveFilters = filters.search || selectedParentCategory !== "all" || modifierContext;
+	const hasActiveFilters =
+		filters.search || selectedParentCategory !== "all" || modifierContext;
 
 	const ProductGridCard = ({ product }) => {
 		const isHighlighted = highlightedProductId === product.id;
@@ -480,7 +485,10 @@ const ProductsPage = () => {
 											<MoreHorizontal className="h-4 w-4" />
 										</Button>
 									</DropdownMenuTrigger>
-									<DropdownMenuContent align="end" className="w-44">
+									<DropdownMenuContent
+										align="end"
+										className="w-44"
+									>
 										<DropdownMenuLabel>Actions</DropdownMenuLabel>
 										{canEditProducts() && (
 											<DropdownMenuItem
@@ -549,12 +557,18 @@ const ProductsPage = () => {
 						{/* Tags */}
 						<div className="flex items-center gap-2 flex-wrap min-h-[1.5rem]">
 							{product.category && (
-								<Badge variant="outline" className="text-xs rounded-full">
+								<Badge
+									variant="outline"
+									className="text-xs rounded-full"
+								>
 									{product.category.name}
 								</Badge>
 							)}
 							{product.product_type && (
-								<Badge variant="secondary" className="text-xs rounded-full">
+								<Badge
+									variant="secondary"
+									className="text-xs rounded-full"
+								>
 									{product.product_type.name}
 								</Badge>
 							)}
@@ -628,12 +642,18 @@ const ProductsPage = () => {
 							<div className="flex items-center justify-between gap-4">
 								<div className="flex items-center gap-2 flex-wrap">
 									{product.category && (
-										<Badge variant="outline" className="text-xs rounded-full">
+										<Badge
+											variant="outline"
+											className="text-xs rounded-full"
+										>
 											{product.category.name}
 										</Badge>
 									)}
 									{product.product_type && (
-										<Badge variant="secondary" className="text-xs rounded-full">
+										<Badge
+											variant="secondary"
+											className="text-xs rounded-full"
+										>
 											{product.product_type.name}
 										</Badge>
 									)}
@@ -660,7 +680,10 @@ const ProductsPage = () => {
 												<MoreHorizontal className="h-4 w-4" />
 											</Button>
 										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end" className="w-44">
+										<DropdownMenuContent
+											align="end"
+											className="w-44"
+										>
 											<DropdownMenuLabel>Actions</DropdownMenuLabel>
 											{canEditProducts() && (
 												<DropdownMenuItem
@@ -713,7 +736,7 @@ const ProductsPage = () => {
 	};
 
 	const ProductsView = () => {
-		if (viewMode === 'list') {
+		if (viewMode === "list") {
 			return (
 				<ProductsTableView
 					products={products}
@@ -737,7 +760,10 @@ const ProductsPage = () => {
 			return (
 				<div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 					{Array.from({ length: 12 }).map((_, i) => (
-						<Card key={i} className="border border-border/60 bg-card/80">
+						<Card
+							key={i}
+							className="border border-border/60 bg-card/80"
+						>
 							<CardContent className="p-0">
 								<Skeleton className="aspect-square rounded-t-lg" />
 								<div className="p-4 space-y-3">
@@ -764,9 +790,14 @@ const ProductsPage = () => {
 						<div className="text-center space-y-4">
 							<AlertCircle className="h-12 w-12 text-destructive mx-auto" />
 							<div>
-								<h3 className="font-semibold text-foreground mb-2">Error Loading Products</h3>
+								<h3 className="font-semibold text-foreground mb-2">
+									Error Loading Products
+								</h3>
 								<p className="text-sm text-muted-foreground mb-4">{error}</p>
-								<Button onClick={() => fetchProducts(showArchivedProducts)} variant="outline">
+								<Button
+									onClick={() => fetchProducts(showArchivedProducts)}
+									variant="outline"
+								>
 									<Package className="mr-2 h-4 w-4" />
 									Try Again
 								</Button>
@@ -785,23 +816,31 @@ const ProductsPage = () => {
 							<Package className="h-16 w-16 text-muted-foreground/60 mx-auto" />
 							<div>
 								<h3 className="text-xl font-semibold text-foreground mb-2">
-									{hasActiveFilters ? "No matching products" : "No products found"}
+									{hasActiveFilters
+										? "No matching products"
+										: "No products found"}
 								</h3>
 								<p className="text-muted-foreground mb-6">
 									{hasActiveFilters
 										? "Try adjusting your search terms or filters to find what you're looking for."
 										: showArchivedProducts
 										? "No archived products found. All your products are currently active."
-										: "Get started by adding your first product to the catalog."
-									}
+										: "Get started by adding your first product to the catalog."}
 								</p>
 								{hasActiveFilters ? (
-									<Button onClick={clearAllFilters} variant="outline" size="lg">
+									<Button
+										onClick={clearAllFilters}
+										variant="outline"
+										size="lg"
+									>
 										<X className="mr-2 h-4 w-4" />
 										Clear All Filters
 									</Button>
 								) : canCreateProducts() && !showArchivedProducts ? (
-									<Button onClick={handleCreateProduct} size="lg">
+									<Button
+										onClick={handleCreateProduct}
+										size="lg"
+									>
 										<PlusCircle className="mr-2 h-5 w-5" />
 										Add Your First Product
 									</Button>
@@ -816,231 +855,240 @@ const ProductsPage = () => {
 		return (
 			<div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
 				{products.map((product) => (
-					<ProductGridCard key={product.id} product={product} />
+					<ProductGridCard
+						key={product.id}
+						product={product}
+					/>
 				))}
 			</div>
 		);
 	};
 
+	// Define header actions
+	const headerActions = (
+		<div className="flex items-center gap-3">
+			{modifierContext && (
+				<Button
+					variant="outline"
+					onClick={handleBackToModifiers}
+					size="sm"
+					className="hidden sm:flex"
+				>
+					<FolderOpen className="mr-2 h-4 w-4" />
+					Back to Modifiers
+				</Button>
+			)}
+
+			<Button
+				variant={showArchivedProducts ? "default" : "outline"}
+				size="sm"
+				onClick={() => setShowArchivedProducts(!showArchivedProducts)}
+			>
+				{showArchivedProducts ? (
+					<>
+						<CheckCircle2 className="mr-2 h-4 w-4" />
+						Show Active
+					</>
+				) : (
+					<>
+						<Archive className="mr-2 h-4 w-4" />
+						Show Archived
+					</>
+				)}
+			</Button>
+
+			{(canCreateProducts() || canEditProducts()) && (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button>
+							<Settings className="mr-2 h-4 w-4" />
+							Manage
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent
+						align="end"
+						className="w-56"
+					>
+						<DropdownMenuLabel>Product Management</DropdownMenuLabel>
+						{canCreateProducts() && (
+							<DropdownMenuItem onClick={handleCreateProduct}>
+								<PlusCircle className="mr-2 h-4 w-4" />
+								Add New Product
+							</DropdownMenuItem>
+						)}
+						{canCreateProducts() && canEditProducts() && (
+							<DropdownMenuSeparator />
+						)}
+						{canEditProducts() && (
+							<>
+								<DropdownMenuItem onClick={handleManageCategories}>
+									<FolderOpen className="mr-2 h-4 w-4" />
+									Manage Categories
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={handleManageTypes}>
+									<Tags className="mr-2 h-4 w-4" />
+									Manage Product Types
+								</DropdownMenuItem>
+								{!modifierContext && (
+									<>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem
+											onClick={() => navigate("/products/modifiers")}
+										>
+											<Settings className="mr-2 h-4 w-4" />
+											Manage Modifiers
+										</DropdownMenuItem>
+									</>
+								)}
+							</>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			)}
+		</div>
+	);
+
 	return (
 		<div className="flex flex-col h-full">
-			{/* Modern Header */}
-			<div className="border-b border-border/60 bg-card/80 backdrop-blur-sm sticky top-0 z-20">
-				<div className="p-4 md:p-6">
-					{/* Title Row */}
-					<div className="flex items-center justify-between mb-6">
-						<div className="flex items-center gap-4">
-							<div className="flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-inset ring-primary/30">
-								<Package className="h-6 w-6" />
-							</div>
-							<div>
-								<h1 className="text-2xl font-semibold text-foreground tracking-tight">
-									{modifierContext
-										? `Products Using "${modifierContext.name}"`
-										: showArchivedProducts
-										? "Archived Products"
-										: "Product Catalog"
-									}
-								</h1>
-								<p className="text-sm text-muted-foreground">
-									{modifierContext
-										? `${products.length} products using this modifier`
-										: `${products.length} of ${allProducts.length} products`
-									}
-								</p>
-							</div>
-						</div>
+			{/* Page Header */}
+			<PageHeader
+				icon={Package}
+				title={
+					modifierContext
+						? `Products Using "${modifierContext.name}"`
+						: showArchivedProducts
+						? "Archived Products"
+						: "Product Catalog"
+				}
+				description={
+					modifierContext
+						? `${products.length} products using this modifier`
+						: `${products.length} of ${allProducts.length} products`
+				}
+				actions={headerActions}
+				className="shrink-0"
+			/>
 
-						{/* Quick Actions */}
-						<div className="flex items-center gap-3">
-							{modifierContext && (
-								<Button
-									variant="outline"
-									onClick={handleBackToModifiers}
-									className="hidden sm:flex"
-								>
-									<FolderOpen className="mr-2 h-4 w-4" />
-									Back to Modifiers
-								</Button>
-							)}
+			{/* Search and Filters */}
+			<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">
+				{/* Search Bar */}
+				<div className="relative max-w-md">
+					<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+					<Input
+						placeholder="Search products, categories, barcodes..."
+						className="pl-10 h-11"
+						value={filters.search}
+						onChange={handleSearchChange}
+					/>
+					{filters.search && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="absolute right-1 top-1/2 transform -translate-y-1/2 h-9 w-9"
+							onClick={() => setFilters((prev) => ({ ...prev, search: "" }))}
+						>
+							<X className="h-4 w-4" />
+						</Button>
+					)}
+				</div>
 
-							<Button
-								variant={showArchivedProducts ? "default" : "outline"}
-								onClick={() => setShowArchivedProducts(!showArchivedProducts)}
+				{/* Filters and View Controls */}
+				<div className="flex items-center justify-between flex-wrap gap-4">
+					{/* Filter Controls */}
+					<div className="flex items-center gap-3 flex-wrap">
+						<Select
+							value={selectedParentCategory}
+							onValueChange={setSelectedParentCategory}
+						>
+							<SelectTrigger className="w-[160px] h-10">
+								<SelectValue placeholder="Category" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All Categories</SelectItem>
+								{parentCategories.map((category) => (
+									<SelectItem
+										key={category.id}
+										value={category.id.toString()}
+									>
+										{category.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+
+						{selectedParentCategory !== "all" && childCategories.length > 0 && (
+							<Select
+								value={selectedChildCategory}
+								onValueChange={setSelectedChildCategory}
 							>
-								{showArchivedProducts ? (
-									<CheckCircle2 className="mr-2 h-4 w-4" />
-								) : (
-									<Archive className="mr-2 h-4 w-4" />
-								)}
-								{showArchivedProducts ? "Show Active" : "Show Archived"}
-							</Button>
+								<SelectTrigger className="w-[160px] h-10">
+									<SelectValue placeholder="Subcategory" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Subcategories</SelectItem>
+									<SelectItem value="parent-only">Parent Only</SelectItem>
+									{childCategories.map((category) => (
+										<SelectItem
+											key={category.id}
+											value={category.id.toString()}
+										>
+											{category.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						)}
 
-							{(canCreateProducts() || canEditProducts()) && (
-								<DropdownMenu>
-									<DropdownMenuTrigger asChild>
-										<Button>
-											<Settings className="mr-2 h-4 w-4" />
-											Manage
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="end" className="w-56">
-										<DropdownMenuLabel>Product Management</DropdownMenuLabel>
-										{canCreateProducts() && (
-											<DropdownMenuItem onClick={handleCreateProduct}>
-												<PlusCircle className="mr-2 h-4 w-4" />
-												Add New Product
-											</DropdownMenuItem>
-										)}
-										{canCreateProducts() && canEditProducts() && (
-											<DropdownMenuSeparator />
-										)}
-										{canEditProducts() && (
-											<>
-												<DropdownMenuItem onClick={handleManageCategories}>
-													<FolderOpen className="mr-2 h-4 w-4" />
-													Manage Categories
-												</DropdownMenuItem>
-												<DropdownMenuItem onClick={handleManageTypes}>
-													<Tags className="mr-2 h-4 w-4" />
-													Manage Product Types
-												</DropdownMenuItem>
-												{!modifierContext && (
-													<>
-														<DropdownMenuSeparator />
-														<DropdownMenuItem
-															onClick={() => navigate("/products/modifiers")}
-														>
-															<Settings className="mr-2 h-4 w-4" />
-															Manage Modifiers
-														</DropdownMenuItem>
-													</>
-												)}
-											</>
-										)}
-									</DropdownMenuContent>
-								</DropdownMenu>
-							)}
-						</div>
+						{modifierContext && (
+							<Button
+								variant="outline"
+								onClick={handleClearModifierFilter}
+								className="h-10"
+							>
+								<X className="mr-2 h-4 w-4" />
+								Clear Modifier Filter
+							</Button>
+						)}
+
+						{hasActiveFilters && (
+							<Button
+								variant="ghost"
+								onClick={clearAllFilters}
+								className="h-10 text-muted-foreground hover:text-foreground"
+							>
+								Clear All
+							</Button>
+						)}
 					</div>
 
-
-					{/* Search and Controls */}
-					<div className="space-y-4">
-						{/* Search Bar */}
-						<div className="relative max-w-md">
-							<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-							<Input
-								placeholder="Search products, categories, barcodes..."
-								className="pl-10 h-12 text-base"
-								value={filters.search}
-								onChange={handleSearchChange}
-							/>
-							{filters.search && (
-								<Button
-									variant="ghost"
-									size="icon"
-									className="absolute right-1 top-1/2 transform -translate-y-1/2 h-10 w-10"
-									onClick={() => setFilters(prev => ({ ...prev, search: "" }))}
-								>
-									<X className="h-4 w-4" />
-								</Button>
-							)}
-						</div>
-
-						{/* Filters and View Controls */}
-						<div className="flex items-center justify-between flex-wrap gap-4">
-							{/* Filter Controls */}
-							<div className="flex items-center gap-3 flex-wrap">
-								<Select
-									value={selectedParentCategory}
-									onValueChange={setSelectedParentCategory}
-								>
-									<SelectTrigger className="w-[160px] h-10">
-										<SelectValue placeholder="Category" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Categories</SelectItem>
-										{parentCategories.map((category) => (
-											<SelectItem key={category.id} value={category.id.toString()}>
-												{category.name}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-
-								{selectedParentCategory !== "all" && childCategories.length > 0 && (
-									<Select
-										value={selectedChildCategory}
-										onValueChange={setSelectedChildCategory}
-									>
-										<SelectTrigger className="w-[160px] h-10">
-											<SelectValue placeholder="Subcategory" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="all">All Subcategories</SelectItem>
-											<SelectItem value="parent-only">Parent Only</SelectItem>
-											{childCategories.map((category) => (
-												<SelectItem key={category.id} value={category.id.toString()}>
-													{category.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								)}
-
-								{modifierContext && (
-									<Button
-										variant="outline"
-										onClick={handleClearModifierFilter}
-										className="h-10"
-									>
-										<X className="mr-2 h-4 w-4" />
-										Clear Modifier Filter
-									</Button>
-								)}
-
-								{hasActiveFilters && (
-									<Button
-										variant="ghost"
-										onClick={clearAllFilters}
-										className="h-10 text-muted-foreground hover:text-foreground"
-									>
-										Clear All
-									</Button>
-								)}
-							</div>
-
-							{/* View Mode Toggle */}
-							<div className="flex items-center gap-1 border rounded-md p-1">
-								<Button
-									variant={viewMode === 'grid' ? 'default' : 'ghost'}
-									size="sm"
-									onClick={() => handleViewModeChange('grid')}
-									className="px-2 py-1 h-8"
-								>
-									<LayoutGrid className="h-3 w-3 mr-1" />
-									Grid
-								</Button>
-								<Button
-									variant={viewMode === 'list' ? 'default' : 'ghost'}
-									size="sm"
-									onClick={() => handleViewModeChange('list')}
-									className="px-2 py-1 h-8"
-								>
-									<List className="h-3 w-3 mr-1" />
-									List
-								</Button>
-							</div>
-						</div>
+					{/* View Mode Toggle */}
+					<div className="flex items-center gap-1 border rounded-md p-1">
+						<Button
+							variant={viewMode === "grid" ? "default" : "ghost"}
+							size="sm"
+							onClick={() => handleViewModeChange("grid")}
+							className="px-2 py-1 h-8"
+						>
+							<LayoutGrid className="h-3 w-3 mr-1" />
+							Grid
+						</Button>
+						<Button
+							variant={viewMode === "list" ? "default" : "ghost"}
+							size="sm"
+							onClick={() => handleViewModeChange("list")}
+							className="px-2 py-1 h-8"
+						>
+							<List className="h-3 w-3 mr-1" />
+							List
+						</Button>
 					</div>
 				</div>
 			</div>
 
 			{/* Main Content */}
-			<div className="flex-1 overflow-hidden">
+			<div className="flex-1 min-h-0 p-4">
 				<ScrollArea className="h-full">
-					<div className="p-4 md:p-6 pb-20">
+					<div className="pb-6">
 						<ProductsView />
 					</div>
 				</ScrollArea>

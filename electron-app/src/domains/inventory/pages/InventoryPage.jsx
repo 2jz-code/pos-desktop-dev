@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
 import { useInventoryBarcode, useScrollToScannedItem } from "@/shared/hooks";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { useDebounce } from "@/shared/hooks/useDebounce";
 import { formatCurrency } from "@/shared/lib/utils";
 
@@ -388,58 +389,64 @@ const InventoryPage = () => {
 		);
 	}
 
-	return (
-		<div className="flex flex-col h-[calc(100vh-4rem)] bg-muted/40 p-4 gap-4">
-			<header className="flex items-center justify-between flex-shrink-0">
-				<div>
-					<h1 className="text-2xl font-semibold">Inventory Management</h1>
-					<p className="text-sm text-muted-foreground">
-						Track and manage your product stock across all locations.
-					</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={refreshData}
-					>
-						<RefreshCw className="h-4 w-4 mr-2" />
-						Refresh Data
+	// Define header actions
+	const headerActions = (
+		<div className="flex items-center gap-3">
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={refreshData}
+			>
+				<RefreshCw className="h-4 w-4 mr-2" />
+				Refresh Data
+			</Button>
+
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button size="sm">
+						<Settings className="mr-2 h-4 w-4" />
+						Actions
 					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
+					<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
+						<Plus className="mr-2 h-4 w-4" />
+						New Adjustment
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
+						<ArrowUpDown className="mr-2 h-4 w-4" />
+						Transfer Stock
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
+						<History className="mr-2 h-4 w-4" />
+						Stock History
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => navigate('/settings?tab=inventory')}>
+						<Settings className="mr-2 h-4 w-4" />
+						Configure Defaults
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</div>
+	);
 
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button size="sm">
-								<Settings className="mr-2 h-4 w-4" />
-								Actions
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
-							<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
-								<Plus className="mr-2 h-4 w-4" />
-								New Adjustment
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
-								<ArrowUpDown className="mr-2 h-4 w-4" />
-								Transfer Stock
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
-								<History className="mr-2 h-4 w-4" />
-								Stock History
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => navigate('/settings?tab=inventory')}>
-								<Settings className="mr-2 h-4 w-4" />
-								Configure Defaults
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			</header>
+	return (
+		<div className="flex flex-col h-full">
+			{/* Page Header */}
+			<PageHeader
+				icon={Warehouse}
+				title="Inventory Management"
+				description="Track and manage your product stock across all locations"
+				actions={headerActions}
+				className="shrink-0"
+			/>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-shrink-0">
+			{/* Dashboard Cards */}
+			<div className="border-b bg-background/95 backdrop-blur-sm p-4">
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
@@ -503,13 +510,16 @@ const InventoryPage = () => {
 						</div>
 					</CardContent>
 				</Card>
+				</div>
 			</div>
 
-			<Tabs
-				value={activeTab}
-				onValueChange={setActiveTab}
-				className="flex-1 flex flex-col min-h-0"
-			>
+			{/* Main Content */}
+			<div className="flex-1 min-h-0 p-4">
+				<Tabs
+					value={activeTab}
+					onValueChange={setActiveTab}
+					className="h-full flex flex-col"
+				>
 				<TabsList className="grid w-full grid-cols-3 flex-shrink-0">
 					<TabsTrigger value="overview">Overview</TabsTrigger>
 					<TabsTrigger value="all-stock">All Stock</TabsTrigger>
@@ -806,6 +816,7 @@ const InventoryPage = () => {
 					</Card>
 				</TabsContent>
 			</Tabs>
+			</div>
 
 			{/* Dialogs */}
 			{isStockAdjustmentDialogOpen && (

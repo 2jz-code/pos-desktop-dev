@@ -43,7 +43,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
-import { DomainPageLayout } from "@/shared/components/layout/DomainPageLayout";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import * as modifierService from "@/domains/products/services/modifierService";
 import ModifierQuickCreate from "@/domains/products/components/modifiers/ModifierQuickCreate";
 import UsageAnalytics from "@/domains/products/components/modifiers/UsageAnalytics";
@@ -183,40 +184,48 @@ const ModifierManagementPage = () => {
 		return type === "MULTIPLE" ? "☑" : "○";
 	};
 
+	const headerActions = (
+		<div className="flex items-center gap-3">
+			<Button
+				variant="outline"
+				onClick={() => navigate("/products")}
+				className="flex items-center gap-2"
+			>
+				<ArrowLeft className="h-4 w-4" />
+				Back to Products
+			</Button>
+			<Button
+				onClick={handleCreateNew}
+				className="flex items-center gap-2"
+			>
+				<Plus className="h-4 w-4" />
+				Create Modifier Set
+			</Button>
+			<Button
+				onClick={handleAdvancedCreate}
+				variant="outline"
+				className="flex items-center gap-2"
+			>
+				<Settings className="h-4 w-4" />
+				Advanced Editor
+			</Button>
+		</div>
+	);
+
 	return (
-		<DomainPageLayout
-			pageTitle="Modifier Management"
-			pageDescription="Manage your modifier sets and options across all products"
-			pageIcon={Settings}
-			pageActions={
-				<>
-					<Button
-						variant="outline"
-						onClick={() => navigate("/products")}
-						className="flex items-center gap-2"
-					>
-						<ArrowLeft className="h-4 w-4" />
-						Back to Products
-					</Button>
-					<Button
-						onClick={handleCreateNew}
-						className="flex items-center gap-2"
-					>
-						<Plus className="h-4 w-4" />
-						Create Modifier Set
-					</Button>
-					<Button
-						onClick={handleAdvancedCreate}
-						variant="outline"
-						className="flex items-center gap-2"
-					>
-						<Settings className="h-4 w-4" />
-						Advanced Editor
-					</Button>
-				</>
-			}
-			showSearch={false}
-		>
+		<div className="flex flex-col h-full">
+			<PageHeader
+				icon={Settings}
+				title="Modifier Management"
+				description="Manage your modifier sets and options across all products"
+				actions={headerActions}
+				className="shrink-0"
+			/>
+
+			{/* Main Content */}
+			<div className="flex-1 min-h-0 p-4">
+				<ScrollArea className="h-full">
+					<div className="pb-6">
 			<Tabs
 				value={activeTab}
 				onValueChange={setActiveTab}
@@ -302,20 +311,20 @@ const ModifierManagementPage = () => {
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 						{loading ? (
 							<div className="col-span-full text-center py-8">
-								<div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-								<p className="text-sm text-gray-500">
+								<div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+								<p className="text-sm text-muted-foreground">
 									Loading modifier sets...
 								</p>
 							</div>
 						) : filteredModifierSets.length === 0 ? (
-							<div className="col-span-full text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-								<div className="mx-auto w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-									<Library className="h-6 w-6 text-gray-400" />
+							<div className="col-span-full text-center py-12 bg-muted/40 rounded-lg border-2 border-dashed border-border/60">
+								<div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+									<Library className="h-6 w-6 text-muted-foreground" />
 								</div>
-								<h4 className="text-lg font-medium text-gray-900 mb-2">
+								<h4 className="text-lg font-medium text-foreground mb-2">
 									No modifier sets found
 								</h4>
-								<p className="text-gray-500 mb-6 max-w-sm mx-auto">
+								<p className="text-muted-foreground mb-6 max-w-sm mx-auto">
 									{searchTerm || selectedType !== "all"
 										? "Try adjusting your search criteria"
 										: "Create your first modifier set to get started"}
@@ -474,7 +483,10 @@ const ModifierManagementPage = () => {
 						</CardContent>
 					</Card>
 				</TabsContent>
-			</Tabs>
+						</Tabs>
+					</div>
+				</ScrollArea>
+			</div>
 
 			{/* Quick Create Dialog */}
 			<ModifierQuickCreate
@@ -511,7 +523,7 @@ const ModifierManagementPage = () => {
 
 			{/* Confirmation Dialog */}
 			{confirmation.dialog}
-		</DomainPageLayout>
+		</div>
 	);
 };
 

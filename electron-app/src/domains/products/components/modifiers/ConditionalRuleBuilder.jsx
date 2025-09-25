@@ -158,11 +158,11 @@ const ConditionalRuleBuilder = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Enable/Disable Toggle */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
           <div>
             <Label className="text-sm font-medium">Conditional Display</Label>
-            <p className="text-xs text-gray-500 mt-1">
-              {isConditional 
+            <p className="text-xs text-muted-foreground mt-1">
+              {isConditional
                 ? "This modifier set will only show based on previous selections"
                 : "This modifier set will always be visible"
               }
@@ -184,7 +184,7 @@ const ConditionalRuleBuilder = ({
             {loading ? (
               <div className="text-center py-4">
                 <div className="animate-spin h-6 w-6 border-2 border-orange-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-gray-500">Loading modifier sets...</p>
+                <p className="text-sm text-muted-foreground">Loading modifier sets...</p>
               </div>
             ) : !Array.isArray(availableModifierSets) || availableModifierSets.length === 0 ? (
               <div className="text-center py-6 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -201,7 +201,7 @@ const ConditionalRuleBuilder = ({
                   <Label className="text-sm font-medium">Show this modifier set when:</Label>
                   
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-600">Customer selects</span>
+                    <span className="text-muted-foreground">Customer selects</span>
                     
                     {/* Option Selector */}
                     <Select 
@@ -221,7 +221,7 @@ const ConditionalRuleBuilder = ({
                       </SelectContent>
                     </Select>
                     
-                    <span className="text-gray-600">from</span>
+                    <span className="text-muted-foreground">from</span>
                     
                     {/* Modifier Set Selector */}
                     <Select 

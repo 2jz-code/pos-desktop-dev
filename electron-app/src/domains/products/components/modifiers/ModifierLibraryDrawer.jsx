@@ -87,13 +87,13 @@ const ModifierLibraryDrawer = ({
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-sm text-gray-500">Loading modifier sets...</p>
+              <p className="text-sm text-muted-foreground">Loading modifier sets...</p>
             </div>
           ) : (
             <div className="grid gap-2 max-h-96 overflow-y-auto">
               {filteredModifierSets.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-lg">
-                  <p className="text-gray-500">
+                <div className="text-center py-8 bg-muted/40 rounded-lg">
+                  <p className="text-muted-foreground">
                     {searchTerm ? "No modifier sets found matching your search." : "No modifier sets available."}
                   </p>
                 </div>
@@ -101,12 +101,12 @@ const ModifierLibraryDrawer = ({
                 filteredModifierSets.map((set) => (
                   <div
                     key={set.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex-1">
                       <h4 className="font-medium">{set.name}</h4>
                       <div className="flex items-center gap-2 mt-1">
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-muted-foreground">
                           {set.selection_type === 'SINGLE' ? 'Single Choice' : 'Multiple Choice'} • {set.options?.length || 0} options
                         </p>
                         <Badge 
@@ -114,7 +114,7 @@ const ModifierLibraryDrawer = ({
                           className={`text-xs ${
                             set.min_selections > 0 
                               ? 'bg-blue-100 border-blue-300 text-blue-800' 
-                              : 'bg-gray-100 border-gray-300 text-gray-600'
+                              : 'bg-muted border-border text-muted-foreground'
                           }`}
                         >
                           {set.min_selections > 0 ? 'Required' : 'Optional'}

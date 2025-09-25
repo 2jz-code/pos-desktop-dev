@@ -48,6 +48,8 @@ import {
 } from "lucide-react";
 import inventoryService from "../services/inventoryService";
 import { useDebounce } from "@/shared/hooks/useDebounce";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { ReasonBadge } from "../components/ReasonBadge";
 
 const OPERATION_TYPES = {
@@ -232,290 +234,290 @@ const StockHistoryPage = () => {
 		);
 	}
 
+	const headerActions = (
+		<Button
+			variant="outline"
+			size="sm"
+			onClick={() => navigate("/inventory")}
+		>
+			<ArrowLeft className="h-4 w-4 mr-2" />
+			Back to Inventory
+		</Button>
+	);
+
 	return (
-		<div className="flex flex-col h-[calc(100vh-4rem)] bg-muted/40 p-4 gap-4">
-			<header className="flex items-center justify-between flex-shrink-0">
-				<div className="space-y-1">
-					<h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-						<History className="h-6 w-6" />
-						Stock History
-					</h1>
-					<p className="text-sm text-muted-foreground">
-						View all stock creations, adjustments, and transfers across your
-						inventory
-					</p>
-				</div>
-				<div className="flex items-center space-x-2">
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => navigate("/inventory")}
-					>
-						<ArrowLeft className="h-4 w-4 mr-2" />
-						Back to Inventory
-					</Button>
-				</div>
-			</header>
+		<div className="flex flex-col h-full">
+			<PageHeader
+				icon={History}
+				title="Stock History"
+				description="View all stock creations, adjustments, and transfers across your inventory"
+				actions={headerActions}
+				className="shrink-0"
+			/>
 
 			{/* Summary Cards */}
-			<div className="grid gap-4 md:grid-cols-4 flex-shrink-0">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Operations
-						</CardTitle>
-						<History className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">{summaryStats.total}</div>
-						<p className="text-xs text-muted-foreground">
-							All recorded operations
-						</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Stock Creations
-						</CardTitle>
-						<Plus className="h-4 w-4 text-green-600" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
-							{summaryStats.creations}
-						</div>
-						<p className="text-xs text-muted-foreground">New stock entries</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Adjustments</CardTitle>
-						<Clock className="h-4 w-4 text-blue-600" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-blue-600">
-							{summaryStats.adjustments}
-						</div>
-						<p className="text-xs text-muted-foreground">Stock modifications</p>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Transfers</CardTitle>
-						<ArrowUpDown className="h-4 w-4 text-purple-600" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-purple-600">
-							{summaryStats.transfers}
-						</div>
-						<p className="text-xs text-muted-foreground">Location movements</p>
-					</CardContent>
-				</Card>
-			</div>
-
-			<Tabs
-				value={activeTab}
-				onValueChange={setActiveTab}
-				className="flex-1 flex flex-col min-h-0"
-			>
-				<TabsList className="grid w-full grid-cols-3 flex-shrink-0">
-					<TabsTrigger value="all">All Operations</TabsTrigger>
-					<TabsTrigger value="adjustments">Adjustments</TabsTrigger>
-					<TabsTrigger value="transfers">Transfers</TabsTrigger>
-				</TabsList>
-
-				<TabsContent
-					value={activeTab}
-					className="flex-grow overflow-y-auto min-h-0"
-				>
-					<Card className="flex-grow flex flex-col min-h-0">
-						<CardHeader className="px-7 flex-shrink-0">
-							<div className="flex items-center justify-between">
-								<div>
-									<CardTitle>Stock Operation History</CardTitle>
-									<CardDescription>
-										Complete audit trail of all inventory changes
-									</CardDescription>
-								</div>
-								<div className="flex items-center gap-2 flex-wrap">
-									<div className="relative">
-										<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-										<Input
-											type="search"
-											placeholder="Search products, reference IDs, reasons..."
-											className="w-full appearance-none bg-background pl-8 shadow-none md:w-[300px]"
-											value={searchQuery}
-											onChange={(e) => setSearchQuery(e.target.value)}
-										/>
-									</div>
-									<Select
-										value={selectedLocation || "all"}
-										onValueChange={(value) =>
-											setSelectedLocation(value === "all" ? null : value)
-										}
-									>
-										<SelectTrigger className="w-[150px]">
-											<SelectValue placeholder="All Locations" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="all">All Locations</SelectItem>
-											{locations?.map((loc) => (
-												<SelectItem
-													key={loc.id}
-													value={loc.id.toString()}
-												>
-													{loc.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<Select
-										value={selectedOperationType || "all"}
-										onValueChange={(value) =>
-											setSelectedOperationType(value === "all" ? null : value)
-										}
-									>
-										<SelectTrigger className="w-[150px]">
-											<SelectValue placeholder="All Types" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="all">All Types</SelectItem>
-											<SelectItem value="CREATED">Created</SelectItem>
-											<SelectItem value="ADJUSTED_ADD">Added</SelectItem>
-											<SelectItem value="ADJUSTED_SUBTRACT">
-												Subtracted
-											</SelectItem>
-											<SelectItem value="TRANSFER_FROM">
-												Transfer Out
-											</SelectItem>
-											<SelectItem value="TRANSFER_TO">Transfer In</SelectItem>
-										</SelectContent>
-									</Select>
-									<Select
-										value={dateRange}
-										onValueChange={setDateRange}
-									>
-										<SelectTrigger className="w-[150px]">
-											<SelectValue placeholder="Time Period" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="all">All Time</SelectItem>
-											<SelectItem value="today">Today</SelectItem>
-											<SelectItem value="week">This Week</SelectItem>
-											<SelectItem value="month">This Month</SelectItem>
-											<SelectItem value="quarter">This Quarter</SelectItem>
-										</SelectContent>
-									</Select>
-								</div>
-							</div>
+			<div className="border-b bg-background/95 backdrop-blur-sm p-4">
+				<div className="grid gap-4 md:grid-cols-4">
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">
+								Total Operations
+							</CardTitle>
+							<History className="h-4 w-4 text-muted-foreground" />
 						</CardHeader>
-						<CardContent className="flex-grow overflow-hidden min-h-0">
-							<div className="h-full overflow-y-auto">
-								{filteredHistoryData && filteredHistoryData.length > 0 ? (
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead>Timestamp</TableHead>
-												<TableHead>Operation</TableHead>
-												<TableHead>Product</TableHead>
-												<TableHead>Location</TableHead>
-												<TableHead>User</TableHead>
-												<TableHead className="text-right">Change</TableHead>
-												<TableHead className="text-right">New Qty</TableHead>
-												<TableHead>Reason</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{filteredHistoryData.map((entry) => {
-												const operationInfo = getOperationTypeInfo(
-													entry.operation_type
-												);
-												const Icon = operationInfo.icon;
-
-												return (
-													<TableRow key={entry.id}>
-														<TableCell className="text-sm">
-															<div className="flex items-center gap-2">
-																<Calendar className="h-4 w-4 text-muted-foreground" />
-																{formatTimestamp(entry.timestamp)}
-															</div>
-														</TableCell>
-														<TableCell>
-															<Badge className={operationInfo.color}>
-																<Icon className="h-3 w-3 mr-1" />
-																{operationInfo.label}
-															</Badge>
-														</TableCell>
-														<TableCell className="font-medium">
-															<div className="flex items-center gap-2">
-																<Package className="h-4 w-4 text-muted-foreground" />
-																{entry.product.name}
-															</div>
-														</TableCell>
-														<TableCell>
-															<div className="flex items-center gap-2">
-																<MapPin className="h-4 w-4 text-muted-foreground" />
-																{entry.location.name}
-															</div>
-														</TableCell>
-														<TableCell>
-															<div className="flex items-center gap-2">
-																<User className="h-4 w-4 text-muted-foreground" />
-																{entry.user
-																	? `${entry.user.first_name} ${entry.user.last_name}`
-																	: "System"}
-															</div>
-														</TableCell>
-														<TableCell className="text-right font-mono">
-															<span
-																className={
-																	entry.quantity_change >= 0
-																		? "text-green-600"
-																		: "text-red-600"
-																}
-															>
-																{formatQuantityChange(
-																	entry.quantity_change,
-																	entry.operation_type
-																)}
-															</span>
-														</TableCell>
-														<TableCell className="text-right font-mono">
-															{entry.new_quantity}
-														</TableCell>
-														<TableCell>
-															<ReasonBadge
-																entry={entry}
-																onFilterByReferenceId={(referenceId) =>
-																	setSearchQuery(referenceId)
-																}
-															/>
-														</TableCell>
-													</TableRow>
-												);
-											})}
-										</TableBody>
-									</Table>
-								) : (
-									<div className="flex flex-col items-center justify-center h-full text-center py-10">
-										<History className="h-12 w-12 text-muted-foreground" />
-										<h3 className="mt-4 text-lg font-semibold">
-											No stock history found
-										</h3>
-										<p className="mt-2 text-sm text-muted-foreground">
-											No stock operations have been recorded yet, or try
-											adjusting your filters.
-										</p>
-									</div>
-								)}
-							</div>
+						<CardContent>
+							<div className="text-2xl font-bold">{summaryStats.total}</div>
+							<p className="text-xs text-muted-foreground">
+								All recorded operations
+							</p>
 						</CardContent>
 					</Card>
-				</TabsContent>
-			</Tabs>
+
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">
+								Stock Creations
+							</CardTitle>
+							<Plus className="h-4 w-4 text-green-600" />
+						</CardHeader>
+						<CardContent>
+							<div className="text-2xl font-bold text-green-600">
+								{summaryStats.creations}
+							</div>
+							<p className="text-xs text-muted-foreground">New stock entries</p>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">Adjustments</CardTitle>
+							<Clock className="h-4 w-4 text-blue-600" />
+						</CardHeader>
+						<CardContent>
+							<div className="text-2xl font-bold text-blue-600">
+								{summaryStats.adjustments}
+							</div>
+							<p className="text-xs text-muted-foreground">Stock modifications</p>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">Transfers</CardTitle>
+							<ArrowUpDown className="h-4 w-4 text-purple-600" />
+						</CardHeader>
+						<CardContent>
+							<div className="text-2xl font-bold text-purple-600">
+								{summaryStats.transfers}
+							</div>
+							<p className="text-xs text-muted-foreground">Location movements</p>
+						</CardContent>
+					</Card>
+				</div>
+			</div>
+
+			{/* Main Content */}
+			<div className="flex-1 min-h-0 p-4">
+				<ScrollArea className="h-full">
+					<div className="pb-6">
+						<Tabs
+							value={activeTab}
+							onValueChange={setActiveTab}
+							className="flex flex-col h-full"
+						>
+							<TabsList className="grid w-full grid-cols-3 mb-4">
+								<TabsTrigger value="all">All Operations</TabsTrigger>
+								<TabsTrigger value="adjustments">Adjustments</TabsTrigger>
+								<TabsTrigger value="transfers">Transfers</TabsTrigger>
+							</TabsList>
+
+							<TabsContent value={activeTab} className="mt-0">
+								<Card>
+									<CardHeader className="px-7">
+										<div className="flex items-center justify-between">
+											<div>
+												<CardTitle>Stock Operation History</CardTitle>
+												<CardDescription>
+													Complete audit trail of all inventory changes
+												</CardDescription>
+											</div>
+											<div className="flex items-center gap-2 flex-wrap">
+												<div className="relative">
+													<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+													<Input
+														type="search"
+														placeholder="Search products, reference IDs, reasons..."
+														className="w-full appearance-none bg-background pl-8 shadow-none md:w-[300px]"
+														value={searchQuery}
+														onChange={(e) => setSearchQuery(e.target.value)}
+													/>
+												</div>
+												<Select
+													value={selectedLocation || "all"}
+													onValueChange={(value) =>
+														setSelectedLocation(value === "all" ? null : value)
+													}
+												>
+													<SelectTrigger className="w-[150px]">
+														<SelectValue placeholder="All Locations" />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="all">All Locations</SelectItem>
+														{locations?.map((loc) => (
+															<SelectItem
+																key={loc.id}
+																value={loc.id.toString()}
+															>
+																{loc.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<Select
+													value={selectedOperationType || "all"}
+													onValueChange={(value) =>
+														setSelectedOperationType(value === "all" ? null : value)
+													}
+												>
+													<SelectTrigger className="w-[150px]">
+														<SelectValue placeholder="All Types" />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="all">All Types</SelectItem>
+														<SelectItem value="CREATED">Created</SelectItem>
+														<SelectItem value="ADJUSTED_ADD">Added</SelectItem>
+														<SelectItem value="ADJUSTED_SUBTRACT">
+															Subtracted
+														</SelectItem>
+														<SelectItem value="TRANSFER_FROM">
+															Transfer Out
+														</SelectItem>
+														<SelectItem value="TRANSFER_TO">Transfer In</SelectItem>
+													</SelectContent>
+												</Select>
+												<Select
+													value={dateRange}
+													onValueChange={setDateRange}
+												>
+													<SelectTrigger className="w-[150px]">
+														<SelectValue placeholder="Time Period" />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="all">All Time</SelectItem>
+														<SelectItem value="today">Today</SelectItem>
+														<SelectItem value="week">This Week</SelectItem>
+														<SelectItem value="month">This Month</SelectItem>
+														<SelectItem value="quarter">This Quarter</SelectItem>
+													</SelectContent>
+												</Select>
+											</div>
+										</div>
+									</CardHeader>
+									<CardContent>
+										{filteredHistoryData && filteredHistoryData.length > 0 ? (
+											<Table>
+												<TableHeader>
+													<TableRow>
+														<TableHead>Timestamp</TableHead>
+														<TableHead>Operation</TableHead>
+														<TableHead>Product</TableHead>
+														<TableHead>Location</TableHead>
+														<TableHead>User</TableHead>
+														<TableHead className="text-right">Change</TableHead>
+														<TableHead className="text-right">New Qty</TableHead>
+														<TableHead>Reason</TableHead>
+													</TableRow>
+												</TableHeader>
+												<TableBody>
+													{filteredHistoryData.map((entry) => {
+														const operationInfo = getOperationTypeInfo(
+															entry.operation_type
+														);
+														const Icon = operationInfo.icon;
+
+														return (
+															<TableRow key={entry.id}>
+																<TableCell className="text-sm">
+																	<div className="flex items-center gap-2">
+																		<Calendar className="h-4 w-4 text-muted-foreground" />
+																		{formatTimestamp(entry.timestamp)}
+																	</div>
+																</TableCell>
+																<TableCell>
+																	<Badge className={operationInfo.color}>
+																		<Icon className="h-3 w-3 mr-1" />
+																		{operationInfo.label}
+																	</Badge>
+																</TableCell>
+																<TableCell className="font-medium">
+																	<div className="flex items-center gap-2">
+																		<Package className="h-4 w-4 text-muted-foreground" />
+																		{entry.product.name}
+																	</div>
+																</TableCell>
+																<TableCell>
+																	<div className="flex items-center gap-2">
+																		<MapPin className="h-4 w-4 text-muted-foreground" />
+																		{entry.location.name}
+																	</div>
+																</TableCell>
+																<TableCell>
+																	<div className="flex items-center gap-2">
+																		<User className="h-4 w-4 text-muted-foreground" />
+																		{entry.user
+																			? `${entry.user.first_name} ${entry.user.last_name}`
+																			: "System"}
+																	</div>
+																</TableCell>
+																<TableCell className="text-right font-mono">
+																	<span
+																		className={
+																			entry.quantity_change >= 0
+																				? "text-green-600"
+																				: "text-red-600"
+																		}
+																	>
+																		{formatQuantityChange(
+																			entry.quantity_change,
+																			entry.operation_type
+																		)}
+																	</span>
+																</TableCell>
+																<TableCell className="text-right font-mono">
+																	{entry.new_quantity}
+																</TableCell>
+																<TableCell>
+																	<ReasonBadge
+																		entry={entry}
+																		onFilterByReferenceId={(referenceId) =>
+																			setSearchQuery(referenceId)
+																		}
+																	/>
+																</TableCell>
+															</TableRow>
+														);
+													})}
+												</TableBody>
+											</Table>
+										) : (
+											<div className="flex flex-col items-center justify-center h-full text-center py-10">
+												<History className="h-12 w-12 text-muted-foreground" />
+												<h3 className="mt-4 text-lg font-semibold">
+													No stock history found
+												</h3>
+												<p className="mt-2 text-sm text-muted-foreground">
+													No stock operations have been recorded yet, or try
+													adjusting your filters.
+												</p>
+											</div>
+										)}
+									</CardContent>
+								</Card>
+							</TabsContent>
+						</Tabs>
+					</div>
+				</ScrollArea>
+			</div>
 		</div>
 	);
 };
