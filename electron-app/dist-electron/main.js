@@ -416,6 +416,19 @@ const require2 = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process$1.env.NODE_ENV === "development";
+console.log("[Main Process] Configuring hardware acceleration and display settings...");
+app.commandLine.appendSwitch("--enable-gpu-rasterization");
+app.commandLine.appendSwitch("--enable-zero-copy");
+app.commandLine.appendSwitch("--disable-software-rasterizer");
+if (!isDev) {
+  app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
+  app.commandLine.appendSwitch("--force-color-profile", "srgb");
+  console.log("[Main Process] Production mode - stable display features enabled");
+} else {
+  app.commandLine.appendSwitch("--ignore-certificate-errors");
+  app.commandLine.appendSwitch("--allow-running-insecure-content");
+  console.log("[Main Process] Development mode - debugging switches enabled");
+}
 process$1.env.DIST = path.join(__dirname, "../dist");
 process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
 let mainWindow;
@@ -476,10 +489,10 @@ function createCustomerWindow() {
     fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, "../dist-electron/preload.js"),
-      hardwareAcceleration: true,
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false
+      // Remove hardwareAcceleration override - let app-level settings handle it
     }
   });
   if (VITE_DEV_SERVER_URL) {
@@ -785,20 +798,7 @@ ipcMain.on("shutdown-app", () => {
 });
 app.whenReady().then(async () => {
   console.log("[Main Process] Starting Electron app - online-only mode");
-  app.commandLine.appendSwitch("--enable-gpu-rasterization");
-  app.commandLine.appendSwitch("--enable-zero-copy");
-  app.commandLine.appendSwitch("--disable-software-rasterizer");
-  app.commandLine.appendSwitch("--disable-frame-rate-limit");
-  console.log("[Main Process] Hardware acceleration enabled for high refresh rate displays");
-  if (!isDev) {
-    app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
-    app.commandLine.appendSwitch("--force-color-profile", "srgb");
-    console.log("[Main Process] Production mode - security features enabled");
-  } else {
-    app.commandLine.appendSwitch("--ignore-certificate-errors");
-    app.commandLine.appendSwitch("--allow-running-insecure-content");
-    console.log("[Main Process] Development mode - security switches enabled");
-  }
+  console.log("[Main Process] Hardware acceleration and display settings applied at startup");
   createMainWindow();
   createCustomerWindow();
 });

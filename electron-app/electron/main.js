@@ -21,6 +21,27 @@ const __dirname = path.dirname(__filename);
 // Environment-based configuration
 const isDev = process.env.NODE_ENV === 'development';
 
+// Hardware acceleration and display fixes - MUST be set before app.whenReady()
+console.log("[Main Process] Configuring hardware acceleration and display settings...");
+
+// Basic hardware acceleration fixes for better performance and vsync
+app.commandLine.appendSwitch("--enable-gpu-rasterization");
+app.commandLine.appendSwitch("--enable-zero-copy");
+app.commandLine.appendSwitch("--disable-software-rasterizer");
+
+// Environment-specific switches
+if (!isDev) {
+	// Production mode - stable and secure settings
+	app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
+	app.commandLine.appendSwitch("--force-color-profile", "srgb");
+	console.log("[Main Process] Production mode - stable display features enabled");
+} else {
+	// Development mode - additional debugging and permissive settings
+	app.commandLine.appendSwitch("--ignore-certificate-errors");
+	app.commandLine.appendSwitch("--allow-running-insecure-content");
+	console.log("[Main Process] Development mode - debugging switches enabled");
+}
+
 process.env.DIST = path.join(__dirname, "../dist");
 process.env.PUBLIC = app.isPackaged
 	? process.env.DIST
@@ -95,10 +116,10 @@ function createCustomerWindow() {
 		fullscreen: true,
 		webPreferences: {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
-			hardwareAcceleration: true,
 			nodeIntegration: false,
 			contextIsolation: true,
 			enableRemoteModule: false,
+			// Remove hardwareAcceleration override - let app-level settings handle it
 		},
 	});
 
@@ -486,26 +507,7 @@ ipcMain.on("shutdown-app", () => {
 
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
-
-	// Hardware acceleration flags to fix screen tearing on high refresh rate monitors
-	app.commandLine.appendSwitch("--enable-gpu-rasterization");
-	app.commandLine.appendSwitch("--enable-zero-copy");
-	app.commandLine.appendSwitch("--disable-software-rasterizer");
-	app.commandLine.appendSwitch("--disable-frame-rate-limit");
-	console.log("[Main Process] Hardware acceleration enabled for high refresh rate displays");
-
-	// Production security switches
-	if (!isDev) {
-		// Enable security features for production
-		app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
-		app.commandLine.appendSwitch("--force-color-profile", "srgb");
-		console.log("[Main Process] Production mode - security features enabled");
-	} else {
-		// Development-only switches
-		app.commandLine.appendSwitch("--ignore-certificate-errors");
-		app.commandLine.appendSwitch("--allow-running-insecure-content");
-		console.log("[Main Process] Development mode - security switches enabled");
-	}
+	console.log("[Main Process] Hardware acceleration and display settings applied at startup");
 
 	createMainWindow();
 	createCustomerWindow();

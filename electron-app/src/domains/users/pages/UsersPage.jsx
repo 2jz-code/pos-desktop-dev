@@ -37,6 +37,7 @@ import {
 	ArchiveRestore,
 	Edit,
 	Users,
+	Search,
 } from "lucide-react";
 import {
 	DropdownMenu,
@@ -45,7 +46,9 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
+import { StandardTable } from "@/shared/components/layout";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -92,6 +95,7 @@ export function UsersPage() {
 		password: "",
 		first_name: "",
 		last_name: "",
+		phone_number: "",
 	});
 	const [pinData, setPinData] = useState({ pin: "" });
 
@@ -174,9 +178,13 @@ export function UsersPage() {
 		},
 		onError: (error) => {
 			console.error("Failed to create user:", error);
+			const errorMessage = error?.response?.data?.email?.[0] ||
+							   error?.response?.data?.username?.[0] ||
+							   error?.response?.data?.error ||
+							   "Failed to create user.";
 			toast({
 				title: "Error",
-				description: "Failed to create user.",
+				description: errorMessage,
 				variant: "destructive",
 			});
 		},
@@ -194,9 +202,13 @@ export function UsersPage() {
 		},
 		onError: (error) => {
 			console.error("Failed to update user:", error);
+			const errorMessage = error?.response?.data?.email?.[0] ||
+							   error?.response?.data?.username?.[0] ||
+							   error?.response?.data?.error ||
+							   "Failed to update user.";
 			toast({
 				title: "Error",
-				description: "Failed to update user.",
+				description: errorMessage,
 				variant: "destructive",
 			});
 		},
@@ -318,6 +330,7 @@ export function UsersPage() {
 				email: formData.email,
 				first_name: formData.first_name,
 				last_name: formData.last_name,
+				phone_number: formData.phone_number,
 			};
 
 			if (isOwner || (isManager && editingUser.role === "CASHIER")) {
@@ -347,6 +360,7 @@ export function UsersPage() {
 			password: "",
 			first_name: "",
 			last_name: "",
+			phone_number: "",
 		});
 		setIsUserDialogOpen(true);
 	};
@@ -354,12 +368,13 @@ export function UsersPage() {
 	const openEditDialog = (targetUser) => {
 		setEditingUser(targetUser);
 		setFormData({
-			username: targetUser.username,
-			email: targetUser.email,
-			role: targetUser.role,
+			username: targetUser.username || "",
+			email: targetUser.email || "",
+			role: targetUser.role || "CASHIER",
 			password: "",
 			first_name: targetUser.first_name || "",
 			last_name: targetUser.last_name || "",
+			phone_number: targetUser.phone_number || "",
 		});
 		setIsUserDialogOpen(true);
 	};
@@ -483,178 +498,259 @@ export function UsersPage() {
 
 	return (
 		<>
-			<DomainPageLayout
-				pageTitle={showArchivedUsers ? "Archived Users" : "User Management"}
-				pageDescription={
-					showArchivedUsers
-						? "View and restore archived users."
-						: "Manage active users in your system."
-				}
-				pageIcon={Users}
-				pageActions={headerActions}
-				title="Filters & Search"
-				searchPlaceholder="Search by name, username, email, or role..."
-				searchValue={filters.search}
-				onSearchChange={handleSearchChange}
-				error={error?.message}
-			>
-				<StandardTable
-					headers={headers}
-					data={Array.isArray(filteredUsers) ? filteredUsers : []}
-					loading={isLoading}
-					emptyMessage="No users found for the selected filters."
-					renderRow={renderUserRow}
+			<div className="flex flex-col h-full">
+				{/* Page Header */}
+				<PageHeader
+					icon={Users}
+					title={showArchivedUsers ? "Archived Users" : "User Management"}
+					description={
+						showArchivedUsers
+							? "View and restore archived users."
+							: "Manage active users in your system."
+					}
+					actions={headerActions}
+					className="shrink-0"
 				/>
-			</DomainPageLayout>
+
+				{/* Search and Filters */}
+				<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">
+					<div className="relative max-w-md">
+						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+						<Input
+							placeholder="Search by name, username, email, or role..."
+							className="pl-10 h-11"
+							value={filters.search}
+							onChange={handleSearchChange}
+						/>
+					</div>
+					{error?.message && (
+						<div className="text-sm text-destructive">{error.message}</div>
+					)}
+				</div>
+
+				{/* Main Content */}
+				<div className="flex-1 min-h-0 p-4">
+					<ScrollArea className="h-full">
+						<div className="pb-6">
+							<StandardTable
+								headers={headers}
+								data={Array.isArray(filteredUsers) ? filteredUsers : []}
+								loading={isLoading}
+								emptyMessage="No users found for the selected filters."
+								renderRow={renderUserRow}
+							/>
+						</div>
+					</ScrollArea>
+				</div>
+			</div>
 
 			{/* User Create/Edit Dialog */}
 			<Dialog
 				open={isUserDialogOpen}
 				onOpenChange={setIsUserDialogOpen}
 			>
-				<DialogContent className="sm:max-w-[425px]">
+				<DialogContent className="sm:max-w-[500px]">
 					<DialogHeader>
-						<DialogTitle>
-							{editingUser ? "Edit User" : "Create User"}
-						</DialogTitle>
-						<DialogDescription>
-							{editingUser
-								? "Update the user's information."
-								: "Create a new user for your system."}
-						</DialogDescription>
+						<div className="flex items-center gap-3">
+							<div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+								{editingUser ? <Edit className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+							</div>
+							<div>
+								<DialogTitle className="text-foreground">
+									{editingUser ? "Edit User" : "Create User"}
+								</DialogTitle>
+								<DialogDescription className="text-muted-foreground">
+									{editingUser
+										? "Update the user's information and permissions."
+										: "Create a new user account for your system."}
+								</DialogDescription>
+							</div>
+						</div>
 					</DialogHeader>
 					<form onSubmit={handleUserFormSubmit}>
-						<div className="grid gap-4 py-4">
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="email"
-									className="text-right"
-								>
-									Email
-								</Label>
-								<Input
-									id="email"
-									name="email"
-									type="email"
-									value={formData.email}
-									onChange={handleFormChange}
-									className="col-span-3"
-									required
-								/>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="username"
-									className="text-right"
-								>
-									Username
-								</Label>
-								<Input
-									id="username"
-									name="username"
-									value={formData.username}
-									onChange={handleFormChange}
-									className="col-span-3"
-									required
-								/>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="first_name"
-									className="text-right"
-								>
-									First Name
-								</Label>
-								<Input
-									id="first_name"
-									name="first_name"
-									value={formData.first_name}
-									onChange={handleFormChange}
-									className="col-span-3"
-								/>
-							</div>
-							<div className="grid grid-cols-4 items-center gap-4">
-								<Label
-									htmlFor="last_name"
-									className="text-right"
-								>
-									Last Name
-								</Label>
-								<Input
-									id="last_name"
-									name="last_name"
-									value={formData.last_name}
-									onChange={handleFormChange}
-									className="col-span-3"
-								/>
-							</div>
-							{((!editingUser && canCreateUsers) ||
-								(editingUser &&
-									(isOwner ||
-										(isManager && editingUser.role === "CASHIER")))) && (
-								<div className="grid grid-cols-4 items-center gap-4">
-									<Label
-										htmlFor="role"
-										className="text-right"
-									>
-										Role
-									</Label>
-									<Select
-										onValueChange={handleSelectChange}
-										defaultValue={formData.role}
-										value={formData.role}
-									>
-										<SelectTrigger className="col-span-3">
-											<SelectValue placeholder="Select a role" />
-										</SelectTrigger>
-										<SelectContent>
-											{(editingUser
-												? Object.keys(EDITABLE_ROLES)
-												: getAvailableRolesForCreation()
-											).map((roleKey) => (
-												<SelectItem
-													key={roleKey}
-													value={roleKey}
-												>
-													{ROLES[roleKey]}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+						<div className="space-y-4 py-4">
+							{/* Basic Information Section */}
+							<div className="space-y-4">
+								<div className="border-b border-border/60 pb-2">
+									<h4 className="text-sm font-medium text-foreground">Basic Information</h4>
 								</div>
-							)}
-							{!editingUser && (
-								<div className="grid grid-cols-4 items-center gap-4">
-									<Label
-										htmlFor="password"
-										className="text-right"
-									>
-										Password
+
+								<div className="grid grid-cols-2 gap-4">
+									<div className="space-y-2">
+										<Label htmlFor="first_name" className="text-sm font-medium text-foreground">
+											First Name
+										</Label>
+										<Input
+											id="first_name"
+											name="first_name"
+											value={formData.first_name}
+											onChange={handleFormChange}
+											placeholder="Enter first name"
+										/>
+									</div>
+									<div className="space-y-2">
+										<Label htmlFor="last_name" className="text-sm font-medium text-foreground">
+											Last Name
+										</Label>
+										<Input
+											id="last_name"
+											name="last_name"
+											value={formData.last_name}
+											onChange={handleFormChange}
+											placeholder="Enter last name"
+										/>
+									</div>
+								</div>
+
+								<div className="space-y-2">
+									<Label htmlFor="email" className="text-sm font-medium text-foreground">
+										Email Address <span className="text-destructive">*</span>
 									</Label>
 									<Input
-										id="password"
-										name="password"
-										type="password"
-										value={formData.password}
+										id="email"
+										name="email"
+										type="email"
+										value={formData.email}
 										onChange={handleFormChange}
-										className="col-span-3"
+										placeholder="Enter email address"
 										required
 									/>
+									<p className="text-xs text-muted-foreground">
+										This will be used for login and notifications
+									</p>
 								</div>
-							)}
+
+								<div className="space-y-2">
+									<Label htmlFor="username" className="text-sm font-medium text-foreground">
+										Username
+									</Label>
+									<Input
+										id="username"
+										name="username"
+										value={formData.username}
+										onChange={handleFormChange}
+										placeholder="Enter username (optional)"
+									/>
+									<p className="text-xs text-muted-foreground">
+										Leave blank to use email as username
+									</p>
+								</div>
+
+								<div className="space-y-2">
+									<Label htmlFor="phone_number" className="text-sm font-medium text-foreground">
+										Phone Number
+									</Label>
+									<Input
+										id="phone_number"
+										name="phone_number"
+										type="tel"
+										value={formData.phone_number}
+										onChange={handleFormChange}
+										placeholder="Enter phone number"
+									/>
+								</div>
+							</div>
+
+							{/* Security & Access Section */}
+							<div className="space-y-4">
+								<div className="border-b border-border/60 pb-2">
+									<h4 className="text-sm font-medium text-foreground">Security & Access</h4>
+								</div>
+
+								{((!editingUser && canCreateUsers) ||
+									(editingUser &&
+										(isOwner ||
+											(isManager && editingUser.role === "CASHIER")))) && (
+									<div className="space-y-2">
+										<Label htmlFor="role" className="text-sm font-medium text-foreground">
+											Role <span className="text-destructive">*</span>
+										</Label>
+										<Select
+											onValueChange={handleSelectChange}
+											defaultValue={formData.role}
+											value={formData.role}
+										>
+											<SelectTrigger>
+												<SelectValue placeholder="Select user role" />
+											</SelectTrigger>
+											<SelectContent>
+												{(editingUser
+													? Object.keys(EDITABLE_ROLES)
+													: getAvailableRolesForCreation()
+												).map((roleKey) => (
+													<SelectItem
+														key={roleKey}
+														value={roleKey}
+													>
+														<div className="flex items-center gap-2">
+															<span>{ROLES[roleKey]}</span>
+															<Badge variant="outline" className="text-xs">
+																{roleKey.toLowerCase()}
+															</Badge>
+														</div>
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<p className="text-xs text-muted-foreground">
+											Defines what the user can access and modify
+										</p>
+									</div>
+								)}
+
+								{!editingUser && (
+									<div className="space-y-2">
+										<Label htmlFor="password" className="text-sm font-medium text-foreground">
+											Password <span className="text-destructive">*</span>
+										</Label>
+										<Input
+											id="password"
+											name="password"
+											type="password"
+											value={formData.password}
+											onChange={handleFormChange}
+											placeholder="Enter secure password"
+											required
+										/>
+										<p className="text-xs text-muted-foreground">
+											Minimum 8 characters with letters and numbers
+										</p>
+									</div>
+								)}
+
+								{editingUser && (
+									<div className="p-3 bg-muted/20 rounded-lg border border-border/40">
+										<div className="flex items-center gap-2 text-sm text-muted-foreground">
+											<KeyRound className="h-4 w-4" />
+											<span>Use "Set PIN" action to update authentication credentials</span>
+										</div>
+									</div>
+								)}
+							</div>
 						</div>
-						<DialogFooter>
+						<DialogFooter className="gap-3">
 							<Button
 								type="button"
 								variant="outline"
 								onClick={closeUserDialog}
+								disabled={createUserMutation.isPending || updateUserMutation.isPending}
 							>
 								Cancel
 							</Button>
-							<Button type="submit">
-								{createUserMutation.isPending || updateUserMutation.isPending
-									? "Saving..."
-									: "Save"}
+							<Button
+								type="submit"
+								disabled={createUserMutation.isPending || updateUserMutation.isPending}
+							>
+								{createUserMutation.isPending || updateUserMutation.isPending ? (
+									<>
+										<div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+										{editingUser ? "Updating..." : "Creating..."}
+									</>
+								) : (
+									<>
+										{editingUser ? "Update User" : "Create User"}
+									</>
+								)}
 							</Button>
 						</DialogFooter>
 					</form>

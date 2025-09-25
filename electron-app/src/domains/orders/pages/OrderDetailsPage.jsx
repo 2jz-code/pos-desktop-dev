@@ -422,7 +422,7 @@ const OrderDetailsPage = () => {
             {/* Multi-Column Layout on Desktop */}
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
               {/* Left Column - Order Items (Takes more space on larger screens) */}
-              <div className="xl:col-span-3 space-y-6">
+              <div className="xl:col-span-3 space-y-8">
                 {/* Order Items Section */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 border-b border-border/60 pb-2.5 mb-4">
