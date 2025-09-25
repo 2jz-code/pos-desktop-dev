@@ -8,8 +8,8 @@ export default defineConfig({
 	plugins: [react(), tailwindcss()],
 	server: {
 		host: "0.0.0.0", // Allow external connections
-		port: 5173, // Default Vite port, change if needed
-		strictPort: false, // Allow port changes if 5173 is taken
+		port: 5175, // Custom port for admin site
+		strictPort: false, // Allow port changes if 5175 is taken
 	},
 	preview: {
 		host: "0.0.0.0", // Allow external connections for preview mode
