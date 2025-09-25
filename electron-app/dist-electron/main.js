@@ -475,7 +475,11 @@ function createCustomerWindow() {
     y: secondaryDisplay.bounds.y,
     fullscreen: true,
     webPreferences: {
-      preload: path.join(__dirname, "../dist-electron/preload.js")
+      preload: path.join(__dirname, "../dist-electron/preload.js"),
+      hardwareAcceleration: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false
     }
   });
   if (VITE_DEV_SERVER_URL) {
@@ -781,6 +785,11 @@ ipcMain.on("shutdown-app", () => {
 });
 app.whenReady().then(async () => {
   console.log("[Main Process] Starting Electron app - online-only mode");
+  app.commandLine.appendSwitch("--enable-gpu-rasterization");
+  app.commandLine.appendSwitch("--enable-zero-copy");
+  app.commandLine.appendSwitch("--disable-software-rasterizer");
+  app.commandLine.appendSwitch("--disable-frame-rate-limit");
+  console.log("[Main Process] Hardware acceleration enabled for high refresh rate displays");
   if (!isDev) {
     app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
     app.commandLine.appendSwitch("--force-color-profile", "srgb");

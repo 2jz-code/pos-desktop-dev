@@ -43,165 +43,151 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ItemCard } from "../components/ItemCard";
 
-// Enhanced Transaction Detail Component
+// Compact Transaction Detail Component
 const TransactionDetail = ({ transaction }) => {
   const method = transaction.method?.replace("_", " ") || "N/A";
   const isCredit = method.toLowerCase() === "credit";
 
   return (
-    <Card className="p-4">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-muted rounded-lg">
-            {isCredit ? (
-              <CreditCard className="h-4 w-4 text-primary" />
-            ) : (
-              <DollarSign className="h-4 w-4 text-primary" />
-            )}
-          </div>
-          <div>
-            <span className="font-semibold capitalize text-sm text-foreground">
-              {method}
-            </span>
-            {isCredit && transaction.metadata?.card_brand && (
-              <div className="text-xs text-muted-foreground">
-                {transaction.metadata.card_brand} ****
-                {transaction.metadata.card_last4}
-              </div>
-            )}
-          </div>
-        </div>
-        <span className="font-semibold text-sm text-foreground">
-          {formatCurrency(
-            Number.parseFloat(transaction.amount) +
-              Number.parseFloat(transaction.surcharge || 0)
+    <div className="flex items-center justify-between py-3 px-4 bg-muted/20 rounded-lg border border-border/40">
+      <div className="flex items-center gap-3">
+        <div className="flex size-8 items-center justify-center bg-primary/15 text-primary rounded-lg">
+          {isCredit ? (
+            <CreditCard className="h-4 w-4" />
+          ) : (
+            <DollarSign className="h-4 w-4" />
           )}
-        </span>
+        </div>
+        <div>
+          <div className="font-medium capitalize text-sm text-foreground">
+            {method}
+          </div>
+          {isCredit && transaction.metadata?.card_brand && (
+            <div className="text-xs text-muted-foreground">
+              {transaction.metadata.card_brand} ****{transaction.metadata.card_last4}
+            </div>
+          )}
+        </div>
       </div>
-    </Card>
+      <div className="font-bold text-foreground">
+        {formatCurrency(
+          Number.parseFloat(transaction.amount) +
+            Number.parseFloat(transaction.surcharge || 0)
+        )}
+      </div>
+    </div>
   );
 };
 
-// Customer Information Component
+// Compact Customer Information Component
 const CustomerInfo = ({ customer_display_name, customer_email, customer_phone }) => {
   if (!customer_display_name || customer_display_name === "Guest Customer") {
     return (
-      <Card className="p-4">
-        <div className="text-center text-muted-foreground">
-          <User className="h-8 w-8 mx-auto mb-2" />
-          <p>Guest Customer</p>
+      <Card className="p-4 border border-border/60 bg-muted/10">
+        <div className="flex items-center justify-center gap-3 text-muted-foreground">
+          <User className="h-5 w-5" />
+          <span className="font-medium">Guest Customer</span>
         </div>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <Card className="p-4">
-        <div className="flex items-center gap-3">
-          <User className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-foreground font-medium">{customer_display_name}</span>
+    <Card className="p-4 border border-border/60 bg-card/80 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="flex size-8 items-center justify-center bg-primary/15 text-primary rounded-lg">
+          <User className="h-4 w-4" />
         </div>
-      </Card>
+        <span className="text-foreground font-semibold">{customer_display_name}</span>
+      </div>
 
       {customer_email && (
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-            <a
-              href={`mailto:${customer_email}`}
-              className="text-primary hover:underline break-all"
-            >
-              {customer_email}
-            </a>
-          </div>
-        </Card>
+        <div className="flex items-center gap-3 pl-11">
+          <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+          <a
+            href={`mailto:${customer_email}`}
+            className="text-primary hover:underline break-all text-sm"
+          >
+            {customer_email}
+          </a>
+        </div>
       )}
 
       {customer_phone && (
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
-            <a
-              href={`tel:${customer_phone}`}
-              className="text-primary hover:underline"
-            >
-              {customer_phone}
-            </a>
-          </div>
-        </Card>
+        <div className="flex items-center gap-3 pl-11">
+          <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+          <a
+            href={`tel:${customer_phone}`}
+            className="text-primary hover:underline text-sm"
+          >
+            {customer_phone}
+          </a>
+        </div>
       )}
-    </div>
+    </Card>
   );
 };
 
-// Order Summary Component
+// Compact Order Summary Component
 const OrderSummary = ({ order }) => {
   return (
-    <Card className="p-6">
+    <Card className="p-5 border border-border/60 bg-card/80">
       <div className="space-y-4">
         {/* Main Total */}
-        <div className="flex justify-between items-center py-4 border-b">
-          <div className="flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-primary" />
-            <span className="text-lg font-semibold text-foreground">Grand Total</span>
+        <div className="text-center py-3 bg-primary/5 rounded-lg border border-primary/20">
+          <div className="text-2xl font-bold text-primary mb-1">
+            {formatCurrency(order.total_collected || 0)}
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-primary">
-              {formatCurrency(order.total_collected || 0)}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
-            </div>
+          <div className="text-sm text-muted-foreground">
+            {order.items.length} {order.items.length === 1 ? 'item' : 'items'} • Total
           </div>
         </div>
 
         {/* Breakdown */}
-        <div className="space-y-3 text-sm">
+        <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal</span>
-            <span className="text-foreground">{formatCurrency(order.subtotal)}</span>
+            <span className="text-foreground font-medium">{formatCurrency(order.subtotal)}</span>
           </div>
 
           {order.total_discounts_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Discounts</span>
-              <span className="text-destructive">-{formatCurrency(order.total_discounts_amount)}</span>
+              <span className="text-destructive font-medium">-{formatCurrency(order.total_discounts_amount)}</span>
             </div>
           )}
 
           <div className="flex justify-between">
             <span className="text-muted-foreground">Tax</span>
-            <span className="text-foreground">{formatCurrency(order.tax_total)}</span>
+            <span className="text-foreground font-medium">{formatCurrency(order.tax_total)}</span>
           </div>
 
           {order.total_surcharges > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Surcharges</span>
-              <span className="text-foreground">{formatCurrency(order.total_surcharges)}</span>
+              <span className="text-foreground font-medium">{formatCurrency(order.total_surcharges)}</span>
             </div>
           )}
 
           {order.total_tips > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Tips</span>
-              <span className="text-foreground">{formatCurrency(order.total_tips)}</span>
+              <span className="text-foreground font-medium">{formatCurrency(order.total_tips)}</span>
             </div>
           )}
         </div>
 
         {/* Quick Info */}
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t text-sm">
-          <div>
-            <div className="text-muted-foreground">Order Type</div>
-            <div className="font-medium text-foreground">{order.order_type}</div>
+        <div className="pt-3 border-t border-border/40 space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Type</span>
+            <Badge variant="outline" className="text-xs font-medium">{order.order_type}</Badge>
           </div>
-          <div>
-            <div className="text-muted-foreground">Cashier</div>
-            <div className="font-medium text-foreground">{order.cashier?.username || "N/A"}</div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Cashier</span>
+            <span className="text-foreground font-medium">{order.cashier?.username || "N/A"}</span>
           </div>
         </div>
       </div>
@@ -394,8 +380,8 @@ const OrderDetailsPage = () => {
     <div className="flex flex-col h-full">
       {/* Enhanced Header */}
       <div className="border-b bg-card sticky top-0 z-10">
-        <div className="p-4 md:p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-3 md:p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -430,70 +416,156 @@ const OrderDetailsPage = () => {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 min-h-0 p-4 md:p-6">
+      <div className="flex-1 min-h-0 p-3 md:p-4 lg:p-6">
         <ScrollArea className="h-full">
-          <div className="max-w-4xl mx-auto space-y-6 pb-6">
-            {/* Order Summary - Most Important First */}
-            <OrderSummary order={order} />
-
-            {/* Progressive Disclosure Sections */}
-            <CollapsibleSection title="Order Items" icon={Package} defaultOpen>
-              <div className="space-y-3">
-                {order.items.map((item) => (
-                  <ItemCard key={item.id} item={item} />
-                ))}
-              </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Customer Information" icon={User}>
-              <CustomerInfo
-                customer_display_name={order.customer_display_name}
-                customer_email={order.customer_email}
-                customer_phone={order.customer_phone}
-              />
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Payment Details" icon={CreditCard}>
-              {order.payment_details &&
-              order.payment_details.transactions?.filter(
-                (txn) => txn.status === "SUCCESSFUL"
-              ).length > 0 ? (
+          <div className="w-full pb-6">
+            {/* Multi-Column Layout on Desktop */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
+              {/* Left Column - Order Items (Takes more space on larger screens) */}
+              <div className="xl:col-span-3 space-y-6">
+                {/* Order Items Section */}
                 <div className="space-y-4">
-                  {permissions.canAccessPayments() && (
-                    <Card className="p-3 bg-primary/5 border-primary/20">
-                      <Link
-                        to={`/payments/${order.payment_details.id}`}
-                        className="text-primary font-semibold hover:underline text-sm inline-flex items-center gap-2"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        View Full Payment Record →
-                      </Link>
-                    </Card>
-                  )}
-                  <div className="space-y-3">
-                    {order.payment_details.transactions
-                      .filter((txn) => txn.status === "SUCCESSFUL")
-                      .map((txn) => (
-                        <TransactionDetail key={txn.id} transaction={txn} />
-                      ))}
+                  <div className="flex items-center gap-3 border-b border-border/60 pb-2.5 mb-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <Package className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Order Items</h2>
+                      <p className="text-xs text-muted-foreground">
+                        {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Grid layout for items on larger screens for better space usage */}
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+                    {order.items.map((item) => (
+                      <ItemCard key={item.id} item={item} compact={order.items.length > 2} />
+                    ))}
                   </div>
                 </div>
-              ) : (
-                <Card className="p-6 text-center">
-                  <CreditCard className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    No payment details found for this order.
-                  </p>
-                </Card>
-              )}
-            </CollapsibleSection>
+
+                {/* Payment Details Section - Large Desktop Only */}
+                <div className="hidden xl:block space-y-4">
+                  <div className="flex items-center gap-3 border-b border-border/60 pb-2.5 mb-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <CreditCard className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Payment Details</h2>
+                      <p className="text-xs text-muted-foreground">Transaction information</p>
+                    </div>
+                  </div>
+                  {order.payment_details &&
+                  order.payment_details.transactions?.filter(
+                    (txn) => txn.status === "SUCCESSFUL"
+                  ).length > 0 ? (
+                    <div className="space-y-4">
+                      {permissions.canAccessPayments() && (
+                        <Card className="p-4 bg-primary/5 border-primary/20">
+                          <Link
+                            to={`/payments/${order.payment_details.id}`}
+                            className="text-primary font-semibold hover:underline text-sm inline-flex items-center gap-2"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                            View Full Payment Record →
+                          </Link>
+                        </Card>
+                      )}
+                      <div className="space-y-3">
+                        {order.payment_details.transactions
+                          .filter((txn) => txn.status === "SUCCESSFUL")
+                          .map((txn) => (
+                            <TransactionDetail key={txn.id} transaction={txn} />
+                          ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <Card className="p-6 text-center">
+                      <CreditCard className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        No payment details found for this order.
+                      </p>
+                    </Card>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column - Order Summary & Customer Info (Takes 1/4 on XL screens) */}
+              <div className="space-y-6">
+                {/* Order Summary */}
+                <OrderSummary order={order} />
+
+                {/* Customer Information */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 border-b border-border/60 pb-2.5 mb-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Customer</h2>
+                      <p className="text-xs text-muted-foreground">Contact information</p>
+                    </div>
+                  </div>
+                  <CustomerInfo
+                    customer_display_name={order.customer_display_name}
+                    customer_email={order.customer_email}
+                    customer_phone={order.customer_phone}
+                  />
+                </div>
+
+                {/* Payment Details Section - Mobile & Tablet */}
+                <div className="xl:hidden space-y-4">
+                  <div className="flex items-center gap-3 border-b border-border/60 pb-2.5 mb-4">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <CreditCard className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Payment Details</h2>
+                      <p className="text-xs text-muted-foreground">Transaction information</p>
+                    </div>
+                  </div>
+                  {order.payment_details &&
+                  order.payment_details.transactions?.filter(
+                    (txn) => txn.status === "SUCCESSFUL"
+                  ).length > 0 ? (
+                    <div className="space-y-4">
+                      {permissions.canAccessPayments() && (
+                        <Card className="p-4 bg-primary/5 border-primary/20">
+                          <Link
+                            to={`/payments/${order.payment_details.id}`}
+                            className="text-primary font-semibold hover:underline text-sm inline-flex items-center gap-2"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                            View Full Payment Record →
+                          </Link>
+                        </Card>
+                      )}
+                      <div className="space-y-3">
+                        {order.payment_details.transactions
+                          .filter((txn) => txn.status === "SUCCESSFUL")
+                          .map((txn) => (
+                            <TransactionDetail key={txn.id} transaction={txn} />
+                          ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <Card className="p-6 text-center">
+                      <CreditCard className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        No payment details found for this order.
+                      </p>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </ScrollArea>
       </div>
 
       {/* Sticky Action Bar */}
-      <div className="border-t bg-card p-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="border-t bg-card p-3 md:p-4 lg:p-6">
+        <div className="w-full max-w-none">
           <div className="flex flex-col sm:flex-row gap-3 justify-end">
             {/* Primary Actions */}
             {canResume && (

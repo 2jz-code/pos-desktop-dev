@@ -95,8 +95,13 @@ function createCustomerWindow() {
 		fullscreen: true,
 		webPreferences: {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
+			hardwareAcceleration: true,
+			nodeIntegration: false,
+			contextIsolation: true,
+			enableRemoteModule: false,
 		},
 	});
+
 
 	if (VITE_DEV_SERVER_URL) {
 		customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
@@ -481,6 +486,13 @@ ipcMain.on("shutdown-app", () => {
 
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
+
+	// Hardware acceleration flags to fix screen tearing on high refresh rate monitors
+	app.commandLine.appendSwitch("--enable-gpu-rasterization");
+	app.commandLine.appendSwitch("--enable-zero-copy");
+	app.commandLine.appendSwitch("--disable-software-rasterizer");
+	app.commandLine.appendSwitch("--disable-frame-rate-limit");
+	console.log("[Main Process] Hardware acceleration enabled for high refresh rate displays");
 
 	// Production security switches
 	if (!isDev) {
