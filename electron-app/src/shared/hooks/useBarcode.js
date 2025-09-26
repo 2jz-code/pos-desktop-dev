@@ -1,82 +1,47 @@
-import { useState, useCallback } from "react";
+/**
+ * Electron-app barcode wrapper that uses the shared @ajeen/ui barcode hook
+ * Configured for POS system with specific API client and toast implementation
+ */
+import {
+	useBarcode as useSharedBarcode,
+	configureBarcode,
+	useProductBarcode as useSharedProductBarcode,
+	useInventoryBarcode as useSharedInventoryBarcode,
+	usePOSBarcode as useSharedPOSBarcode,
+} from "@ajeen/ui";
 import { toast } from "@/shared/components/ui/use-toast";
 import apiClient from "../lib/apiClient";
 
-/**
- * Simple, flexible barcode hook that enhances existing functionality
- * Can be used in any context - POS, products, inventory, etc.
- */
+// Configure the shared hook with electron-app dependencies on module load
+configureBarcode({
+	apiClient,
+	toast: {
+		success: (message) => toast({ title: "Success", description: message, variant: "default" }),
+		error: (message) => toast({ title: "Error", description: message, variant: "destructive" }),
+	},
+	defaultEndpoints: {
+		products: (barcode) => `/products/barcode/${barcode.trim()}/`,
+		inventory: (barcode) => `/inventory/barcode/${barcode.trim()}/stock/`,
+	},
+	defaultMessages: {
+		emptyBarcode: "Please enter a barcode",
+		success: "Product found!",
+		notFound: "Product not found",
+		error: "Error scanning barcode",
+	},
+});
+
+// Wrapper for backwards compatibility with existing electron-app usage
 export const useBarcode = (onSuccess, searchType = "products") => {
-	const [isScanning, setIsScanning] = useState(false);
-
-	const scanBarcode = useCallback(
-		async (barcode) => {
-			if (!barcode?.trim()) {
-				toast.error("Please enter a barcode");
-				return;
-			}
-
-			setIsScanning(true);
-
-			try {
-				let response;
-
-				// Choose endpoint based on search type
-				switch (searchType) {
-					case "inventory":
-						response = await apiClient.get(
-							`/inventory/barcode/${barcode.trim()}/stock/`
-						);
-						break;
-					case "products":
-					default:
-						response = await apiClient.get(
-							`/products/barcode/${barcode.trim()}/`
-						);
-						break;
-				}
-
-				if (response.data.success) {
-					onSuccess(response.data);
-					toast.success("Product found!");
-				} else {
-					toast.error("Product not found");
-				}
-			} catch (error) {
-				const message =
-					error.response?.status === 404
-						? "Product not found"
-						: "Error scanning barcode";
-				toast.error(message);
-			} finally {
-				setIsScanning(false);
-			}
-		},
-		[onSuccess, searchType]
-	);
-
-	return {
-		scanBarcode,
-		isScanning,
-	};
+	return useSharedBarcode({
+		searchType,
+		onSuccess,
+	});
 };
 
-// Specific hooks for common use cases
-export const useProductBarcode = (onProductFound) => {
-	return useBarcode((data) => onProductFound(data.product), "products");
-};
-
-export const useInventoryBarcode = (onStockFound) => {
-	return useBarcode((data) => onStockFound(data), "inventory");
-};
-
-// Hook for POS - directly adds to cart
-export const usePOSBarcode = (addToCart) => {
-	return useBarcode((data) => {
-		if (data.product) {
-			addToCart(data.product);
-		}
-	}, "products");
-};
+// Re-export the specialized hooks
+export const useProductBarcode = useSharedProductBarcode;
+export const useInventoryBarcode = useSharedInventoryBarcode;
+export const usePOSBarcode = useSharedPOSBarcode;
 
 export default useBarcode;

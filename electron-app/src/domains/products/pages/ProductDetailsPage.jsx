@@ -30,7 +30,8 @@ import {
 	Heart,
 	ShoppingCart,
 } from "lucide-react";
-import { formatCurrency, cn } from "@/shared/lib/utils";
+import { cn } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { toast } from "@/shared/components/ui/use-toast";
 import { ProductFormDialog } from "@/domains/products/components/dialogs/ProductFormDialog";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";

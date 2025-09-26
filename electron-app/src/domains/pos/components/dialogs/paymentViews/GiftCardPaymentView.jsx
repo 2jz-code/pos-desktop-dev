@@ -3,7 +3,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { CreditCard, AlertCircle, CheckCircle } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { giftCardService } from "@/domains/payments/services/giftCardService";

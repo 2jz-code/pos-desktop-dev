@@ -47,10 +47,10 @@ import {
 	History,
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
-import { useInventoryBarcode, useScrollToScannedItem } from "@/shared/hooks";
+import { useInventoryBarcode } from "@/shared/hooks";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
-import { useDebounce } from "@/shared/hooks/useDebounce";
-import { formatCurrency } from "@/shared/lib/utils";
+import { useDebounce, useScrollToScannedItem } from "@ajeen/ui";
+import { formatCurrency } from "@ajeen/ui";
 
 // Import dialog components
 import StockAdjustmentDialog from "@/domains/inventory/components/StockAdjustmentDialog";

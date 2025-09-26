@@ -12,7 +12,7 @@ import {
 } from "@/shared/components/ui/table";
 import { CreditCard } from "lucide-react";
 import { format } from "date-fns";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 
 export const PaymentsTableView = ({
   payments,

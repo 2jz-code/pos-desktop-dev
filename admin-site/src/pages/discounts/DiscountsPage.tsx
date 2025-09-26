@@ -23,7 +23,7 @@ import { toast } from "sonner";
 // @ts-expect-error - JS module with no types
 import discountService from "../../services/api/discountService";
 import AddEditDiscountDialog from "../../components/AddEditDiscountDialog";
-import { useDebounce } from "../../hooks/useDebounce";
+import { useDebounce } from "@ajeen/ui";
 import { useConfirmation } from "../../components/ui/confirmation-dialog";
 
 interface Product {

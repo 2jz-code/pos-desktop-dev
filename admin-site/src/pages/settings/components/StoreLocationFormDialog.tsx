@@ -3,7 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createStoreLocation, updateStoreLocation } from "@/services/api/settingsService";
+import {
+	createStoreLocation,
+	updateStoreLocation,
+} from "@/services/api/settingsService";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +20,6 @@ import {
 import {
 	Form,
 	FormControl,
-	FormDescription,
 	FormField,
 	FormItem,
 	FormLabel,
@@ -26,11 +28,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { formatPhoneNumber, isValidPhoneNumber } from "@ajeen/ui";
 
 const formSchema = z.object({
 	name: z.string().min(2, "Location name must be at least 2 characters."),
 	address: z.string().optional(),
-	phone: z.string().optional(),
+	phone: z
+		.string()
+		.optional()
+		.refine((phone) => {
+			return !phone || isValidPhoneNumber(phone);
+		}, "Please enter a valid phone number"),
 	email: z
 		.string()
 		.email("Please enter a valid email.")
@@ -147,6 +155,10 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 										<Input
 											placeholder="(123) 456-7890"
 											{...field}
+											onChange={(e) => {
+												const formatted = formatPhoneNumber(e.target.value);
+												field.onChange(formatted);
+											}}
 										/>
 									</FormControl>
 									<FormMessage />

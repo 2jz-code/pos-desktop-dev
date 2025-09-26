@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { CreditCard } from "lucide-react";
 import { format } from "date-fns";
 import { PaginationControls } from "@/components/ui/pagination";

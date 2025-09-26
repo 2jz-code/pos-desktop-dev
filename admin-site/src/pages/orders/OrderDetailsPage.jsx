@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatPhoneNumber } from "@ajeen/ui";
 import ModifierDisplay from "@/components/ui/ModifierDisplay";
 import {
 	ArrowLeft,
@@ -419,7 +419,7 @@ const OrderDetailsPage = () => {
 															href={`tel:${customer_phone}`}
 															className="text-blue-600 dark:text-blue-400 hover:underline"
 														>
-															{customer_phone}
+															{formatPhoneNumber(customer_phone)}
 														</a>
 													</div>
 												)}

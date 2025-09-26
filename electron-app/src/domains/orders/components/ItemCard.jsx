@@ -1,7 +1,7 @@
 import { Card } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { Package } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import ModifierDisplay from "@/shared/components/ui/ModifierDisplay";
 
 export const ItemCard = ({ item, compact = false }) => {

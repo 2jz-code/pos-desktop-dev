@@ -24,6 +24,9 @@ interface StandardTableProps<T = Record<string, unknown>> {
 	renderRow: (item: T) => React.ReactNode;
 	colSpan?: number;
 	className?: string;
+	getRowProps?: (item: T) => { [key: string]: any };
+	highlightedItemId?: string | number | null;
+	itemIdKey?: string;
 }
 
 export function StandardTable<T = Record<string, unknown>>({
@@ -35,6 +38,9 @@ export function StandardTable<T = Record<string, unknown>>({
 	renderRow,
 	colSpan,
 	className,
+	getRowProps,
+	highlightedItemId,
+	itemIdKey = "id",
 }: StandardTableProps<T>) {
 	return (
 		<Card className={className}>
@@ -81,19 +87,25 @@ export function StandardTable<T = Record<string, unknown>>({
 							</TableRow>
 						)}
 						{!loading &&
-							data.map((item, index) => (
-								<TableRow
-									key={index}
-									onClick={() => onRowClick?.(item)}
-									className={
-										onRowClick
-											? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
-											: ""
-									}
-								>
-									{renderRow(item)}
-								</TableRow>
-							))}
+							data.map((item, index) => {
+								const rowProps = getRowProps?.(item) || {};
+								const itemId = (item as any)[itemIdKey];
+								const isHighlighted = highlightedItemId && itemId && String(itemId) === String(highlightedItemId);
+
+								return (
+									<TableRow
+										key={index}
+										onClick={() => onRowClick?.(item)}
+										className={`
+											${onRowClick ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""}
+											${isHighlighted ? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse" : ""}
+										`.trim()}
+										{...rowProps}
+									>
+										{renderRow(item)}
+									</TableRow>
+								);
+							})}
 					</TableBody>
 				</Table>
 			</CardContent>

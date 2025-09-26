@@ -24,7 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import {
 	ArrowLeft,
 	CreditCard,

@@ -27,7 +27,7 @@ import {
 	AlertCircle,
 	X,
 } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 
 export const ProductsTableView = ({
 	products,

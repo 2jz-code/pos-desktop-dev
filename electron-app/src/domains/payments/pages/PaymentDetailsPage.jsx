@@ -25,7 +25,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import FullScreenLoader from "@/shared/components/common/FullScreenLoader";
 import { useToast } from "@/shared/components/ui/use-toast";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import {
 	ArrowLeft,
 	CreditCard,

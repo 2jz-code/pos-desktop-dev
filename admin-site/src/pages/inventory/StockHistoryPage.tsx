@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useDebounce } from "@ajeen/ui";
 import { ReasonBadge } from "@/components/inventory/ReasonBadge";
 
 interface Product {

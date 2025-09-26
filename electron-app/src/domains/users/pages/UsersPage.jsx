@@ -28,6 +28,7 @@ import {
 } from "@/shared/components/ui/select";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
+import { formatPhoneNumber, isValidEmail, isValidPhoneNumber } from "@ajeen/ui";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import {
 	MoreHorizontal,
@@ -309,7 +310,13 @@ export function UsersPage() {
 
 	const handleFormChange = (e) => {
 		const { name, value } = e.target;
-		setFormData((prev) => ({ ...prev, [name]: value }));
+		let formattedValue = value;
+
+		if (name === 'phone_number') {
+			formattedValue = formatPhoneNumber(value);
+		}
+
+		setFormData((prev) => ({ ...prev, [name]: formattedValue }));
 	};
 
 	const handlePinChange = (e) => {

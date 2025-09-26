@@ -13,11 +13,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+	formatPhoneNumber,
+	isValidEmail,
+	isValidPhoneNumber,
+	formatName
+} from "@ajeen/ui";
 
 const ProfileTab = () => {
 	const { profile, updateProfile, error } = useDashboard();
 	const [formData, setFormData] = useState({});
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [validationErrors, setValidationErrors] = useState({});
 
 	useEffect(() => {
 		if (profile) {
@@ -32,11 +39,42 @@ const ProfileTab = () => {
 
 	const handleInputChange = (e) => {
 		const { name, value } = e.target;
-		setFormData((prev) => ({ ...prev, [name]: value }));
+		let formattedValue = value;
+
+		// Apply formatting based on field type
+		if (name === 'phone_number') {
+			formattedValue = formatPhoneNumber(value);
+		} else if (name === 'first_name' || name === 'last_name') {
+			formattedValue = formatName(value);
+		}
+
+		setFormData((prev) => ({ ...prev, [name]: formattedValue }));
+
+		// Clear validation error for this field
+		if (validationErrors[name]) {
+			setValidationErrors((prev) => ({ ...prev, [name]: '' }));
+		}
 	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
+
+		// Validate form before submission
+		const errors = {};
+
+		if (formData.email && !isValidEmail(formData.email)) {
+			errors.email = "Please enter a valid email address";
+		}
+
+		if (formData.phone_number && !isValidPhoneNumber(formData.phone_number)) {
+			errors.phone_number = "Please enter a valid phone number";
+		}
+
+		if (Object.keys(errors).length > 0) {
+			setValidationErrors(errors);
+			return;
+		}
+
 		setIsSubmitting(true);
 		const { success, error } = await updateProfile(formData);
 		setIsSubmitting(false);
@@ -95,7 +133,11 @@ const ProfileTab = () => {
 								value={formData.email || ""}
 								onChange={handleInputChange}
 								disabled={!profile}
+								className={validationErrors.email ? "border-red-500" : ""}
 							/>
+							{validationErrors.email && (
+								<p className="text-sm text-red-500">{validationErrors.email}</p>
+							)}
 						</div>
 						<div className="space-y-2">
 							<Label htmlFor="phone_number">Phone Number</Label>
@@ -106,7 +148,12 @@ const ProfileTab = () => {
 								value={formData.phone_number || ""}
 								onChange={handleInputChange}
 								disabled={!profile}
+								placeholder="(123) 456-7890"
+								className={validationErrors.phone_number ? "border-red-500" : ""}
 							/>
+							{validationErrors.phone_number && (
+								<p className="text-sm text-red-500">{validationErrors.phone_number}</p>
+							)}
 						</div>
 					</div>
 					<div className="flex justify-end">

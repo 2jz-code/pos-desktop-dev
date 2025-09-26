@@ -1,4 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
+import { useInventoryBarcodeWithScroll } from "@/hooks/useBarcode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -54,7 +56,7 @@ import StockAdjustmentDialog from "@/components/StockAdjustmentDialog";
 import LocationManagementDialog from "@/components/LocationManagementDialog";
 // @ts-expect-error - No types for JS file
 import StockTransferDialog from "@/components/StockTransferDialog";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useDebounce } from "@ajeen/ui";
 import { useConfirmation } from "@/components/ui/confirmation-dialog";
 
 interface Product {
@@ -132,7 +134,100 @@ export const InventoryPage = () => {
 	const [stockFilter, setStockFilter] = useState("all"); // all, low_stock, expiring_soon
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+	// Barcode scanning refs and state
+	const barcodeInputRef = useRef("");
+	const lastKeystrokeRef = useRef(0);
+	const [highlightedStockId, setHighlightedStockId] = useState<number | null>(null);
+	const [scannedProductId, setScannedProductId] = useState<number | null>(null);
+
 	const queryClient = useQueryClient();
+
+	// Scroll to scanned item functionality
+	const { tableContainerRef, scrollToItem } = useScrollToScannedItem();
+
+	// Smart barcode scanning for inventory
+	const { scanBarcode, isScanning } = useInventoryBarcodeWithScroll((stockData) => {
+		// Highlight the found product
+		const productId = stockData.product?.id;
+		if (productId) {
+			setHighlightedStockId(productId);
+
+			// Clear any active filters to ensure the scanned item is visible
+			setSearchQuery("");
+			setSelectedLocation(null);
+			setStockFilter("all");
+
+			// Switch to the stock tab to ensure the item is visible
+			setActiveTab("all-stock");
+
+			// Set scanned product ID after a delay to allow filters to clear and query to refetch
+			setTimeout(() => {
+				setScannedProductId(productId);
+			}, 600); // Wait for debounce + query refetch
+		}
+	}, (productId) => {
+		scrollToItem(productId, {
+			dataAttribute: "data-product-id",
+			delay: 200,
+		});
+	});
+
+	// Global barcode listener
+	useEffect(() => {
+		const handleKeyPress = (e: KeyboardEvent) => {
+			if (
+				(e.target as HTMLElement).tagName === "INPUT" ||
+				(e.target as HTMLElement).tagName === "TEXTAREA" ||
+				isStockAdjustmentDialogOpen ||
+				isLocationDialogOpen ||
+				isStockTransferDialogOpen
+			) {
+				return;
+			}
+
+			const now = Date.now();
+			const timeDiff = now - lastKeystrokeRef.current;
+
+			if (timeDiff < 100) {
+				barcodeInputRef.current += e.key;
+			} else {
+				barcodeInputRef.current = e.key;
+			}
+
+			lastKeystrokeRef.current = now;
+
+			if (e.key === "Enter" && barcodeInputRef.current.length > 1) {
+				const barcode = barcodeInputRef.current.replace("Enter", "");
+				if (barcode.length >= 3) {
+					e.preventDefault();
+					scanBarcode(barcode);
+				}
+				barcodeInputRef.current = "";
+			}
+
+			setTimeout(() => {
+				if (
+					Date.now() - lastKeystrokeRef.current > 500 &&
+					barcodeInputRef.current.length >= 8
+				) {
+					const barcode = barcodeInputRef.current;
+					if (barcode.length >= 3) {
+						scanBarcode(barcode);
+					}
+					barcodeInputRef.current = "";
+				}
+			}, 600);
+		};
+
+		document.addEventListener("keypress", handleKeyPress);
+		return () => document.removeEventListener("keypress", handleKeyPress);
+	}, [
+		scanBarcode,
+		isStockAdjustmentDialogOpen,
+		isLocationDialogOpen,
+		isStockTransferDialogOpen,
+	]);
+
 
 	// Data fetching
 	const { data: dashboardData, isLoading: dashboardLoading } =
@@ -163,6 +258,48 @@ export const InventoryPage = () => {
 			select: (data) => data.results,
 		}
 	);
+
+	// Effect to scroll to the item after tab change
+	useEffect(() => {
+		if (activeTab === "all-stock" && scannedProductId && stockData && !stockLoading) {
+			// Check if the item exists in current data
+			const itemExists = stockData.some(item => item.product.id === scannedProductId);
+
+			if (itemExists) {
+				// Use requestAnimationFrame to ensure DOM has updated after React render
+				requestAnimationFrame(() => {
+					setTimeout(() => {
+						const container = tableContainerRef.current;
+						const allElements = container ? container.querySelectorAll('[data-product-id]') : document.querySelectorAll('[data-product-id]');
+
+						if (allElements.length > 0) {
+							scrollToItem(scannedProductId.toString(), {
+								dataAttribute: "data-product-id",
+								delay: 100,
+							});
+						} else {
+							setTimeout(() => {
+								scrollToItem(scannedProductId.toString(), {
+									dataAttribute: "data-product-id",
+									delay: 100,
+								});
+							}, 200);
+						}
+					}, 50);
+				});
+
+				// Clear highlight after 5 seconds
+				const highlightTimeout = setTimeout(
+					() => setHighlightedStockId(null),
+					5000
+				);
+				// Reset scanned product ID
+				setScannedProductId(null);
+
+				return () => clearTimeout(highlightTimeout);
+			}
+		}
+	}, [activeTab, scannedProductId, scrollToItem, stockData, stockLoading]);
 
 	// Delete location mutation
 	const deleteLocationMutation = useMutation({
@@ -228,12 +365,6 @@ export const InventoryPage = () => {
 		queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
 	};
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency: "USD",
-		}).format(amount);
-	};
 
 	const refreshData = () => {
 		queryClient.invalidateQueries({ queryKey: ["inventory-dashboard"] });
@@ -599,7 +730,7 @@ export const InventoryPage = () => {
 								</div>
 
 								{/* Table Body */}
-								<div className="overflow-y-auto flex-grow min-h-0">
+								<div ref={tableContainerRef} className="overflow-y-auto flex-grow min-h-0">
 									{stockLoading ? (
 										<div className="flex justify-center items-center h-full">
 											<RefreshCw className="h-6 w-6 animate-spin" />
@@ -607,7 +738,7 @@ export const InventoryPage = () => {
 									) : stockData && stockData.length > 0 ? (
 										stockData.map((item) => {
 											const isHighlighted =
-												highlightedProductId === item.product.id;
+												highlightedStockId === item.product.id;
 											const isLowStock = item.is_low_stock;
 											const isExpiringSoon = item.is_expiring_soon;
 											const isOutOfStock = Number(item.quantity) <= 0;
@@ -634,47 +765,24 @@ export const InventoryPage = () => {
 											return (
 												<div
 													key={item.id}
+													data-product-id={item.product.id}
 													className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
 														isHighlighted
-															? "bg-blue-50 dark:bg-blue-900/50"
+															? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse"
 															: ""
 													}`}
 												>
-													<div
-														className={`col-span-3 font-medium ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-3 font-medium">
 														{item.product.name}
 													</div>
-													<div
-														className={`col-span-2 text-muted-foreground flex items-center ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-2 text-muted-foreground flex items-center">
 														<MapPin className="h-4 w-4 mr-2" />
 														{item.location.name}
 													</div>
-													<div
-														className={`col-span-2 text-right ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-2 text-right">
 														{Number(item.quantity).toFixed(2)}
 													</div>
-													<div
-														className={`col-span-2 ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-2">
 														<div className="text-center">
 															{item.expiration_date ? (
 																<div className="text-sm">
@@ -697,13 +805,7 @@ export const InventoryPage = () => {
 															)}
 														</div>
 													</div>
-													<div
-														className={`col-span-2 ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-2">
 														<div className="text-center space-y-1">
 															<div>
 																<Badge
@@ -732,13 +834,7 @@ export const InventoryPage = () => {
 																)}
 														</div>
 													</div>
-													<div
-														className={`col-span-1 flex justify-end ${
-															isHighlighted
-																? "bg-blue-50 dark:bg-blue-900/50"
-																: ""
-														}`}
-													>
+													<div className="col-span-1 flex justify-end">
 														<DropdownMenu>
 															<DropdownMenuTrigger asChild>
 																<Button

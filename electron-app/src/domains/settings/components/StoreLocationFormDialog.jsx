@@ -29,11 +29,17 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { toast } from "sonner";
+import { formatPhoneNumber, isValidPhoneNumber } from "@ajeen/ui";
 
 const formSchema = z.object({
 	name: z.string().min(2, "Location name must be at least 2 characters."),
 	address: z.string().optional(),
-	phone: z.string().optional(),
+	phone: z
+		.string()
+		.optional()
+		.refine((phone) => {
+			return !phone || isValidPhoneNumber(phone);
+		}, "Please enter a valid phone number"),
 	email: z
 		.string()
 		.email("Please enter a valid email.")
@@ -150,6 +156,10 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 										<Input
 											placeholder="(123) 456-7890"
 											{...field}
+											onChange={(e) => {
+												const formatted = formatPhoneNumber(e.target.value);
+												field.onChange(formatted);
+											}}
 										/>
 									</FormControl>
 									<FormMessage />

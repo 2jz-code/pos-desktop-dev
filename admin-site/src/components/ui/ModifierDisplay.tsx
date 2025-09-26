@@ -1,4 +1,5 @@
 import React from "react";
+import { formatCurrency } from "@ajeen/ui";
 
 interface Modifier {
 	modifier_set_name: string;
@@ -28,12 +29,6 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 		0
 	);
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat('en-US', {
-			style: 'currency',
-			currency: 'USD'
-		}).format(amount);
-	};
 
 	if (compact) {
 		// Compact display for lists - show as a summary line

@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency, formatPhoneNumber } from "@ajeen/ui";
 import {
   ArrowLeft,
   CreditCard,
@@ -122,7 +122,7 @@ const CustomerInfo = ({ customer_display_name, customer_email, customer_phone })
             href={`tel:${customer_phone}`}
             className="text-primary hover:underline text-sm"
           >
-            {customer_phone}
+            {formatPhoneNumber(customer_phone)}
           </a>
         </div>
       )}

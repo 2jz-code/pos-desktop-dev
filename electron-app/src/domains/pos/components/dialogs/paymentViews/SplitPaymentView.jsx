@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { shallow } from "zustand/shallow";
 import { calculateSurcharge } from "@/domains/payments/services/paymentService";
 

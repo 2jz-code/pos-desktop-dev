@@ -9,6 +9,7 @@ import { useFinancialSettings } from "./useSettings";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCartStore } from "@/store/cartStore"; // <-- 1. IMPORT THE STORE
 import { cartKeys } from "./useCart"; // <-- 2. IMPORT CART QUERY KEYS
+import { isValidEmail, isValidPhoneNumber } from "@ajeen/ui";
 
 // Initial form data structure
 const initialFormData = {
@@ -81,13 +82,11 @@ export const useCheckout = () => {
 		if (!email?.trim()) return "Email is required";
 		if (!phone?.trim()) return "Phone number is required";
 
-		// Basic email validation
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) return "Please enter a valid email address";
+		// Email validation using shared utility
+		if (!isValidEmail(email)) return "Please enter a valid email address";
 
-		// Basic phone validation (at least 10 digits)
-		const phoneDigits = phone.replace(/\D/g, "");
-		if (phoneDigits.length < 10) return "Please enter a valid phone number";
+		// Phone validation using shared utility
+		if (!isValidPhoneNumber(phone)) return "Please enter a valid phone number";
 
 		return null;
 	}, [formData, isAuthenticated, user]);

@@ -14,8 +14,7 @@ export { DashboardCard } from "./components/common/DashboardCard.jsx";
 // Hooks
 export * from "./hooks";
 
-// Utils
-export * from "./utils";
+// Utils moved to @ajeen/ui package
 
 // Lib
 export * from "./lib";

@@ -47,7 +47,7 @@ import {
 	Calendar,
 } from "lucide-react";
 import inventoryService from "../services/inventoryService";
-import { useDebounce } from "@/shared/hooks/useDebounce";
+import { useDebounce } from "@ajeen/ui";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { ReasonBadge } from "../components/ReasonBadge";

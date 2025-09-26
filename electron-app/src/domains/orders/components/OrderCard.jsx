@@ -16,7 +16,7 @@ import {
   User,
 } from "lucide-react";
 import { format } from "date-fns";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 
 export const OrderCard = ({
   order,

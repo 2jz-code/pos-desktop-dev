@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getAllOrders,
@@ -25,12 +25,21 @@ import {
   LayoutGrid,
   List,
 } from "lucide-react";
+import {
+  getStatusConfig as getSharedStatusConfig,
+  getPaymentStatusConfig as getSharedPaymentStatusConfig,
+  useOrdersData,
+  useOrderActions,
+  STATUS_FILTER_PILLS,
+  ORDER_TYPE_FILTER_PILLS,
+  formatCurrency,
+} from "@ajeen/ui";
+import { createIconMapper } from "@ajeen/ui/lib/iconUtils";
 import { toast } from "@/shared/components/ui/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { format } from "date-fns";
-import { formatCurrency } from "@/shared/lib/utils";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 import { FilterPill } from "../components/FilterPill";
@@ -38,18 +47,6 @@ import { OrderCard } from "../components/OrderCard";
 import { OrdersTableView } from "../components/OrdersTableView";
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [nextUrl, setNextUrl] = useState(null);
-  const [prevUrl, setPrevUrl] = useState(null);
-  const [count, setCount] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filters, setFilters] = useState({
-    order_type: "",
-    status: "",
-    search: "",
-  });
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState(() => {
     return localStorage.getItem('ordersViewMode') || 'cards';
@@ -64,143 +61,57 @@ export default function OrdersPage() {
     shallow
   );
 
-  const fetchOrders = useCallback(
-    async (url = null) => {
-      try {
-        setLoading(true);
-        const response = await getAllOrders(filters, url);
-        setOrders(response.results || []);
-        setNextUrl(response.next);
-        setPrevUrl(response.previous);
-        setCount(response.count || 0);
+  // Use shared orders data hook
+  const {
+    orders,
+    loading,
+    error,
+    nextUrl,
+    prevUrl,
+    count,
+    currentPage,
+    filters,
+    hasFilters,
+    handleNavigate,
+    handleFilterChange,
+    handleSearchChange,
+    clearFilters,
+    refetch
+  } = useOrdersData({
+    getAllOrdersService: getAllOrders
+  });
 
-        if (url) {
-          const urlObj = new URL(url);
-          const page = parseInt(urlObj.searchParams.get("page") || "1");
-          setCurrentPage(page);
-        } else {
-          setCurrentPage(1);
-        }
+  // Use shared order actions hook
+  const { handleAction } = useOrderActions({
+    toast,
+    refetch
+  });
 
-        setError(null);
-      } catch (err) {
-        setError("Failed to fetch orders.");
-        console.error("Order fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [filters]
-  );
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+  // Create icon mapper for this app
+  const mapIcon = createIconMapper({
+    CheckCircle,
+    Clock,
+    XCircle,
+    DollarSign,
+    RefreshCw
+  });
 
-  const handleNavigate = (url) => {
-    if (url) fetchOrders(url);
-  };
-
-  const handleFilterChange = (filterName, value) => {
-    const actualValue = value === "ALL" ? "" : value;
-    setFilters((prev) => ({ ...prev, [filterName]: actualValue }));
-  };
-
-  const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setFilters((prev) => ({ ...prev, search: value }));
-  };
-
-  const clearFilters = () => {
-    setFilters({
-      order_type: "",
-      status: "",
-      search: "",
-    });
-  };
-
-  const hasFilters = filters.order_type || filters.status || filters.search;
-
+  // Use shared status configs with icon mapping
   const getStatusConfig = (status) => {
-    switch (status) {
-      case "COMPLETED":
-        return {
-          variant: "default",
-          icon: CheckCircle,
-          color: "text-primary",
-          label: "Completed"
-        };
-      case "PENDING":
-        return {
-          variant: "secondary",
-          icon: Clock,
-          color: "text-accent-foreground",
-          label: "Pending"
-        };
-      case "HOLD":
-        return {
-          variant: "outline",
-          icon: Clock,
-          color: "text-muted-foreground",
-          label: "On Hold"
-        };
-      case "CANCELLED":
-      case "VOID":
-        return {
-          variant: "destructive",
-          icon: XCircle,
-          color: "text-destructive",
-          label: status === "CANCELLED" ? "Cancelled" : "Void"
-        };
-      default:
-        return {
-          variant: "outline",
-          icon: Clock,
-          color: "text-muted-foreground",
-          label: status
-        };
-    }
+    const config = getSharedStatusConfig(status);
+    return {
+      ...config,
+      icon: mapIcon(config.icon)
+    };
   };
 
   const getPaymentStatusConfig = (status) => {
-    switch (status) {
-      case "PAID":
-        return {
-          variant: "default",
-          icon: DollarSign,
-          color: "text-primary",
-          label: "Paid"
-        };
-      case "PARTIALLY_PAID":
-        return {
-          variant: "secondary",
-          icon: DollarSign,
-          color: "text-accent-foreground",
-          label: "Partial"
-        };
-      case "UNPAID":
-        return {
-          variant: "destructive",
-          icon: XCircle,
-          color: "text-destructive",
-          label: "Unpaid"
-        };
-      case "REFUNDED":
-      case "PARTIALLY_REFUNDED":
-        return {
-          variant: "outline",
-          icon: RefreshCw,
-          color: "text-muted-foreground",
-          label: status === "REFUNDED" ? "Refunded" : "Partial Refund"
-        };
-      default:
-        return {
-          variant: "outline",
-          icon: DollarSign,
-          color: "text-muted-foreground",
-          label: status
-        };
-    }
+    const config = getSharedPaymentStatusConfig(status);
+    return {
+      ...config,
+      icon: mapIcon(config.icon)
+    };
   };
 
   const handleResumeAction = async (orderId) => {
@@ -225,24 +136,7 @@ export default function OrdersPage() {
   };
 
   const handleVoidAction = async (orderId) => {
-    try {
-      await voidOrder(orderId);
-      toast({
-        title: "Success",
-        description: "Order has been voided successfully.",
-        variant: "default"
-      });
-      fetchOrders();
-    } catch (err) {
-      const description =
-        err?.response?.data?.error || "An unknown error occurred.";
-      toast({
-        title: "Failed to void order",
-        description: description,
-        variant: "destructive",
-      });
-      console.error(`Failed to void order ${orderId}:`, err);
-    }
+    await handleAction(orderId, voidOrder, "Order has been voided successfully.");
   };
 
   const handleCardClick = (order) => {
@@ -271,7 +165,7 @@ export default function OrdersPage() {
           error={error}
           hasFilters={hasFilters}
           clearFilters={clearFilters}
-          fetchOrders={fetchOrders}
+          fetchOrders={refetch}
           onCardClick={handleCardClick}
           onResumeOrder={handleResumeAction}
           onVoidOrder={handleVoidAction}
@@ -317,7 +211,7 @@ export default function OrdersPage() {
         <Card className="p-8 text-center">
           <CardContent>
             <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => fetchOrders()} variant="outline">
+            <Button onClick={() => refetch()} variant="outline">
               Try Again
             </Button>
           </CardContent>
@@ -443,36 +337,23 @@ export default function OrdersPage() {
               active={!hasFilters}
               onClick={clearFilters}
             />
-            <FilterPill
-              label="Pending"
-              active={filters.status === "PENDING"}
-              onClick={() => handleFilterChange("status", filters.status === "PENDING" ? "ALL" : "PENDING")}
-              icon={Clock}
-            />
-            <FilterPill
-              label="Completed"
-              active={filters.status === "COMPLETED"}
-              onClick={() => handleFilterChange("status", filters.status === "COMPLETED" ? "ALL" : "COMPLETED")}
-              icon={CheckCircle}
-            />
-            <FilterPill
-              label="On Hold"
-              active={filters.status === "HOLD"}
-              onClick={() => handleFilterChange("status", filters.status === "HOLD" ? "ALL" : "HOLD")}
-              icon={Clock}
-            />
-            <FilterPill
-              label="Cancelled"
-              active={filters.status === "CANCELLED"}
-              onClick={() => handleFilterChange("status", filters.status === "CANCELLED" ? "ALL" : "CANCELLED")}
-              icon={XCircle}
-            />
-            <FilterPill
-              label="Void"
-              active={filters.status === "VOID"}
-              onClick={() => handleFilterChange("status", filters.status === "VOID" ? "ALL" : "VOID")}
-              icon={XCircle}
-            />
+            {STATUS_FILTER_PILLS.map((pill) => {
+              const IconComponent = {
+                Clock,
+                CheckCircle,
+                XCircle
+              }[pill.iconName];
+
+              return (
+                <FilterPill
+                  key={pill.key}
+                  label={pill.label}
+                  active={filters[pill.filterKey] === pill.filterValue}
+                  onClick={() => handleFilterChange(pill.filterKey, filters[pill.filterKey] === pill.filterValue ? "ALL" : pill.filterValue)}
+                  icon={IconComponent}
+                />
+              );
+            })}
             </div>
           </div>
         )}
@@ -484,31 +365,14 @@ export default function OrdersPage() {
               <div>
                 <label className="text-sm font-medium mb-2 block">Order Type</label>
                 <div className="flex flex-wrap gap-2">
-                  <FilterPill
-                    label="POS"
-                    active={filters.order_type === "POS"}
-                    onClick={() => handleFilterChange("order_type", filters.order_type === "POS" ? "ALL" : "POS")}
-                  />
-                  <FilterPill
-                    label="Web"
-                    active={filters.order_type === "WEB"}
-                    onClick={() => handleFilterChange("order_type", filters.order_type === "WEB" ? "ALL" : "WEB")}
-                  />
-                  <FilterPill
-                    label="Customer App"
-                    active={filters.order_type === "APP"}
-                    onClick={() => handleFilterChange("order_type", filters.order_type === "APP" ? "ALL" : "APP")}
-                  />
-                  <FilterPill
-                    label="DoorDash"
-                    active={filters.order_type === "DOORDASH"}
-                    onClick={() => handleFilterChange("order_type", filters.order_type === "DOORDASH" ? "ALL" : "DOORDASH")}
-                  />
-                  <FilterPill
-                    label="Uber Eats"
-                    active={filters.order_type === "UBER_EATS"}
-                    onClick={() => handleFilterChange("order_type", filters.order_type === "UBER_EATS" ? "ALL" : "UBER_EATS")}
-                  />
+                  {ORDER_TYPE_FILTER_PILLS.map((pill) => (
+                    <FilterPill
+                      key={pill.key}
+                      label={pill.label}
+                      active={filters[pill.filterKey] === pill.filterValue}
+                      onClick={() => handleFilterChange(pill.filterKey, filters[pill.filterKey] === pill.filterValue ? "ALL" : pill.filterValue)}
+                    />
+                  ))}
                 </div>
               </div>
             </div>

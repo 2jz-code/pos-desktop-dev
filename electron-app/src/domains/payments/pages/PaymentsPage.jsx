@@ -20,7 +20,7 @@ import {
   List,
 } from "lucide-react";
 import { format } from "date-fns";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 import { FilterPill } from "@/domains/orders/components/FilterPill";

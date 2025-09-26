@@ -51,8 +51,10 @@ import {
 	CheckCircle2,
 } from "lucide-react";
 import { toast } from "@/shared/components/ui/use-toast";
-import { formatCurrency, cn } from "@/shared/lib/utils";
-import { useProductBarcode, useScrollToScannedItem } from "@/shared/hooks";
+import { cn } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
+import { useProductBarcode } from "@/shared/hooks";
+import { useScrollToScannedItem } from "@ajeen/ui";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
 // Import dialog components
