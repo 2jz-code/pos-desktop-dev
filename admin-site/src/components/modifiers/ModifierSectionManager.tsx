@@ -368,15 +368,15 @@ const ModifierSectionManager: React.FC<ModifierSectionManagerProps> = ({
         {loading ? (
           <div className="text-center py-8">
             <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-            <p className="text-sm text-gray-500">Loading modifier groups...</p>
+            <p className="text-sm text-muted-foreground">Loading modifier groups...</p>
           </div>
         ) : modifierGroups.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-            <div className="mx-auto w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-              <Plus className="h-6 w-6 text-gray-400" />
+          <div className="text-center py-12 bg-muted/50 rounded-lg border-2 border-dashed border-border">
+            <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Plus className="h-6 w-6 text-muted-foreground" />
             </div>
-            <h4 className="text-lg font-medium text-gray-900 mb-2">No modifier groups yet</h4>
-            <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+            <h4 className="text-lg font-medium text-foreground mb-2">No modifier groups yet</h4>
+            <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
               Add modifier groups to give customers options like size, extras, or cooking preferences.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-2">

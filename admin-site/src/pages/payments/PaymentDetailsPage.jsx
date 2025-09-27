@@ -92,8 +92,8 @@ const PaymentDetailsPage = () => {
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div className="text-center">
-					<div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto mb-4"></div>
-					<p className="text-gray-600">Loading payment details...</p>
+					<div className="animate-spin rounded-full h-32 w-32 border-b-2 border-foreground mx-auto mb-4"></div>
+					<p className="text-muted-foreground">Loading payment details...</p>
 				</div>
 			</div>
 		);
@@ -101,7 +101,7 @@ const PaymentDetailsPage = () => {
 	if (isError)
 		return (
 			<div className="flex items-center justify-center h-full">
-				<Card className="p-6 max-w-md mx-auto border-slate-200 dark:border-slate-700">
+				<Card className="p-6 max-w-md mx-auto border-border">
 					<CardContent className="text-center">
 						<p className="text-red-500">Error: {error.message}</p>
 					</CardContent>
@@ -111,9 +111,9 @@ const PaymentDetailsPage = () => {
 	if (!payment)
 		return (
 			<div className="flex items-center justify-center h-full">
-				<Card className="p-6 max-w-md mx-auto border-slate-200 dark:border-slate-700">
+				<Card className="p-6 max-w-md mx-auto border-border">
 					<CardContent className="text-center">
-						<p className="text-slate-500 dark:text-slate-400">
+						<p className="text-muted-foreground">
 							Payment not found.
 						</p>
 					</CardContent>
@@ -140,17 +140,17 @@ const PaymentDetailsPage = () => {
 	return (
 		<div className="flex flex-col h-full">
 			{/* Page Header */}
-			<div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 md:p-6">
+			<div className="flex-shrink-0 border-b border-border bg-background p-4 md:p-6">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-3">
-						<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-							<CreditCard className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+						<div className="p-2.5 bg-muted rounded-lg">
+							<CreditCard className="h-5 w-5 text-foreground" />
 						</div>
 						<div>
-							<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+							<h1 className="text-xl font-bold text-foreground">
 								Payment Details
 							</h1>
-							<p className="text-slate-600 dark:text-slate-400">
+							<p className="text-muted-foreground">
 								Payment #{payment.payment_number}
 							</p>
 						</div>
@@ -160,7 +160,7 @@ const PaymentDetailsPage = () => {
 							onClick={() => navigate("/payments")}
 							variant="outline"
 							size="sm"
-							className="border-slate-200 dark:border-slate-700"
+							className="border-border"
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Payments
@@ -169,7 +169,7 @@ const PaymentDetailsPage = () => {
 							onClick={() => refetch()}
 							variant="outline"
 							size="sm"
-							className="border-slate-200 dark:border-slate-700"
+							className="border-border"
 							disabled={isFetching}
 						>
 							<RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
@@ -191,17 +191,17 @@ const PaymentDetailsPage = () => {
 					<div className="pb-8">
 						<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 							{/* Payment Summary Card */}
-							<Card className="lg:col-span-1 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+							<Card className="lg:col-span-1 border-border bg-card">
 								<CardHeader className="pb-4">
 									<div className="flex items-center gap-3">
-										<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-											<Receipt className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+										<div className="p-2.5 bg-muted rounded-lg">
+											<Receipt className="h-5 w-5 text-foreground" />
 										</div>
 										<div>
-											<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+											<CardTitle className="text-lg font-semibold text-foreground">
 												Payment Summary
 											</CardTitle>
-											<CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+											<CardDescription className="text-muted-foreground mt-1">
 												Payment #: {payment.payment_number}
 											</CardDescription>
 										</div>
@@ -209,40 +209,40 @@ const PaymentDetailsPage = () => {
 								</CardHeader>
 								<CardContent className="space-y-4">
 									<div className="space-y-3">
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Amount Due
 											</span>
-											<span className="font-semibold text-slate-900 dark:text-slate-100">
+											<span className="font-semibold text-foreground">
 												{formatCurrency(payment.total_amount_due)}
 											</span>
 										</div>
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Total Tips
 											</span>
-											<span className="font-semibold text-slate-900 dark:text-slate-100">
+											<span className="font-semibold text-foreground">
 												{formatCurrency(payment.total_tips)}
 											</span>
 										</div>
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Total Surcharges
 											</span>
-											<span className="font-semibold text-slate-900 dark:text-slate-100">
+											<span className="font-semibold text-foreground">
 												{formatCurrency(payment.total_surcharges)}
 											</span>
 										</div>
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Total Collected
 											</span>
-											<span className="font-semibold text-slate-900 dark:text-slate-100">
+											<span className="font-semibold text-foreground">
 												{formatCurrency(payment.total_collected)}
 											</span>
 										</div>
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Status
 											</span>
 											<Badge
@@ -252,17 +252,17 @@ const PaymentDetailsPage = () => {
 												{payment.status}
 											</Badge>
 										</div>
-										<div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-											<span className="text-slate-600 dark:text-slate-400">
+										<div className="flex justify-between items-center p-3 bg-muted rounded-lg border border-border">
+											<span className="text-muted-foreground">
 												Created
 											</span>
-											<span className="font-medium text-slate-900 dark:text-slate-100">
+											<span className="font-medium text-foreground">
 												{new Date(payment.created_at).toLocaleString()}
 											</span>
 										</div>
 										{payment.order && (
 											<div className="flex justify-between items-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-												<span className="text-slate-600 dark:text-slate-400">
+												<span className="text-muted-foreground">
 													Related Order
 												</span>
 												<Link
@@ -279,17 +279,17 @@ const PaymentDetailsPage = () => {
 							</Card>
 
 							{/* Transaction History Card */}
-							<Card className="lg:col-span-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+							<Card className="lg:col-span-2 border-border bg-card">
 								<CardHeader className="pb-4">
 									<div className="flex items-center gap-3">
-										<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-											<DollarSign className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+										<div className="p-2.5 bg-muted rounded-lg">
+											<DollarSign className="h-5 w-5 text-foreground" />
 										</div>
 										<div>
-											<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+											<CardTitle className="text-lg font-semibold text-foreground">
 												Transaction History
 											</CardTitle>
-											<CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+											<CardDescription className="text-muted-foreground mt-1">
 												Individual transactions associated with this payment
 											</CardDescription>
 										</div>
@@ -308,26 +308,26 @@ const PaymentDetailsPage = () => {
 											</p>
 										</div>
 									)}
-									<div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+									<div className="border border-border rounded-lg overflow-hidden">
 										<Table>
 											<TableHeader>
-												<TableRow className="border-slate-200 dark:border-slate-700 hover:bg-transparent">
-													<TableHead className="font-semibold text-slate-900 dark:text-slate-100">
+												<TableRow className="border-border hover:bg-transparent">
+													<TableHead className="font-semibold text-foreground">
 														Amount
 													</TableHead>
-													<TableHead className="font-semibold text-slate-900 dark:text-slate-100">
+													<TableHead className="font-semibold text-foreground">
 														Status
 													</TableHead>
-													<TableHead className="font-semibold text-slate-900 dark:text-slate-100">
+													<TableHead className="font-semibold text-foreground">
 														Method
 													</TableHead>
-													<TableHead className="font-semibold text-slate-900 dark:text-slate-100">
+													<TableHead className="font-semibold text-foreground">
 														Card Details
 													</TableHead>
-													<TableHead className="font-semibold text-slate-900 dark:text-slate-100">
+													<TableHead className="font-semibold text-foreground">
 														Refunded
 													</TableHead>
-													<TableHead className="text-right font-semibold text-slate-900 dark:text-slate-100">
+													<TableHead className="text-right font-semibold text-foreground">
 														Actions
 													</TableHead>
 												</TableRow>
@@ -365,13 +365,13 @@ const PaymentDetailsPage = () => {
 															return (
 																<TableRow
 																	key={txn.id}
-																	className={`border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+																	className={`border-border hover:bg-muted/50 ${
 																		isFailed
 																			? "opacity-60 bg-red-50 dark:bg-red-900/20"
 																			: ""
 																	}`}
 																>
-																	<TableCell className="font-medium text-slate-900 dark:text-slate-100">
+																	<TableCell className="font-medium text-foreground">
 																		<div className="space-y-1">
 																			<div>
 																				{formatCurrency(
@@ -383,7 +383,7 @@ const PaymentDetailsPage = () => {
 																			</div>
 																			{Number.parseFloat(txn.surcharge || 0) >
 																				0 && (
-																				<div className="text-xs text-slate-500 dark:text-slate-400">
+																				<div className="text-xs text-muted-foreground">
 																					Base: {formatCurrency(txn.amount)} +
 																					Fee: {formatCurrency(txn.surcharge)}
 																				</div>
@@ -410,7 +410,7 @@ const PaymentDetailsPage = () => {
 																	<TableCell>
 																		<Badge
 																			variant="outline"
-																			className="border-slate-200 dark:border-slate-700 capitalize"
+																			className="border-border capitalize"
 																		>
 																			{txn.method.replace("_", " ")}
 																		</Badge>
@@ -418,24 +418,24 @@ const PaymentDetailsPage = () => {
 																	<TableCell>
 																		{txn.card_brand && txn.card_last4 ? (
 																			<div className="flex items-center gap-2">
-																				<div className="h-5 w-8 bg-slate-100 dark:bg-slate-800 rounded flex items-center justify-center">
-																					<span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+																				<div className="h-5 w-8 bg-muted rounded flex items-center justify-center">
+																					<span className="text-xs font-bold text-muted-foreground">
 																						{txn.card_brand
 																							.substring(0, 2)
 																							.toUpperCase()}
 																					</span>
 																				</div>
-																				<span className="font-mono text-sm text-slate-900 dark:text-slate-100">
+																				<span className="font-mono text-sm text-foreground">
 																					****{txn.card_last4}
 																				</span>
 																			</div>
 																		) : (
-																			<span className="text-slate-500 dark:text-slate-400">
+																			<span className="text-muted-foreground">
 																				—
 																			</span>
 																		)}
 																	</TableCell>
-																	<TableCell className="text-slate-900 dark:text-slate-100">
+																	<TableCell className="text-foreground">
 																		{formatCurrency(txn.refunded_amount || 0)}
 																	</TableCell>
 																	<TableCell className="text-right">
@@ -447,7 +447,7 @@ const PaymentDetailsPage = () => {
 																					handleOpenRefundDialog(txn)
 																				}
 																				disabled={isRefunding}
-																				className="border-slate-200 dark:border-slate-700"
+																				className="border-border"
 																			>
 																				Refund
 																			</Button>
@@ -460,7 +460,7 @@ const PaymentDetailsPage = () => {
 													<TableRow>
 														<TableCell
 															colSpan="6"
-															className="text-center py-8 text-slate-500 dark:text-slate-400"
+															className="text-center py-8 text-muted-foreground"
 														>
 															No transactions found.
 														</TableCell>

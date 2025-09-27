@@ -525,7 +525,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 						</div>
 						<div className="space-y-2">
 							<p className="text-sm font-medium">Canceled</p>
-							<p className="text-2xl font-bold text-gray-600">
+							<p className="text-2xl font-bold text-muted-foreground">
 								{canceledCount.toLocaleString()}
 							</p>
 							<p className="text-xs text-muted-foreground">

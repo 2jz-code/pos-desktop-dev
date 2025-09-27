@@ -261,7 +261,7 @@ export const DiscountsPage = () => {
 	};
 
 	return (
-		<div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 p-6">
+		<div className="h-screen flex flex-col bg-background p-6">
 			<div className="flex items-center justify-between mb-6">
 				<div>
 					<h1 className="text-3xl font-bold">Discount Management</h1>

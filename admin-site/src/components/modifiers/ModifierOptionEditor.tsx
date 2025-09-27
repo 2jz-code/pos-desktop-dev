@@ -95,7 +95,7 @@ const ModifierOptionEditor: React.FC<ModifierOptionEditorProps> = ({
               size="sm"
               onClick={() => onRemoveOption?.(index)}
               disabled={options.length <= 1}
-              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="text-destructive hover:text-red-700 hover:bg-red-50"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -120,7 +120,7 @@ const ModifierOptionEditor: React.FC<ModifierOptionEditorProps> = ({
                   size="sm"
                 />
                 <Label className="text-sm">Product-specific option</Label>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-muted-foreground">
                   {option.is_product_specific || option.isProductSpecific
                     ? "Only for this product"
                     : "Available for all products"}

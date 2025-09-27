@@ -224,14 +224,14 @@ export function StockMetadataEditDialog({
 				<DialogContent className="sm:max-w-md">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
-							<Package className="h-5 w-5 text-blue-600" />
+							<Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
 							Edit Stock Record
 						</DialogTitle>
 					</DialogHeader>
 					<div className="flex items-center justify-center py-8">
 						<div className="text-center">
-							<Package className="h-8 w-8 animate-pulse mx-auto mb-2 text-slate-400" />
-							<p className="text-slate-600">Loading products and locations...</p>
+							<Package className="h-8 w-8 animate-pulse mx-auto mb-2 text-muted-foreground" />
+							<p className="text-muted-foreground">Loading products and locations...</p>
 						</div>
 					</div>
 				</DialogContent>
@@ -297,9 +297,9 @@ export function StockMetadataEditDialog({
 
 					{/* Current Quantity Display - only show if we have a stock record */}
 					{currentStock && (
-						<div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
+						<div className="bg-muted p-3 rounded-lg">
 							<div className="flex items-center justify-between">
-								<span className="text-sm text-slate-600 dark:text-slate-400">Current Stock</span>
+								<span className="text-sm text-muted-foreground">Current Stock</span>
 								<span className="font-medium">{currentStock.quantity}</span>
 							</div>
 						</div>
@@ -308,7 +308,7 @@ export function StockMetadataEditDialog({
 					{/* Expiration Date */}
 					<div className="space-y-2">
 						<Label htmlFor="expiration_date" className="flex items-center gap-2">
-							<Calendar className="h-4 w-4 text-orange-600" />
+							<Calendar className="h-4 w-4 text-orange-600 dark:text-orange-400" />
 							Expiration Date
 						</Label>
 						<Input
@@ -319,7 +319,7 @@ export function StockMetadataEditDialog({
 							onChange={handleFormChange}
 							placeholder="Leave empty if no expiration"
 						/>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-muted-foreground">
 							When this stock expires (leave empty for non-perishable items)
 						</p>
 					</div>
@@ -327,7 +327,7 @@ export function StockMetadataEditDialog({
 					{/* Low Stock Threshold */}
 					<div className="space-y-2">
 						<Label htmlFor="low_stock_threshold" className="flex items-center gap-2">
-							<AlertTriangle className="h-4 w-4 text-yellow-600" />
+							<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
 							Low Stock Threshold
 						</Label>
 						<Input
@@ -340,7 +340,7 @@ export function StockMetadataEditDialog({
 							onChange={handleFormChange}
 							placeholder={currentStock ? `Default: ${currentStock.effective_low_stock_threshold}` : "Default threshold"}
 						/>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-muted-foreground">
 							Alert when stock falls below this amount. Leave empty to use default{" "}
 							{currentStock && `(${currentStock.effective_low_stock_threshold})`}
 						</p>
@@ -349,7 +349,7 @@ export function StockMetadataEditDialog({
 					{/* Expiration Threshold */}
 					<div className="space-y-2">
 						<Label htmlFor="expiration_threshold" className="flex items-center gap-2">
-							<Clock className="h-4 w-4 text-red-600" />
+							<Clock className="h-4 w-4 text-red-600 dark:text-red-400" />
 							Expiration Alert (Days)
 						</Label>
 						<Input
@@ -361,7 +361,7 @@ export function StockMetadataEditDialog({
 							onChange={handleFormChange}
 							placeholder={currentStock ? `Default: ${currentStock.effective_expiration_threshold} days` : "Default threshold"}
 						/>
-						<p className="text-xs text-slate-500">
+						<p className="text-xs text-muted-foreground">
 							Alert this many days before expiration. Leave empty to use default{" "}
 							{currentStock && `(${currentStock.effective_expiration_threshold} days)`}
 						</p>

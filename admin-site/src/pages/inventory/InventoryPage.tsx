@@ -482,10 +482,10 @@ export const InventoryPage = () => {
 						<CardTitle className="text-sm font-medium">
 							Low Stock Items
 						</CardTitle>
-						<AlertTriangle className="h-4 w-4 text-amber-500" />
+						<AlertTriangle className="h-4 w-4 text-warning" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-amber-600">
+						<div className="text-2xl font-bold text-warning">
 							{dashboardData?.summary?.low_stock_count || 0}
 						</div>
 					</CardContent>
@@ -493,10 +493,10 @@ export const InventoryPage = () => {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Expiring Soon</CardTitle>
-						<Clock className="h-4 w-4 text-orange-500" />
+						<Clock className="h-4 w-4 text-warning" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-orange-600">
+						<div className="text-2xl font-bold text-warning">
 							{dashboardData?.summary?.expiring_soon_count || 0}
 						</div>
 					</CardContent>
@@ -566,15 +566,15 @@ export const InventoryPage = () => {
 											.map((item: LowStockItem) => (
 												<div
 													key={item.product_id}
-													className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm"
+													className="flex items-center justify-between p-3 bg-card rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm"
 												>
 													<div className="flex items-center gap-3">
 														<div className="w-2 h-2 bg-amber-500 rounded-full"></div>
 														<div>
-															<div className="font-medium text-gray-900 dark:text-gray-100">
+															<div className="font-medium text-foreground">
 																{item.product_name}
 															</div>
-															<div className="text-sm text-gray-500 dark:text-gray-400">
+															<div className="text-sm text-muted-foreground">
 																{Number(item.quantity)} units remaining
 															</div>
 														</div>
@@ -631,10 +631,10 @@ export const InventoryPage = () => {
 													<div className="flex items-center gap-3">
 														<div className="w-2 h-2 bg-orange-500 rounded-full"></div>
 														<div>
-															<div className="font-medium text-gray-900 dark:text-gray-100">
+															<div className="font-medium text-foreground">
 																{item.product_name}
 															</div>
-															<div className="text-sm text-gray-500 dark:text-gray-400">
+															<div className="text-sm text-muted-foreground">
 																{Number(item.quantity)} units
 															</div>
 														</div>
@@ -736,7 +736,7 @@ export const InventoryPage = () => {
 						<CardContent className="flex-grow overflow-hidden min-h-0">
 							<div className="h-full flex flex-col">
 								{/* Table Header */}
-								<div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-100 dark:bg-gray-800 font-medium rounded-t-lg flex-shrink-0">
+								<div className="grid grid-cols-12 gap-4 px-4 py-2 bg-muted font-medium rounded-t-lg flex-shrink-0">
 									<div className="col-span-3">Product</div>
 									<div className="col-span-2">Location</div>
 									<div className="col-span-2 text-right">Quantity</div>
@@ -808,7 +808,7 @@ export const InventoryPage = () => {
 																		).toLocaleDateString()}
 																	</div>
 																	{isExpiringSoon && (
-																		<div className="text-xs text-orange-600 dark:text-orange-400">
+																		<div className="text-xs text-warning dark:text-orange-400">
 																			{item.effective_expiration_threshold} day
 																			threshold
 																		</div>
@@ -983,7 +983,7 @@ export const InventoryPage = () => {
 													</DropdownMenuItem>
 													<DropdownMenuItem
 														onClick={() => handleDeleteLocation(loc.id)}
-														className="text-red-600"
+														className="text-destructive"
 														disabled={deleteLocationMutation.isPending}
 													>
 														<Trash2 className="mr-2 h-4 w-4" />

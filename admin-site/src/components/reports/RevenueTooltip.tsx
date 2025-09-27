@@ -66,7 +66,7 @@ const tooltipContent = {
 		description: "Government taxes collected from customers",
 		formula: "Sales tax, VAT, or other applicable taxes",
 		note: "This money goes to the government, not your business profit",
-		icon: <HelpCircle className="h-4 w-4 text-gray-500" />,
+		icon: <HelpCircle className="h-4 w-4 text-muted-foreground" />,
 	},
 	surcharges: {
 		title: "Surcharges",
@@ -85,7 +85,7 @@ export function RevenueTooltip({ type, children }: RevenueTooltipProps) {
 			<Tooltip>
 				<TooltipTrigger asChild>{children}</TooltipTrigger>
 				<TooltipContent
-					className="max-w-sm p-3 bg-white text-black border border-gray-200 shadow-lg"
+					className="max-w-sm p-3 bg-popover text-popover-foreground border border-border shadow-lg"
 					side="top"
 				>
 					<div className="space-y-2">
@@ -93,12 +93,12 @@ export function RevenueTooltip({ type, children }: RevenueTooltipProps) {
 							{content.icon}
 							<span className="font-semibold text-sm">{content.title}</span>
 						</div>
-						<p className="text-xs text-gray-600">{content.description}</p>
+						<p className="text-xs text-muted-foreground">{content.description}</p>
 						<div className="text-xs">
 							<span className="font-medium">Formula: </span>
-							<span className="text-gray-600">{content.formula}</span>
+							<span className="text-muted-foreground">{content.formula}</span>
 						</div>
-						<p className="text-xs text-gray-500 italic">{content.note}</p>
+						<p className="text-xs text-muted-foreground italic">{content.note}</p>
 					</div>
 				</TooltipContent>
 			</Tooltip>

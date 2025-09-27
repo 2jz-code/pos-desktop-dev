@@ -212,7 +212,7 @@ const LocationManagementDialog = ({
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 							<div className="space-y-2">
 								<Label htmlFor="low_stock_threshold" className="flex items-center gap-2">
-									<AlertTriangle className="h-4 w-4 text-amber-500" />
+									<AlertTriangle className="h-4 w-4 text-warning" />
 									Low Stock Threshold
 								</Label>
 								<Input
@@ -233,7 +233,7 @@ const LocationManagementDialog = ({
 
 							<div className="space-y-2">
 								<Label htmlFor="expiration_threshold" className="flex items-center gap-2">
-									<Clock className="h-4 w-4 text-orange-500" />
+									<Clock className="h-4 w-4 text-warning" />
 									Expiration Warning (Days)
 								</Label>
 								<Input

@@ -61,24 +61,24 @@ export function DomainPageLayout({
 	error = null,
 }: DomainPageLayoutProps) {
 	if (error) {
-		return <div className="p-4 text-red-500 text-center">{error}</div>;
+		return <div className="p-4 text-destructive text-center">{error}</div>;
 	}
 
 	return (
 		<div className="flex flex-col h-full">
 			{/* Optional Page Header */}
 			{pageTitle && Icon && (
-				<div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+				<div className="flex items-center justify-between border-b border-border/60 bg-card/80 p-6 flex-shrink-0 backdrop-blur">
 					<div className="flex items-center gap-3">
-						<div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
-							<Icon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+						<div className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-inset ring-primary/30">
+							<Icon className="h-5 w-5" />
 						</div>
 						<div>
-							<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+							<h1 className="text-2xl font-semibold text-foreground">
 								{pageTitle}
 							</h1>
 							{pageDescription && (
-								<p className="text-slate-600 dark:text-slate-400 mt-1">
+								<p className="text-muted-foreground mt-1 text-sm leading-relaxed">
 									{pageDescription}
 								</p>
 							)}
@@ -90,7 +90,7 @@ export function DomainPageLayout({
 
 			{/* Main Content Area with proper height calculation */}
 			<div className="flex-1 flex flex-col min-h-0 p-4 md:p-6">
-				<Card className="flex flex-col h-full border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+				<Card className="flex flex-col h-full border-border/60 bg-card/80 shadow-sm">
 					{/* Card Header - Fixed */}
 					{(title || showSearch || filterControls) && (
 						<CardHeader className="flex-shrink-0 pb-4">
@@ -98,12 +98,12 @@ export function DomainPageLayout({
 								<div className="flex justify-between items-center">
 									<div>
 										{title && (
-											<CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+											<CardTitle className="text-lg font-semibold text-foreground">
 												{title}
 											</CardTitle>
 										)}
 										{description && (
-											<CardDescription className="text-slate-600 dark:text-slate-400">
+											<CardDescription className="text-muted-foreground">
 												{description}
 											</CardDescription>
 										)}
@@ -126,12 +126,12 @@ export function DomainPageLayout({
 							{/* Search Bar */}
 							{showSearch && onSearchChange && (
 								<div className="relative max-w-md">
-									<Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+									<Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
 									<Input
 										placeholder={searchPlaceholder}
 										value={searchValue}
 										onChange={onSearchChange}
-										className="pl-8 border-slate-200 dark:border-slate-700"
+										className="pl-8 border-border/60 bg-transparent"
 									/>
 								</div>
 							)}

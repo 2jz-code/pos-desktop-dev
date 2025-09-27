@@ -470,7 +470,7 @@ export function UsersPage() {
 						{canArchiveUser(targetUser) && (
 							<DropdownMenuItem
 								onClick={() => handleArchiveUser(targetUser.id, targetUser)}
-								className={showArchivedUsers ? "text-green-600" : "text-destructive"}
+								className={showArchivedUsers ? "text-green-600 dark:text-green-400" : "text-destructive"}
 							>
 								{showArchivedUsers ? (
 									<>

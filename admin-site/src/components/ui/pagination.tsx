@@ -56,7 +56,7 @@ export function PaginationControls({
 	return (
 		<div className="flex items-center justify-between py-4">
 			{/* Left side - Page info */}
-			<div className="text-sm text-slate-600 dark:text-slate-400">
+			<div className="text-sm text-muted-foreground">
 				Showing page {currentPage} of {totalPages} ({count} total items)
 			</div>
 
@@ -64,7 +64,7 @@ export function PaginationControls({
 			<div className="flex items-center space-x-2">
 				{/* Page selector */}
 				<div className="flex items-center space-x-2">
-					<span className="text-sm text-slate-600 dark:text-slate-400">
+					<span className="text-sm text-muted-foreground">
 						Go to page:
 					</span>
 					<Select
@@ -75,7 +75,7 @@ export function PaginationControls({
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent
-							className={`z-[9999] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg ${
+							className={`z-[9999] bg-popover border border-border shadow-lg ${
 								totalPages > 10 ? "max-h-[200px] overflow-y-auto" : ""
 							}`}
 							position="popper"
@@ -101,7 +101,7 @@ export function PaginationControls({
 					size="sm"
 					onClick={() => prevUrl && onNavigate(prevUrl)}
 					disabled={!prevUrl}
-					className="border-slate-200 dark:border-slate-700"
+					className="border-border"
 				>
 					<ChevronLeft className="h-4 w-4 mr-1" />
 					Previous
@@ -111,7 +111,7 @@ export function PaginationControls({
 					size="sm"
 					onClick={() => nextUrl && onNavigate(nextUrl)}
 					disabled={!nextUrl}
-					className="border-slate-200 dark:border-slate-700"
+					className="border-border"
 				>
 					Next
 					<ChevronRight className="h-4 w-4 ml-1" />

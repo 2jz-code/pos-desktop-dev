@@ -348,7 +348,7 @@ const StockTransferDialog = ({
 								</SelectContent>
 							</Select>
 							{formData.from_location_id && (
-								<p className="text-xs text-gray-500">
+								<p className="text-xs text-muted-foreground">
 									Available: {stockLevels[formData.from_location_id] || 0}
 								</p>
 							)}
@@ -396,7 +396,7 @@ const StockTransferDialog = ({
 								</SelectContent>
 							</Select>
 							{formData.to_location_id && (
-								<p className="text-xs text-gray-500">
+								<p className="text-xs text-muted-foreground">
 									Current Stock: {stockLevels[formData.to_location_id] || 0}
 								</p>
 							)}

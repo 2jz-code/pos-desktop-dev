@@ -57,6 +57,12 @@
 	--destructive: oklch(0.64 0.24 25.0);
 	--destructive-foreground: oklch(0.97 0.04 20.0);
 
+	--warning: oklch(0.72 0.16 70.0);
+	--warning-foreground: oklch(0.18 0.015 60.0);
+
+	--success: oklch(0.65 0.14 140.0);
+	--success-foreground: oklch(0.98 0.02 140.0);
+
 	--border: oklch(0.46 0.01 256.0);
 	--input: oklch(0.48 0.01 256.0);
 	--ring: oklch(0.72 0.12 184.0);
@@ -122,6 +128,12 @@
 	--destructive: oklch(0.65 0.22 25.0);
 	--destructive-foreground: oklch(0.98 0.02 255.0);
 
+	--warning: oklch(0.68 0.18 70.0);
+	--warning-foreground: oklch(0.18 0.015 60.0);
+
+	--success: oklch(0.62 0.16 140.0);
+	--success-foreground: oklch(0.98 0.02 140.0);
+
 	--border: oklch(0.85 0.015 255.0);
 	--input: oklch(0.92 0.012 255.0);
 	--ring: oklch(0.58 0.1 184.0);
@@ -169,6 +181,10 @@
 	--color-accent-foreground: var(--accent-foreground);
 	--color-destructive: var(--destructive);
 	--color-destructive-foreground: var(--destructive-foreground);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
@@ -252,5 +268,10 @@
 	kbd {
 		@apply inline-flex items-center rounded-md border border-border bg-secondary/40 px-2 py-0.5 text-[0.7rem] font-medium text-secondary-foreground shadow-xs;
 		font-family: var(--font-mono-stack);
+	}
+
+	/* Lucide icons inherit text color by default */
+	[data-lucide] {
+		@apply text-current;
 	}
 }

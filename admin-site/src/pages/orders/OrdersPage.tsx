@@ -147,7 +147,7 @@ export default function OrdersPage() {
 						<Button
 							variant="ghost"
 							size="icon"
-							className="hover:bg-slate-100 dark:hover:bg-slate-800"
+							className="hover:bg-muted"
 						>
 							<EllipsisVertical className="h-4 w-4" />
 						</Button>

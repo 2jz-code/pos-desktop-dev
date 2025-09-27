@@ -356,7 +356,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 											>
 												<TableCell
 													className={`font-medium ${
-														type.is_active ? "" : "line-through text-gray-500"
+														type.is_active ? "" : "line-through text-muted-foreground"
 													}`}
 												>
 													<div
@@ -365,13 +365,13 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 													>
 														{type.name}
 														{!type.is_active && (
-															<span className="ml-2 text-xs text-orange-600 font-normal">
+															<span className="ml-2 text-xs text-orange-600 dark:text-orange-400 font-normal">
 																(Archived)
 															</span>
 														)}
 													</div>
 												</TableCell>
-												<TableCell className="text-slate-600 dark:text-slate-400">
+												<TableCell className="text-muted-foreground">
 													<div
 														className="truncate max-w-[280px]"
 														title={type.description || ""}
@@ -384,8 +384,8 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 														variant={type.is_active ? "default" : "secondary"}
 														className={`text-xs whitespace-nowrap ${
 															type.is_active
-																? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-																: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+																? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+																: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
 														}`}
 													>
 														{type.is_active ? "Active" : "Archived"}
@@ -408,8 +408,8 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 															onClick={() => handleArchiveToggle(type)}
 															className={`h-8 w-8 p-0 ${
 																type.is_active
-																	? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
-																	: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+																	? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+																	: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
 															}`}
 														>
 															{type.is_active ? (
@@ -489,7 +489,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 							{/* Inventory Policy Section */}
 							<div className="border rounded-lg p-4 space-y-4">
 								<div className="flex items-center gap-3">
-									<Package className="h-5 w-5 text-blue-600" />
+									<Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
 									<div>
 										<h4 className="text-lg font-semibold">
 											Inventory Management
@@ -588,7 +588,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 							{/* Tax & Pricing Section */}
 							<div className="border rounded-lg p-4 space-y-4">
 								<div className="flex items-center gap-3">
-									<DollarSign className="h-5 w-5 text-green-600" />
+									<DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
 									<div>
 										<h4 className="text-lg font-semibold">
 											Tax & Pricing Rules
@@ -822,7 +822,7 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 							{/* Order Controls Section */}
 							<div className="border rounded-lg p-4 space-y-4">
 								<div className="flex items-center gap-3">
-									<ShieldCheck className="h-5 w-5 text-orange-600" />
+									<ShieldCheck className="h-5 w-5 text-orange-600 dark:text-orange-400" />
 									<div>
 										<h4 className="text-lg font-semibold">Order Controls</h4>
 										<p className="text-sm text-muted-foreground">

@@ -136,19 +136,19 @@ const PaymentsPage = () => {
 
 	const renderPaymentRow = (payment) => (
 		<>
-			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
+			<TableCell className="font-mono text-xs text-foreground">
 				{payment.payment_number}
 			</TableCell>
-			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
+			<TableCell className="font-mono text-xs text-foreground">
 				{payment.order ? `${payment.order_number}` : "N/A"}
 			</TableCell>
-			<TableCell className="text-right font-semibold text-slate-900 dark:text-slate-100">
+			<TableCell className="text-right font-semibold text-foreground">
 				{formatCurrency(payment.total_collected)}
 			</TableCell>
 			<TableCell>
 				<Badge
 					variant="outline"
-					className="border-slate-200 dark:border-slate-700 capitalize"
+					className="border-border capitalize"
 				>
 					{getPaymentMethod(payment.transactions)}
 				</Badge>
@@ -161,7 +161,7 @@ const PaymentsPage = () => {
 					{payment.status}
 				</Badge>
 			</TableCell>
-			<TableCell className="text-slate-600 dark:text-slate-400">
+			<TableCell className="text-muted-foreground">
 				{format(new Date(payment.created_at), "PPP p")}
 			</TableCell>
 		</>
@@ -173,10 +173,10 @@ const PaymentsPage = () => {
 				value={filters.status || "ALL"}
 				onValueChange={(value) => handleFilterChange("status", value)}
 			>
-				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
+				<SelectTrigger className="w-[180px] border-border">
 					<SelectValue placeholder="Filter by Status" />
 				</SelectTrigger>
-				<SelectContent className="border-slate-200 dark:border-slate-700">
+				<SelectContent className="border-border">
 					<SelectItem value="ALL">All Statuses</SelectItem>
 					<SelectItem value="PENDING">Pending</SelectItem>
 					<SelectItem value="UNPAID">Unpaid</SelectItem>
@@ -190,10 +190,10 @@ const PaymentsPage = () => {
 				value={filters.method || "ALL"}
 				onValueChange={(value) => handleFilterChange("method", value)}
 			>
-				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
+				<SelectTrigger className="w-[180px] border-border">
 					<SelectValue placeholder="Filter by Method" />
 				</SelectTrigger>
-				<SelectContent className="border-slate-200 dark:border-slate-700">
+				<SelectContent className="border-border">
 					<SelectItem value="ALL">All Methods</SelectItem>
 					<SelectItem value="CASH">Cash</SelectItem>
 					<SelectItem value="CARD_TERMINAL">Card</SelectItem>
@@ -223,7 +223,7 @@ const PaymentsPage = () => {
 				emptyMessage="No payments found for the selected filters."
 				onRowClick={(payment) => navigate(`/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
-				className="border-slate-200 dark:border-slate-700"
+				className="border-border"
 			/>
 			<PaginationControls
 				prevUrl={prevUrl}

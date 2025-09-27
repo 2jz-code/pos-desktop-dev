@@ -104,12 +104,12 @@ export function RefundDialog({
 		>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle className="text-slate-900 dark:text-slate-100">
+					<DialogTitle className="text-foreground">
 						Refund Transaction
 					</DialogTitle>
-					<DialogDescription className="text-slate-600 dark:text-slate-400">
+					<DialogDescription className="text-muted-foreground">
 						Max refundable amount:{" "}
-						<span className="font-bold text-slate-900 dark:text-slate-100">
+						<span className="font-bold text-foreground">
 							{formatCurrency(maxRefundable)}
 						</span>
 					</DialogDescription>
@@ -118,7 +118,7 @@ export function RefundDialog({
 					<div className="space-y-2">
 						<Label
 							htmlFor="amount"
-							className="text-sm font-medium text-slate-900 dark:text-slate-100"
+							className="text-sm font-medium text-foreground"
 						>
 							Refund Amount
 						</Label>
@@ -127,14 +127,14 @@ export function RefundDialog({
 							type="number"
 							value={amount}
 							onChange={handleAmountChange}
-							className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+							className="border-border bg-background"
 							placeholder={`e.g., ${maxRefundable.toFixed(2)}`}
 						/>
 					</div>
 					<div className="space-y-2">
 						<Label
 							htmlFor="reason"
-							className="text-sm font-medium text-slate-900 dark:text-slate-100"
+							className="text-sm font-medium text-foreground"
 						>
 							Refund Reason
 						</Label>
@@ -142,10 +142,10 @@ export function RefundDialog({
 							value={reason}
 							onValueChange={setReason}
 						>
-							<SelectTrigger className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+							<SelectTrigger className="border-border bg-background">
 								<SelectValue placeholder="Select a reason..." />
 							</SelectTrigger>
-							<SelectContent className="border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+							<SelectContent className="border-border bg-background">
 								{refundReasons.map((r) => (
 									<SelectItem
 										key={r.value}
@@ -163,14 +163,14 @@ export function RefundDialog({
 						variant="outline"
 						onClick={() => onOpenChange(false)}
 						disabled={isRefunding}
-						className="border-slate-200 dark:border-slate-700"
+						className="border-border"
 					>
 						Cancel
 					</Button>
 					<Button
 						onClick={handleSubmit}
 						disabled={isRefunding}
-						className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900"
+						className="bg-primary hover:bg-primary/90 text-primary-foreground"
 					>
 						{isRefunding
 							? "Refunding..."

@@ -67,7 +67,7 @@ export function StandardTable<T = Record<string, unknown>>({
 								>
 									<div className="flex items-center justify-center space-x-2">
 										<Loader2 className="h-4 w-4 animate-spin" />
-										<span className="text-slate-600 dark:text-slate-400">
+										<span className="text-muted-foreground">
 											Loading...
 										</span>
 									</div>
@@ -80,7 +80,7 @@ export function StandardTable<T = Record<string, unknown>>({
 									colSpan={colSpan || headers.length}
 									className="text-center py-8"
 								>
-									<span className="text-slate-500 dark:text-slate-400">
+									<span className="text-muted-foreground">
 										{emptyMessage}
 									</span>
 								</TableCell>
@@ -97,7 +97,7 @@ export function StandardTable<T = Record<string, unknown>>({
 										key={index}
 										onClick={() => onRowClick?.(item)}
 										className={`
-											${onRowClick ? "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""}
+											${onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
 											${isHighlighted ? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse" : ""}
 										`.trim()}
 										{...rowProps}

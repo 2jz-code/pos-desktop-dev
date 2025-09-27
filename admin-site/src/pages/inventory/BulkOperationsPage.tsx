@@ -531,7 +531,7 @@ export const BulkOperationsPage = () => {
 																	{locationField.value &&
 																		currentStockLevels[locationField.value] !==
 																			undefined && (
-																			<p className="text-xs text-gray-500">
+																			<p className="text-xs text-muted-foreground">
 																				Available:{" "}
 																				{currentStockLevels[
 																					locationField.value
@@ -766,7 +766,7 @@ export const BulkOperationsPage = () => {
 																		currentStockLevels[
 																			fromLocationField.value
 																		] !== undefined && (
-																			<p className="text-xs text-gray-500">
+																			<p className="text-xs text-muted-foreground">
 																				Available:{" "}
 																				{currentStockLevels[
 																					fromLocationField.value
@@ -810,7 +810,7 @@ export const BulkOperationsPage = () => {
 																		currentStockLevels[
 																			toLocationField.value
 																		] !== undefined && (
-																			<p className="text-xs text-gray-500">
+																			<p className="text-xs text-muted-foreground">
 																				Available:{" "}
 																				{currentStockLevels[
 																					toLocationField.value

@@ -62,15 +62,15 @@ const getCategoryIcon = (category: string) => {
 
 const getCategoryColor = (category: string) => {
 	const colors = {
-		SYSTEM: "text-gray-600",
-		MANUAL: "text-blue-600",
-		INVENTORY: "text-green-600",
-		WASTE: "text-red-600",
+		SYSTEM: "text-muted-foreground",
+		MANUAL: "text-primary",
+		INVENTORY: "text-emerald-600",
+		WASTE: "text-destructive",
 		RESTOCK: "text-emerald-600",
 		TRANSFER: "text-purple-600",
-		CORRECTION: "text-orange-600",
+		CORRECTION: "text-warning",
 		BULK: "text-indigo-600",
-		OTHER: "text-slate-600",
+		OTHER: "text-muted-foreground",
 	};
 	return colors[category as keyof typeof colors] || colors.OTHER;
 };
@@ -206,7 +206,7 @@ export const ReasonSelector: React.FC<ReasonSelectorProps> = ({
 									<div className="flex items-center justify-between w-full min-w-0">
 										<div className="flex items-center gap-2 min-w-0 flex-1">
 											{reason.is_system_reason && (
-												<Settings className="h-3 w-3 text-blue-500 flex-shrink-0" />
+												<Settings className="h-3 w-3 text-primary flex-shrink-0" />
 											)}
 											<div className="min-w-0 flex-1">
 												<div className="font-medium truncate">{reason.name}</div>

@@ -78,21 +78,21 @@ export function Layout({ children }: LayoutProps) {
 	return (
 		<div
 			className={cn(
-				"grid min-h-screen w-full transition-[grid-template-columns] duration-300 ease-in-out bg-background",
+				"grid min-h-screen w-full bg-background text-foreground transition-[grid-template-columns] duration-300 ease-standard",
 				isCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]"
 			)}
 		>
 			{/* Desktop Sidebar */}
-			<div className="hidden border-r border-border bg-card lg:block">
-				<div className="flex h-full max-h-screen flex-col">
+			<div className="hidden border-r border-border/60 bg-sidebar/95 text-sidebar-foreground lg:block">
+				<div className="flex h-full max-h-screen flex-col backdrop-blur">
 					{/* Logo/Brand */}
-					<div className="flex h-[60px] items-center border-b border-border px-4">
+					<div className="flex h-[60px] items-center border-b border-sidebar-border/70 px-4">
 						<Link
 							to="/"
-							className="flex items-center gap-2 font-semibold text-card-foreground"
+							className="flex items-center gap-2 font-semibold text-sidebar-foreground"
 						>
-							<div className="p-1.5 bg-primary rounded-lg">
-								<PanelLeft className="h-4 w-4 text-primary-foreground" />
+							<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
+								<PanelLeft className="h-4 w-4" />
 							</div>
 							{!isCollapsed && <span>Ajeen Admin</span>}
 						</Link>
@@ -100,7 +100,7 @@ export function Layout({ children }: LayoutProps) {
 
 					{/* Navigation */}
 					<div className="flex-1 overflow-auto py-4">
-						<nav className="grid items-start px-3 text-sm font-medium gap-1">
+						<nav className="grid items-start gap-1 px-3 text-sm font-medium">
 							{navigationRoutes.map((route) => (
 								<NavigationItem
 									key={route.path}
@@ -112,11 +112,11 @@ export function Layout({ children }: LayoutProps) {
 					</div>
 
 					{/* Logout */}
-					<div className="border-t border-border p-3 mt-auto">
+					<div className="mt-auto border-t border-sidebar-border/70 p-3">
 						<button
 							onClick={logout}
 							className={cn(
-								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 								isCollapsed && "justify-center px-2"
 							)}
 						>
@@ -128,15 +128,15 @@ export function Layout({ children }: LayoutProps) {
 			</div>
 
 			{/* Main Content Area */}
-			<div className="flex flex-col h-screen">
+			<div className="flex h-screen flex-col">
 				{/* Top Header */}
-				<header className="flex h-14 lg:h-[60px] items-center gap-4 border-b border-border bg-card px-6 sticky top-0 z-30">
+				<header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/60 bg-card/80 px-4 shadow-xs backdrop-blur lg:h-[60px] lg:px-6">
 					{/* Desktop Sidebar Toggle */}
 					<Button
 						variant="outline"
 						size="icon"
-						className="hidden lg:inline-flex border-border hover:bg-accent bg-transparent"
 						onClick={() => setIsCollapsed(!isCollapsed)}
+						className="hidden border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:inline-flex"
 					>
 						{isCollapsed ? (
 							<PanelLeftOpen className="h-4 w-4" />
@@ -152,7 +152,7 @@ export function Layout({ children }: LayoutProps) {
 							<Button
 								variant="outline"
 								size="icon"
-								className="shrink-0 lg:hidden border-border bg-transparent"
+								className="shrink-0 border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:hidden"
 							>
 								<Menu className="h-4 w-4" />
 								<span className="sr-only">Toggle navigation menu</span>
@@ -160,15 +160,15 @@ export function Layout({ children }: LayoutProps) {
 						</SheetTrigger>
 						<SheetContent
 							side="left"
-							className="flex flex-col bg-card"
+							className="flex flex-col gap-6 bg-sidebar text-sidebar-foreground"
 						>
-							<nav className="grid gap-2 text-lg font-medium">
+							<nav className="grid gap-2 text-base font-medium">
 								<Link
 									to="/dashboard"
-									className="flex items-center gap-2 text-lg font-semibold mb-4 text-card-foreground"
+									className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent/60"
 								>
-									<div className="p-1.5 bg-primary rounded-lg">
-										<PanelLeft className="h-4 w-4 text-primary-foreground" />
+									<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
+										<PanelLeft className="h-4 w-4" />
 									</div>
 									<span>Ajeen Admin</span>
 								</Link>
@@ -182,10 +182,10 @@ export function Layout({ children }: LayoutProps) {
 									/>
 								))}
 							</nav>
-							<div className="mt-auto p-4">
+							<div className="mt-auto space-y-2 border-t border-sidebar-border/70 pt-4">
 								<button
 									onClick={logout}
-									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent"
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
 								>
 									<LogOut className="h-4 w-4" />
 									<span className="truncate">Logout</span>
@@ -194,16 +194,14 @@ export function Layout({ children }: LayoutProps) {
 						</SheetContent>
 					</Sheet>
 
-					<div className="w-full flex-1">
-						{/* Search bar can be added here */}
-					</div>
+					<div className="flex-1" />
 
 					{/* Theme Toggle */}
 					<Button
 						variant="outline"
 						size="icon"
 						onClick={toggleTheme}
-						className="border-border hover:bg-accent"
+						className="border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
 					>
 						{theme === "dark" ? (
 							<Sun className="h-4 w-4" />
@@ -219,11 +217,11 @@ export function Layout({ children }: LayoutProps) {
 							<Button
 								variant="ghost"
 								size="icon"
-								className="rounded-full hover:bg-accent"
+								className="rounded-full bg-transparent hover:bg-muted/40"
 							>
-								<div className="relative flex-shrink-0">
+								<div className="relative">
 									<img
-										className="h-8 w-8 rounded-full border border-border"
+										className="h-8 w-8 rounded-full border border-border/60"
 										src={`https://avatar.vercel.sh/${
 											user?.username || user?.email || "user"
 										}.png`}
@@ -235,32 +233,22 @@ export function Layout({ children }: LayoutProps) {
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
 							align="end"
-							className="bg-popover border-border"
+							className="border border-border/60 bg-card text-card-foreground"
 						>
-							<DropdownMenuLabel
-								inset={false}
-								className="text-popover-foreground"
-							>
+							<DropdownMenuLabel className="text-sm font-medium text-foreground">
 								My Account
 							</DropdownMenuLabel>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								inset={false}
-								className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-							>
+							<DropdownMenuSeparator className="-mx-1 border-border/60" />
+							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
 								Settings
 							</DropdownMenuItem>
-							<DropdownMenuItem
-								inset={false}
-								className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-							>
+							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
 								Support
 							</DropdownMenuItem>
-							<DropdownMenuSeparator />
+							<DropdownMenuSeparator className="-mx-1 border-border/60" />
 							<DropdownMenuItem
-								inset={false}
 								onClick={logout}
-								className="text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+								className="text-muted-foreground hover:text-foreground"
 							>
 								<LogOut className="mr-2 h-4 w-4" />
 								<span>Logout</span>
@@ -270,7 +258,7 @@ export function Layout({ children }: LayoutProps) {
 				</header>
 
 				{/* Main Content */}
-				<main className="flex flex-1 flex-col bg-background overflow-hidden">
+				<main className="flex flex-1 flex-col overflow-y-auto bg-background">
 					{children}
 				</main>
 			</div>

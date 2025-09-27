@@ -169,7 +169,7 @@ const ProductSpecificOptionForm: React.FC<ProductSpecificOptionFormProps> = ({
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="option-name">
-                Option Name <span className="text-red-500">*</span>
+                Option Name <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="option-name"
@@ -179,7 +179,7 @@ const ProductSpecificOptionForm: React.FC<ProductSpecificOptionFormProps> = ({
                 className={errors.name ? "border-red-500" : ""}
               />
               {errors.name && (
-                <p className="text-sm text-red-500 mt-1">{errors.name}</p>
+                <p className="text-sm text-destructive mt-1">{errors.name}</p>
               )}
             </div>
             
@@ -201,7 +201,7 @@ const ProductSpecificOptionForm: React.FC<ProductSpecificOptionFormProps> = ({
                 Use positive values for upcharges (+$2.50) or negative for discounts (-$1.00)
               </p>
               {errors.price_delta && (
-                <p className="text-sm text-red-500 mt-1">{errors.price_delta}</p>
+                <p className="text-sm text-destructive mt-1">{errors.price_delta}</p>
               )}
             </div>
           </div>
