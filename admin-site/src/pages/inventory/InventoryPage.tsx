@@ -56,6 +56,8 @@ import StockAdjustmentDialog from "@/components/StockAdjustmentDialog";
 import LocationManagementDialog from "@/components/LocationManagementDialog";
 // @ts-expect-error - No types for JS file
 import StockTransferDialog from "@/components/StockTransferDialog";
+// @ts-expect-error - No types for JS file
+import { StockMetadataEditDialog } from "@/components/StockMetadataEditDialog";
 import { useDebounce } from "@ajeen/ui";
 import { useConfirmation } from "@/components/ui/confirmation-dialog";
 
@@ -127,6 +129,8 @@ export const InventoryPage = () => {
 	const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
 	const [isStockTransferDialogOpen, setIsStockTransferDialogOpen] =
 		useState(false);
+	const [isStockMetadataEditDialogOpen, setIsStockMetadataEditDialogOpen] =
+		useState(false);
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
@@ -139,6 +143,7 @@ export const InventoryPage = () => {
 	const lastKeystrokeRef = useRef(0);
 	const [highlightedStockId, setHighlightedStockId] = useState<number | null>(null);
 	const [scannedProductId, setScannedProductId] = useState<number | null>(null);
+	const [selectedStockItem, setSelectedStockItem] = useState<StockItem | null>(null);
 
 	const queryClient = useQueryClient();
 
@@ -180,7 +185,8 @@ export const InventoryPage = () => {
 				(e.target as HTMLElement).tagName === "TEXTAREA" ||
 				isStockAdjustmentDialogOpen ||
 				isLocationDialogOpen ||
-				isStockTransferDialogOpen
+				isStockTransferDialogOpen ||
+				isStockMetadataEditDialogOpen
 			) {
 				return;
 			}
@@ -226,6 +232,7 @@ export const InventoryPage = () => {
 		isStockAdjustmentDialogOpen,
 		isLocationDialogOpen,
 		isStockTransferDialogOpen,
+		isStockMetadataEditDialogOpen,
 	]);
 
 
@@ -329,6 +336,11 @@ export const InventoryPage = () => {
 		setCurrentEditingProduct(product || null);
 	};
 
+	const handleStockMetadataEditDialog = (isOpen: boolean, stockItem?: StockItem) => {
+		setIsStockMetadataEditDialogOpen(isOpen);
+		setSelectedStockItem(stockItem || null);
+	};
+
 	const handleLocationDialog = (
 		isOpen: boolean,
 		location?: Location,
@@ -421,6 +433,10 @@ export const InventoryPage = () => {
 							<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
 								<ArrowUpDown className="mr-2 h-4 w-4" />
 								Transfer Stock
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true)}>
+								<Settings className="mr-2 h-4 w-4" />
+								Edit Stock Record
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
@@ -867,6 +883,17 @@ export const InventoryPage = () => {
 																	<ArrowUpDown className="mr-2 h-4 w-4" />
 																	Transfer
 																</DropdownMenuItem>
+																<DropdownMenuItem
+																	onClick={() =>
+																		handleStockMetadataEditDialog(
+																			true,
+																			item
+																		)
+																	}
+																>
+																	<Settings className="mr-2 h-4 w-4" />
+																	Edit Stock Record
+																</DropdownMenuItem>
 															</DropdownMenuContent>
 														</DropdownMenu>
 													</div>
@@ -996,6 +1023,15 @@ export const InventoryPage = () => {
 					isOpen={isStockTransferDialogOpen}
 					onOpenChange={setIsStockTransferDialogOpen}
 					product={currentEditingProduct}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
+
+			{isStockMetadataEditDialogOpen && (
+				<StockMetadataEditDialog
+					open={isStockMetadataEditDialogOpen}
+					onOpenChange={setIsStockMetadataEditDialogOpen}
+					stockItem={selectedStockItem}
 					onSuccess={handleDialogSuccess}
 				/>
 			)}

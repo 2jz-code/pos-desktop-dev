@@ -492,6 +492,22 @@ class InventoryService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Update stock record metadata (expiration date, thresholds) without quantity changes
+	 * @param {number} stockId - Stock record ID
+	 * @param {Object} metadata - Metadata to update {expiration_date, low_stock_threshold, expiration_threshold}
+	 * @returns {Promise} API response
+	 */
+	async updateStockRecord(stockId, metadata) {
+		try {
+			const response = await apiClient.patch(`/inventory/stock-management/${stockId}/`, metadata);
+			return response.data;
+		} catch (error) {
+			console.error("Failed to update stock record:", error);
+			throw error;
+		}
+	}
 }
 
 export default new InventoryService();

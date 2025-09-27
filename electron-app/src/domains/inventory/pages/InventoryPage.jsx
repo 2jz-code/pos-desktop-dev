@@ -56,6 +56,7 @@ import { formatCurrency } from "@ajeen/ui";
 import StockAdjustmentDialog from "@/domains/inventory/components/StockAdjustmentDialog";
 import LocationManagementDialog from "@/domains/inventory/components/LocationManagementDialog";
 import StockTransferDialog from "@/domains/inventory/components/StockTransferDialog";
+import { StockMetadataEditDialog } from "@/domains/inventory/components/dialogs/StockMetadataEditDialog";
 
 // Import services
 import {
@@ -91,6 +92,8 @@ const InventoryPage = () => {
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] = useState(false);
 	const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
 	const [isStockTransferDialogOpen, setIsStockTransferDialogOpen] = useState(false);
+	const [isStockMetadataEditDialogOpen, setIsStockMetadataEditDialogOpen] = useState(false);
+	const [selectedStockItem, setSelectedStockItem] = useState(null);
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
@@ -174,6 +177,7 @@ const InventoryPage = () => {
 		isStockAdjustmentDialogOpen,
 		isLocationDialogOpen,
 		isStockTransferDialogOpen,
+		isStockMetadataEditDialogOpen,
 	]);
 
 	// Effect to scroll to the item after tab change
@@ -260,6 +264,11 @@ const InventoryPage = () => {
 	const handleStockTransferDialog = (isOpen, product) => {
 		setIsStockTransferDialogOpen(isOpen);
 		setCurrentEditingProduct(product || null);
+	};
+
+	const handleStockMetadataEditDialog = (isOpen, stockItem) => {
+		setIsStockMetadataEditDialogOpen(isOpen);
+		setSelectedStockItem(stockItem || null);
 	};
 
 	const handleDeleteLocation = async (location) => {
@@ -369,6 +378,10 @@ const InventoryPage = () => {
 								<ArrowUpDown className="mr-2 h-4 w-4" />
 								Transfer
 							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true, item)}>
+								<Settings className="mr-2 h-4 w-4" />
+								Edit Stock Record
+							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</td>
@@ -417,6 +430,10 @@ const InventoryPage = () => {
 					<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
 						<ArrowUpDown className="mr-2 h-4 w-4" />
 						Transfer Stock
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true)}>
+						<Edit className="mr-2 h-4 w-4" />
+						Edit Stock Record
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
@@ -841,6 +858,14 @@ const InventoryPage = () => {
 					isOpen={isStockTransferDialogOpen}
 					onOpenChange={setIsStockTransferDialogOpen}
 					product={currentEditingProduct}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
+			{isStockMetadataEditDialogOpen && (
+				<StockMetadataEditDialog
+					open={isStockMetadataEditDialogOpen}
+					onOpenChange={setIsStockMetadataEditDialogOpen}
+					stockItem={selectedStockItem}
 					onSuccess={handleDialogSuccess}
 				/>
 			)}
