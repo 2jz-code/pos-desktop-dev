@@ -27,6 +27,7 @@ export default defineConfig({
 			"@/types": path.resolve(__dirname, "./src/types"),
 			"@/store": path.resolve(__dirname, "./src/store"),
 		},
+		dedupe: ["react", "react-dom"],
 	},
 	build: {
 		target: "es2015",

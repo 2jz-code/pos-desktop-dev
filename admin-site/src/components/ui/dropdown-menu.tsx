@@ -31,7 +31,7 @@ function DropdownMenuTrigger({ ...props }) {
 	);
 }
 
-function DropdownMenuContent({ className, sideOffset = 4, ...props }) {
+function DropdownMenuContent({ className = "", sideOffset = 4, ...props }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> & { className?: string }) {
 	return (
 		<DropdownMenuPrimitive.Portal>
 			<DropdownMenuPrimitive.Content
@@ -56,7 +56,7 @@ function DropdownMenuGroup({ ...props }) {
 	);
 }
 
-function DropdownMenuItem({ className, inset, variant = "default", ...props }) {
+function DropdownMenuItem({ className = "", inset, variant = "default", ...props }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & { className?: string; inset?: boolean; variant?: string }) {
 	return (
 		<DropdownMenuPrimitive.Item
 			data-slot="dropdown-menu-item"
@@ -121,7 +121,7 @@ function DropdownMenuRadioItem({ className, children, ...props }) {
 	);
 }
 
-function DropdownMenuLabel({ className, inset, ...props }) {
+function DropdownMenuLabel({ className = "", inset, ...props }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & { className?: string; inset?: boolean }) {
 	return (
 		<DropdownMenuPrimitive.Label
 			data-slot="dropdown-menu-label"
@@ -135,7 +135,7 @@ function DropdownMenuLabel({ className, inset, ...props }) {
 	);
 }
 
-function DropdownMenuSeparator({ className, ...props }) {
+function DropdownMenuSeparator({ className = "", ...props }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator> & { className?: string }) {
 	return (
 		<DropdownMenuPrimitive.Separator
 			data-slot="dropdown-menu-separator"

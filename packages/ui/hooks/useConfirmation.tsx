@@ -197,13 +197,10 @@ export function useConfirmation() {
   const show = React.useCallback((newConfig: ConfirmationConfig) => {
     setConfig({
       open: true,
-      title: "",
-      description: "",
       confirmText: "Confirm",
       cancelText: "Cancel",
       variant: "default",
       icon: undefined,
-      onConfirm: () => {},
       children: undefined,
       ...newConfig,
     });

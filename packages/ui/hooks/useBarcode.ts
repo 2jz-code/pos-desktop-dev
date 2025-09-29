@@ -97,7 +97,7 @@ export function useBarcode(config: BarcodeConfig) {
 
       try {
         // Get the appropriate endpoint for the search type
-        const endpointBuilder = endpoints[searchType];
+        const endpointBuilder = endpoints[searchType as keyof typeof endpoints];
         if (!endpointBuilder) {
           throw new Error(`No endpoint configured for search type: ${searchType}`);
         }

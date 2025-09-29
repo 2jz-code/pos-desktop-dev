@@ -128,7 +128,7 @@ export function useOrdersData({
 		return fetchOrders();
 	}, [fetchOrders]);
 
-	const hasFilters = filters.order_type || filters.status || filters.search;
+	const hasFilters = !!(filters.order_type || filters.status || filters.search);
 
 	return {
 		// Data
