@@ -6,6 +6,7 @@ import {
 	unarchiveProduct,
 } from "@/services/api/productService";
 import { getCategories } from "@/services/api/categoryService";
+import { getProductTypes } from "@/services/api/productTypeService";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
@@ -44,6 +45,8 @@ import { useProductBarcodeWithScroll } from "@/hooks/useBarcode";
 import { ProductFormDialog } from "@/components/ProductFormDialog";
 import { CategoryManagementDialog } from "@/components/CategoryManagementDialog";
 import { ProductTypeManagementDialog } from "@/components/ProductTypeManagementDialog";
+import { BulkActionsToolbar } from "@/components/products/BulkActionsToolbar";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const ProductsPage = () => {
 	const [products, setProducts] = useState([]);
@@ -64,6 +67,10 @@ export const ProductsPage = () => {
 	// Dialog states
 	const [isProductFormOpen, setIsProductFormOpen] = useState(false);
 	const [editingProductId, setEditingProductId] = useState(null);
+
+	// Bulk selection state
+	const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
+	const [productTypes, setProductTypes] = useState([]);
 
 	// Barcode scanning refs and state
 	const barcodeInputRef = useRef("");
@@ -155,9 +162,20 @@ export const ProductsPage = () => {
 		}
 	};
 
+	const fetchProductTypes = async () => {
+		try {
+			const response = await getProductTypes();
+			const data = response.data;
+			setProductTypes(data?.results || data || []);
+		} catch (err) {
+			console.error("Failed to fetch product types:", err);
+		}
+	};
+
 	useEffect(() => {
 		fetchProducts(showArchivedProducts);
 		fetchParentCategories();
+		fetchProductTypes();
 	}, [modifierContext, showArchivedProducts]);
 
 	// Handle URL parameters for modifier filtering
@@ -400,20 +418,64 @@ export const ProductsPage = () => {
 		}
 	};
 
+	// Bulk selection handlers
+	const handleSelectProduct = (productId: number, checked: boolean) => {
+		if (checked) {
+			setSelectedProductIds((prev) => [...prev, productId]);
+		} else {
+			setSelectedProductIds((prev) => prev.filter((id) => id !== productId));
+		}
+	};
+
+	const handleSelectAll = (checked: boolean) => {
+		if (checked) {
+			setSelectedProductIds(products.map((p) => p.id));
+		} else {
+			setSelectedProductIds([]);
+		}
+	};
+
+	const handleClearSelection = () => {
+		setSelectedProductIds([]);
+	};
+
 	const headers = [
+		{
+			label: (
+				<Checkbox
+					checked={selectedProductIds.length === products.length && products.length > 0}
+					onCheckedChange={handleSelectAll}
+				/>
+			),
+			className: "w-12",
+		},
 		{ label: "Name" },
 		{ label: "Category" },
+		{ label: "Product Type" },
 		{ label: "Price", className: "text-right" },
 		{ label: "Actions", className: "text-right" },
 	];
 
 	const renderProductRow = (product) => {
+		const isSelected = selectedProductIds.includes(product.id);
+
 		return (
 			<>
+				<TableCell onClick={(e) => e.stopPropagation()}>
+					<Checkbox
+						checked={isSelected}
+						onCheckedChange={(checked) => handleSelectProduct(product.id, checked as boolean)}
+					/>
+				</TableCell>
 				<TableCell className="font-medium">{product.name}</TableCell>
 				<TableCell>
 					<Badge variant={product.category ? "outline" : "secondary"}>
 						{product.category_display_name || product.category?.name || "Uncategorized"}
+					</Badge>
+				</TableCell>
+				<TableCell>
+					<Badge variant={product.product_type ? "default" : "secondary"}>
+						{product.product_type?.name || "No Type"}
 					</Badge>
 				</TableCell>
 				<TableCell className="text-right font-medium">
@@ -611,6 +673,21 @@ export const ProductsPage = () => {
 				filterControls={filterControls}
 				error={error}
 			>
+				{selectedProductIds.length > 0 && (
+					<BulkActionsToolbar
+						selectedCount={selectedProductIds.length}
+						selectedProductIds={selectedProductIds}
+						onClear={handleClearSelection}
+						onSuccess={() => {
+							fetchProducts(showArchivedProducts);
+							setSelectedProductIds([]);
+						}}
+						categories={parentCategories}
+						productTypes={productTypes}
+						loading={loading}
+					/>
+				)}
+
 				<StandardTable
 					headers={headers}
 					data={products}

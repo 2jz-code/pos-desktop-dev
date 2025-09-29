@@ -270,7 +270,8 @@ class ProductViewSet(BaseViewSet):
     # Products ordered hierarchically by category (parent categories first, then subcategories)
     queryset = (
         Product.objects.with_archived()
-        .select_related("category", "category__parent")
+        .select_related("category", "category__parent", "product_type")
+        .prefetch_related("product_type__default_taxes")
         .annotate(
             # Calculate parent order for hierarchical sorting
             parent_order=models.Case(
@@ -407,6 +408,31 @@ class ProductViewSet(BaseViewSet):
             return Response(
                 {"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND
             )
+
+    @action(detail=False, methods=["patch"], url_path="bulk-update")
+    def bulk_update(self, request):
+        """
+        Bulk update multiple products in a single API call.
+        Follows the established architecture: lean views, service layer business logic.
+
+        Payload:
+        {
+            "product_ids": [1, 2, 3],
+            "category": 5,        # optional
+            "product_type": 2     # optional
+        }
+        """
+        from .serializers import ProductBulkUpdateSerializer
+
+        serializer = ProductBulkUpdateSerializer(
+            data=request.data, context={"request": request}
+        )
+
+        if serializer.is_valid():
+            result = serializer.save()
+            return Response(result, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["GET"])

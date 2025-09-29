@@ -241,7 +241,7 @@ class ProductTypeSerializer(BaseModelSerializer):
             "max_quantity_per_item",
             "exclude_from_discounts",
         ]
-        # No relationships to optimize
+        prefetch_related_fields = ["default_taxes"]
 
     def create(self, validated_data):
         taxes = validated_data.pop("default_taxes", None)
@@ -329,6 +329,47 @@ class CategoryBulkUpdateSerializer(serializers.Serializer):
                 context=self.context
             ).data
             
+        return result
+
+
+class ProductBulkUpdateSerializer(serializers.Serializer):
+    """
+    Serializer for bulk product updates.
+    Validates the request payload and delegates business logic to ProductService.
+    """
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="List of product IDs to update"
+    )
+    category = serializers.IntegerField(required=False, allow_null=True)
+    product_type = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_product_ids(self, value):
+        """Validate product_ids list"""
+        if not value:
+            raise serializers.ValidationError("Product IDs list cannot be empty")
+
+        # Check for duplicates
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Product IDs list contains duplicates")
+
+        return value
+
+    def validate(self, data):
+        """Validate that at least one update field is provided"""
+        if 'category' not in data and 'product_type' not in data:
+            raise serializers.ValidationError(
+                "At least one field to update must be provided (category or product_type)"
+            )
+        return data
+
+    def create(self, validated_data):
+        """Handle bulk update through ProductService"""
+        product_ids = validated_data.pop('product_ids')
+        update_fields = validated_data  # Remaining fields are the updates
+
+        result = ProductService.bulk_update_products(product_ids, update_fields)
         return result
 
 
@@ -429,18 +470,20 @@ class OptimizedProductSerializer(BaseModelSerializer):
 class POSProductSerializer(BaseModelSerializer):
     """POS serializer with complete modifier data for editing functionality"""
     category = serializers.SerializerMethodField()
+    product_type = ProductTypeSerializer(read_only=True)
     has_modifiers = serializers.SerializerMethodField()
     modifier_summary = serializers.SerializerMethodField()
     modifier_groups = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'has_modifiers', 'modifier_summary', 'modifier_groups', 'image']
-        select_related_fields = ['category']
+        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'product_type', 'has_modifiers', 'modifier_summary', 'modifier_groups', 'image']
+        select_related_fields = ['category', 'product_type']
         prefetch_related_fields = [
             'product_modifier_sets__modifier_set__options',
             'product_modifier_sets__hidden_options',
             'product_modifier_sets__extra_options',
+            'product_type__default_taxes',
         ]
     
     def get_category(self, obj):
