@@ -70,7 +70,7 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
   const getModifierTypeColor = (type: string, isRequired: boolean): string => {
     if (isRequired) return 'bg-blue-100 border-blue-300 text-blue-800';
     if (type === 'MULTIPLE') return 'bg-green-100 border-green-300 text-green-800';
-    return 'bg-gray-100 border-gray-300 text-gray-800';
+    return 'bg-muted border-border text-muted-foreground';
   };
 
   const getModifierTypeIcon = (type: string): string => {
@@ -92,12 +92,12 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
 
             <button
               onClick={handleToggleExpansion}
-              className="flex items-center gap-2 flex-1 text-left hover:bg-gray-50 p-2 rounded-md transition-colors"
+              className="flex items-center gap-2 flex-1 text-left hover:bg-muted/50 p-2 rounded-md transition-colors"
             >
               {isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-gray-400" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-gray-400" />
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
               
               <div className="flex-1">
@@ -121,7 +121,7 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {group.options?.length || 0} options
                   {hiddenCount > 0 && ` • ${hiddenCount} hidden`}
                 </p>
@@ -144,7 +144,7 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => onRemove?.(modifierSetId)}
-                  className="text-red-600"
+                  className="text-destructive"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Remove from Product
@@ -156,7 +156,7 @@ const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
 
         {isExpanded && (
           <div className="px-4 pb-4 pt-0">
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="bg-muted rounded-lg p-3">
               <OptionToggleGrid
                 options={group.options || []}
                 hiddenOptionIds={hiddenOptionIds}

@@ -53,11 +53,11 @@ const OptionToggleGrid = ({
   if (!options || options.length === 0) {
     return showEmptyState ? (
       <div className={`${className}`}>
-        <div className="text-center text-gray-500 text-sm py-4">
+        <div className="text-center text-muted-foreground text-sm py-4">
           {emptyStateMessage}
         </div>
         {onAddProductOption && (
-          <div className="mt-3 pt-3 border-t border-gray-200">
+          <div className="mt-3 pt-3 border-t border-border">
             <Button
               type="button"
               variant="outline"
@@ -90,10 +90,10 @@ const OptionToggleGrid = ({
             <div 
               className={`flex items-center gap-3 p-3 ${
                 isHidden 
-                  ? 'bg-gray-100 opacity-60' 
+                  ? 'bg-muted opacity-60' 
                   : isProductOption
                     ? 'bg-blue-50'
-                    : 'bg-white hover:bg-gray-50'
+                    : 'bg-background hover:bg-muted/40'
               }`}
               onMouseDown={(e) => {
                 // Prevent collapsible from closing when dragging starts
@@ -108,13 +108,13 @@ const OptionToggleGrid = ({
                     <Star className="h-3 w-3 text-blue-500" />
                   )}
                   {isHidden ? (
-                    <EyeOff className="h-4 w-4 text-gray-400" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
                     <Eye className="h-4 w-4 text-green-500" />
                   )}
                 </div>
                 <span className={`font-medium transition-colors ${
-                  isHidden ? 'text-gray-500 line-through' : 'text-gray-900'
+                  isHidden ? 'text-muted-foreground line-through' : 'text-foreground'
                 }`}>
                   {option.name}
                 </span>
@@ -127,7 +127,7 @@ const OptionToggleGrid = ({
                   <Badge 
                     variant="outline" 
                     className={`text-xs ${
-                      isHidden ? 'bg-gray-200 text-gray-500 border-gray-400' : ''
+                      isHidden ? 'bg-muted text-muted-foreground border-border' : ''
                     }`}
                   >
                     {option.price_delta > 0 ? '+' : ''}${option.price_delta}
@@ -151,7 +151,7 @@ const OptionToggleGrid = ({
                   </Button>
                 )}
                 <Label className={`text-sm font-medium ${
-                  isHidden ? 'text-gray-400' : 'text-gray-600'
+                  isHidden ? 'text-muted-foreground' : 'text-muted-foreground'
                 }`}>
                   {isHidden ? 'Hidden' : 'Visible'}
                 </Label>
@@ -171,7 +171,7 @@ const OptionToggleGrid = ({
       
       {/* Add Product Option Button */}
       {onAddProductOption && (
-        <div className="mt-3 pt-3 border-t border-gray-200">
+        <div className="mt-3 pt-3 border-t border-border">
           <Button
             type="button"
             variant="outline"

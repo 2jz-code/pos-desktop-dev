@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useStoreInfo } from "@/hooks/useSettings";
 import { Link } from "react-router-dom";
 import ModifierDisplay from "@/components/ui/ModifierDisplay";
+import { formatPhoneNumber } from "@ajeen/ui";
 
 const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 	const navigate = useNavigate();
@@ -177,7 +178,7 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 							{orderData.customer_phone && (
 								<p className="flex items-center">
 									<Phone className="h-4 w-4 mr-2 text-primary-green" />
-									{orderData.customer_phone}
+									{formatPhoneNumber(orderData.customer_phone)}
 								</p>
 							)}
 						</div>

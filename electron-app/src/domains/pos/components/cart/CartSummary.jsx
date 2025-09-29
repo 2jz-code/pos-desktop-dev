@@ -24,21 +24,21 @@ const safeFormatCurrency = (value) => {
 const SummaryRow = ({ label, amount, className = "", onRemove }) => (
 	<div className={`flex justify-between items-center py-1 ${className}`}>
 		<div className="flex items-center">
-			<span className="text-sm text-slate-600 dark:text-slate-400">
+			<span className="text-sm text-muted-foreground">
 				{label}
 			</span>
 			{onRemove && (
 				<Button
 					variant="ghost"
 					size="icon"
-					className="h-5 w-5 ml-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+					className="h-5 w-5 ml-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
 					onClick={onRemove}
 				>
 					<X className="h-3 w-3" />
 				</Button>
 			)}
 		</div>
-		<span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+		<span className="text-sm font-semibold text-foreground">
 			{safeFormatCurrency(amount)}
 		</span>
 	</div>
@@ -244,7 +244,7 @@ const CartSummary = () => {
 	const hasKitchenZones = kitchenZones && kitchenZones.length > 0;
 
 	return (
-		<div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+		<div className="border-t border-border/60 bg-muted/20">
 			<div className="p-4 space-y-4">
 				{/* Summary Details */}
 				<div className="space-y-2">
@@ -275,7 +275,7 @@ const CartSummary = () => {
 										0
 									) || 0)
 								}
-								className="border-t border-slate-200 dark:border-slate-700 pt-2 font-medium text-slate-700 dark:text-slate-300"
+								className="border-t border-border/60 pt-2 font-medium text-foreground"
 							/>
 						</>
 					)}
@@ -286,11 +286,11 @@ const CartSummary = () => {
 				</div>
 
 				{/* Total */}
-				<div className="flex justify-between items-center pt-3 border-t border-slate-200 dark:border-slate-700">
-					<span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+				<div className="flex justify-between items-center pt-3 border-t border-border/60">
+					<span className="text-lg font-bold text-foreground">
 						Total
 					</span>
-					<span className="text-xl font-bold text-slate-900 dark:text-slate-100">
+					<span className="text-xl font-bold text-foreground">
 						{safeFormatCurrency(total)}
 					</span>
 				</div>
@@ -304,7 +304,7 @@ const CartSummary = () => {
 					{hasKitchenZones && (
 						<Button
 							variant="outline"
-							className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
+							className="h-12 border-border/60 hover:bg-muted/40 bg-transparent"
 							disabled={!hasItems || isLoading || isSendingToKitchen}
 							onClick={handleSendToKitchen}
 						>
@@ -324,7 +324,7 @@ const CartSummary = () => {
 
 					<Button
 						variant="outline"
-						className="h-12 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 bg-transparent"
+						className="h-12 border-border/60 hover:bg-muted/40 bg-transparent"
 						disabled={!hasItems || isLoading || isSendingToKitchen}
 						onClick={() => setIsDiscountDialogOpen(true)}
 					>
@@ -333,7 +333,7 @@ const CartSummary = () => {
 					</Button>
 
 					<Button
-						className="h-12 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-semibold"
+						className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
 						disabled={!hasItems || isLoading || isSendingToKitchen}
 						onClick={handleCharge}
 					>
@@ -347,7 +347,7 @@ const CartSummary = () => {
 				</div>
 
 				{hasKitchenZones && (
-					<p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">
+					<p className="text-xs text-muted-foreground text-center mt-2">
 						Print kitchen tickets while customer continues shopping
 					</p>
 				)}

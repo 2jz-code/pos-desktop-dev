@@ -26,6 +26,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/PaginationControls"; // Import the new component
+import { formatCurrency } from "@ajeen/ui";
 
 const OrdersTab = () => {
 	const {
@@ -125,10 +126,7 @@ const OrdersTab = () => {
 		);
 	};
 
-	const formatCurrency = (amount) => {
-		// This should ideally use a more robust currency formatting library or i18n
-		return `$${Number(amount).toFixed(2)}`;
-	};
+	// Using shared formatCurrency from @ajeen/ui
 
 	if (isLoadingOrders && orders.length === 0) {
 		// Show loader only on initial load
@@ -208,7 +206,7 @@ const OrdersTab = () => {
 								</div>
 								<div className="flex-1 text-right">
 									<p className="font-medium">
-										{formatCurrency(order.total_with_tip)}
+										{formatCurrency(order.grand_total || order.total_with_tip || order.total)}
 									</p>
 								</div>
 							</div>

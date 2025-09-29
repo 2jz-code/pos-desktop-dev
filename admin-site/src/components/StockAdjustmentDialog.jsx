@@ -346,7 +346,7 @@ const StockAdjustmentDialog = ({
 							</SelectContent>
 						</Select>
 						{formData.location_id && (
-							<p className="text-xs text-gray-500">
+							<p className="text-xs text-muted-foreground">
 								Available: {stockLevels[formData.location_id] || 0}
 							</p>
 						)}
@@ -367,13 +367,13 @@ const StockAdjustmentDialog = ({
 								<SelectContent>
 									<SelectItem value="add">
 										<div className="flex items-center gap-2">
-											<Plus className="h-4 w-4 text-green-600" />
+											<Plus className="h-4 w-4 text-green-600 dark:text-green-400" />
 											Add Stock
 										</div>
 									</SelectItem>
 									<SelectItem value="remove">
 										<div className="flex items-center gap-2">
-											<Minus className="h-4 w-4 text-red-600" />
+											<Minus className="h-4 w-4 text-red-600 dark:text-red-400" />
 											Remove Stock
 										</div>
 									</SelectItem>
@@ -398,7 +398,7 @@ const StockAdjustmentDialog = ({
 
 					{/* Expiration and Threshold Fields */}
 					<div className="space-y-4 border-t pt-4">
-						<h4 className="text-sm font-medium text-gray-900">Expiration & Threshold Settings</h4>
+						<h4 className="text-sm font-medium text-foreground">Expiration & Threshold Settings</h4>
 						
 						<div className="space-y-2">
 							<Label htmlFor="expiration_date" className="flex items-center gap-2">
@@ -419,7 +419,7 @@ const StockAdjustmentDialog = ({
 						<div className="grid grid-cols-2 gap-4">
 							<div className="space-y-2">
 								<Label htmlFor="low_stock_threshold" className="flex items-center gap-2">
-									<AlertTriangle className="h-4 w-4 text-amber-500" />
+									<AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
 									Low Stock Threshold
 								</Label>
 								<Input
@@ -433,14 +433,14 @@ const StockAdjustmentDialog = ({
 									}
 									placeholder={`Default: ${inventoryDefaults.default_low_stock_threshold || '10'}`}
 								/>
-								<p className="text-xs text-gray-500">
+								<p className="text-xs text-muted-foreground">
 									Leave empty to use global default ({inventoryDefaults.default_low_stock_threshold || '10'})
 								</p>
 							</div>
 
 							<div className="space-y-2">
 								<Label htmlFor="expiration_threshold" className="flex items-center gap-2">
-									<Clock className="h-4 w-4 text-orange-500" />
+									<Clock className="h-4 w-4 text-orange-500 dark:text-orange-400" />
 									Expiration Warning (Days)
 								</Label>
 								<Input
@@ -454,7 +454,7 @@ const StockAdjustmentDialog = ({
 									}
 									placeholder={`Default: ${inventoryDefaults.default_expiration_threshold || '7'}`}
 								/>
-								<p className="text-xs text-gray-500">
+								<p className="text-xs text-muted-foreground">
 									Leave empty to use global default ({inventoryDefaults.default_expiration_threshold || '7'} days)
 								</p>
 							</div>

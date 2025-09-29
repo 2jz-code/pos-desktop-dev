@@ -178,12 +178,12 @@ const ModifierQuickCreate = ({
           </div>
           
           {/* Required/Optional Toggle */}
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
             <div>
               <Label className="text-sm font-medium">Customer Selection</Label>
-              <p className="text-xs text-gray-500 mt-1">
-                {quickCreateForm.min_selections > 0 
-                  ? "Customers must make a selection" 
+              <p className="text-xs text-muted-foreground mt-1">
+                {quickCreateForm.min_selections > 0
+                  ? "Customers must make a selection"
                   : "Customers can skip this modifier group"
                 }
               </p>

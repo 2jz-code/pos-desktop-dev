@@ -437,7 +437,7 @@ const ModifierSetEditor = ({ modifierSet, open, onOpenChange, onSuccess }) => {
 												{errors.internal_name}
 											</p>
 										)}
-										<p className="text-xs text-gray-500 mt-1">
+										<p className="text-xs text-muted-foreground mt-1">
 											Used for API references. Auto-generated from display name.
 										</p>
 									</div>
@@ -466,12 +466,12 @@ const ModifierSetEditor = ({ modifierSet, open, onOpenChange, onSuccess }) => {
 
 									<div className="space-y-4">
 										{/* Required/Optional Toggle */}
-										<div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+										<div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
 											<div>
 												<Label className="text-sm font-medium">
 													Customer Selection
 												</Label>
-												<p className="text-xs text-gray-500 mt-1">
+												<p className="text-xs text-muted-foreground mt-1">
 													{formData.min_selections > 0
 														? "Customers must make a selection"
 														: "Customers can skip this modifier set"}
@@ -519,7 +519,7 @@ const ModifierSetEditor = ({ modifierSet, open, onOpenChange, onSuccess }) => {
 															{errors.min_selections}
 														</p>
 													)}
-													<p className="text-xs text-gray-500 mt-1">
+													<p className="text-xs text-muted-foreground mt-1">
 														0 = optional, 1+ = required minimum
 													</p>
 												</div>
@@ -543,7 +543,7 @@ const ModifierSetEditor = ({ modifierSet, open, onOpenChange, onSuccess }) => {
 															{errors.max_selections}
 														</p>
 													)}
-													<p className="text-xs text-gray-500 mt-1">
+													<p className="text-xs text-muted-foreground mt-1">
 														Leave blank for unlimited
 													</p>
 												</div>

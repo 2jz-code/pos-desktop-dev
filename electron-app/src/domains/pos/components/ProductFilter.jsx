@@ -38,7 +38,7 @@ const ProductFilter = () => {
 
 	return (
 		<div className="flex items-center gap-4 mb-6">
-			<div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+			<div className="flex items-center gap-2 text-foreground">
 				<Filter className="h-4 w-4" />
 				<span className="text-sm font-medium">Filter by:</span>
 			</div>
@@ -47,13 +47,13 @@ const ProductFilter = () => {
 				onValueChange={setSelectedParentCategory}
 				value={selectedParentCategory}
 			>
-				<SelectTrigger className="w-[200px] border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+				<SelectTrigger className="w-[200px] border-border/60 bg-card hover:border-border transition-colors">
 					<SelectValue placeholder="Select category" />
 				</SelectTrigger>
-				<SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+				<SelectContent className="bg-card border-border/60">
 					<SelectItem
 						value="all"
-						className="hover:bg-slate-100 dark:hover:bg-slate-800"
+						className="hover:bg-muted/40"
 					>
 						All Categories
 					</SelectItem>
@@ -61,7 +61,7 @@ const ProductFilter = () => {
 						<SelectItem
 							key={category.id}
 							value={String(category.id)}
-							className="hover:bg-slate-100 dark:hover:bg-slate-800"
+							className="hover:bg-muted/40"
 						>
 							{category.name}
 						</SelectItem>
@@ -74,13 +74,13 @@ const ProductFilter = () => {
 					onValueChange={setSelectedChildCategory}
 					value={selectedChildCategory}
 				>
-					<SelectTrigger className="w-[200px] border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+					<SelectTrigger className="w-[200px] border-border/60 bg-card hover:border-border transition-colors">
 						<SelectValue placeholder="Select subcategory" />
 					</SelectTrigger>
-					<SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+					<SelectContent className="bg-card border-border/60">
 						<SelectItem
 							value="all"
-							className="hover:bg-slate-100 dark:hover:bg-slate-800"
+							className="hover:bg-muted/40"
 						>
 							All Subcategories
 						</SelectItem>
@@ -88,7 +88,7 @@ const ProductFilter = () => {
 							<SelectItem
 								key={category.id}
 								value={String(category.id)}
-								className="hover:bg-slate-100 dark:hover:bg-slate-800"
+								className="hover:bg-muted/40"
 							>
 								{category.name}
 							</SelectItem>
@@ -102,7 +102,7 @@ const ProductFilter = () => {
 					variant="outline"
 					size="sm"
 					onClick={resetFilters}
-					className="border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+					className="border-border/60 hover:border-border transition-colors"
 				>
 					<X className="h-4 w-4 mr-2" />
 					Clear Filters

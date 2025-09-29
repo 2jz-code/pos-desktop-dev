@@ -5,4 +5,3 @@ export {
 	useInventoryBarcode,
 	usePOSBarcode,
 } from "./useBarcode.js";
-export { useScrollToScannedItem } from "./useScrollToScannedItem.js";

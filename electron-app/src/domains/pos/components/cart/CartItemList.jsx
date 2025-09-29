@@ -33,7 +33,7 @@ const CartItemList = () => {
 		return (
 			<div className="flex-grow flex items-center justify-center p-8">
 				<div className="text-center">
-					<ShoppingCart className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+					<ShoppingCart className="h-12 w-12 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
 					<p className="text-slate-500 dark:text-slate-400 text-lg">
 						Cart is empty
 					</p>

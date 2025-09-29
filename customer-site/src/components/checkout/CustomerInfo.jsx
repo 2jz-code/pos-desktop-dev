@@ -12,6 +12,7 @@ import {
 	MessageSquare,
 	UserCheck,
 } from "lucide-react";
+import { formatPhoneNumber, isValidEmail, isValidPhoneNumber } from "@ajeen/ui";
 
 const CustomerInfo = ({
 	formData,
@@ -66,13 +67,11 @@ const CustomerInfo = ({
 		if (!email?.trim()) return false;
 		if (!phone?.trim()) return false;
 
-		// Basic email validation
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) return false;
+		// Email validation using shared utility
+		if (!isValidEmail(email)) return false;
 
-		// Basic phone validation (at least 10 digits)
-		const phoneDigits = phone.replace(/\D/g, "");
-		if (phoneDigits.length < 10) return false;
+		// Phone validation using shared utility
+		if (!isValidPhoneNumber(phone)) return false;
 
 		return true;
 	};
@@ -83,20 +82,7 @@ const CustomerInfo = ({
 		onNext();
 	};
 
-	// Format phone number for display
-	const formatPhoneNumber = (value) => {
-		const phoneNumber = value.replace(/[^\d]/g, "");
-		const phoneNumberLength = phoneNumber.length;
-
-		if (phoneNumberLength < 4) return phoneNumber;
-		if (phoneNumberLength < 7) {
-			return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
-		}
-		return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(
-			3,
-			6
-		)}-${phoneNumber.slice(6, 10)}`;
-	};
+	// Using shared formatPhoneNumber from @ajeen/ui
 
 	const handlePhoneChange = (e) => {
 		const formattedPhone = formatPhoneNumber(e.target.value);

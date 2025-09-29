@@ -1,44 +1,22 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useRolePermissions as useSharedRolePermissions } from "@ajeen/ui";
 
+/**
+ * Hook that provides role-based permission checks for the admin site (owner-only)
+ * Uses the shared useRolePermissions hook from @ajeen/ui with owner-only configuration
+ */
 export const useRolePermissions = () => {
-	const { user } = useAuth();
+	const authContext = useAuth();
 
-	// Since this is an owner-only admin site, all permissions are true
-	// Only owners can access this site as verified during login
-	return {
-		// Navigation permissions
-		canAccessDashboard: true,
-		canAccessOrders: true,
-		canAccessProducts: true,
-		canAccessUsers: true,
-		canAccessInventory: true,
-		canAccessPayments: true,
-		canAccessDiscounts: true,
-		canAccessReports: true,
-		canAccessAudits: true,
-		canAccessSettings: true,
-
-		// Action permissions
-		canCreateOrders: true,
-		canUpdateOrders: true,
-		canDeleteOrders: true,
-		canCreateProducts: true,
-		canUpdateProducts: true,
-		canDeleteProducts: true,
-		canCreateUsers: true,
-		canUpdateUsers: true,
-		canDeleteUsers: true,
-		canManageInventory: true,
-		canViewReports: true,
-		canAccessAudit: true,
-		canManageSettings: true,
-		canProcessPayments: true,
-		canManageDiscounts: true,
-
-		// User info
-		isOwner: true,
-		isManager: true, // Owner has manager permissions too
-		isCashier: true, // Owner has cashier permissions too
-		role: user?.role || "OWNER",
-	};
+	// Use the shared hook with owner-only configuration
+	return useSharedRolePermissions(authContext, {
+		ownerOnlyApp: true, // This is an owner-only admin site
+		enabledFeatures: {
+			pos: true,
+			inventory: true,
+			reports: true,
+			audits: true,
+			terminal: true,
+		}
+	});
 };

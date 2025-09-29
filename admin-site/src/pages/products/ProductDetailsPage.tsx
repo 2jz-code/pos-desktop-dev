@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Edit, Archive, ArchiveRestore, Package } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { useToast } from "@/components/ui/use-toast";
 import { archiveProduct, unarchiveProduct } from "@/services/api/productService";
 import { ProductFormDialog } from "@/components/ProductFormDialog";

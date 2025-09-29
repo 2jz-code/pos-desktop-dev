@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 

@@ -12,22 +12,22 @@ export function PageHeader({
 }) {
 	return (
 		<div
-			className={`border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 ${className}`}
+			className={`border-b border-border/60 bg-card/80 backdrop-blur-sm ${className}`}
 		>
-			<div className="px-6 py-8">
+			<div className="px-4 py-6 md:px-6 md:py-8">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-4">
 						{IconComponent && (
-							<div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-								<IconComponent className="h-6 w-6 text-slate-700 dark:text-slate-300" />
+							<div className="flex size-12 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-inset ring-primary/30">
+								<IconComponent className="h-6 w-6" />
 							</div>
 						)}
 						<div>
-							<h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+							<h1 className="text-2xl font-semibold text-foreground tracking-tight">
 								{title}
 							</h1>
 							{description && (
-								<p className="text-slate-600 dark:text-slate-400 mt-1">
+								<p className="text-muted-foreground mt-1 text-sm leading-relaxed">
 									{description}
 								</p>
 							)}

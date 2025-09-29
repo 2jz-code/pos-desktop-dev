@@ -1,4 +1,5 @@
 import React from "react";
+import { formatCurrency } from "@ajeen/ui";
 
 interface Modifier {
 	modifier_set_name: string;
@@ -28,12 +29,6 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 		0
 	);
 
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat('en-US', {
-			style: 'currency',
-			currency: 'USD'
-		}).format(amount);
-	};
 
 	if (compact) {
 		// Compact display for lists - show as a summary line
@@ -44,7 +39,7 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 			<div className="mt-1 space-y-0.5">
 				{/* Show free modifiers - each on its own line */}
 				{freeModifiers.map((modifier, index) => (
-					<p key={index} className="text-xs text-slate-600 dark:text-slate-400">
+					<p key={index} className="text-xs text-muted-foreground">
 						{modifier.modifier_set_name}: {modifier.option_name}
 						{modifier.quantity > 1 && ` (x${modifier.quantity})`}
 					</p>
@@ -53,7 +48,7 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 				{/* Show charged modifiers - each on its own line with price */}
 				{chargedModifiers.map((modifier, index) => (
 					<div key={index} className="flex justify-between items-center text-xs">
-						<span className="text-slate-600 dark:text-slate-400">
+						<span className="text-muted-foreground">
 							{modifier.modifier_set_name}: {modifier.option_name}
 							{modifier.quantity > 1 && ` (x${modifier.quantity})`}
 						</span>
@@ -74,8 +69,8 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 					key={index}
 					className="flex justify-between items-center text-sm"
 				>
-					<span className="text-slate-600 dark:text-slate-400 flex items-center">
-						<span className="text-slate-400 dark:text-slate-500 mr-2">•</span>
+					<span className="text-muted-foreground flex items-center">
+						<span className="text-muted-foreground/60 mr-2">•</span>
 						{modifier.modifier_set_name}: {modifier.option_name}
 						{modifier.quantity > 1 && ` x${modifier.quantity}`}
 					</span>
@@ -87,9 +82,9 @@ const ModifierDisplay: React.FC<ModifierDisplayProps> = ({
 				</div>
 			))}
 			{showTotal && totalModifierPrice > 0 && (
-				<div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
+				<div className="border-t border-border pt-2 mt-2">
 					<div className="flex justify-between items-center text-sm font-medium">
-						<span className="text-slate-700 dark:text-slate-300">Total modifiers:</span>
+						<span className="text-foreground">Total modifiers:</span>
 						<span className="text-emerald-600 dark:text-emerald-400">
 							+{formatCurrency(totalModifierPrice)}
 						</span>

@@ -10,6 +10,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { PlusCircle, Edit, Trash2, Home, Phone, Mail, Star, MapPin } from "lucide-react";
+import { formatPhoneNumber } from "@ajeen/ui";
 import { toast } from "sonner";
 import StoreLocationFormDialog from "./StoreLocationFormDialog";
 import {
@@ -150,7 +151,7 @@ export function StoreLocationsManagement() {
 							{location.phone && (
 								<div className="flex items-center">
 									<Phone className="h-4 w-4 mr-2" />
-									<span>{location.phone}</span>
+									<span>{formatPhoneNumber(location.phone)}</span>
 								</div>
 							)}
 							{location.email && (

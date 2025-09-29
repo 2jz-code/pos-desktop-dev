@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import authAPI from "@/api/auth";
+import { isValidEmail } from "@ajeen/ui";
 
 const ForgotPasswordForm = () => {
 	const [email, setEmail] = useState("");
@@ -23,9 +24,8 @@ const ForgotPasswordForm = () => {
 			return;
 		}
 
-		// Basic email validation
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) {
+		// Email validation using shared utility
+		if (!isValidEmail(email)) {
 			setError("Please enter a valid email address");
 			return;
 		}

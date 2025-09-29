@@ -31,8 +31,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 			<Link
 				to={route.path}
 				className={cn(
-					"flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-					isActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium",
+					"flex items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+					isActive && "bg-accent text-accent-foreground font-medium",
 					isCollapsed && !isMobile && "justify-center px-2"
 				)}
 			>
@@ -49,8 +49,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 				<button
 					onClick={() => setIsExpanded(!isExpanded)}
 					className={cn(
-						"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-						isActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+						"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+						isActive && "bg-accent text-accent-foreground font-medium"
 					)}
 				>
 					<route.icon className="h-4 w-4 flex-shrink-0" />
@@ -67,8 +67,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 						<Link
 							to={route.path}
 							className={cn(
-								"block rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-								isMainActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+								"block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+								isMainActive && "bg-accent text-accent-foreground font-medium"
 							)}
 						>
 							{route.title}
@@ -78,8 +78,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 								key={subPage.path}
 								to={subPage.path}
 								className={cn(
-									"block rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-									location.pathname === subPage.path && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+									"block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+									location.pathname === subPage.path && "bg-accent text-accent-foreground font-medium"
 								)}
 							>
 								{subPage.title}
@@ -99,8 +99,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 				<DropdownMenuTrigger asChild>
 					<button
 						className={cn(
-							"flex items-center justify-center rounded-lg px-2 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-							isActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+							"flex items-center justify-center rounded-lg px-2 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+							isActive && "bg-accent text-accent-foreground font-medium"
 						)}
 					>
 						<route.icon className="h-4 w-4 flex-shrink-0" />
@@ -109,14 +109,14 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 				<DropdownMenuContent 
 					side="right" 
 					align="start"
-					className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+					className="bg-popover border-border"
 				>
 					<DropdownMenuItem asChild>
 						<Link
 							to={route.path}
 							className={cn(
-								"text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer",
-								isMainActive && "bg-slate-100 dark:bg-slate-800 font-medium"
+								"text-popover-foreground hover:bg-accent cursor-pointer",
+								isMainActive && "bg-accent text-accent-foreground font-medium"
 							)}
 						>
 							{route.title}
@@ -127,8 +127,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 							<Link
 								to={subPage.path}
 								className={cn(
-									"text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer",
-									location.pathname === subPage.path && "bg-slate-100 dark:bg-slate-800 font-medium"
+									"text-popover-foreground hover:bg-accent cursor-pointer",
+									location.pathname === subPage.path && "bg-accent text-accent-foreground font-medium"
 								)}
 							>
 								{subPage.title}
@@ -146,8 +146,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
 				className={cn(
-					"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-					isActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+					"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+					isActive && "bg-accent text-accent-foreground font-medium"
 				)}
 			>
 				<route.icon className="h-4 w-4 flex-shrink-0" />
@@ -164,8 +164,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 					<Link
 						to={route.path}
 						className={cn(
-							"block rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-							isMainActive && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+							"block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+							isMainActive && "bg-accent text-accent-foreground font-medium"
 						)}
 					>
 						{route.title}
@@ -175,8 +175,8 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 							key={subPage.path}
 							to={subPage.path}
 							className={cn(
-								"block rounded-lg px-3 py-2 text-sm text-slate-600 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800",
-								location.pathname === subPage.path && "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
+								"block rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+								location.pathname === subPage.path && "bg-accent text-accent-foreground font-medium"
 							)}
 						>
 							{subPage.title}

@@ -41,9 +41,9 @@ export const ProductCard = ({ product }) => {
 		<div
 			onClick={handleProductClick}
 			className={`
-        relative group border border-slate-200 dark:border-slate-700 rounded-xl p-4 
-        flex flex-col items-center text-center bg-white dark:bg-slate-900
-        transition-all duration-200 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600
+        relative group border border-border/60 rounded-xl p-4
+        flex flex-col items-center text-center bg-card
+        transition-all duration-200 hover:shadow-lg hover:border-border
         ${
 					isAdding
 						? "cursor-not-allowed opacity-75"
@@ -53,17 +53,17 @@ export const ProductCard = ({ product }) => {
 		>
 			{/* Loading Overlay */}
 			{isAdding && (
-				<div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center rounded-xl z-10">
+				<div className="absolute inset-0 bg-card/80 backdrop-blur-sm flex items-center justify-center rounded-xl z-10">
 					<div className="flex flex-col items-center gap-2">
-						<Loader2 className="h-6 w-6 animate-spin text-slate-600 dark:text-slate-400" />
-						<span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+						<span className="text-xs text-muted-foreground font-medium">
 							Adding...
 						</span>
 					</div>
 				</div>
 			)}
 
-			<div className="w-20 h-20 mb-3 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+			<div className="w-20 h-20 mb-3 rounded-lg overflow-hidden bg-muted/40 flex items-center justify-center">
 				<img
 					src={
 						product.image_url ||
@@ -75,16 +75,16 @@ export const ProductCard = ({ product }) => {
 				/>
 			</div>
 
-			<h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100 mb-2 line-clamp-2 min-h-[2.5rem] flex items-center">
+			<h3 className="font-semibold text-sm text-foreground mb-2 line-clamp-2 min-h-[2.5rem] flex items-center">
 				{product.name}
 			</h3>
 
 			<div className="mt-auto">
-				<p className="text-lg font-bold text-slate-900 dark:text-slate-100">
+				<p className="text-lg font-bold text-foreground">
 					${Number.parseFloat(product.price).toFixed(2)}
 				</p>
 				{hasModifiers && (
-					<p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+					<p className="text-xs text-muted-foreground mt-1">
 						Customizable
 					</p>
 				)}

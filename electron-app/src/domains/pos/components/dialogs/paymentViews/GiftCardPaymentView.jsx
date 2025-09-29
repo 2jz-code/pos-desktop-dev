@@ -3,7 +3,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { CreditCard, AlertCircle, CheckCircle } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { giftCardService } from "@/domains/payments/services/giftCardService";
@@ -137,7 +137,7 @@ const GiftCardPaymentView = ({ onProcessPayment }) => {
 			<div className="space-y-2">
 				<label className="text-sm font-medium">Gift Card Code</label>
 				<div className="relative">
-					<CreditCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+					<CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 					<Input
 						type="text"
 						placeholder="Enter gift card code"
@@ -209,7 +209,7 @@ const GiftCardPaymentView = ({ onProcessPayment }) => {
 								validationData.current_balance
 							)}
 						/>
-						<p className="text-xs text-gray-500">
+						<p className="text-xs text-muted-foreground">
 							Maximum:{" "}
 							{formatCurrency(
 								Math.min(
@@ -222,7 +222,7 @@ const GiftCardPaymentView = ({ onProcessPayment }) => {
 
 					{/* Remaining Balance after transaction */}
 					{customAmount > 0 && (
-						<div className="text-center text-sm text-gray-600">
+						<div className="text-center text-sm text-muted-foreground">
 							Remaining gift card balance after payment:{" "}
 							<strong>
 								{formatCurrency(validationData.current_balance - customAmount)}

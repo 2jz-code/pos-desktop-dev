@@ -141,7 +141,7 @@ const ProductSpecificOptionForm = ({
         <DialogHeader>
           <DialogTitle>Add Product-Specific Option</DialogTitle>
           {modifierSetName && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               Adding to: <span className="font-medium">{modifierSetName}</span>
             </p>
           )}
@@ -168,7 +168,7 @@ const ProductSpecificOptionForm = ({
             <div>
               <Label htmlFor="price-delta">Price Adjustment</Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
                 <Input
                   id="price-delta"
                   type="number"
@@ -179,7 +179,7 @@ const ProductSpecificOptionForm = ({
                   className={`pl-7 ${errors.price_delta ? "border-red-500" : ""}`}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Use positive values for upcharges (+$2.50) or negative for discounts (-$1.00)
               </p>
               {errors.price_delta && (
