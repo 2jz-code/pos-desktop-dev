@@ -3,6 +3,8 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { TableCell } from "@/shared/components/ui/table";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
+import { Input } from "@/shared/components/ui/input";
+import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import {
 	MoreHorizontal,
 	Plus,
@@ -12,6 +14,7 @@ import {
 	AlertTriangle,
 	Archive,
 	ArchiveRestore,
+	Search,
 } from "lucide-react";
 import {
 	DropdownMenu,
@@ -23,7 +26,8 @@ import { format } from "date-fns";
 import AddEditDiscountDialog from "@/domains/discounts/components/AddEditDiscountDialog";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
-import { DomainPageLayout, StandardTable } from "@/shared/components/layout";
+import { StandardTable } from "@/shared/components/layout";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { shallow } from "zustand/shallow";
 
 export default function DiscountsPage() {
@@ -296,18 +300,23 @@ export default function DiscountsPage() {
 	);
 
 	const headerActions = (
-		<div className="flex items-center gap-4">
+		<div className="flex items-center gap-3">
 			<Button
 				variant={showArchivedDiscounts ? "default" : "outline"}
 				size="sm"
 				onClick={() => setShowArchivedDiscounts(!showArchivedDiscounts)}
 			>
 				{showArchivedDiscounts ? (
-					<ArchiveRestore className="mr-2 h-4 w-4" />
+					<>
+						<ArchiveRestore className="mr-2 h-4 w-4" />
+						Show Active
+					</>
 				) : (
-					<Archive className="mr-2 h-4 w-4" />
+					<>
+						<Archive className="mr-2 h-4 w-4" />
+						Show Archived
+					</>
 				)}
-				{showArchivedDiscounts ? "Show Active" : "Show Archived"}
 			</Button>
 			<Button onClick={openAddDialog}>
 				<Plus className="mr-2 h-4 w-4" />
@@ -318,43 +327,75 @@ export default function DiscountsPage() {
 
 	if (error) {
 		return (
-			<DomainPageLayout
-				pageTitle="Discount Management"
-				pageDescription="Create, manage, and schedule all promotional discounts."
-				pageIcon={Percent}
-				error="Failed to load discounts."
-			>
-				<div className="flex items-center justify-center h-24">
-					<Button onClick={fetchDiscounts}>Retry</Button>
+			<div className="flex flex-col h-full">
+				<PageHeader
+					icon={Percent}
+					title="Discount Management"
+					description="Create, manage, and schedule all promotional discounts"
+					className="shrink-0"
+				/>
+				<div className="flex-1 min-h-0 p-4">
+					<div className="flex items-center justify-center h-full">
+						<div className="text-center space-y-4">
+							<AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
+							<div>
+								<h3 className="font-semibold text-foreground mb-2">Failed to load discounts</h3>
+								<p className="text-sm text-muted-foreground mb-4">{error}</p>
+								<Button onClick={fetchDiscounts} variant="outline">
+									Try Again
+								</Button>
+							</div>
+						</div>
+					</div>
 				</div>
-			</DomainPageLayout>
+			</div>
 		);
 	}
 
 	return (
 		<>
-			<DomainPageLayout
-				pageTitle={`${showArchivedDiscounts ? "Archived" : "Active"} Discounts`}
-				pageDescription="Create, manage, and schedule all promotional discounts."
-				pageIcon={Percent}
-				pageActions={headerActions}
-				title="Filters & Search"
-				searchPlaceholder="Search by name, description, type, or scope..."
-				searchValue={filters.search}
-				onSearchChange={handleSearchChange}
-			>
-				<StandardTable
-					headers={headers}
-					data={filteredDiscounts}
-					loading={isLoading}
-					emptyMessage={
-						showArchivedDiscounts
-							? "No archived discounts found."
-							: "No active discounts found."
-					}
-					renderRow={renderDiscountRow}
+			<div className="flex flex-col h-full">
+				{/* Page Header */}
+				<PageHeader
+					icon={Percent}
+					title={`${showArchivedDiscounts ? "Archived" : "Active"} Discounts`}
+					description="Create, manage, and schedule all promotional discounts"
+					actions={headerActions}
+					className="shrink-0"
 				/>
-			</DomainPageLayout>
+
+				{/* Search and Filters */}
+				<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">
+					<div className="relative max-w-md">
+						<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+						<Input
+							placeholder="Search by name, description, type, or scope..."
+							className="pl-10 h-11"
+							value={filters.search}
+							onChange={handleSearchChange}
+						/>
+					</div>
+				</div>
+
+				{/* Main Content */}
+				<div className="flex-1 min-h-0 p-4">
+					<ScrollArea className="h-full">
+						<div className="pb-6">
+							<StandardTable
+								headers={headers}
+								data={filteredDiscounts}
+								loading={isLoading}
+								emptyMessage={
+									showArchivedDiscounts
+										? "No archived discounts found."
+										: "No active discounts found."
+								}
+								renderRow={renderDiscountRow}
+							/>
+						</div>
+					</ScrollArea>
+				</div>
+			</div>
 
 			<AddEditDiscountDialog
 				isOpen={isDialogOpen}

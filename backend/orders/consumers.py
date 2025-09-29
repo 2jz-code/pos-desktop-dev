@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from decimal import Decimal  # 1. Import Decimal
 from uuid import UUID
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -29,7 +30,27 @@ def convert_complex_types_to_str(data):
 
 
 class OrderConsumer(AsyncWebsocketConsumer):
-    # ... (connect, disconnect, receive, and all the action methods remain the same) ...
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cached_order_instance = None
+        self._cached_serialized_payload = None
+        self._cached_payload_metadata = None
+
+    def _cache_payload(self, payload):
+        """
+        Cache a payload to avoid re-serialization on subsequent calls.
+        """
+        payload_json = json.dumps(payload)
+        self._cached_serialized_payload = payload
+        self._cached_payload_metadata = {
+            'serialize_ms': 0.0,
+            'clean_ms': 0.0,
+            'payload_bytes': len(payload_json.encode('utf-8')),
+            'payload_json': payload_json,
+        }
+        # Clear any hydrated ORM instance so the next recompute fetches fresh data
+        self._cached_order_instance = None
+
     async def connect(self):
         logging.info("OrderConsumer: Attempting to connect...")
         self.order_id = self.scope["url_route"]["kwargs"]["order_id"]
@@ -51,6 +72,39 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         await self.send_full_order_state()
         logging.info("OrderConsumer: Connection established and initial state sent.")
+
+    async def recalculate_and_cache_order(self, order):
+        cached_state = getattr(order, "_recalculated_order_instance", None)
+        if cached_state is not None:
+            try:
+                delattr(order, "_recalculated_order_instance")
+            except AttributeError:
+                pass
+            order_instance = cached_state
+        else:
+            order_instance = await sync_to_async(OrderService.recalculate_order_totals)(order)
+
+        serialize_start = time.monotonic()
+        serialized_order = await self.serialize_order(order_instance)
+        serialize_elapsed_ms = (time.monotonic() - serialize_start) * 1000
+
+        clean_start = time.monotonic()
+        final_payload = convert_complex_types_to_str(serialized_order)
+        clean_elapsed_ms = (time.monotonic() - clean_start) * 1000
+
+        payload_json = json.dumps(final_payload)
+        payload_bytes = len(payload_json.encode('utf-8'))
+
+        self._cached_order_instance = order_instance
+        self._cached_serialized_payload = final_payload
+        self._cached_payload_metadata = {
+            'serialize_ms': serialize_elapsed_ms,
+            'clean_ms': clean_elapsed_ms,
+            'payload_bytes': payload_bytes,
+            'payload_json': payload_json,
+        }
+
+        return order_instance
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(self.order_group_name, self.channel_name)
@@ -113,6 +167,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     notes=payload.get("notes", ""),
                     force_add=True
                 )
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully force-added {quantity} of {product.name}"
                 )
@@ -139,6 +194,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 await sync_to_async(OrderService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}"
                 )
@@ -199,6 +255,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 quantity=quantity,
                 notes=notes
             )
+            await self.recalculate_and_cache_order(order)
 
             logging.info(
                 f"OrderConsumer: Successfully added custom item '{name}' to order {self.order_id}"
@@ -251,27 +308,56 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
                         # Check stock for the additional items
                         if not force_update:
+                            from django.conf import settings
                             from inventory.services import InventoryService
                             from settings.config import app_settings
+                            from django.db.models import Sum
+                            from decimal import Decimal
 
-                            default_location = await sync_to_async(
-                                app_settings.get_default_location
-                            )()
+                            default_location = await sync_to_async(app_settings.get_default_location)()
 
-                            stock_available = await sync_to_async(
-                                InventoryService.check_stock_availability
-                            )(product, default_location, additional_quantity)
-
-                            if not stock_available:
-                                # Same stock validation logic as before
-                                product_with_type = await sync_to_async(
-                                    lambda: Product.objects.select_related("product_type").get(
-                                        id=product.id
-                                    )
-                                )()
-                                product_type_name = product_with_type.product_type.name.lower()
-
-                                if product_type_name != "menu":
+                            if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
+                                # Only enforce for inventory-tracked and BLOCK enforcement
+                                product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                                enforcement = product_with_type.product_type.stock_enforcement
+                                if getattr(product, 'track_inventory', False) and enforcement == 'BLOCK':
+                                    # Compute cumulative availability: stock - already reserved in this order
+                                    stock_level = await sync_to_async(InventoryService.get_stock_level)(product, default_location)
+                                    reserved = await sync_to_async(lambda: OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0)()
+                                    available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
+                                    insufficient = Decimal(str(additional_quantity)) > available_to_add
+                                    if insufficient:
+                                        from products.policies import ProductTypePolicy
+                                        decision = ProductTypePolicy.decide_from_availability(product_with_type, insufficient=True, context={"channel": "pos"})
+                                        if not decision.valid:
+                                            await self.send(text_data=json.dumps({
+                                                "type": "stock_error",
+                                                "message": f"Not enough stock to add {additional_quantity} more {product.name}",
+                                                "error_type": "stock_validation",
+                                                "item_id": item_id,
+                                                "current_quantity": current_quantity,
+                                                "requested_quantity": new_quantity,
+                                                "can_override": True,
+                                                "action_type": "quantity_update",
+                                            }))
+                                            return
+                            else:
+                                stock_available = await sync_to_async(InventoryService.check_stock_availability)(product, default_location, additional_quantity)
+                                if not stock_available:
+                                    product_with_type = await sync_to_async(lambda: Product.objects.select_related("product_type").get(id=product.id))()
+                                    product_type_name = product_with_type.product_type.name.lower()
+                                    if product_type_name != "menu":
+                                        await self.send(text_data=json.dumps({
+                                            "type": "stock_error",
+                                            "message": f"Not enough stock to add {additional_quantity} more {product.name}",
+                                            "error_type": "stock_validation",
+                                            "item_id": item_id,
+                                            "current_quantity": current_quantity,
+                                            "requested_quantity": new_quantity,
+                                            "can_override": True,
+                                            "action_type": "quantity_update",
+                                        }))
+                                        return
                                     await self.send(
                                         text_data=json.dumps(
                                             {
@@ -330,7 +416,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                             )
                         
                         # Recalculate totals
-                        await sync_to_async(OrderService.recalculate_order_totals)(order)
+                        await self.recalculate_and_cache_order(order)
                         
                         product_name = await sync_to_async(lambda: product.name)()
                         logging.info(
@@ -341,64 +427,40 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         await self.send_full_order_state()
                         return
 
-                # Regular quantity update logic for items without modifiers
-                # If increasing quantity, check stock for the additional amount (skip for custom items)
-                if new_quantity > current_quantity and not force_update and not is_custom_item:
-                    additional_quantity = new_quantity - current_quantity
+                # Regular quantity update logic - use service layer for consistency
+                try:
+                    if force_update and not is_custom_item:
+                        # Force update: bypass validation for non-custom items
+                        item.quantity = new_quantity
+                        await sync_to_async(item.save)()
+                        order_obj = await sync_to_async(lambda i: i.order)(item)
+                        await self.recalculate_and_cache_order(order_obj)
+                    elif is_custom_item:
+                        # Custom items: no stock validation needed
+                        item.quantity = new_quantity
+                        await sync_to_async(item.save)()
+                        order_obj = await sync_to_async(lambda i: i.order)(item)
+                        await self.recalculate_and_cache_order(order_obj)
+                    else:
+                        # Regular items: use service method for policy-aware validation
+                        await sync_to_async(OrderService.update_item_quantity)(item, new_quantity)
+                        order_obj = await sync_to_async(lambda i: i.order)(item)
+                        await self.recalculate_and_cache_order(order_obj)
 
-                    # Import here to avoid circular imports
-                    from inventory.services import InventoryService
-                    from settings.config import app_settings
-
-                    default_location = await sync_to_async(
-                        app_settings.get_default_location
-                    )()
-
-                    # Get the product with relations loaded
-                    product = await sync_to_async(lambda: item.product)()
-
-                    # Check if there's enough stock for the additional quantity
-                    stock_available = await sync_to_async(
-                        InventoryService.check_stock_availability
-                    )(product, default_location, additional_quantity)
-
-                    if not stock_available:
-                        # Check if this is a regular product (strict validation) or menu item
-                        # We need to access the product_type with proper async handling
-                        product_with_type = await sync_to_async(
-                            lambda: Product.objects.select_related("product_type").get(
-                                id=product.id
-                            )
-                        )()
-                        product_type_name = product_with_type.product_type.name.lower()
-
-                        if product_type_name != "menu":
-                            # Regular product - strict validation, send error
-                            logging.warning(
-                                f"OrderConsumer: Insufficient stock to increase {product.name} quantity from {current_quantity} to {new_quantity}"
-                            )
-
-                            await self.send(
-                                text_data=json.dumps(
-                                    {
-                                        "type": "stock_error",
-                                        "message": f"Not enough stock to increase {product.name} to {new_quantity} units",
-                                        "error_type": "stock_validation",
-                                        "item_id": item_id,
-                                        "current_quantity": current_quantity,
-                                        "requested_quantity": new_quantity,
-                                        "can_override": True,
-                                        "action_type": "quantity_update",
-                                    }
-                                )
-                            )
-                            return  # Don't update quantity if validation fails
-
-                # Update the quantity (either decreasing, or increasing with validation passed/forced)
-                item.quantity = new_quantity
-                await sync_to_async(item.save)()
-                order_obj = await sync_to_async(lambda i: i.order)(item)
-                await sync_to_async(OrderService.recalculate_order_totals)(order_obj)
+                except ValueError as e:
+                    # Stock validation or business logic error from service
+                    logging.warning(f"OrderConsumer: Failed to update item {item_id} quantity: {e}")
+                    await self.send(text_data=json.dumps({
+                        "type": "stock_error",
+                        "message": str(e),
+                        "error_type": "stock_validation",
+                        "item_id": item_id,
+                        "current_quantity": current_quantity,
+                        "requested_quantity": new_quantity,
+                        "can_override": True,
+                        "action_type": "quantity_update",
+                    }))
+                    return
 
                 if force_update:
                     if is_custom_item:
@@ -465,6 +527,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 selected_modifiers=selected_modifiers,
                 notes=notes
             )
+            await self.recalculate_and_cache_order(order)
 
             logging.info(f"OrderConsumer: Successfully updated item {item_id}")
 
@@ -486,7 +549,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
         item = await sync_to_async(OrderItem.objects.get)(id=item_id)
         order = await sync_to_async(lambda i: i.order)(item)
         await sync_to_async(item.delete)()
-        await sync_to_async(OrderService.recalculate_order_totals)(order)
+        await self.recalculate_and_cache_order(order)
 
     async def apply_discount(self, payload):
         discount_id = payload.get("discount_id")
@@ -500,6 +563,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.apply_discount_to_order_by_id)(
                 order=order, discount_id=discount_id
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount {discount_id} to order {self.order_id}"
             )
@@ -518,6 +582,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.apply_discount_to_order_by_code)(
                 order=order, code=code
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount with code {code} to order {self.order_id}"
             )
@@ -536,6 +601,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(OrderService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
             )
+            await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Removed discount {discount_id} from order {self.order_id}"
             )
@@ -551,29 +617,78 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id)
         await sync_to_async(OrderService.clear_order_items)(order)
+        await self.recalculate_and_cache_order(order)
 
-    async def send_full_order_state(self):
+    async def send_full_order_state(self, order=None):
         """
         Fetches, serializes, and cleans the order data before sending it.
         """
-        order = await self.get_order_instance()
-        serialized_order_data = await self.serialize_order(order)
+        total_start = time.monotonic()
 
-        # 3. Convert all complex types (UUID, Decimal) to strings in one go.
-        final_payload = convert_complex_types_to_str(serialized_order_data)
+        order_instance = order
+        fetch_elapsed_ms = 0.0
+        serialize_elapsed_ms = 0.0
+        clean_elapsed_ms = 0.0
+        payload_bytes = 0
 
-        # This payload is now "safe" for any serializer (json, msgpack, etc.)
+        if order_instance is None:
+            if self._cached_order_instance is not None:
+                order_instance = self._cached_order_instance
+            else:
+                fetch_start = time.monotonic()
+                order_instance = await self.get_order_instance()
+                fetch_elapsed_ms = (time.monotonic() - fetch_start) * 1000
+
+        final_payload = None
+        if self._cached_serialized_payload is not None:
+            final_payload = self._cached_serialized_payload
+            metadata = self._cached_payload_metadata or {}
+            serialize_elapsed_ms = metadata.get('serialize_ms', 0.0)
+            clean_elapsed_ms = metadata.get('clean_ms', 0.0)
+            payload_bytes = metadata.get('payload_bytes', 0)
+        else:
+            serialize_start = time.monotonic()
+            serialized_order_data = await self.serialize_order(order_instance)
+            serialize_elapsed_ms = (time.monotonic() - serialize_start) * 1000
+
+            clean_start = time.monotonic()
+            final_payload = convert_complex_types_to_str(serialized_order_data)
+            clean_elapsed_ms = (time.monotonic() - clean_start) * 1000
+
+            payload_json = json.dumps(final_payload)
+            payload_bytes = len(payload_json.encode('utf-8'))
+
+            self._cached_order_instance = order_instance
+            self._cached_serialized_payload = final_payload
+            self._cached_payload_metadata = {
+                'serialize_ms': serialize_elapsed_ms,
+                'clean_ms': clean_elapsed_ms,
+                'payload_bytes': payload_bytes,
+                'payload_json': payload_json,
+            }
+
+        item_count = len(final_payload.get('items') or []) if final_payload else 0
+        total_elapsed_ms = (time.monotonic() - total_start) * 1000
+
         logging.info(
-            f"OrderConsumer: Sending initial state: {json.dumps(final_payload, indent=2)}"
+            "OrderConsumer: send_full_order_state order_id=%s items=%d fetch_ms=%.2f serialize_ms=%.2f clean_ms=%.2f total_ms=%.2f payload_bytes=%d",
+            self.order_id,
+            item_count,
+            fetch_elapsed_ms,
+            serialize_elapsed_ms,
+            clean_elapsed_ms,
+            total_elapsed_ms,
+            payload_bytes,
         )
 
         await self.channel_layer.group_send(
             self.order_group_name, {
-                "type": "cart_update", 
+                "type": "cart_update",
                 "payload": final_payload,
                 "operationId": getattr(self, '_current_operation_id', None)
             }
         )
+
 
     async def cart_update(self, event):
         """
@@ -581,12 +696,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
         """
         payload = event["payload"]
         operation_id = event.get("operationId")
-        
+
+        # Cache the incoming payload so subsequent send_full_order_state() calls can reuse it
+        self._cache_payload(payload)
+
         # Prepare response with operation ID if present
         response = {"type": "cart_update", "payload": payload}
         if operation_id:
             response["operationId"] = operation_id
-            
+
         # 4. No special encoder needed here anymore because the payload is already clean.
         await self.send(text_data=json.dumps(response))
 
@@ -596,13 +714,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
         This is triggered when tax rates or surcharge percentages change.
         The updated order state will contain the fresh totals calculated with new rates.
         """
-        # Only send the updated order state - this contains all the fresh data
-        # including totals calculated with the new tax rates and surcharges
-        await self.send_full_order_state()
+        # Force recalculation with fresh configuration before broadcasting
+        # This ensures new tax rates and surcharges are applied immediately
+        order = await self.get_order_instance()
+        await self.recalculate_and_cache_order(order)
+        await self.send_full_order_state(order)
 
         # Log for debugging purposes
         logging.info(
-            f"OrderConsumer: Sent updated order state due to configuration change for order {self.order_id}"
+            f"OrderConsumer: Recalculated and sent updated order state due to configuration change for order {self.order_id}"
         )
 
     @sync_to_async

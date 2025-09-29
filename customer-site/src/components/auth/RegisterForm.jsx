@@ -22,6 +22,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import ComingSoonWrapper from "../utility/ComingSoonWrapper";
 import GoogleOAuthButton from "./GoogleOAuthButton";
+import {
+	isValidEmail,
+	isValidUsername,
+	validatePasswordStrength,
+	passwordsMatch,
+	PASSWORD_REQUIREMENTS
+} from "@ajeen/ui";
 // import TermsOfService from "@/pages/TermsOfService";
 // import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
@@ -45,33 +52,8 @@ const RegisterForm = () => {
 	const navigate = useNavigate();
 	const { register, isLoading, isAuthenticated } = useAuth();
 
-	const passwordRequirements = [
-		{
-			id: "length",
-			label: "At least 8 characters",
-			test: (password) => password.length >= 8,
-		},
-		{
-			id: "uppercase",
-			label: "At least one uppercase letter",
-			test: (password) => /[A-Z]/.test(password),
-		},
-		{
-			id: "lowercase",
-			label: "At least one lowercase letter",
-			test: (password) => /[a-z]/.test(password),
-		},
-		{
-			id: "number",
-			label: "At least one number",
-			test: (password) => /[0-9]/.test(password),
-		},
-		{
-			id: "special",
-			label: "At least one special character",
-			test: (password) => /[^A-Za-z0-9]/.test(password),
-		},
-	];
+	// Use shared password requirements from @ajeen/ui
+	const passwordRequirements = PASSWORD_REQUIREMENTS;
 
 	useEffect(() => {
 		if (isAuthenticated) {
@@ -125,25 +107,26 @@ const RegisterForm = () => {
 			}
 		}
 
-		// Email validation
-		if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+		// Email validation using shared utility
+		if (formData.email && !isValidEmail(formData.email)) {
 			newErrors.email = "Please enter a valid email address";
 		}
 
-		// Username validation
-		if (formData.username && !/^[a-zA-Z0-9_-]+$/.test(formData.username)) {
+		// Username validation using shared utility
+		if (formData.username && !isValidUsername(formData.username)) {
 			newErrors.username =
 				"Username can only contain letters, numbers, underscores, and hyphens";
 		}
 
-		// Password strength validation
-		if (formData.password && passwordStrength < 60) {
+		// Password strength validation using shared utility
+		const passwordValidation = validatePasswordStrength(formData.password, 60);
+		if (formData.password && !passwordValidation.isValid) {
 			newErrors.password =
 				"Password is too weak. Please meet all requirements.";
 		}
 
-		// Password confirmation
-		if (formData.password !== formData.confirm_password) {
+		// Password confirmation using shared utility
+		if (!passwordsMatch(formData.password, formData.confirm_password)) {
 			newErrors.confirm_password = "Passwords do not match";
 		}
 

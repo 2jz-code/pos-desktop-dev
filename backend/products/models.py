@@ -163,6 +163,79 @@ class ProductType(SoftDeleteMixin):
         blank=True, help_text=_("Description of the product type.")
     )
 
+    class InventoryBehavior(models.TextChoices):
+        NONE = "NONE", _("No Tracking")
+        QUANTITY = "QUANTITY", _("Track Quantity")
+        RECIPE = "RECIPE", _("Recipe Based")
+
+    class StockEnforcement(models.TextChoices):
+        IGNORE = "IGNORE", _("Ignore (never block)")
+        WARN = "WARN", _("Warn only")
+        BLOCK = "BLOCK", _("Block when insufficient")
+
+    class PricingMethod(models.TextChoices):
+        FIXED = "FIXED", _("Fixed Price")
+        COST_PLUS = "COST_PLUS", _("Cost Plus Markup")
+
+    # Inventory policy
+    inventory_behavior = models.CharField(
+        max_length=16,
+        choices=InventoryBehavior.choices,
+        default=InventoryBehavior.QUANTITY,
+        help_text=_("How inventory is tracked for this type."),
+    )
+    stock_enforcement = models.CharField(
+        max_length=8,
+        choices=StockEnforcement.choices,
+        default=StockEnforcement.BLOCK,
+        help_text=_("What to do when stock is insufficient."),
+    )
+    allow_negative_stock = models.BooleanField(
+        default=False,
+        help_text=_("Allow sales below zero stock (never blocks)."),
+    )
+
+    # Tax defaults
+    default_taxes = models.ManyToManyField(
+        'Tax', blank=True, related_name='default_for_product_types',
+        help_text=_("Default taxes applied when product has none."),
+    )
+    tax_inclusive = models.BooleanField(
+        default=False,
+        help_text=_("Prices shown/entered include tax by default."),
+    )
+
+    # Pricing
+    pricing_method = models.CharField(
+        max_length=16,
+        choices=PricingMethod.choices,
+        default=PricingMethod.FIXED,
+        help_text=_("How price should be calculated."),
+    )
+    default_markup_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text=_("Default markup percent for COST_PLUS pricing."),
+    )
+
+
+    # Prep metadata (kept simple; routing stays in Category)
+    standard_prep_minutes = models.PositiveIntegerField(
+        default=10,
+        help_text=_("Typical preparation time in minutes."),
+    )
+
+    # Order controls
+    max_quantity_per_item = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text=_("Maximum quantity of any individual product per order."),
+    )
+
+    # Discount controls
+    exclude_from_discounts = models.BooleanField(
+        default=False,
+        help_text=_("Prevent discounts from being applied to this product type."),
+    )
+
     class Meta:
         verbose_name = _("Product Type")
         verbose_name_plural = _("Product Types")

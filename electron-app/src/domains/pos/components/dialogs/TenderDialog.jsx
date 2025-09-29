@@ -9,7 +9,7 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Button } from "@/shared/components/ui/button";
 import { ArrowLeft, Loader2, X } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { shallow } from "zustand/shallow";
 
 // Import all view components

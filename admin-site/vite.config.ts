@@ -8,7 +8,7 @@ export default defineConfig({
 	plugins: [react(), tailwindcss()],
 	server: {
 		host: "0.0.0.0", // Allow external connections
-		port: 5173, // Default Vite port, change if needed
+		port: 5175, // Default Vite port, change if needed
 		strictPort: false, // Allow port changes if 5173 is taken
 	},
 	preview: {
@@ -27,6 +27,7 @@ export default defineConfig({
 			"@/types": path.resolve(__dirname, "./src/types"),
 			"@/store": path.resolve(__dirname, "./src/store"),
 		},
+		dedupe: ["react", "react-dom"],
 	},
 	build: {
 		target: "es2015",

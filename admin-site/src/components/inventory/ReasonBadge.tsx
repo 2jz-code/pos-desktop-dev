@@ -123,7 +123,7 @@ const getCategoryIcon = (category: string) => {
 
 const getCategoryColorClasses = (color: string) => {
 	const colorMap = {
-		gray: "bg-gray-100 text-gray-800 hover:bg-gray-200",
+		gray: "bg-muted text-muted-foreground hover:bg-muted/80",
 		blue: "bg-blue-100 text-blue-800 hover:bg-blue-200",
 		purple: "bg-purple-100 text-purple-800 hover:bg-purple-200",
 		orange: "bg-orange-100 text-orange-800 hover:bg-orange-200",
@@ -131,7 +131,7 @@ const getCategoryColorClasses = (color: string) => {
 		red: "bg-red-100 text-red-800 hover:bg-red-200",
 		emerald: "bg-emerald-100 text-emerald-800 hover:bg-emerald-200",
 		indigo: "bg-indigo-100 text-indigo-800 hover:bg-indigo-200",
-		slate: "bg-slate-100 text-slate-800 hover:bg-slate-200",
+		slate: "bg-muted text-muted-foreground hover:bg-muted/80",
 	};
 	return colorMap[color as keyof typeof colorMap] || colorMap.slate;
 };
@@ -321,7 +321,7 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 						<div className="space-y-2">
 							<label className="text-sm font-medium text-muted-foreground">Change</label>
 							<div className={`text-lg font-mono break-all ${
-								entry.quantity_change >= 0 ? 'text-green-600' : 'text-red-600'
+								entry.quantity_change >= 0 ? 'text-emerald-600' : 'text-destructive'
 							}`}>
 								{formatQuantityChange(entry.quantity_change)}
 							</div>
@@ -504,8 +504,8 @@ export const ReasonBadge: React.FC<ReasonBadgeProps> = ({
 																		<span
 																			className={
 																				relatedEntry.quantity_change >= 0
-																					? "text-green-600"
-																					: "text-red-600"
+																					? "text-emerald-600"
+																					: "text-destructive"
 																			}
 																		>
 																			{formatQuantityChange(relatedEntry.quantity_change)}

@@ -384,14 +384,39 @@ class InventoryService:
         """
         required_quantity = Decimal(str(required_quantity))
         
-        # Check if this is a menu item with a recipe
+        from django.conf import settings
+        # Feature-flagged policy path
+        if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
+            pt = product.product_type
+            behavior = getattr(pt, 'inventory_behavior', 'QUANTITY')
+
+            # RECIPE behavior
+            if behavior == 'RECIPE':
+                if hasattr(product, 'recipe') and product.recipe:
+                    return InventoryService.check_recipe_availability(product, location, required_quantity)
+                # No recipe configured: obey enforcement
+                enforcement = getattr(pt, 'stock_enforcement', 'BLOCK')
+                if enforcement in ('IGNORE', 'WARN') or getattr(pt, 'allow_negative_stock', False):
+                    return True
+                return False
+
+            # NONE behavior: always available
+            if behavior == 'NONE':
+                return True
+
+            # QUANTITY behavior: strict stock check
+            try:
+                stock = InventoryStock.objects.get(product=product, location=location)
+                return stock.quantity >= required_quantity
+            except InventoryStock.DoesNotExist:
+                return False
+
+        # Legacy path (pre-policy):
         if hasattr(product, 'recipe') and product.recipe:
             return InventoryService.check_recipe_availability(product, location, required_quantity)
         elif product.product_type.name.lower() == 'menu':
-            # Menu item without recipe - assume can always be made to order
             return True
         else:
-            # Regular product - check direct stock strictly
             try:
                 stock = InventoryStock.objects.get(product=product, location=location)
                 return stock.quantity >= required_quantity

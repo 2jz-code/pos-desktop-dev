@@ -5,7 +5,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp } from "lucide-react";
+import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import ProductModifierSelector from "../ProductModifierSelector";
 
@@ -25,13 +25,13 @@ export default function CartItem({ item }) {
 	const [showModifierEditor, setShowModifierEditor] = useState(false);
 	const [showModifierDetails, setShowModifierDetails] = useState(false);
 
-	const debouncedUpdate = useDebouncedCallback((newQuantity) => {
-		if (newQuantity < 1) {
-			removeItemViaSocket(item.id);
-		} else {
-			updateItemQuantityViaSocket(item.id, newQuantity);
-		}
-	}, 300);
+    const debouncedUpdate = useDebouncedCallback((newQuantity) => {
+        if (newQuantity < 1) {
+            removeItemViaSocket(item.id);
+        } else {
+            updateItemQuantityViaSocket(item.id, newQuantity);
+        }
+    }, 150);
 
 	const handleQuantityChange = (newQuantity) => {
 		setDisplayQuantity(newQuantity);
@@ -109,9 +109,12 @@ export default function CartItem({ item }) {
 				{/* Product Info */}
 				<div className="flex-grow min-w-0">
 					<div className="flex items-center gap-2">
-						<h4 className="font-medium text-slate-900 dark:text-slate-100 truncate">
-							{itemName}
-						</h4>
+                    <h4 className="font-medium text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
+                        {itemName}
+                        {isUpdating && (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                        )}
+                    </h4>
 
 						{/* Custom Item Badge */}
 						{isCustomItem && (
@@ -171,15 +174,14 @@ export default function CartItem({ item }) {
 
 				{/* Quantity Controls - Tighter spacing */}
 				<div className="flex items-center gap-1">
-					<Button
-						variant="outline"
-						size="icon"
-						className="h-7 w-7 border-slate-300 dark:border-slate-600"
-						onClick={decrement}
-						disabled={isUpdating}
-					>
-						<Minus className="h-3 w-3" />
-					</Button>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 border-slate-300 dark:border-slate-600"
+                    onClick={decrement}
+                >
+                    <Minus className="h-3 w-3" />
+                </Button>
 
 					<div className="w-8 text-center">
 						<span
@@ -191,15 +193,14 @@ export default function CartItem({ item }) {
 						</span>
 					</div>
 
-					<Button
-						variant="outline"
-						size="icon"
-						className="h-7 w-7 border-slate-300 dark:border-slate-600"
-						onClick={increment}
-						disabled={isUpdating}
-					>
-						<Plus className="h-3 w-3" />
-					</Button>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 border-slate-300 dark:border-slate-600"
+                    onClick={increment}
+                >
+                    <Plus className="h-3 w-3" />
+                </Button>
 				</div>
 
 				{/* Total Price - Prominent */}

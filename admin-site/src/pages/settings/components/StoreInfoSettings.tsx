@@ -29,11 +29,17 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Store, Phone, Mail, MapPin } from "lucide-react";
+import { formatPhoneNumber, isValidPhoneNumber } from "@ajeen/ui";
 
 const formSchema = z.object({
 	store_name: z.string().min(1, "Store name is required"),
 	store_address: z.string().optional(),
-	store_phone: z.string().optional(),
+	store_phone: z
+		.string()
+		.optional()
+		.refine((phone) => {
+			return !phone || isValidPhoneNumber(phone);
+		}, "Please enter a valid phone number"),
 	store_email: z.string().email("Invalid email address").or(z.literal("")),
 });
 
@@ -186,6 +192,10 @@ export function StoreInfoSettings() {
 											<Input
 												placeholder="(555) 123-4567"
 												{...field}
+												onChange={(e) => {
+													const formatted = formatPhoneNumber(e.target.value);
+													field.onChange(formatted);
+												}}
 											/>
 										</FormControl>
 										<FormDescription>

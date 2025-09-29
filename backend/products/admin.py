@@ -26,9 +26,76 @@ class ProductModifierSetInline(admin.TabularInline):
 
 @admin.register(ProductType)
 class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "description", "is_active")
-    list_filter = ("is_active",)
-    search_fields = ("name",)
+    list_display = (
+        "name",
+        "inventory_behavior",
+        "stock_enforcement",
+        "pricing_method",
+        "tax_inclusive",
+        "max_quantity_per_item",
+        "exclude_from_discounts",
+        "is_active",
+    )
+    list_filter = (
+        "is_active",
+        "inventory_behavior",
+        "stock_enforcement",
+        "pricing_method",
+        "tax_inclusive",
+        "exclude_from_discounts",
+    )
+    search_fields = ("name", "description")
+    filter_horizontal = ("default_taxes",)
+
+    fieldsets = (
+        (
+            "Basics",
+            {
+                "fields": (
+                    "name",
+                    "description",
+                )
+            },
+        ),
+        (
+            "Inventory Policy",
+            {
+                "fields": (
+                    "inventory_behavior",
+                    "stock_enforcement",
+                    "allow_negative_stock",
+                )
+            },
+        ),
+        (
+            "Tax & Pricing",
+            {
+                "fields": (
+                    "tax_inclusive",
+                    "default_taxes",
+                    "pricing_method",
+                    "default_markup_percent",
+                )
+            },
+        ),
+        (
+            "Prep Metadata",
+            {
+                "fields": (
+                    "standard_prep_minutes",
+                )
+            },
+        ),
+        (
+            "Order Controls",
+            {
+                "fields": (
+                    "max_quantity_per_item",
+                    "exclude_from_discounts",
+                )
+            },
+        ),
+    )
     
     def get_queryset(self, request):
         """

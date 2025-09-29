@@ -25,6 +25,22 @@ const findModifierOptionById = (product, optionId) => {
 	return null;
 };
 
+const getRandomOperationSuffix = () => {
+	const globalCrypto = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+	if (globalCrypto && typeof globalCrypto.randomUUID === "function") {
+		return globalCrypto.randomUUID();
+	}
+	return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const buildOperationId = (prefix, identifier) => {
+	const suffix = getRandomOperationSuffix();
+	if (identifier === undefined || identifier === null) {
+		return `${prefix}-${suffix}`;
+	}
+	return `${prefix}-${identifier}-${suffix}`;
+};
+
 const calculateLocalTotals = (items) => {
 	const subtotal = items.reduce((acc, item) => {
 		// Use price_at_sale if available (includes modifiers), otherwise fall back to product price
@@ -224,7 +240,7 @@ export const createCartSlice = (set, get) => {
 				}
 
 				const payload = { product_id: product.id, quantity: 1 };
-				const operationId = `add-${product.id}-${Date.now()}`;
+				const operationId = buildOperationId("add", product.id);
 
 				// Track this operation as pending
 				get().addPendingOperation(operationId);
@@ -347,7 +363,7 @@ export const createCartSlice = (set, get) => {
 					selected_modifiers: selected_modifiers || [],
 					notes: notes || ""
 				};
-				const operationId = `add-${product_id}-${Date.now()}`;
+				const operationId = buildOperationId("add", product_id);
 
 				// Track this operation as pending
 				get().addPendingOperation(operationId);
@@ -507,13 +523,9 @@ export const createCartSlice = (set, get) => {
 			});
 		},
 
-		updateItemQuantityViaSocket: (itemId, quantity) => {
-			set((state) => ({
-				updatingItems: [...state.updatingItems, itemId],
-			}));
-
-			const operationId = `update-quantity-${itemId}-${Date.now()}`;
-			get().addPendingOperation(operationId);
+        updateItemQuantityViaSocket: (itemId, quantity) => {
+            const operationId = buildOperationId("update-quantity", itemId);
+            get().addPendingOperation(operationId);
 
 			cartSocket.sendMessage({
 				type: "update_item_quantity",
@@ -532,7 +544,7 @@ export const createCartSlice = (set, get) => {
 				...updatedItemData
 			};
 
-			const operationId = `update-item-${itemId}-${Date.now()}`;
+			const operationId = buildOperationId("update-item", itemId);
 			get().addPendingOperation(operationId);
 
 			cartSocket.sendMessage({

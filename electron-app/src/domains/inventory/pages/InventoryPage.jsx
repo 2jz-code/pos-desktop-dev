@@ -47,14 +47,16 @@ import {
 	History,
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
-import { useInventoryBarcode, useScrollToScannedItem } from "@/shared/hooks";
-import { useDebounce } from "@/shared/hooks/useDebounce";
-import { formatCurrency } from "@/shared/lib/utils";
+import { useInventoryBarcode } from "@/shared/hooks";
+import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { useDebounce, useScrollToScannedItem } from "@ajeen/ui";
+import { formatCurrency } from "@ajeen/ui";
 
 // Import dialog components
 import StockAdjustmentDialog from "@/domains/inventory/components/StockAdjustmentDialog";
 import LocationManagementDialog from "@/domains/inventory/components/LocationManagementDialog";
 import StockTransferDialog from "@/domains/inventory/components/StockTransferDialog";
+import { StockMetadataEditDialog } from "@/domains/inventory/components/dialogs/StockMetadataEditDialog";
 
 // Import services
 import {
@@ -90,6 +92,8 @@ const InventoryPage = () => {
 	const [isStockAdjustmentDialogOpen, setIsStockAdjustmentDialogOpen] = useState(false);
 	const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
 	const [isStockTransferDialogOpen, setIsStockTransferDialogOpen] = useState(false);
+	const [isStockMetadataEditDialogOpen, setIsStockMetadataEditDialogOpen] = useState(false);
+	const [selectedStockItem, setSelectedStockItem] = useState(null);
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
@@ -173,6 +177,7 @@ const InventoryPage = () => {
 		isStockAdjustmentDialogOpen,
 		isLocationDialogOpen,
 		isStockTransferDialogOpen,
+		isStockMetadataEditDialogOpen,
 	]);
 
 	// Effect to scroll to the item after tab change
@@ -259,6 +264,11 @@ const InventoryPage = () => {
 	const handleStockTransferDialog = (isOpen, product) => {
 		setIsStockTransferDialogOpen(isOpen);
 		setCurrentEditingProduct(product || null);
+	};
+
+	const handleStockMetadataEditDialog = (isOpen, stockItem) => {
+		setIsStockMetadataEditDialogOpen(isOpen);
+		setSelectedStockItem(stockItem || null);
 	};
 
 	const handleDeleteLocation = async (location) => {
@@ -368,6 +378,10 @@ const InventoryPage = () => {
 								<ArrowUpDown className="mr-2 h-4 w-4" />
 								Transfer
 							</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true, item)}>
+								<Settings className="mr-2 h-4 w-4" />
+								Edit Stock Record
+							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</td>
@@ -388,58 +402,68 @@ const InventoryPage = () => {
 		);
 	}
 
-	return (
-		<div className="flex flex-col h-[calc(100vh-4rem)] bg-muted/40 p-4 gap-4">
-			<header className="flex items-center justify-between flex-shrink-0">
-				<div>
-					<h1 className="text-2xl font-semibold">Inventory Management</h1>
-					<p className="text-sm text-muted-foreground">
-						Track and manage your product stock across all locations.
-					</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={refreshData}
-					>
-						<RefreshCw className="h-4 w-4 mr-2" />
-						Refresh Data
+	// Define header actions
+	const headerActions = (
+		<div className="flex items-center gap-3">
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={refreshData}
+			>
+				<RefreshCw className="h-4 w-4 mr-2" />
+				Refresh Data
+			</Button>
+
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button size="sm">
+						<Settings className="mr-2 h-4 w-4" />
+						Actions
 					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
+					<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
+						<Plus className="mr-2 h-4 w-4" />
+						New Adjustment
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
+						<ArrowUpDown className="mr-2 h-4 w-4" />
+						Transfer Stock
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true)}>
+						<Edit className="mr-2 h-4 w-4" />
+						Edit Stock Record
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
+						<History className="mr-2 h-4 w-4" />
+						Stock History
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => navigate('/settings?tab=inventory')}>
+						<Settings className="mr-2 h-4 w-4" />
+						Configure Defaults
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</div>
+	);
 
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button size="sm">
-								<Settings className="mr-2 h-4 w-4" />
-								Actions
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
-							<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
-								<Plus className="mr-2 h-4 w-4" />
-								New Adjustment
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
-								<ArrowUpDown className="mr-2 h-4 w-4" />
-								Transfer Stock
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
-								<History className="mr-2 h-4 w-4" />
-								Stock History
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => navigate('/settings?tab=inventory')}>
-								<Settings className="mr-2 h-4 w-4" />
-								Configure Defaults
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			</header>
+	return (
+		<div className="flex flex-col h-full">
+			{/* Page Header */}
+			<PageHeader
+				icon={Warehouse}
+				title="Inventory Management"
+				description="Track and manage your product stock across all locations"
+				actions={headerActions}
+				className="shrink-0"
+			/>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-shrink-0">
+			{/* Dashboard Cards */}
+			<div className="border-b bg-background/95 backdrop-blur-sm p-4">
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
@@ -503,13 +527,16 @@ const InventoryPage = () => {
 						</div>
 					</CardContent>
 				</Card>
+				</div>
 			</div>
 
-			<Tabs
-				value={activeTab}
-				onValueChange={setActiveTab}
-				className="flex-1 flex flex-col min-h-0"
-			>
+			{/* Main Content */}
+			<div className="flex-1 min-h-0 p-4">
+				<Tabs
+					value={activeTab}
+					onValueChange={setActiveTab}
+					className="h-full flex flex-col"
+				>
 				<TabsList className="grid w-full grid-cols-3 flex-shrink-0">
 					<TabsTrigger value="overview">Overview</TabsTrigger>
 					<TabsTrigger value="all-stock">All Stock</TabsTrigger>
@@ -806,6 +833,7 @@ const InventoryPage = () => {
 					</Card>
 				</TabsContent>
 			</Tabs>
+			</div>
 
 			{/* Dialogs */}
 			{isStockAdjustmentDialogOpen && (
@@ -830,6 +858,14 @@ const InventoryPage = () => {
 					isOpen={isStockTransferDialogOpen}
 					onOpenChange={setIsStockTransferDialogOpen}
 					product={currentEditingProduct}
+					onSuccess={handleDialogSuccess}
+				/>
+			)}
+			{isStockMetadataEditDialogOpen && (
+				<StockMetadataEditDialog
+					open={isStockMetadataEditDialogOpen}
+					onOpenChange={setIsStockMetadataEditDialogOpen}
+					stockItem={selectedStockItem}
 					onSuccess={handleDialogSuccess}
 				/>
 			)}

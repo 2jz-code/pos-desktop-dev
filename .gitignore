@@ -18,3 +18,8 @@ production_dump.dump
 certs/
 revision.json
 load_testing/
+
+# Build outputs
+electron-app/dist-electron/
+electron-app/dist/
+node_modules/

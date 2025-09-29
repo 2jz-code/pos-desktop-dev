@@ -278,41 +278,47 @@ def warm_inventory_caches():
 def refresh_stale_caches():
     """Refresh caches that might be stale"""
     try:
-        logger.info("🔄 Refreshing potentially stale caches...")
-        
+        logger.debug("Refreshing potentially stale caches...")
+
         from .cache_utils import get_cache_performance_stats
-        
+
         # Get current cache stats
         stats = get_cache_performance_stats()
-        
+
         refreshed_areas = []
-        
+        took_action = False
+
         # If hit rate is low, warm critical caches
-        if stats and stats.get('hit_rate', 100) < 70:  # Less than 70% hit rate
-            logger.info(f"Low cache hit rate detected: {stats['hit_rate']:.1f}% - refreshing caches")
-            
-            # Warm critical caches
+        hit_rate = stats.get('hit_rate') if stats else None
+        if hit_rate is not None and hit_rate < 70:
+            logger.info("Low cache hit rate detected: %.1f%% - refreshing caches", hit_rate)
+
             from .cache_utils import warm_critical_caches
             warmed = warm_critical_caches()
-            refreshed_areas.extend(warmed)
-        
-        logger.info(f"✅ Stale cache refresh completed: {', '.join(refreshed_areas)}")
+            if warmed:
+                refreshed_areas.extend(warmed)
+                took_action = True
+
+        if took_action:
+            logger.info("Stale cache refresh completed: %s", ', '.join(refreshed_areas))
+        else:
+            logger.debug(
+                "Stale cache refresh completed with no changes (hit rate %.1f%%)",
+                hit_rate if hit_rate is not None else 100.0,
+            )
+
         return {
             'status': 'completed',
             'refreshed_areas': refreshed_areas,
-            'cache_stats': stats
+            'cache_stats': stats,
         }
-        
+
     except Exception as e:
-        logger.error(f"❌ Stale cache refresh failed: {e}")
+        logger.error("Stale cache refresh failed: %s", e)
         return {
             'status': 'failed',
             'error': str(e)
         }
-
-# ============================================================================
-# DATABASE BACKUP TASKS
-# ============================================================================
 
 @shared_task
 def backup_database():

@@ -201,11 +201,61 @@ class BasicProductSerializer(BaseModelSerializer):
         fields = ["id", "name", "barcode"]
 
 
+class BasicTaxSerializer(BaseModelSerializer):
+    class Meta:
+        model = Tax
+        fields = ["id", "name", "rate"]
+
+
 class ProductTypeSerializer(BaseModelSerializer):
+    default_taxes = BasicTaxSerializer(many=True, read_only=True)
+    default_taxes_ids = serializers.PrimaryKeyRelatedField(
+        source="default_taxes",
+        many=True,
+        queryset=Tax.objects.all(),
+        required=False,
+        write_only=True,
+        allow_empty=True,
+    )
+
     class Meta:
         model = ProductType
-        fields = ["id", "name", "description", "is_active"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "is_active",
+            # Inventory policy
+            "inventory_behavior",
+            "stock_enforcement",
+            "allow_negative_stock",
+            # Tax & pricing
+            "tax_inclusive",
+            "default_taxes",
+            "default_taxes_ids",
+            "pricing_method",
+            "default_markup_percent",
+            # Prep metadata
+            "standard_prep_minutes",
+            # Order controls
+            "max_quantity_per_item",
+            "exclude_from_discounts",
+        ]
         # No relationships to optimize
+
+    def create(self, validated_data):
+        taxes = validated_data.pop("default_taxes", None)
+        instance = super().create(validated_data)
+        if taxes is not None:
+            instance.default_taxes.set(taxes)
+        return instance
+
+    def update(self, instance, validated_data):
+        taxes = validated_data.pop("default_taxes", None)
+        instance = super().update(instance, validated_data)
+        if taxes is not None:
+            instance.default_taxes.set(taxes)
+        return instance
 
 
 class CategorySerializer(BaseModelSerializer):
@@ -556,3 +606,27 @@ class ProductCreateSerializer(BaseModelSerializer):
             ImageService.process_image_async(product.id, image)
 
         return product
+
+    def update(self, instance, validated_data):
+        """
+        Handle updates, including writable extras like category_id and tax_ids.
+        Image updates are processed by signals; inventory adjustments are handled separately.
+        """
+        # Extract write-only helper fields
+        category_id = validated_data.pop("category_id", None)
+        tax_ids = validated_data.pop("tax_ids", None)
+        # Standard model fields update
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        # Handle category change if provided
+        if category_id is not None:
+            instance.category = Category.objects.get(id=category_id) if category_id else None
+
+        instance.save()
+
+        # Handle taxes update if provided
+        if tax_ids is not None:
+            instance.taxes.set(Tax.objects.filter(id__in=tax_ids))
+
+        return instance

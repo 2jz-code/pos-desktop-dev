@@ -10,7 +10,7 @@ const DraggableList = ({
 	droppableId = "draggable-list",
 	className = "",
 	itemClassName = "",
-	dragHandleClassName = "cursor-grab hover:bg-gray-100 p-1 rounded",
+	dragHandleClassName = "cursor-grab hover:bg-muted p-1 rounded",
 	showDragHandle = true,
 	emptyState = null,
 	loading = false,
@@ -60,12 +60,12 @@ const DraggableList = ({
 	// Early return for empty state when using table style
 	if (tableStyle && (!items || items.length === 0)) {
 		return showEmptyState ? (
-			<div className={`text-center py-8 text-gray-500 ${className}`}>
+			<div className={`text-center py-8 text-muted-foreground ${className}`}>
 				<div className="mb-2">
-					<GripVertical className="h-8 w-8 mx-auto text-gray-300" />
+					<GripVertical className="h-8 w-8 mx-auto text-muted-foreground" />
 				</div>
 				<p className="text-sm">{emptyStateMessage}</p>
-				<p className="text-xs text-gray-400">Drag items here to reorder</p>
+				<p className="text-xs text-muted-foreground">Drag items here to reorder</p>
 			</div>
 		) : null;
 	}
@@ -76,7 +76,7 @@ const DraggableList = ({
 			<div className={className}>
 				{/* Header row */}
 				{showHeaders && items.length > 0 && (
-					<div className="flex items-center gap-3 px-3 py-2 bg-gray-100 border border-gray-200 rounded-t-lg text-sm font-medium text-gray-600">
+					<div className="flex items-center gap-3 px-3 py-2 bg-muted/40 border border-border rounded-t-lg text-sm font-medium text-muted-foreground">
 						<div className="w-6"></div> {/* Spacer for drag handle */}
 						{headers.map((header, index) => (
 							<div
@@ -115,7 +115,7 @@ const DraggableList = ({
 									{...provided.draggableProps}
 									{...provided.dragHandleProps}
 									ref={provided.innerRef}
-									className="bg-white border border-gray-200"
+									className="bg-background border border-border"
 									style={{
 										...provided.draggableProps.style,
 										width: containerWidth,
@@ -139,7 +139,7 @@ const DraggableList = ({
 												{...provided.dragHandleProps}
 												className="cursor-grabbing p-1 rounded"
 											>
-												<GripVertical className="h-4 w-4 text-gray-400" />
+												<GripVertical className="h-4 w-4 text-muted-foreground" />
 											</div>
 										),
 									})}
@@ -151,19 +151,19 @@ const DraggableList = ({
 							<div
 								{...provided.droppableProps}
 								ref={provided.innerRef}
-								className={`border border-gray-200 ${
+								className={`border border-border ${
 									showHeaders && items.length > 0
 										? "rounded-b-lg border-t-0"
 										: "rounded-lg"
-								} ${snapshot.isDraggingOver ? "bg-blue-50" : "bg-white"}`}
+								} ${snapshot.isDraggingOver ? "bg-blue-50" : "bg-background"}`}
 							>
 								{items.length === 0 && (
-									<div className="text-center py-8 text-gray-500">
+									<div className="text-center py-8 text-muted-foreground">
 										<div className="mb-2">
-											<GripVertical className="h-8 w-8 mx-auto text-gray-300" />
+											<GripVertical className="h-8 w-8 mx-auto text-muted-foreground" />
 										</div>
 										<p className="text-sm">{emptyStateMessage}</p>
-										<p className="text-xs text-gray-400">
+										<p className="text-xs text-muted-foreground">
 											Drag items here to reorder
 										</p>
 									</div>
@@ -183,12 +183,12 @@ const DraggableList = ({
 													{...provided.draggableProps}
 													className={`${
 														index !== items.length - 1
-															? "border-b border-gray-200"
+															? "border-b border-border"
 															: ""
 													} ${
 														snapshot.isDragging
 															? "bg-blue-50"
-															: "hover:bg-gray-50"
+															: "hover:bg-muted/40"
 													}`}
 												>
 													{renderItem({
@@ -199,9 +199,9 @@ const DraggableList = ({
 														dragHandle: (
 															<div
 																{...provided.dragHandleProps}
-																className="cursor-grab hover:bg-gray-200 active:cursor-grabbing p-1 rounded"
+																className="cursor-grab hover:bg-muted active:cursor-grabbing p-1 rounded"
 															>
-																<GripVertical className="h-4 w-4 text-gray-400" />
+																<GripVertical className="h-4 w-4 text-muted-foreground" />
 															</div>
 														),
 													})}
@@ -243,7 +243,7 @@ const DraggableList = ({
 										<div
 											ref={provided.innerRef}
 											{...provided.draggableProps}
-											className={`border rounded-lg bg-white transition-shadow ${
+											className={`border rounded-lg bg-background transition-shadow ${
 												snapshot.isDragging
 													? "shadow-lg border-blue-300"
 													: "shadow-sm hover:shadow-md"
@@ -279,7 +279,7 @@ const DragHandle = ({ dragHandleProps, className }) => (
 		{...dragHandleProps}
 		className={className}
 	>
-		<GripVertical className="h-4 w-4 text-gray-400" />
+		<GripVertical className="h-4 w-4 text-muted-foreground" />
 	</div>
 );
 

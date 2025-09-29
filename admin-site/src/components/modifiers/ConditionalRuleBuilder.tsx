@@ -167,7 +167,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-orange-500" />
+          <Zap className="h-5 w-5 text-warning" />
           Conditional Rules
         </CardTitle>
         <CardDescription>
@@ -176,10 +176,10 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Enable/Disable Toggle */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
           <div>
             <Label className="text-sm font-medium">Conditional Display</Label>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               {isConditional 
                 ? "This modifier set will only show based on previous selections"
                 : "This modifier set will always be visible"
@@ -202,11 +202,11 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
             {loading ? (
               <div className="text-center py-4">
                 <div className="animate-spin h-6 w-6 border-2 border-orange-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-gray-500">Loading modifier sets...</p>
+                <p className="text-sm text-muted-foreground">Loading modifier sets...</p>
               </div>
             ) : !Array.isArray(availableModifierSets) || availableModifierSets.length === 0 ? (
               <div className="text-center py-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <AlertCircle className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
+                <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
                 <h4 className="text-sm font-medium text-yellow-800 mb-1">No Trigger Options Available</h4>
                 <p className="text-xs text-yellow-700">
                   Create other modifier sets first to use as conditional triggers
@@ -219,7 +219,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                   <Label className="text-sm font-medium">Show this modifier set when:</Label>
                   
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-600">Customer selects</span>
+                    <span className="text-muted-foreground">Customer selects</span>
                     
                     {/* Option Selector */}
                     <Select 
@@ -239,7 +239,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                       </SelectContent>
                     </Select>
                     
-                    <span className="text-gray-600">from</span>
+                    <span className="text-muted-foreground">from</span>
                     
                     {/* Modifier Set Selector */}
                     <Select 
@@ -264,7 +264,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                 {selectedModifierSetName && selectedOptionName && (
                   <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-orange-600" />
+                      <Zap className="h-4 w-4 text-warning" />
                       <span className="text-sm font-medium text-orange-800">Conditional Rule Preview</span>
                     </div>
                     <div className="mt-2 flex items-center gap-2 text-sm text-orange-700">
@@ -279,7 +279,7 @@ const ConditionalRuleBuilder: React.FC<ConditionalRuleBuilderProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={clearConditionalRule}
-                      className="mt-2 text-orange-600 hover:text-orange-700 p-0 h-auto"
+                      className="mt-2 text-warning hover:text-orange-700 p-0 h-auto"
                     >
                       <X className="h-3 w-3 mr-1" />
                       Remove rule

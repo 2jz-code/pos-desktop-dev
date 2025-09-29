@@ -6,6 +6,7 @@ import {
 } from "@/domains/products/services/productService";
 import { getCategories } from "@/domains/products/services/categoryService";
 import { getProductTypes } from "@/domains/products/services/productTypeService";
+import { getTaxes, createTax } from "@/domains/products/services/taxService";
 import inventoryService from "@/domains/inventory/services/inventoryService";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -28,7 +29,10 @@ import {
 } from "@/shared/components/ui/select";
 import { Switch } from "@/shared/components/ui/switch";
 import { useToast } from "@/shared/components/ui/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown, Check, X, Plus } from "lucide-react";
+import { Badge } from "@/shared/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/shared/components/ui/command";
 import ModifierSectionManager from "@/domains/products/components/modifiers/ModifierSectionManager";
 
 export function ProductFormDialog({
@@ -53,6 +57,7 @@ export function ProductFormDialog({
 		location_id: "",
 		barcode: "",
 		is_public: true,
+		tax_ids: [],
 	});
 	const [errors, setErrors] = useState({});
 	const { toast } = useToast();
@@ -67,13 +72,19 @@ export function ProductFormDialog({
 		}
 	}, [open, productId]);
 
+	const [taxOptions, setTaxOptions] = useState([]);
+	const [isTaxDialogOpen, setIsTaxDialogOpen] = useState(false);
+	const [taxForm, setTaxForm] = useState({ name: "", rate: "" });
+	const [taxPickerOpen, setTaxPickerOpen] = useState(false);
+
 	const fetchInitialData = async () => {
 		setLoading(true);
 		try {
-			const [categoriesRes, typesRes, locationsRaw] = await Promise.all([
+			const [categoriesRes, typesRes, locationsRaw, taxesRes] = await Promise.all([
 				getCategories(),
 				getProductTypes(),
 				inventoryService.getLocations(),
+				getTaxes({ limit: 1000 }),
 			]);
 
 			// Axios responses vs direct data handling - handle paginated responses
@@ -84,6 +95,8 @@ export function ProductFormDialog({
 			setCategories(categoriesData);
 			setProductTypes(typesData);
 			setLocations(locationsData);
+			const taxesData = taxesRes.data?.results || taxesRes.data || [];
+			setTaxOptions(Array.isArray(taxesData) ? taxesData : []);
 
 			if (locationsData.length > 0) {
 				setFormData((prev) => ({
@@ -111,6 +124,7 @@ export function ProductFormDialog({
 					location_id: locationsData?.[0]?.id.toString() || "", // Default to first location
 					barcode: product.barcode || "",
 					is_public: product.is_public,
+					tax_ids: Array.isArray(product.taxes) ? product.taxes.map(t => t.id) : [],
 				});
 			} else {
 				resetForm(locationsData);
@@ -221,6 +235,7 @@ export function ProductFormDialog({
 					? parseInt(formData.product_type_id)
 					: null,
 				is_public: formData.is_public,
+				tax_ids: formData.tax_ids || [],
 			};
 
 			// If creating a product with inventory tracking, send initial stock directly
@@ -296,6 +311,99 @@ export function ProductFormDialog({
 		}
 	};
 
+	const renderTaxControls = () => {
+		return (
+			<div className="space-y-3">
+				<div className="flex items-center justify-between">
+					<Label>Taxes</Label>
+					<Button type="button" size="sm" variant="outline" onClick={() => setIsTaxDialogOpen(true)}>
+						<Plus className="h-4 w-4 mr-1" />
+						Add Tax
+					</Button>
+				</div>
+
+				<Popover open={taxPickerOpen} onOpenChange={setTaxPickerOpen}>
+					<PopoverTrigger asChild>
+						<Button
+							type="button"
+							variant="outline"
+							role="combobox"
+							aria-expanded={taxPickerOpen}
+							className="w-full justify-between h-auto min-h-[2.5rem] px-3 py-2"
+						>
+							<div className="flex flex-wrap gap-1 flex-1">
+								{formData.tax_ids?.length > 0 ? (
+									<>
+										{formData.tax_ids.slice(0, 3).map((taxId) => {
+											const tax = taxOptions.find(t => t.id === taxId);
+											return tax ? (
+												<Badge key={taxId} variant="secondary" className="text-xs">
+													{tax.name} ({tax.rate}%)
+													<X
+														className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive"
+														onClick={(e) => {
+															e.stopPropagation();
+															const next = formData.tax_ids.filter(id => id !== taxId);
+															setFormData({ ...formData, tax_ids: next });
+														}}
+													/>
+												</Badge>
+											) : null;
+										})}
+										{formData.tax_ids.length > 3 && (
+											<Badge variant="outline" className="text-xs">
+												+{formData.tax_ids.length - 3} more
+											</Badge>
+										)}
+									</>
+								) : (
+									<span className="text-muted-foreground">Select taxes...</span>
+								)}
+							</div>
+							<ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent className="w-full p-0" align="start">
+						<Command>
+							<CommandInput placeholder="Search taxes..." />
+							<CommandEmpty>No taxes found.</CommandEmpty>
+							<CommandList>
+								<CommandGroup>
+									{taxOptions.map((tax) => {
+										const isSelected = (formData.tax_ids || []).includes(tax.id);
+										return (
+											<CommandItem
+												key={tax.id}
+												value={tax.name}
+												onSelect={() => {
+													const currentTaxes = formData.tax_ids || [];
+													const newTaxes = isSelected
+														? currentTaxes.filter(id => id !== tax.id)
+														: [...currentTaxes, tax.id];
+													setFormData({ ...formData, tax_ids: newTaxes });
+												}}
+											>
+												<Check
+													className={`h-4 w-4 mr-2 ${isSelected ? "opacity-100" : "opacity-0"}`}
+												/>
+												<div className="flex items-center justify-between w-full">
+													<span>{tax.name}</span>
+													<Badge variant="outline" className="ml-2 text-xs">
+														{tax.rate}%
+													</Badge>
+												</div>
+											</CommandItem>
+										);
+									})}
+								</CommandGroup>
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
+			</div>
+		);
+	};
+
 	const renderCategoryOptions = (parentId = null, level = 0) => {
 		return categories
 			.filter((c) => (c.parent?.id || null) === parentId)
@@ -312,6 +420,7 @@ export function ProductFormDialog({
 	};
 
 	return (
+		<>
 		<Dialog
 			open={open}
 			onOpenChange={onOpenChange}
@@ -462,6 +571,10 @@ export function ProductFormDialog({
 											)}
 										</div>
 									</div>
+
+									{/* Taxes */}
+									{renderTaxControls()}
+
 									<div className="space-y-3">
 										<div className="flex items-center space-x-2">
 											<Switch
@@ -613,6 +726,55 @@ export function ProductFormDialog({
 					</Button>
 				</DialogFooter>
 			</DialogContent>
-		</Dialog>
+        </Dialog>
+        {/* Add Tax Dialog for Product */}
+        <Dialog open={isTaxDialogOpen} onOpenChange={setIsTaxDialogOpen}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Add Tax</DialogTitle>
+                    <DialogDescription>Create a new tax rate for products.</DialogDescription>
+                </DialogHeader>
+                <form
+                    onSubmit={async (e) => {
+                        e.preventDefault();
+                        try {
+                            const payload = {
+                                name: (taxForm.name || "").trim(),
+                                rate: Number(taxForm.rate),
+                            };
+                            if (!payload.name) throw new Error("Name is required");
+                            if (Number.isNaN(payload.rate)) throw new Error("Rate must be a number (e.g., 8.25)");
+                            const res = await createTax(payload);
+                            const created = res?.data;
+                            setTaxOptions((prev) => (Array.isArray(prev) ? [...prev, created] : [created]));
+                            setFormData((prev) => ({ ...prev, tax_ids: [...new Set([...(prev.tax_ids || []), created.id])] }));
+                            setIsTaxDialogOpen(false);
+                            setTaxForm({ name: "", rate: "" });
+                            toast({ title: "Tax created" });
+                        } catch (err) {
+                            console.error("Failed to create tax", err);
+                            const message = (err && err.response && err.response.data && err.response.data.detail) || err?.message || "Failed to create tax";
+                            toast({ title: "Error", description: message, variant: "destructive" });
+                        }
+                    }}
+                >
+                    <div className="grid gap-4 py-2">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="tax-name" className="text-right">Name</Label>
+                            <Input id="tax-name" value={taxForm.name} onChange={(e) => setTaxForm((p) => ({ ...p, name: e.target.value }))} className="col-span-3" required />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="tax-rate" className="text-right">Rate (%)</Label>
+                            <Input id="tax-rate" type="number" step="0.01" placeholder="e.g., 8.25" value={taxForm.rate} onChange={(e) => setTaxForm((p) => ({ ...p, rate: e.target.value }))} className="col-span-3" required />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsTaxDialogOpen(false)}>Cancel</Button>
+                        <Button type="submit">Save</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+		</>
 	);
 }

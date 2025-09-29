@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
 	getProducts,
@@ -37,7 +37,8 @@ import {
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { useToast } from "@/components/ui/use-toast";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
+import { useProductBarcodeWithScroll } from "@/hooks/useBarcode";
 
 // Import dialog components
 import { ProductFormDialog } from "@/components/ProductFormDialog";
@@ -63,18 +64,46 @@ export const ProductsPage = () => {
 	// Dialog states
 	const [isProductFormOpen, setIsProductFormOpen] = useState(false);
 	const [editingProductId, setEditingProductId] = useState(null);
+
+	// Barcode scanning refs and state
+	const barcodeInputRef = useRef("");
+	const lastKeystrokeRef = useRef(0);
+	const [highlightedProductId, setHighlightedProductId] = useState(null);
 	const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
 	const [isProductTypeDialogOpen, setIsProductTypeDialogOpen] = useState(false);
 
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const [searchParams, setSearchParams] = useSearchParams();
-	
+
 	// Modifier context from URL params
 	const [modifierContext, setModifierContext] = useState<{
 		id: string | null;
 		name: string | null;
 	} | null>(null);
+
+	// Scroll to scanned item functionality
+	const { scrollToItem } = useScrollToScannedItem();
+
+	// Smart barcode scanning
+	const { scanBarcode, isScanning } = useProductBarcodeWithScroll((product) => {
+		setFilters({ search: "", category: "", subcategory: "" });
+		setSelectedParentCategory("all");
+		setSelectedChildCategory("all");
+		setShowArchivedProducts(!product.is_active);
+
+		setHighlightedProductId(product.id);
+		setTimeout(() => setHighlightedProductId(null), 3000);
+
+		setTimeout(() => {
+			applyFilters(allProducts);
+		}, 100);
+	}, (productId) => {
+		scrollToItem(productId, {
+			dataAttribute: "data-product-id",
+			delay: 200,
+		});
+	});
 
 	const fetchProducts = async (includeArchived = false) => {
 		try {
@@ -233,6 +262,62 @@ export const ProductsPage = () => {
 		}, 300);
 		return () => clearTimeout(timeoutId);
 	}, [filters.search, allProducts]);
+
+	// Global barcode listener
+	useEffect(() => {
+		const handleKeyPress = (e: KeyboardEvent) => {
+			if (
+				(e.target as HTMLElement).tagName === "INPUT" ||
+				(e.target as HTMLElement).tagName === "TEXTAREA" ||
+				isProductFormOpen ||
+				isCategoryDialogOpen ||
+				isProductTypeDialogOpen
+			) {
+				return;
+			}
+
+			const now = Date.now();
+			const timeDiff = now - lastKeystrokeRef.current;
+
+			if (timeDiff < 100) {
+				barcodeInputRef.current += e.key;
+			} else {
+				barcodeInputRef.current = e.key;
+			}
+
+			lastKeystrokeRef.current = now;
+
+			if (e.key === "Enter" && barcodeInputRef.current.length > 1) {
+				const barcode = barcodeInputRef.current.replace("Enter", "");
+				if (barcode.length >= 3) {
+					e.preventDefault();
+					scanBarcode(barcode);
+				}
+				barcodeInputRef.current = "";
+			}
+
+			setTimeout(() => {
+				if (
+					Date.now() - lastKeystrokeRef.current > 500 &&
+					barcodeInputRef.current.length >= 8
+				) {
+					const barcode = barcodeInputRef.current;
+					if (barcode.length >= 3) {
+						scanBarcode(barcode);
+					}
+					barcodeInputRef.current = "";
+				}
+			}, 600);
+		};
+
+		document.addEventListener("keypress", handleKeyPress);
+		return () => document.removeEventListener("keypress", handleKeyPress);
+	}, [
+		scanBarcode,
+		isProductFormOpen,
+		isCategoryDialogOpen,
+		isProductTypeDialogOpen,
+	]);
 
 	const handleSearchChange = (e: any) => {
 		const value = e.target.value;
@@ -537,6 +622,11 @@ export const ProductsPage = () => {
 					}
 					onRowClick={(product) => navigate(`/products/${product.id}`)}
 					renderRow={renderProductRow}
+					getRowProps={(product) => ({
+						"data-product-id": product.id,
+					})}
+					highlightedItemId={highlightedProductId}
+					itemIdKey="id"
 				/>
 			</DomainPageLayout>
 

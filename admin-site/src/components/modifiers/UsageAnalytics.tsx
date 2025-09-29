@@ -146,12 +146,12 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 
 	const getUsageLevel = (productCount: number): UsageLevel => {
 		if (productCount === 0)
-			return { level: "unused", color: "text-red-600", icon: AlertTriangle };
+			return { level: "unused", color: "text-destructive", icon: AlertTriangle };
 		if (productCount <= 3)
-			return { level: "low", color: "text-yellow-600", icon: TrendingUp };
+			return { level: "low", color: "text-warning", icon: TrendingUp };
 		if (productCount <= 10)
-			return { level: "medium", color: "text-blue-600", icon: BarChart3 };
-		return { level: "high", color: "text-green-600", icon: CheckCircle };
+			return { level: "medium", color: "text-primary", icon: BarChart3 };
+		return { level: "high", color: "text-emerald-600", icon: CheckCircle };
 	};
 
 	const getUsageBadge = (productCount: number) => {
@@ -203,10 +203,10 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Unused Sets</CardTitle>
-						<AlertTriangle className="h-4 w-4 text-red-600" />
+						<AlertTriangle className="h-4 w-4 text-destructive" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-red-600">{unusedSets}</div>
+						<div className="text-2xl font-bold text-destructive">{unusedSets}</div>
 						{totalModifierSets > 0 && (
 							<p className="text-xs text-gray-500">
 								{((unusedSets / totalModifierSets) * 100).toFixed(1)}% of total
@@ -220,7 +220,7 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 						<CardTitle className="text-sm font-medium">
 							Avg Products/Set
 						</CardTitle>
-						<ShoppingBag className="h-4 w-4 text-blue-600" />
+						<ShoppingBag className="h-4 w-4 text-primary" />
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold">{averageProductsPerSet}</div>
@@ -230,10 +230,10 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Active Sets</CardTitle>
-						<CheckCircle className="h-4 w-4 text-green-600" />
+						<CheckCircle className="h-4 w-4 text-emerald-600" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
+						<div className="text-2xl font-bold text-emerald-600">
 							{totalModifierSets - unusedSets}
 						</div>
 					</CardContent>

@@ -558,16 +558,16 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												{category.level > 0 && (
 													<>
 														<div className="w-4 h-4 mr-2 flex items-center justify-center">
-															<div className="w-2 h-px bg-gray-300"></div>
+															<div className="w-2 h-px bg-border"></div>
 														</div>
-														<span className="text-gray-400 text-xs mr-2">
+														<span className="text-muted-foreground text-xs mr-2">
 															└
 														</span>
 													</>
 												)}
 												{/* Parent indicator icon */}
 												{category.isParent && (
-													<span className="text-blue-600 text-xs mr-2 font-semibold">
+													<span className="text-blue-600 dark:text-blue-400 text-xs mr-2 font-semibold">
 														●
 													</span>
 												)}
@@ -575,16 +575,16 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 													className={`font-medium ${
 														category.is_active
 															? ""
-															: "line-through text-gray-500"
+															: "line-through text-muted-foreground"
 													} ${
 														category.isParent
-															? "text-blue-800 font-semibold"
-															: "text-gray-700"
+															? "text-blue-800 dark:text-blue-300 font-semibold"
+															: "text-foreground"
 													}`}
 												>
 													{category.name}
 													{!category.is_active && (
-														<span className="ml-2 text-xs text-orange-600 font-normal">
+														<span className="ml-2 text-xs text-orange-600 dark:text-orange-400 font-normal">
 															(Archived)
 														</span>
 													)}
@@ -593,7 +593,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 										</div>
 
 										{/* Description */}
-										<div className="w-[150px] text-slate-600 dark:text-slate-400 truncate text-sm">
+										<div className="w-[150px] text-muted-foreground truncate text-sm">
 											{category.description || "—"}
 										</div>
 
@@ -607,7 +607,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 													{category.parent.name}
 												</Badge>
 											) : (
-												<span className="text-slate-500 dark:text-slate-400 text-xs">
+												<span className="text-muted-foreground text-xs">
 													None
 												</span>
 											)}
@@ -626,8 +626,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												variant={category.is_public ? "default" : "outline"}
 												className={`text-xs ${
 													category.is_public
-														? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-														: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+														? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+														: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
 												}`}
 											>
 												{category.is_public ? "Public" : "Private"}
@@ -651,8 +651,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												onClick={() => handleArchiveToggle(category)}
 												className={`h-8 w-8 p-0 ${
 													category.is_active
-														? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
-														: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+														? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+														: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20"
 												}`}
 											>
 												{category.is_active ? (
@@ -707,7 +707,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 								htmlFor="name"
 								className="text-right"
 							>
-								Name <span className="text-red-500">*</span>
+								Name <span className="text-destructive">*</span>
 							</Label>
 							<div className="col-span-3">
 								<Input
@@ -719,7 +719,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 									className={errors.name ? "border-red-500" : ""}
 								/>
 								{errors.name && (
-									<p className="text-sm text-red-500 mt-1">{errors.name}</p>
+									<p className="text-sm text-destructive mt-1">{errors.name}</p>
 								)}
 							</div>
 						</div>
@@ -766,7 +766,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 									</SelectContent>
 								</Select>
 								{errors.parent && (
-									<p className="text-sm text-red-500 mt-1">{errors.parent}</p>
+									<p className="text-sm text-destructive mt-1">{errors.parent}</p>
 								)}
 							</div>
 						</div>

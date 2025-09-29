@@ -79,7 +79,7 @@ export const ReasonInput: React.FC<ReasonInputProps> = ({
 				<Label className="flex items-center gap-2">
 					<Tag className="h-4 w-4" />
 					{reasonLabel}
-					{required && <span className="text-red-500">*</span>}
+					{required && <span className="text-destructive">*</span>}
 				</Label>
 				<ReasonSelector
 					value={reasonValue}
@@ -155,7 +155,7 @@ export const ReasonFormFields: React.FC<ReasonFormFieldsProps> = ({
 						<FormLabel className="flex items-center gap-2">
 							<Tag className="h-4 w-4" />
 							Reason
-							{required && <span className="text-red-500">*</span>}
+							{required && <span className="text-destructive">*</span>}
 						</FormLabel>
 						<FormControl>
 							<ReasonSelector

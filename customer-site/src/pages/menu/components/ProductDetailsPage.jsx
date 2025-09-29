@@ -158,21 +158,18 @@ const ProductDetailsPage = () => {
 					navigate("/menu");
 				}
 			} else {
-				// Add mode: Normal add to cart
-				const result = await addToCart(product, quantity, "", selectedModifiers);
-				if (result && result.success) {
-					toast.success(`${quantity} ${product.name}(s) added to your cart!`);
-					setQuantity(1);
-					setSelectedModifiers([]);
-				} else {
-					toast.error(
-						result?.error || "Failed to add item to cart. Please try again."
-					);
-				}
+				// Add mode: Normal add to cart (useCart handles success/error toasts)
+				addToCart(product, quantity, "", selectedModifiers);
+				// Reset form on successful add (useCart will handle the toast notifications)
+				setQuantity(1);
+				setSelectedModifiers([]);
 			}
 		} catch (err) {
 			console.error("Failed to add/update cart:", err);
-			toast.error(isEditMode ? "Failed to update item. Please try again." : "Failed to add item to cart. Please try again.");
+			// Only show error toast for edit mode, useCart handles add mode errors
+			if (isEditMode) {
+				toast.error("Failed to update item. Please try again.");
+			}
 		} finally {
 			setAddingToCart(false);
 			setIsUpdating(false);

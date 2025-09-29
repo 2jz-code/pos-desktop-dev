@@ -100,7 +100,7 @@ const ModifierOptionEditor = ({
 									size="sm"
 								/>
 								<Label className="text-sm">Product-specific option</Label>
-								<div className="text-xs text-gray-500">
+								<div className="text-xs text-muted-foreground">
 									{option.is_product_specific || option.isProductSpecific
 										? "Only for this product"
 										: "Available for all products"}

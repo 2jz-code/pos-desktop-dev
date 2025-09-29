@@ -71,15 +71,15 @@ interface StockReason {
 
 const getCategoryColor = (category: string) => {
 	const colors = {
-		SYSTEM: "bg-gray-100 text-gray-800",
-		MANUAL: "bg-blue-100 text-blue-800",
-		INVENTORY: "bg-green-100 text-green-800",
-		WASTE: "bg-red-100 text-red-800",
-		RESTOCK: "bg-emerald-100 text-emerald-800",
-		TRANSFER: "bg-purple-100 text-purple-800",
-		CORRECTION: "bg-orange-100 text-orange-800",
-		BULK: "bg-indigo-100 text-indigo-800",
-		OTHER: "bg-slate-100 text-slate-800",
+		SYSTEM: "bg-muted text-muted-foreground",
+		MANUAL: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300",
+		INVENTORY: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300",
+		WASTE: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300",
+		RESTOCK: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300",
+		TRANSFER: "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-300",
+		CORRECTION: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300",
+		BULK: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300",
+		OTHER: "bg-muted text-muted-foreground",
 	};
 	return colors[category as keyof typeof colors] || colors.OTHER;
 };
@@ -239,17 +239,17 @@ export function StockReasonSettings() {
 				<CardContent>
 					{/* Stats */}
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-						<div className="text-center p-3 bg-blue-50 rounded-lg">
-							<div className="text-2xl font-bold text-blue-600">{systemReasonsCount}</div>
-							<div className="text-sm text-blue-700">System Reasons</div>
+						<div className="text-center p-3 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+							<div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{systemReasonsCount}</div>
+							<div className="text-sm text-blue-700 dark:text-blue-300">System Reasons</div>
 						</div>
-						<div className="text-center p-3 bg-green-50 rounded-lg">
-							<div className="text-2xl font-bold text-green-600">{customReasonsCount}</div>
-							<div className="text-sm text-green-700">Custom Reasons</div>
+						<div className="text-center p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
+							<div className="text-2xl font-bold text-green-600 dark:text-green-400">{customReasonsCount}</div>
+							<div className="text-sm text-green-700 dark:text-green-300">Custom Reasons</div>
 						</div>
-						<div className="text-center p-3 bg-purple-50 rounded-lg">
-							<div className="text-2xl font-bold text-purple-600">{activeReasonsCount}</div>
-							<div className="text-sm text-purple-700">Active Reasons</div>
+						<div className="text-center p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+							<div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{activeReasonsCount}</div>
+							<div className="text-sm text-purple-700 dark:text-purple-300">Active Reasons</div>
 						</div>
 					</div>
 
@@ -330,7 +330,7 @@ export function StockReasonSettings() {
 													</TableCell>
 													<TableCell className="text-center">
 														{reason.is_active ? (
-															<Badge className="bg-green-100 text-green-800">
+															<Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300">
 																<Power className="h-3 w-3 mr-1" />
 																Active
 															</Badge>
@@ -396,10 +396,10 @@ export function StockReasonSettings() {
 					</div>
 
 					{/* Usage tip */}
-					<div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+					<div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
 						<div className="flex items-start gap-3">
-							<Shield className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-							<div className="text-sm text-blue-700">
+							<Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+							<div className="text-sm text-blue-700 dark:text-blue-300">
 								<p className="font-medium mb-1">System vs Custom Reasons:</p>
 								<ul className="space-y-1 text-xs">
 									<li>• <strong>System reasons</strong> are built-in and cannot be modified or deleted</li>

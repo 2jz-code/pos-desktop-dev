@@ -21,6 +21,16 @@ export const deleteProductType = (id) => {
 	return apiClient.delete(`/products/product-types/${id}/`);
 };
 
+// Archive product type using new REST endpoint
+export const archiveProductType = (id) => {
+	return apiClient.post(`/products/product-types/${id}/archive/`);
+};
+
+// Unarchive product type using new REST endpoint
+export const unarchiveProductType = (id) => {
+	return apiClient.post(`/products/product-types/${id}/unarchive/`);
+};
+
 export const bulkUpdateProductTypes = (productTypeIds, updateData) => {
 	return apiClient.patch("/products/product-types/bulk-update/", {
 		product_type_ids: productTypeIds,
@@ -68,6 +78,8 @@ export default {
 	createProductType,
 	updateProductType,
 	deleteProductType,
+	archiveProductType,
+	unarchiveProductType,
 	bulkUpdateProductTypes,
 	reorderProductTypes,
 	validateProductTypeArchiving,

@@ -2,7 +2,7 @@ import React from "react";
 import { X, ShoppingBag, Clock, User } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 
 const WebOrderNotification = ({ order, onDismiss, onViewOrder }) => {
 	if (!order) {

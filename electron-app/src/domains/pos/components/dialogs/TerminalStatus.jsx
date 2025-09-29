@@ -54,7 +54,7 @@ const TerminalStatus = ({ status, error, reader }) => {
 	}
 
 	return (
-		<div className="flex items-center space-x-2 text-gray-600 p-3 bg-gray-100 rounded-md">
+		<div className="flex items-center space-x-2 text-muted-foreground p-3 bg-muted/40 rounded-md">
 			<WifiOff className="h-5 w-5" />
 			<span className="font-semibold">{message}</span>
 		</div>

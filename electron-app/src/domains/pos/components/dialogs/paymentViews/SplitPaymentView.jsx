@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import { shallow } from "zustand/shallow";
 import { calculateSurcharge } from "@/domains/payments/services/paymentService";
 
@@ -93,7 +93,7 @@ const SplitPaymentView = () => {
 					/>
 				</div>
 				{surcharge > 0 && (
-					<p className="text-sm text-center text-gray-500 mt-2">
+					<p className="text-sm text-center text-muted-foreground mt-2">
 						Surcharge: {formatCurrency(surcharge)}
 					</p>
 				)}

@@ -1,4 +1,3 @@
-import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAllOrders, voidOrder } from "@/services/api/orderService";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { EllipsisVertical, ClipboardList } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	Select,
@@ -24,6 +23,14 @@ import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { PaginationControls } from "@/components/ui/pagination";
 import { format } from "date-fns";
+import {
+	getStatusConfig,
+	getPaymentStatusConfig,
+	useOrdersData,
+	useOrderActions,
+	STATUS_FILTER_OPTIONS,
+	ORDER_TYPE_FILTER_OPTIONS
+} from "@ajeen/ui";
 
 interface Order {
 	id: string;
@@ -38,122 +45,46 @@ interface Order {
 }
 
 export default function OrdersPage() {
-	const [orders, setOrders] = useState<Order[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const [nextUrl, setNextUrl] = useState<string | null>(null);
-	const [prevUrl, setPrevUrl] = useState<string | null>(null);
-	const [count, setCount] = useState(0);
-	const [currentPage, setCurrentPage] = useState(1);
-	const [filters, setFilters] = useState({
-		order_type: "",
-		status: "",
-		search: "",
-	});
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const { user } = useAuth();
 
-	const fetchOrders = useCallback(
-		async (url: string | null = null) => {
-			try {
-				setLoading(true);
-				const response = await getAllOrders(filters, url);
-				setOrders(response.results || []);
-				setNextUrl(response.next);
-				setPrevUrl(response.previous);
-				setCount(response.count || 0);
+	// Use shared orders data hook
+	const {
+		orders,
+		loading,
+		error,
+		nextUrl,
+		prevUrl,
+		count,
+		currentPage,
+		filters,
+		hasFilters,
+		handleNavigate,
+		handleFilterChange,
+		handleSearchChange,
+		clearFilters,
+		refetch
+	} = useOrdersData({
+		getAllOrdersService: getAllOrders
+	});
 
-				// Extract current page from URL or use page 1 as default
-				if (url) {
-					const urlObj = new URL(url);
-					const page = parseInt(urlObj.searchParams.get("page") || "1");
-					setCurrentPage(page);
-				} else {
-					setCurrentPage(1);
-				}
+	// Use shared order actions hook
+	const { handleAction } = useOrderActions({
+		toast,
+		refetch
+	});
 
-				setError(null);
-			} catch (err) {
-				setError("Failed to fetch orders.");
-				console.error("Order fetch error:", err);
-			} finally {
-				setLoading(false);
-			}
-		},
-		[filters]
-	);
 
-	useEffect(() => {
-		fetchOrders();
-	}, [fetchOrders]);
-
-	const handleNavigate = (url: string) => {
-		if (url) fetchOrders(url);
-	};
-
-	const handleFilterChange = (filterName: string, value: string) => {
-		const actualValue = value === "ALL" ? "" : value;
-		setFilters((prev) => ({ ...prev, [filterName]: actualValue }));
-	};
-
-	const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setFilters((prev) => ({ ...prev, search: value }));
-	};
-
+	// Use shared status configurations
 	const getStatusBadgeVariant = (status: string) => {
-		switch (status) {
-			case "COMPLETED":
-				return "default";
-			case "PENDING":
-				return "secondary";
-			case "HOLD":
-				return "outline";
-			case "CANCELLED":
-			case "VOID":
-				return "destructive";
-			default:
-				return "outline";
-		}
+		return getStatusConfig(status).variant;
 	};
 
 	const getPaymentStatusBadgeVariant = (status: string) => {
-		switch (status) {
-			case "PAID":
-				return "default";
-			case "PARTIALLY_PAID":
-				return "secondary";
-			case "UNPAID":
-				return "destructive";
-			case "REFUNDED":
-			case "PARTIALLY_REFUNDED":
-				return "outline";
-			default:
-				return "outline";
-		}
+		return getPaymentStatusConfig(status).variant;
 	};
 
-	const handleAction = async (
-		orderId: string,
-		actionFunction: (id: string) => Promise<unknown>,
-		successMessage: string
-	) => {
-		try {
-			await actionFunction(orderId);
-			toast({ title: "Success", description: successMessage });
-			fetchOrders();
-		} catch (err: unknown) {
-			const description =
-				(err as any)?.response?.data?.error || "An unknown error occurred.";
-			toast({
-				title: "Operation Failed",
-				description: description,
-				variant: "destructive",
-			});
-			console.error(`Failed to perform action on order ${orderId}:`, err);
-		}
-	};
 
 	const headers = [
 		{ label: "Order ID" },
@@ -168,7 +99,7 @@ export default function OrdersPage() {
 
 	const renderOrderRow = (order: Order) => (
 		<>
-			<TableCell className="font-mono text-xs text-slate-900 dark:text-slate-100">
+			<TableCell className="font-mono text-xs text-foreground">
 				{order.order_number}
 			</TableCell>
 			<TableCell>
@@ -190,21 +121,21 @@ export default function OrdersPage() {
 			<TableCell>
 				<Badge
 					variant="outline"
-					className="border-slate-200 dark:border-slate-700"
+					className="border-border"
 				>
 					{order.order_type}
 				</Badge>
 			</TableCell>
-			<TableCell className="text-right font-semibold text-slate-900 dark:text-slate-100">
+			<TableCell className="text-right font-semibold text-foreground">
 				$
 				{Number.parseFloat(
 					order.total_collected || order.total_with_tip
 				).toFixed(2)}
 			</TableCell>
-			<TableCell className="text-slate-600 dark:text-slate-400">
+			<TableCell className="text-muted-foreground">
 				{order.item_count}
 			</TableCell>
-			<TableCell className="text-slate-600 dark:text-slate-400">
+			<TableCell className="text-muted-foreground">
 				{format(new Date(order.created_at), "PPP p")}
 			</TableCell>
 			<TableCell
@@ -216,14 +147,14 @@ export default function OrdersPage() {
 						<Button
 							variant="ghost"
 							size="icon"
-							className="hover:bg-slate-100 dark:hover:bg-slate-800"
+							className="hover:bg-muted"
 						>
 							<EllipsisVertical className="h-4 w-4" />
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent
 						align="end"
-						className="border-slate-200 dark:border-slate-700"
+						className="border-border"
 					>
 						{user?.role === "OWNER" &&
 							(order.status === "PENDING" || order.status === "HOLD") && (
@@ -253,32 +184,30 @@ export default function OrdersPage() {
 				value={filters.status || "ALL"}
 				onValueChange={(value) => handleFilterChange("status", value)}
 			>
-				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
+				<SelectTrigger className="w-[180px] border-border">
 					<SelectValue placeholder="Filter by Status" />
 				</SelectTrigger>
-				<SelectContent className="border-slate-200 dark:border-slate-700">
-					<SelectItem value="ALL">All Statuses</SelectItem>
-					<SelectItem value="PENDING">Pending</SelectItem>
-					<SelectItem value="HOLD">Hold</SelectItem>
-					<SelectItem value="COMPLETED">Completed</SelectItem>
-					<SelectItem value="CANCELLED">Cancelled</SelectItem>
-					<SelectItem value="VOID">Void</SelectItem>
+				<SelectContent className="border-border">
+					{STATUS_FILTER_OPTIONS.map((option) => (
+						<SelectItem key={option.value} value={option.value}>
+							{option.label}
+						</SelectItem>
+					))}
 				</SelectContent>
 			</Select>
 			<Select
 				value={filters.order_type || "ALL"}
 				onValueChange={(value) => handleFilterChange("order_type", value)}
 			>
-				<SelectTrigger className="w-[180px] border-slate-200 dark:border-slate-700">
+				<SelectTrigger className="w-[180px] border-border">
 					<SelectValue placeholder="Filter by Type" />
 				</SelectTrigger>
-				<SelectContent className="border-slate-200 dark:border-slate-700">
-					<SelectItem value="ALL">All Types</SelectItem>
-					<SelectItem value="POS">Point of Sale</SelectItem>
-					<SelectItem value="WEB">Website</SelectItem>
-					<SelectItem value="APP">Customer App</SelectItem>
-					<SelectItem value="DOORDASH">DoorDash</SelectItem>
-					<SelectItem value="UBER_EATS">Uber Eats</SelectItem>
+				<SelectContent className="border-border">
+					{ORDER_TYPE_FILTER_OPTIONS.map((option) => (
+						<SelectItem key={option.value} value={option.value}>
+							{option.label}
+						</SelectItem>
+					))}
 				</SelectContent>
 			</Select>
 		</>
@@ -304,7 +233,7 @@ export default function OrdersPage() {
 				onRowClick={(order) => navigate(`/orders/${order.id}`)}
 				renderRow={renderOrderRow}
 				colSpan={8}
-				className="border-slate-200 dark:border-slate-700"
+				className="border-border"
 			/>
 			<PaginationControls
 				prevUrl={prevUrl}

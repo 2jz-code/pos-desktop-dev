@@ -32,12 +32,19 @@ class OrderPercentageDiscountStrategy(DiscountStrategy):
             logger.debug("Order subtotal below discount minimum threshold")
             return Decimal("0.00")
 
-        subtotal = Decimal(order.subtotal)
-        if not discount.type == Discount.DiscountType.PERCENTAGE or subtotal <= 0:
+        # Calculate subtotal only from items that allow discounts
+        discountable_subtotal = Decimal("0.00")
+        for item in order.items.select_related('product', 'product__product_type').all():
+            # Skip items with product types that exclude discounts
+            if item.product and item.product.product_type and item.product.product_type.exclude_from_discounts:
+                continue
+            discountable_subtotal += item.total_price
+
+        if not discount.type == Discount.DiscountType.PERCENTAGE or discountable_subtotal <= 0:
             return Decimal("0.00")
 
         discount_percentage = Decimal(discount.value) / Decimal("100")
-        discount_amount = subtotal * discount_percentage
+        discount_amount = discountable_subtotal * discount_percentage
         return discount_amount.quantize(Decimal("0.01"))
 
 
@@ -53,11 +60,18 @@ class OrderFixedAmountDiscountStrategy(DiscountStrategy):
             logger.debug("Order subtotal below discount minimum threshold")
             return Decimal("0.00")
 
-        subtotal = Decimal(order.subtotal)
-        if not discount.type == Discount.DiscountType.FIXED_AMOUNT or subtotal <= 0:
+        # Calculate subtotal only from items that allow discounts
+        discountable_subtotal = Decimal("0.00")
+        for item in order.items.select_related('product', 'product__product_type').all():
+            # Skip items with product types that exclude discounts
+            if item.product and item.product.product_type and item.product.product_type.exclude_from_discounts:
+                continue
+            discountable_subtotal += item.total_price
+
+        if not discount.type == Discount.DiscountType.FIXED_AMOUNT or discountable_subtotal <= 0:
             return Decimal("0.00")
 
-        discount_amount = min(subtotal, Decimal(discount.value))
+        discount_amount = min(discountable_subtotal, Decimal(discount.value))
         return discount_amount.quantize(Decimal("0.01"))
 
 
@@ -77,8 +91,12 @@ class ProductPercentageDiscountStrategy(DiscountStrategy):
             return total_discount
 
         # FIX: Use select_related to prevent N+1 queries when accessing item.product.name
-        for item in order.items.select_related('product').all():
+        for item in order.items.select_related('product', 'product__product_type').all():
             if item.product.id in applicable_products_ids:
+                # Check if the product type excludes this product from discounts
+                if item.product.product_type and item.product.product_type.exclude_from_discounts:
+                    continue
+
                 discount_percentage = Decimal(discount.value) / Decimal("100")
                 total_discount += item.total_price * discount_percentage
 
@@ -102,8 +120,12 @@ class CategoryPercentageDiscountStrategy(DiscountStrategy):
             return total_discount
 
         # FIX: Use select_related to prevent N+1 queries when accessing item.product.name and item.product.category_id
-        for item in order.items.select_related('product', 'product__category').all():
+        for item in order.items.select_related('product', 'product__category', 'product__product_type').all():
             if item.product.category_id in applicable_category_ids:
+                # Check if the product type excludes this product from discounts
+                if item.product.product_type and item.product.product_type.exclude_from_discounts:
+                    continue
+
                 discount_percentage = Decimal(discount.value) / Decimal("100")
                 total_discount += item.total_price * discount_percentage
 
@@ -125,7 +147,11 @@ class ProductFixedAmountDiscountStrategy(DiscountStrategy):
         if not applicable_products_ids:
             return total_discount
         # FIX: Add select_related to prevent N+1 queries
-        for item in order.items.filter(product_id__in=applicable_products_ids).select_related('product'):
+        for item in order.items.filter(product_id__in=applicable_products_ids).select_related('product', 'product__product_type'):
+            # Check if the product type excludes this product from discounts
+            if item.product.product_type and item.product.product_type.exclude_from_discounts:
+                continue
+
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
         return total_discount.quantize(Decimal("0.01"))
@@ -143,7 +169,11 @@ class CategoryFixedAmountDiscountStrategy(DiscountStrategy):
         # FIX: Add select_related to prevent N+1 queries
         for item in order.items.filter(
             product__category_id__in=applicable_category_ids
-        ).select_related('product', 'product__category'):
+        ).select_related('product', 'product__category', 'product__product_type'):
+            # Check if the product type excludes this product from discounts
+            if item.product.product_type and item.product.product_type.exclude_from_discounts:
+                continue
+
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
         return total_discount.quantize(Decimal("0.01"))

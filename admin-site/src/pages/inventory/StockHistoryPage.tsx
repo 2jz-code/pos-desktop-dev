@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useDebounce } from "@ajeen/ui";
 import { ReasonBadge } from "@/components/inventory/ReasonBadge";
 
 interface Product {
@@ -232,7 +232,7 @@ export const StockHistoryPage = () => {
 		return (
 			OPERATION_TYPES[operationType as keyof typeof OPERATION_TYPES] || {
 				label: operationType,
-				color: "bg-gray-100 text-gray-800",
+				color: "bg-muted text-muted-foreground",
 				icon: Clock,
 			}
 		);
@@ -311,10 +311,10 @@ export const StockHistoryPage = () => {
 						<CardTitle className="text-sm font-medium">
 							Stock Creations
 						</CardTitle>
-						<Plus className="h-4 w-4 text-green-600" />
+						<Plus className="h-4 w-4 text-emerald-600" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
+						<div className="text-2xl font-bold text-emerald-600">
 							{summaryStats.creations}
 						</div>
 						<p className="text-xs text-muted-foreground">New stock entries</p>
@@ -324,10 +324,10 @@ export const StockHistoryPage = () => {
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">Adjustments</CardTitle>
-						<Clock className="h-4 w-4 text-blue-600" />
+						<Clock className="h-4 w-4 text-primary" />
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-blue-600">
+						<div className="text-2xl font-bold text-primary">
 							{summaryStats.adjustments}
 						</div>
 						<p className="text-xs text-muted-foreground">Stock modifications</p>
@@ -505,8 +505,8 @@ export const StockHistoryPage = () => {
 															<span
 																className={
 																	entry.quantity_change >= 0
-																		? "text-green-600"
-																		: "text-red-600"
+																		? "text-emerald-600"
+																		: "text-destructive"
 																}
 															>
 																{formatQuantityChange(

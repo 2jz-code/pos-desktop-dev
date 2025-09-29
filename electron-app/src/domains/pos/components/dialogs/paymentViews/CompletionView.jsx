@@ -3,7 +3,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { Button } from "@/shared/components/ui/button";
 import { CheckCircle, Printer, Mail } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/utils";
+import { formatCurrency } from "@ajeen/ui";
 import {
 	printReceipt,
 	printKitchenTicket,

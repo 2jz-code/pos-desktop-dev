@@ -323,7 +323,7 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="name">
-                      Display Name <span className="text-red-500">*</span>
+                      Display Name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="name"
@@ -334,13 +334,13 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                       className={errors.name ? "border-red-500" : ""}
                     />
                     {errors.name && (
-                      <p className="text-sm text-red-500 mt-1">{errors.name}</p>
+                      <p className="text-sm text-destructive mt-1">{errors.name}</p>
                     )}
                   </div>
 
                   <div>
                     <Label htmlFor="internal_name">
-                      Internal Name <span className="text-red-500">*</span>
+                      Internal Name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="internal_name"
@@ -352,11 +352,11 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                       disabled={isEditing} // Don't allow changing internal name for existing sets
                     />
                     {errors.internal_name && (
-                      <p className="text-sm text-red-500 mt-1">
+                      <p className="text-sm text-destructive mt-1">
                         {errors.internal_name}
                       </p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Used for API references. Auto-generated from display name.
                     </p>
                   </div>
@@ -385,12 +385,12 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
 
                   <div className="space-y-4">
                     {/* Required/Optional Toggle */}
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div>
                         <Label className="text-sm font-medium">
                           Customer Selection
                         </Label>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {formData.min_selections > 0
                             ? "Customers must make a selection"
                             : "Customers can skip this modifier set"}
@@ -434,11 +434,11 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                             }
                           />
                           {errors.min_selections && (
-                            <p className="text-sm text-red-500 mt-1">
+                            <p className="text-sm text-destructive mt-1">
                               {errors.min_selections}
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             0 = optional, 1+ = required minimum
                           </p>
                         </div>
@@ -458,11 +458,11 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                             }
                           />
                           {errors.max_selections && (
-                            <p className="text-sm text-red-500 mt-1">
+                            <p className="text-sm text-destructive mt-1">
                               {errors.max_selections}
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             Leave blank for unlimited
                           </p>
                         </div>
@@ -502,7 +502,7 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
                     </Button>
                   </div>
                   {errors.options && (
-                    <p className="text-sm text-red-500">{errors.options}</p>
+                    <p className="text-sm text-destructive">{errors.options}</p>
                   )}
                 </CardHeader>
                 <CardContent>

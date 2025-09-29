@@ -1,7 +1,9 @@
 from django.test import TestCase
 from rest_framework.exceptions import ValidationError
+from decimal import Decimal
 from .models import Category, Tax, Product, ProductType, ModifierSet, ModifierOption, ProductModifierSet
 from .services import ModifierValidationService
+from .policies import ProductTypePolicy
 
 
 class ModifierValidationServiceTests(TestCase):
@@ -60,3 +62,85 @@ class ModifierValidationServiceTests(TestCase):
         other_option = ModifierOption.objects.create(modifier_set=other_set, name="Other Option")
         with self.assertRaisesRegex(ValidationError, "Invalid modifier option\(s\) selected"):
             ModifierValidationService.validate_product_selection(self.product, [self.small_opt.id, other_option.id])
+
+
+class ProductTypePolicyTests(TestCase):
+    """Test the new ProductType functionality."""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up data for the whole test case."""
+        # Create a tax for testing
+        cls.tax = Tax.objects.create(name="Sales Tax", rate=Decimal("8.25"))
+
+        # Create product type with tax_inclusive enabled
+        cls.inclusive_type = ProductType.objects.create(
+            name="Tax Inclusive Type",
+            tax_inclusive=True,
+            max_quantity_per_item=5,
+            exclude_from_discounts=True
+        )
+        cls.inclusive_type.default_taxes.add(cls.tax)
+
+        # Create product type with tax_inclusive disabled
+        cls.exclusive_type = ProductType.objects.create(
+            name="Tax Exclusive Type",
+            tax_inclusive=False
+        )
+        cls.exclusive_type.default_taxes.add(cls.tax)
+
+        # Create test products
+        cls.inclusive_product = Product.objects.create(
+            name="Inclusive Product",
+            price=Decimal("10.82"),  # Includes 8.25% tax (base price would be 10.00)
+            product_type=cls.inclusive_type
+        )
+
+        cls.exclusive_product = Product.objects.create(
+            name="Exclusive Product",
+            price=Decimal("10.00"),
+            product_type=cls.exclusive_type
+        )
+
+    def test_tax_inclusive_display_price(self):
+        """Test that tax_inclusive products display stored price as-is."""
+        display_price = ProductTypePolicy.calculate_display_price(
+            self.inclusive_product,
+            self.inclusive_product.price
+        )
+        self.assertEqual(display_price, Decimal("10.82"))
+
+    def test_tax_exclusive_display_price(self):
+        """Test that tax_exclusive products display stored price as-is."""
+        display_price = ProductTypePolicy.calculate_display_price(
+            self.exclusive_product,
+            self.exclusive_product.price
+        )
+        self.assertEqual(display_price, Decimal("10.00"))
+
+    def test_tax_inclusive_base_price_calculation(self):
+        """Test extracting base price from tax-inclusive display price."""
+        base_price = ProductTypePolicy.calculate_base_price_from_display(
+            self.inclusive_product,
+            Decimal("10.82")
+        )
+        # Base price should be 10.82 / 1.0825 = 10.00
+        self.assertEqual(base_price, Decimal("10.00"))
+
+    def test_tax_exclusive_base_price_calculation(self):
+        """Test that tax-exclusive prices return display price as base price."""
+        base_price = ProductTypePolicy.calculate_base_price_from_display(
+            self.exclusive_product,
+            Decimal("10.00")
+        )
+        self.assertEqual(base_price, Decimal("10.00"))
+
+    def test_max_quantity_per_item_property(self):
+        """Test that max_quantity_per_item is properly set."""
+        self.assertEqual(self.inclusive_type.max_quantity_per_item, 5)
+        self.assertIsNone(self.exclusive_type.max_quantity_per_item)
+
+    def test_exclude_from_discounts_property(self):
+        """Test that exclude_from_discounts is properly set."""
+        self.assertTrue(self.inclusive_type.exclude_from_discounts)
+        self.assertFalse(self.exclusive_type.exclude_from_discounts)

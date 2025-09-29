@@ -400,7 +400,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 								<div className="grid gap-4 py-4">
 									<div>
 										<Label htmlFor="name">
-											Name <span className="text-red-500">*</span>
+											Name <span className="text-destructive">*</span>
 										</Label>
 										<Input
 											id="name"
@@ -408,10 +408,10 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 											value={formData.name}
 											onChange={handleInputChange}
 											placeholder="Product name"
-											className={errors.name ? "border-red-500" : ""}
+											className={errors.name ? "border-destructive" : ""}
 										/>
 										{errors.name && (
-											<p className="text-sm text-red-500 mt-1">{errors.name}</p>
+											<p className="text-sm text-destructive mt-1">{errors.name}</p>
 										)}
 									</div>
 									
@@ -430,7 +430,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 									<div className="grid grid-cols-2 gap-4">
 										<div>
 											<Label htmlFor="price">
-												Price <span className="text-red-500">*</span>
+												Price <span className="text-destructive">*</span>
 											</Label>
 											<Input
 												id="price"
@@ -441,10 +441,10 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												value={formData.price}
 												onChange={handleInputChange}
 												placeholder="0.00"
-												className={errors.price ? "border-red-500" : ""}
+												className={errors.price ? "border-destructive" : ""}
 											/>
 											{errors.price && (
-												<p className="text-sm text-red-500 mt-1">{errors.price}</p>
+												<p className="text-sm text-destructive mt-1">{errors.price}</p>
 											)}
 										</div>
 										<div>
@@ -455,10 +455,10 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												value={formData.barcode}
 												onChange={handleInputChange}
 												placeholder="Enter or scan barcode"
-												className={errors.barcode ? "border-red-500" : ""}
+												className={errors.barcode ? "border-destructive" : ""}
 											/>
 											{errors.barcode && (
-												<p className="text-sm text-red-500 mt-1">
+												<p className="text-sm text-destructive mt-1">
 													{errors.barcode}
 												</p>
 											)}
@@ -475,7 +475,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												}
 											>
 												<SelectTrigger
-													className={errors.category_id ? "border-red-500" : ""}
+													className={errors.category_id ? "border-destructive" : ""}
 												>
 													<SelectValue placeholder="Select category" />
 												</SelectTrigger>
@@ -485,14 +485,14 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												</SelectContent>
 											</Select>
 											{errors.category_id && (
-												<p className="text-sm text-red-500 mt-1">
+												<p className="text-sm text-destructive mt-1">
 													{errors.category_id}
 												</p>
 											)}
 										</div>
 										<div>
 											<Label htmlFor="product_type_id">
-												Type <span className="text-red-500">*</span>
+												Type <span className="text-destructive">*</span>
 											</Label>
 											<Select
 												value={formData.product_type_id}
@@ -501,7 +501,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												}
 											>
 												<SelectTrigger
-													className={errors.product_type_id ? "border-red-500" : ""}
+													className={errors.product_type_id ? "border-destructive" : ""}
 												>
 													<SelectValue placeholder="Select type" />
 												</SelectTrigger>
@@ -517,7 +517,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 												</SelectContent>
 											</Select>
 											{errors.product_type_id && (
-												<p className="text-sm text-red-500 mt-1">
+												<p className="text-sm text-destructive mt-1">
 													{errors.product_type_id}
 												</p>
 											)}
@@ -571,11 +571,11 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 														value={formData.initial_quantity}
 														onChange={handleInputChange}
 														className={
-															errors.initial_quantity ? "border-red-500" : ""
+															errors.initial_quantity ? "border-destructive" : ""
 														}
 													/>
 													{errors.initial_quantity && (
-														<p className="text-sm text-red-500 mt-1">
+														<p className="text-sm text-destructive mt-1">
 															{errors.initial_quantity}
 														</p>
 													)}
@@ -599,7 +599,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 													>
 														<SelectTrigger
 															id="location_id"
-															className={errors.location_id ? "border-red-500" : ""}
+															className={errors.location_id ? "border-destructive" : ""}
 														>
 															<SelectValue placeholder="Select location" />
 														</SelectTrigger>
@@ -624,7 +624,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 														</SelectContent>
 													</Select>
 													{errors.location_id && (
-														<p className="text-sm text-red-500 mt-1">
+														<p className="text-sm text-destructive mt-1">
 															{errors.location_id}
 														</p>
 													)}

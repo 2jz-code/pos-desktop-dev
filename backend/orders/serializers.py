@@ -400,7 +400,7 @@ class AddItemSerializer(serializers.Serializer):
 
 class UpdateOrderItemSerializer(BaseModelSerializer):
     """
-    Serializer for updating just the quantity of an order item.
+    Serializer for updating just the quantity of an order item with policy-aware stock validation.
     """
 
     class Meta:
@@ -411,6 +411,19 @@ class UpdateOrderItemSerializer(BaseModelSerializer):
         if value <= 0:
             raise serializers.ValidationError("Quantity must be a positive integer.")
         return value
+
+    def update(self, instance, validated_data):
+        """
+        Update the order item quantity using the service layer for consistent stock validation.
+        """
+        new_quantity = validated_data.get('quantity', instance.quantity)
+
+        try:
+            from .services import OrderService
+            OrderService.update_item_quantity(instance, new_quantity)
+            return instance
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
 
 class UpdateOrderStatusSerializer(serializers.Serializer):

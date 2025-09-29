@@ -16,29 +16,16 @@ export const cartKeys = {
 export const useCartQuery = () => {
 	const { checkoutCompleted } = useCartStore();
 	const { isAuthenticated } = useAuth();
-	console.log('useCart: useCartQuery called, checkoutCompleted:', checkoutCompleted);
 
 	return useQuery({
 		queryKey: cartKeys.current(),
 		queryFn: () => {
-			console.log('useCart: queryFn called! checkoutCompleted:', checkoutCompleted);
 			if (checkoutCompleted) {
-				console.log('useCart: checkoutCompleted is true, returning null');
 				return null;
 			}
-			console.log('useCart: Fetching pending order...', {
-				'isAuthenticated from useAuth': isAuthenticated,
-				'request.user in backend': 'will be determined by backend'
-			});
 			return ordersAPI.getPendingOrder().then(result => {
-				console.log('useCart: getPendingOrder returned:', result);
-				console.log('Cart belongs to:', result?.customer ? 'Authenticated User' : 'Guest');
-				console.log('Cart items count:', result?.items?.length || 0);
-				console.log('Cart items:', result?.items);
 				return result;
 			}).catch(error => {
-				console.log('useCart: getPendingOrder ERROR:', error);
-				console.log('Error status:', error.response?.status);
 				// For 404 errors (no cart found), return null instead of throwing
 				if (error.response?.status === 404) {
 					return null;
@@ -65,10 +52,8 @@ export const useCartMutations = () => {
 	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	const invalidateCart = () => {
-		console.log('useCart: Invalidating cart cache...');
 		queryClient.invalidateQueries({ queryKey: cartKeys.current() });
 		// Also force refetch to ensure the cart updates
-		console.log('useCart: Force refetching cart...');
 		queryClient.refetchQueries({ queryKey: cartKeys.current() });
 	};
 
@@ -79,18 +64,15 @@ export const useCartMutations = () => {
 				throw new Error("Store is currently closed and not accepting orders");
 			}
 
-			console.log('useCart: addToCartMutation starting for product:', productId);
 			// Initialize guest session for unauthenticated users (only if needed)
 			if (!isAuthenticated) {
 				try {
-					console.log('useCart: Trying add to cart (unauthenticated)');
 					// Try adding to cart first - if it fails due to session, then initialize
 					return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 				} catch (error) {
 					// If it's a permission/session error, initialize guest session and retry
 					if (error.response?.status === 403 || error.response?.status === 401) {
 						try {
-							console.log('useCart: Session error, initializing guest session and retrying');
 							await ordersAPI.initGuestSession();
 							return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 						} catch (sessionError) {
@@ -102,7 +84,6 @@ export const useCartMutations = () => {
 					}
 				}
 			}
-			console.log('useCart: Calling addToCart (authenticated)');
 			return cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
 		},
 		// Temporarily disable optimistic update to avoid state conflicts
@@ -140,7 +121,6 @@ export const useCartMutations = () => {
 		// 	return { previousCart };
 		// },
 		onSuccess: (data) => {
-			console.log('useCart: addToCart SUCCESS, backend returned:', data);
 			toast.success("Item added to cart");
 		},
 		onError: (error, variables, context) => {
@@ -148,20 +128,36 @@ export const useCartMutations = () => {
 			if (context?.previousCart) {
 				queryClient.setQueryData(cartKeys.current(), context.previousCart);
 			}
-			
+
 			// Handle store closed errors with specific messaging
 			if (error.message === "Store is currently closed and not accepting orders") {
 				toast.error("Sorry, we're currently closed and not accepting orders. You can still browse our menu!");
 				return;
 			}
-			
-			const errorMessage =
-				error.response?.data?.detail || "Failed to add item to cart";
-			toast.error(errorMessage);
+
+			// Handle stock-related errors with user-friendly messages
+			const errorData = error.response?.data;
+			const rawErrorMessage = errorData?.error || errorData?.detail || "Failed to add item to cart";
+
+			// Check if this is a stock-related error and make it user-friendly
+			let userFriendlyMessage = rawErrorMessage;
+			if (rawErrorMessage.includes("out of stock") || rawErrorMessage.includes("No items available")) {
+				userFriendlyMessage = "Sorry, this item is currently out of stock.";
+			} else if (rawErrorMessage.includes("low stock") || rawErrorMessage.includes("Only") && rawErrorMessage.includes("available")) {
+				// Extract available quantity from message like "Only 2 items available, but 3 requested"
+				const availableMatch = rawErrorMessage.match(/Only (\d+(?:\.\d+)?)/);
+				if (availableMatch) {
+					const available = availableMatch[1];
+					userFriendlyMessage = `Sorry, only ${available} ${available === '1' ? 'item is' : 'items are'} available in stock.`;
+				} else {
+					userFriendlyMessage = "Sorry, there isn't enough stock available for the requested quantity.";
+				}
+			}
+
+			toast.error(userFriendlyMessage);
 		},
 		onSettled: () => {
 			// Always refetch after error or success to get accurate backend calculations
-			console.log('useCart: addToCart onSettled called, invalidating cart...');
 			invalidateCart();
 		},
 	});
@@ -199,9 +195,27 @@ export const useCartMutations = () => {
 			if (context?.previousCart) {
 				queryClient.setQueryData(cartKeys.current(), context.previousCart);
 			}
-			const errorMessage =
-				error.response?.data?.detail || "Failed to update cart";
-			toast.error(errorMessage);
+
+			// Handle stock-related errors with user-friendly messages
+			const errorData = error.response?.data;
+			const rawErrorMessage = errorData?.error || errorData?.detail || "Failed to update cart";
+
+			// Check if this is a stock-related error and make it user-friendly
+			let userFriendlyMessage = rawErrorMessage;
+			if (rawErrorMessage.includes("out of stock") || rawErrorMessage.includes("No items available")) {
+				userFriendlyMessage = "Sorry, this item is currently out of stock.";
+			} else if (rawErrorMessage.includes("low stock") || rawErrorMessage.includes("Only") && rawErrorMessage.includes("available")) {
+				// Extract available quantity from message like "Only 2 items available, but 3 requested"
+				const availableMatch = rawErrorMessage.match(/Only (\d+(?:\.\d+)?)/);
+				if (availableMatch) {
+					const available = availableMatch[1];
+					userFriendlyMessage = `Sorry, only ${available} ${available === '1' ? 'item is' : 'items are'} available in stock.`;
+				} else {
+					userFriendlyMessage = "Sorry, there isn't enough stock available for the requested quantity.";
+				}
+			}
+
+			toast.error(userFriendlyMessage);
 		},
 		onSettled: () => {
 			// Always refetch after error or success to get accurate backend calculations
