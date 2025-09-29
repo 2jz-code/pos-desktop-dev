@@ -63,6 +63,7 @@ export const ProductsPage = () => {
 	});
 	const [selectedParentCategory, setSelectedParentCategory] = useState("all");
 	const [selectedChildCategory, setSelectedChildCategory] = useState("all");
+	const [selectedProductType, setSelectedProductType] = useState("all");
 
 	// Dialog states
 	const [isProductFormOpen, setIsProductFormOpen] = useState(false);
@@ -261,9 +262,16 @@ export const ProductsPage = () => {
 		// Modifier filtering logic - filter by products that use this modifier set
 		if (modifierContext && modifierContext.id) {
 			filtered = filtered.filter((product: any) => {
-				return product.modifier_groups && product.modifier_groups.some((group: any) => 
+				return product.modifier_groups && product.modifier_groups.some((group: any) =>
 					group.id == modifierContext.id
 				);
+			});
+		}
+
+		// Product type filtering logic
+		if (selectedProductType && selectedProductType !== "all") {
+			filtered = filtered.filter((product: any) => {
+				return product.product_type && product.product_type.id === parseInt(selectedProductType);
 			});
 		}
 
@@ -272,7 +280,7 @@ export const ProductsPage = () => {
 
 	useEffect(() => {
 		applyFilters(allProducts);
-	}, [selectedParentCategory, selectedChildCategory, allProducts, modifierContext]);
+	}, [selectedParentCategory, selectedChildCategory, selectedProductType, allProducts, modifierContext]);
 
 	useEffect(() => {
 		const timeoutId = setTimeout(() => {
@@ -575,6 +583,25 @@ export const ProductsPage = () => {
 						</SelectContent>
 					</Select>
 				)}
+			<Select
+				value={selectedProductType}
+				onValueChange={setSelectedProductType}
+			>
+				<SelectTrigger className="w-[180px]">
+					<SelectValue placeholder="Filter by Product Type" />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="all">All Product Types</SelectItem>
+					{productTypes && Array.isArray(productTypes) && productTypes.map((type) => (
+						<SelectItem
+							key={type.id}
+							value={type.id.toString()}
+						>
+							{type.name}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
 			{modifierContext && (
 				<Button
 					variant="outline"
