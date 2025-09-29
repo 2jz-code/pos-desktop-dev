@@ -33,11 +33,8 @@ export const getProductPerformance = (params = {}) => {
 	return apiClient.get("/products/performance/", { params });
 };
 
-export const bulkUpdateProducts = (productIds, updateData) => {
-	return apiClient.patch("/products/bulk-update/", {
-		product_ids: productIds,
-		update_data: updateData,
-	});
+export const bulkUpdateProducts = (data) => {
+	return apiClient.patch("/products/bulk-update/", data);
 };
 
 export const duplicateProduct = (id) => {

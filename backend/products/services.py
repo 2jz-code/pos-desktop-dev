@@ -80,8 +80,9 @@ class ProductService:
             "taxes",
             "modifier_sets",
             "product_modifier_sets__modifier_set__options",
-            "product_modifier_sets__hidden_options", 
-            "product_modifier_sets__extra_options"
+            "product_modifier_sets__hidden_options",
+            "product_modifier_sets__extra_options",
+            "product_type__default_taxes"
         ).filter(is_active=True).annotate(
             # Calculate parent order for hierarchical sorting
             parent_order=models.Case(
@@ -96,7 +97,7 @@ class ProductService:
                 output_field=models.IntegerField()
             )
         ).order_by('parent_order', 'category_level', 'category__order', 'category__name', 'name'))
-    
+
     @staticmethod
     @cache_static_data(timeout=3600*2)  # 2 hours in static cache
     def get_cached_active_products_list():
@@ -108,8 +109,9 @@ class ProductService:
             "taxes",
             "modifier_sets",
             "product_modifier_sets__modifier_set__options",
-            "product_modifier_sets__hidden_options", 
-            "product_modifier_sets__extra_options"
+            "product_modifier_sets__hidden_options",
+            "product_modifier_sets__extra_options",
+            "product_type__default_taxes"
         ).filter(is_active=True).annotate(
             # Calculate parent order for hierarchical sorting
             parent_order=models.Case(
@@ -481,6 +483,113 @@ class ProductService:
             'options_map': options_map,
             'triggered_map': dict(triggered_map)
         }
+
+    @staticmethod
+    @transaction.atomic
+    def bulk_update_products(product_ids, update_fields):
+        """
+        Updates multiple products atomically.
+
+        Args:
+            product_ids: List of product IDs to update
+            update_fields: Dictionary of fields to update (category, product_type)
+
+        Returns:
+            Dictionary with success/failure counts and any errors
+        """
+        from .models import Product, Category, ProductType
+
+        updated_count = 0
+        errors = []
+
+        # Validate and prepare update data
+        update_data = {}
+
+        if 'category' in update_fields:
+            category_id = update_fields['category']
+            if category_id is not None:
+                try:
+                    category = Category.objects.get(id=category_id)
+                    update_data['category'] = category
+                except Category.DoesNotExist:
+                    return {
+                        'success': False,
+                        'updated_count': 0,
+                        'error': f'Category with ID {category_id} not found'
+                    }
+            else:
+                update_data['category'] = None
+
+        if 'product_type' in update_fields:
+            product_type_id = update_fields['product_type']
+            if product_type_id is not None:
+                try:
+                    product_type = ProductType.objects.get(id=product_type_id)
+                    update_data['product_type'] = product_type
+                except ProductType.DoesNotExist:
+                    return {
+                        'success': False,
+                        'updated_count': 0,
+                        'error': f'Product type with ID {product_type_id} not found'
+                    }
+            else:
+                update_data['product_type'] = None
+
+        # Perform bulk update
+        try:
+            # Process in batches to avoid memory issues with large updates
+            BATCH_SIZE = 500
+            total_updated = 0
+
+            # Split product_ids into batches
+            for i in range(0, len(product_ids), BATCH_SIZE):
+                batch_ids = product_ids[i:i + BATCH_SIZE]
+                products = Product.objects.filter(id__in=batch_ids)
+
+                if not products.exists():
+                    continue
+
+                # Use bulk_update for performance - much faster than individual saves
+                products_to_update = []
+                for product in products:
+                    for field, value in update_data.items():
+                        setattr(product, field, value)
+                    products_to_update.append(product)
+
+                # Bulk update all products in this batch at once
+                if products_to_update:
+                    Product.objects.bulk_update(
+                        products_to_update,
+                        list(update_data.keys()),
+                        batch_size=500
+                    )
+                    total_updated += len(products_to_update)
+
+            if total_updated == 0:
+                return {
+                    'success': False,
+                    'updated_count': 0,
+                    'error': 'No products found with the provided IDs'
+                }
+
+            # Invalidate caches in bulk (using pattern matching)
+            from core_backend.infrastructure.cache import AdvancedCacheManager
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
+
+            return {
+                'success': True,
+                'updated_count': total_updated,
+                'total_requested': len(product_ids),
+                'errors': None
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'updated_count': updated_count,
+                'error': str(e)
+            }
 
 
 class BaseSelectionStrategy:

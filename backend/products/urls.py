@@ -53,6 +53,7 @@ urlpatterns = [
     path("<int:pk>/unarchive/", ProductViewSet.as_view({'post': 'unarchive'}), name="product-unarchive"),
     path("bulk_archive/", ProductViewSet.as_view({'post': 'bulk_archive'}), name="product-bulk-archive"),
     path("bulk_unarchive/", ProductViewSet.as_view({'post': 'bulk_unarchive'}), name="product-bulk-unarchive"),
+    path("bulk-update/", ProductViewSet.as_view({'patch': 'bulk_update'}), name="product-bulk-update"),
     
     # Dependency validation endpoints
     path("categories/<int:category_id>/validate-archive/", validate_category_archiving, name="validate-category-archive"),
