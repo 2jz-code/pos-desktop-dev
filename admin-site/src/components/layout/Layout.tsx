@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	LogOut,
@@ -9,6 +9,8 @@ import {
 	PanelLeftOpen,
 	Sun,
 	Moon,
+	Zap,
+	Bell,
 } from "lucide-react";
 import { useNavigationRoutes } from "@/hooks/useNavigationRoutes";
 import { NavigationItem } from "@/components/navigation/NavigationItem";
@@ -56,6 +58,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
 	const { user, logout } = useAuth();
+	const location = useLocation();
 	const navigationRoutes = useNavigationRoutes();
 	const [isCollapsed, setIsCollapsed] = useState(
 		JSON.parse(localStorage.getItem("sidebar-collapsed") || "false")
@@ -75,76 +78,131 @@ export function Layout({ children }: LayoutProps) {
 		setTheme((current) => (current === "dark" ? "light" : "dark"));
 	}, []);
 
+	const getCurrentPageTitle = () => {
+		const route = navigationRoutes.find((r) => r.path === location.pathname);
+		return route?.title || "Dashboard";
+	};
+
 	return (
 		<div
 			className={cn(
-				"grid min-h-screen w-full bg-background text-foreground transition-[grid-template-columns] duration-300 ease-standard",
-				isCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]"
+				"relative grid min-h-screen w-full overflow-hidden bg-gradient-to-br from-background via-background to-primary/[0.02] text-foreground transition-[grid-template-columns] duration-200 ease-out",
+				isCollapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[260px_1fr]"
 			)}
 		>
-			{/* Desktop Sidebar */}
-			<div className="hidden border-r border-border/60 bg-sidebar/95 text-sidebar-foreground lg:block">
-				<div className="flex h-full max-h-screen flex-col backdrop-blur">
-					{/* Logo/Brand */}
-					<div className="flex h-[60px] items-center border-b border-sidebar-border/70 px-4">
-						<Link
-							to="/"
-							className="flex items-center gap-2 font-semibold text-sidebar-foreground"
-						>
-							<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
-								<PanelLeft className="h-4 w-4" />
-							</div>
-							{!isCollapsed && <span>Ajeen Admin</span>}
-						</Link>
-					</div>
-
-					{/* Navigation */}
-					<div className="flex-1 overflow-auto py-4">
-						<nav className="grid items-start gap-1 px-3 text-sm font-medium">
-							{navigationRoutes.map((route) => (
-								<NavigationItem
-									key={route.path}
-									route={route}
-									isCollapsed={isCollapsed}
-								/>
-							))}
-						</nav>
-					</div>
-
-					{/* Logout */}
-					<div className="mt-auto border-t border-sidebar-border/70 p-3">
-						<button
-							onClick={logout}
-							className={cn(
-								"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-								isCollapsed && "justify-center px-2"
-							)}
-						>
-							<LogOut className="h-4 w-4 flex-shrink-0" />
-							{!isCollapsed && <span className="truncate">Logout</span>}
-						</button>
-					</div>
-				</div>
+			{/* Subtle Background Pattern */}
+			<div className="pointer-events-none fixed inset-0 z-0">
+				<div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.08),transparent_50%)] dark:bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.12),transparent_50%)]" />
 			</div>
 
-			{/* Main Content Area */}
-			<div className="flex h-screen flex-col">
-				{/* Top Header */}
-				<header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border/60 bg-card/80 px-4 shadow-xs backdrop-blur lg:h-[60px] lg:px-6">
-					{/* Desktop Sidebar Toggle */}
+			{/* Sidebar */}
+			<aside className="relative z-10 hidden lg:block">
+				<div
+					className={cn(
+						"fixed left-0 top-0 h-screen border-r border-border/40 backdrop-blur-xl transition-all duration-200",
+						isCollapsed ? "w-[80px]" : "w-[260px]",
+						"bg-gradient-to-b from-card/95 to-card/90"
+					)}
+				>
+					<div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent dark:from-white/[0.02]" />
+
+					<div className="relative flex h-full flex-col">
+						{/* Logo */}
+						<div className="flex h-16 items-center justify-center border-b border-border/30 px-5">
+							<Link
+								to="/"
+								className="group flex items-center gap-3 transition-opacity hover:opacity-80"
+							>
+								<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20 transition-transform duration-200 group-hover:scale-105">
+									<Zap className="h-5 w-5 text-primary-foreground" />
+								</div>
+								{!isCollapsed && (
+									<span className="text-base font-semibold text-foreground">
+										Ajeen Admin
+									</span>
+								)}
+							</Link>
+						</div>
+
+						{/* Navigation */}
+						<div className="flex-1 overflow-auto px-3 py-5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border/20">
+							<nav className="space-y-1">
+								{navigationRoutes.map((route) => (
+									<NavigationItem
+										key={route.path}
+										route={route}
+										isCollapsed={isCollapsed}
+									/>
+								))}
+							</nav>
+						</div>
+
+						{/* User Card & Logout */}
+						<div className="border-t border-border/30 p-3">
+							{!isCollapsed && (
+								<div className="mb-3 rounded-lg border border-border/40 bg-muted/10 p-3">
+									<div className="flex items-center gap-3">
+										<div className="relative">
+											<img
+												className="h-9 w-9 rounded-full border-2 border-primary/30"
+												src={`https://avatar.vercel.sh/${
+													user?.username || user?.email || "user"
+												}.png`}
+												alt="Avatar"
+											/>
+											<div className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-success" />
+										</div>
+										<div className="flex-1 overflow-hidden">
+											<p className="truncate text-sm font-medium text-foreground">
+												{user?.username || user?.email}
+											</p>
+											<p className="truncate text-xs text-muted-foreground">
+												{user?.role}
+											</p>
+										</div>
+									</div>
+								</div>
+							)}
+							<button
+								onClick={logout}
+								className={cn(
+									"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive",
+									isCollapsed && "justify-center"
+								)}
+							>
+								<LogOut className="h-4 w-4" />
+								{!isCollapsed && <span>Logout</span>}
+							</button>
+						</div>
+					</div>
+				</div>
+			</aside>
+
+			{/* Main Content */}
+			<div className="relative z-10 flex h-screen flex-col">
+				{/* Header */}
+				<header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border/40 bg-card/80 px-6 backdrop-blur-xl transition-all duration-150">
+					{/* Sidebar Toggle */}
 					<Button
 						variant="outline"
 						size="icon"
 						onClick={() => setIsCollapsed(!isCollapsed)}
-						className="hidden border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:inline-flex"
+						className="hidden h-9 w-9 border-border/40 bg-background/50 transition-all duration-150 hover:bg-accent lg:inline-flex"
 					>
 						{isCollapsed ? (
 							<PanelLeftOpen className="h-4 w-4" />
 						) : (
 							<PanelLeftClose className="h-4 w-4" />
 						)}
-						<span className="sr-only">Toggle sidebar</span>
 					</Button>
+
+					{/* Page Title */}
+					<div className="hidden items-center gap-3 lg:flex">
+						<div className="h-6 w-px bg-border/40" />
+						<h2 className="text-sm font-semibold text-foreground">
+							{getCurrentPageTitle()}
+						</h2>
+					</div>
 
 					{/* Mobile Menu */}
 					<Sheet>
@@ -152,25 +210,24 @@ export function Layout({ children }: LayoutProps) {
 							<Button
 								variant="outline"
 								size="icon"
-								className="shrink-0 border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground lg:hidden"
+								className="h-9 w-9 border-border/40 bg-background/50 lg:hidden"
 							>
 								<Menu className="h-4 w-4" />
-								<span className="sr-only">Toggle navigation menu</span>
 							</Button>
 						</SheetTrigger>
 						<SheetContent
 							side="left"
-							className="flex flex-col gap-6 bg-sidebar text-sidebar-foreground"
+							className="flex flex-col gap-6 bg-card"
 						>
-							<nav className="grid gap-2 text-base font-medium">
+							<nav className="grid gap-2">
 								<Link
 									to="/dashboard"
-									className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent/60"
+									className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2"
 								>
-									<div className="rounded-lg bg-primary/20 p-1.5 text-primary ring-1 ring-inset ring-primary/40">
-										<PanelLeft className="h-4 w-4" />
+									<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80">
+										<Zap className="h-5 w-5 text-primary-foreground" />
 									</div>
-									<span>Ajeen Admin</span>
+									<span className="font-semibold">Ajeen Admin</span>
 								</Link>
 
 								{navigationRoutes.map((route) => (
@@ -182,13 +239,13 @@ export function Layout({ children }: LayoutProps) {
 									/>
 								))}
 							</nav>
-							<div className="mt-auto space-y-2 border-t border-sidebar-border/70 pt-4">
+							<div className="mt-auto border-t pt-4">
 								<button
 									onClick={logout}
-									className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+									className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-destructive/10 hover:text-destructive"
 								>
 									<LogOut className="h-4 w-4" />
-									<span className="truncate">Logout</span>
+									<span>Logout</span>
 								</button>
 							</div>
 						</SheetContent>
@@ -196,20 +253,33 @@ export function Layout({ children }: LayoutProps) {
 
 					<div className="flex-1" />
 
-					{/* Theme Toggle */}
-					<Button
-						variant="outline"
-						size="icon"
-						onClick={toggleTheme}
-						className="border-border/60 bg-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-					>
-						{theme === "dark" ? (
-							<Sun className="h-4 w-4" />
-						) : (
-							<Moon className="h-4 w-4" />
-						)}
-						<span className="sr-only">Toggle color theme</span>
-					</Button>
+					{/* Actions */}
+					<div className="flex items-center gap-2">
+						<Button
+							variant="outline"
+							size="icon"
+							className="relative h-9 w-9 border-border/40 bg-background/50 transition-all duration-150 hover:bg-accent"
+						>
+							<Bell className="h-4 w-4" />
+							<span className="absolute right-1 top-1 flex h-2 w-2">
+								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+								<span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+							</span>
+						</Button>
+
+						<Button
+							variant="outline"
+							size="icon"
+							onClick={toggleTheme}
+							className="h-9 w-9 border-border/40 bg-background/50 transition-all duration-150 hover:bg-accent"
+						>
+							{theme === "dark" ? (
+								<Sun className="h-4 w-4" />
+							) : (
+								<Moon className="h-4 w-4" />
+							)}
+						</Button>
+					</div>
 
 					{/* User Menu */}
 					<DropdownMenu>
@@ -217,39 +287,36 @@ export function Layout({ children }: LayoutProps) {
 							<Button
 								variant="ghost"
 								size="icon"
-								className="rounded-full bg-transparent hover:bg-muted/40"
+								className="h-9 w-9 rounded-full"
 							>
-								<div className="relative">
-									<img
-										className="h-8 w-8 rounded-full border border-border/60"
-										src={`https://avatar.vercel.sh/${
-											user?.username || user?.email || "user"
-										}.png`}
-										alt="Avatar"
-									/>
-								</div>
-								<span className="sr-only">Toggle user menu</span>
+								<img
+									className="h-8 w-8 rounded-full border-2 border-primary/30"
+									src={`https://avatar.vercel.sh/${
+										user?.username || user?.email || "user"
+									}.png`}
+									alt="Avatar"
+								/>
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
 							align="end"
-							className="border border-border/60 bg-card text-card-foreground"
+							className="w-56 border border-border/40"
 						>
-							<DropdownMenuLabel className="text-sm font-medium text-foreground">
-								My Account
+							<DropdownMenuLabel>
+								<div className="flex flex-col space-y-1">
+									<p className="text-sm font-medium">
+										{user?.username || "User"}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										{user?.email}
+									</p>
+								</div>
 							</DropdownMenuLabel>
-							<DropdownMenuSeparator className="-mx-1 border-border/60" />
-							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
-								Settings
-							</DropdownMenuItem>
-							<DropdownMenuItem className="text-muted-foreground hover:text-foreground">
-								Support
-							</DropdownMenuItem>
-							<DropdownMenuSeparator className="-mx-1 border-border/60" />
-							<DropdownMenuItem
-								onClick={logout}
-								className="text-muted-foreground hover:text-foreground"
-							>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem>Settings</DropdownMenuItem>
+							<DropdownMenuItem>Support</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onClick={logout}>
 								<LogOut className="mr-2 h-4 w-4" />
 								<span>Logout</span>
 							</DropdownMenuItem>
@@ -257,8 +324,8 @@ export function Layout({ children }: LayoutProps) {
 					</DropdownMenu>
 				</header>
 
-				{/* Main Content */}
-				<main className="flex flex-1 flex-col overflow-y-auto bg-background">
+				{/* Main */}
+				<main className="flex-1 overflow-y-auto">
 					{children}
 				</main>
 			</div>
