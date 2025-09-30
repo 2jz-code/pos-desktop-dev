@@ -291,59 +291,67 @@ export const StockHistoryPage = () => {
 
 			{/* Summary Cards */}
 			<div className="grid gap-4 md:grid-cols-4 flex-shrink-0">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Total Operations
 						</CardTitle>
-						<History className="h-4 w-4 text-muted-foreground" />
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<History className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">{summaryStats.total}</div>
-						<p className="text-xs text-muted-foreground">
+						<div className="text-3xl font-bold text-foreground">{summaryStats.total}</div>
+						<p className="text-xs text-muted-foreground mt-1">
 							All recorded operations
 						</p>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Stock Creations
 						</CardTitle>
-						<Plus className="h-4 w-4 text-emerald-600" />
+						<div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+							<Plus className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-emerald-600">
+						<div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
 							{summaryStats.creations}
 						</div>
-						<p className="text-xs text-muted-foreground">New stock entries</p>
+						<p className="text-xs text-muted-foreground mt-1">New stock entries</p>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Adjustments</CardTitle>
-						<Clock className="h-4 w-4 text-primary" />
+						<CardTitle className="text-sm font-medium text-muted-foreground">Adjustments</CardTitle>
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-primary">
+						<div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
 							{summaryStats.adjustments}
 						</div>
-						<p className="text-xs text-muted-foreground">Stock modifications</p>
+						<p className="text-xs text-muted-foreground mt-1">Stock modifications</p>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Transfers</CardTitle>
-						<ArrowUpDown className="h-4 w-4 text-purple-600" />
+						<CardTitle className="text-sm font-medium text-muted-foreground">Transfers</CardTitle>
+						<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+							<ArrowUpDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-purple-600">
+						<div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
 							{summaryStats.transfers}
 						</div>
-						<p className="text-xs text-muted-foreground">Location movements</p>
+						<p className="text-xs text-muted-foreground mt-1">Location movements</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -444,97 +452,103 @@ export const StockHistoryPage = () => {
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="flex-grow overflow-hidden min-h-0">
+						<CardContent className="flex-grow overflow-hidden min-h-0 p-0">
 							<div className="h-full overflow-y-auto">
 								{filteredHistoryData && filteredHistoryData.length > 0 ? (
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead>Timestamp</TableHead>
-												<TableHead>Operation</TableHead>
-												<TableHead>Product</TableHead>
-												<TableHead>Location</TableHead>
-												<TableHead>User</TableHead>
-												<TableHead className="text-right">Change</TableHead>
-												<TableHead className="text-right">New Qty</TableHead>
-												<TableHead>Reason</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{filteredHistoryData.map((entry) => {
-												const operationInfo = getOperationTypeInfo(
-													entry.operation_type
-												);
-												const Icon = operationInfo.icon;
+									<div className="rounded-lg border border-border overflow-hidden mx-7 mb-7">
+										<Table>
+											<TableHeader>
+												<TableRow className="bg-muted/50 hover:bg-muted/50">
+													<TableHead className="font-semibold text-foreground">Timestamp</TableHead>
+													<TableHead className="font-semibold text-foreground">Operation</TableHead>
+													<TableHead className="font-semibold text-foreground">Product</TableHead>
+													<TableHead className="font-semibold text-foreground">Location</TableHead>
+													<TableHead className="font-semibold text-foreground">User</TableHead>
+													<TableHead className="text-right font-semibold text-foreground">Change</TableHead>
+													<TableHead className="text-right font-semibold text-foreground">New Qty</TableHead>
+													<TableHead className="font-semibold text-foreground">Reason</TableHead>
+												</TableRow>
+											</TableHeader>
+											<TableBody>
+												{filteredHistoryData.map((entry) => {
+													const operationInfo = getOperationTypeInfo(
+														entry.operation_type
+													);
+													const Icon = operationInfo.icon;
 
-												return (
-													<TableRow key={entry.id}>
-														<TableCell className="text-sm">
-															<div className="flex items-center gap-2">
-																<Calendar className="h-4 w-4 text-muted-foreground" />
-																{formatTimestamp(entry.timestamp)}
-															</div>
-														</TableCell>
-														<TableCell>
-															<Badge className={operationInfo.color}>
-																<Icon className="h-3 w-3 mr-1" />
-																{operationInfo.label}
-															</Badge>
-														</TableCell>
-														<TableCell className="font-medium">
-															<div className="flex items-center gap-2">
-																<Package className="h-4 w-4 text-muted-foreground" />
-																{entry.product.name}
-															</div>
-														</TableCell>
-														<TableCell>
-															<div className="flex items-center gap-2">
-																<MapPin className="h-4 w-4 text-muted-foreground" />
-																{entry.location.name}
-															</div>
-														</TableCell>
-														<TableCell>
-															<div className="flex items-center gap-2">
-																<User className="h-4 w-4 text-muted-foreground" />
-																{entry.user
-																	? `${entry.user.first_name} ${entry.user.last_name}`
-																	: "System"}
-															</div>
-														</TableCell>
-														<TableCell className="text-right font-mono">
-															<span
-																className={
-																	entry.quantity_change >= 0
-																		? "text-emerald-600"
-																		: "text-destructive"
-																}
-															>
-																{formatQuantityChange(
-																	entry.quantity_change,
-																	entry.operation_type
-																)}
-															</span>
-														</TableCell>
-														<TableCell className="text-right font-mono">
-															{entry.new_quantity}
-														</TableCell>
-														<TableCell>
-															<ReasonBadge
-																entry={entry}
-																onFilterByReferenceId={(referenceId) =>
-																	setSearchQuery(referenceId)
-																}
-															/>
-														</TableCell>
-													</TableRow>
-												);
-											})}
-										</TableBody>
-									</Table>
+													return (
+														<TableRow key={entry.id} className="hover:bg-muted/30 transition-colors">
+															<TableCell className="py-4 text-sm">
+																<div className="flex items-center gap-2">
+																	<Calendar className="h-4 w-4 text-muted-foreground" />
+																	<span className="text-foreground">{formatTimestamp(entry.timestamp)}</span>
+																</div>
+															</TableCell>
+															<TableCell className="py-4">
+																<Badge className={operationInfo.color}>
+																	<Icon className="h-3 w-3 mr-1" />
+																	{operationInfo.label}
+																</Badge>
+															</TableCell>
+															<TableCell className="py-4">
+																<div className="flex items-center gap-2">
+																	<Package className="h-4 w-4 text-muted-foreground" />
+																	<span className="font-semibold text-foreground">{entry.product.name}</span>
+																</div>
+															</TableCell>
+															<TableCell className="py-4">
+																<div className="flex items-center gap-2">
+																	<MapPin className="h-4 w-4 text-muted-foreground" />
+																	<span className="text-foreground">{entry.location.name}</span>
+																</div>
+															</TableCell>
+															<TableCell className="py-4">
+																<div className="flex items-center gap-2">
+																	<User className="h-4 w-4 text-muted-foreground" />
+																	<span className="text-foreground">
+																		{entry.user
+																			? `${entry.user.first_name} ${entry.user.last_name}`
+																			: "System"}
+																	</span>
+																</div>
+															</TableCell>
+															<TableCell className="py-4 text-right">
+																<span
+																	className={`font-mono font-semibold text-base ${
+																		entry.quantity_change >= 0
+																			? "text-emerald-600 dark:text-emerald-400"
+																			: "text-destructive"
+																	}`}
+																>
+																	{formatQuantityChange(
+																		entry.quantity_change,
+																		entry.operation_type
+																	)}
+																</span>
+															</TableCell>
+															<TableCell className="py-4 text-right">
+																<span className="font-mono font-semibold text-base text-foreground">
+																	{entry.new_quantity}
+																</span>
+															</TableCell>
+															<TableCell className="py-4">
+																<ReasonBadge
+																	entry={entry}
+																	onFilterByReferenceId={(referenceId) =>
+																		setSearchQuery(referenceId)
+																	}
+																/>
+															</TableCell>
+														</TableRow>
+													);
+												})}
+											</TableBody>
+										</Table>
+									</div>
 								) : (
-									<div className="flex flex-col items-center justify-center h-full text-center py-10">
+									<div className="flex flex-col items-center justify-center h-full text-center py-10 px-7">
 										<History className="h-12 w-12 text-muted-foreground" />
-										<h3 className="mt-4 text-lg font-semibold">
+										<h3 className="mt-4 text-lg font-semibold text-foreground">
 											No stock history found
 										</h3>
 										<p className="mt-2 text-sm text-muted-foreground">

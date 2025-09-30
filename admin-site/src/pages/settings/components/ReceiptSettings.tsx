@@ -64,12 +64,16 @@ export function ReceiptSettings() {
 
 	if (isLoading) {
 		return (
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Receipt className="h-5 w-5" />
-						Receipt Settings
-					</CardTitle>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+							<Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Receipt Settings</CardTitle>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<div className="flex items-center justify-center py-8">
@@ -86,15 +90,19 @@ export function ReceiptSettings() {
 	}
 
 	return (
-		<Card>
+		<Card className="border-border bg-card">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					<Receipt className="h-5 w-5" />
-					Receipt Settings
-				</CardTitle>
-				<CardDescription>
-					Customize the header and footer text that appears on customer receipts
-				</CardDescription>
+				<div className="flex items-center gap-2">
+					<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+						<Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+					</div>
+					<div>
+						<CardTitle className="text-foreground">Receipt Settings</CardTitle>
+						<CardDescription>
+							Customize the header and footer text that appears on customer receipts
+						</CardDescription>
+					</div>
+				</div>
 			</CardHeader>
 			<CardContent>
 				<Form {...form}>

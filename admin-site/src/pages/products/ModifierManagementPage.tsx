@@ -348,25 +348,30 @@ const ModifierManagementPage: React.FC = () => {
 								filteredModifierSets.map((modifierSet) => (
 									<Card
 										key={modifierSet.id}
-										className="hover:shadow-lg transition-shadow"
+										className="hover:shadow-lg transition-all duration-200 border-border bg-card cursor-pointer"
+										onClick={() => handleEditModifierSet(modifierSet)}
 									>
-										<CardHeader className="pb-2">
-											<div className="flex items-start justify-between">
-												<div className="flex-1">
-													<CardTitle className="text-lg">
-														{modifierSet.name}
-													</CardTitle>
-													<CardDescription className="text-sm text-gray-500">
+										<CardHeader className="pb-3">
+											<div className="flex items-start justify-between gap-3">
+												<div className="flex-1 min-w-0">
+													<div className="flex items-center gap-2 mb-1">
+														<div className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
+														<CardTitle className="text-base font-bold text-foreground truncate">
+															{modifierSet.name}
+														</CardTitle>
+													</div>
+													<CardDescription className="text-xs text-muted-foreground font-mono truncate">
 														{modifierSet.internal_name}
 													</CardDescription>
 												</div>
-												<div className="flex gap-1">
+												<div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
 													<Button
 														variant="ghost"
 														size="sm"
 														onClick={() => handleEditModifierSet(modifierSet)}
+														className="h-8 w-8 p-0"
 													>
-														<Edit3 className="h-4 w-4" />
+														<Edit3 className="h-3.5 w-3.5" />
 													</Button>
 													<Button
 														variant="ghost"
@@ -374,8 +379,9 @@ const ModifierManagementPage: React.FC = () => {
 														onClick={() =>
 															handleDuplicateModifierSet(modifierSet)
 														}
+														className="h-8 w-8 p-0"
 													>
-														<Copy className="h-4 w-4" />
+														<Copy className="h-3.5 w-3.5" />
 													</Button>
 													<Button
 														variant="ghost"
@@ -383,80 +389,90 @@ const ModifierManagementPage: React.FC = () => {
 														onClick={() =>
 															handleDeleteModifierSet(modifierSet)
 														}
-														className="text-destructive hover:text-red-700"
+														className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
 													>
-														<Trash2 className="h-4 w-4" />
+														<Trash2 className="h-3.5 w-3.5" />
 													</Button>
 												</div>
 											</div>
 										</CardHeader>
-										<CardContent className="pt-2">
-											<div className="space-y-3">
-												<div className="flex items-center gap-2">
+										<CardContent className="pt-0 space-y-3">
+											{/* Type and Conditional Badges */}
+											<div className="flex items-center gap-2 flex-wrap">
+												<Badge
+													variant="outline"
+													className={getTypeColor(
+														modifierSet.selection_type,
+														modifierSet.min_selections > 0
+													)}
+												>
+													<span className="mr-1.5">{getTypeIcon(modifierSet.selection_type)}</span>
+													{modifierSet.selection_type === "MULTIPLE"
+														? "Multi"
+														: "Single"}
+													{modifierSet.min_selections > 0 && " • Required"}
+												</Badge>
+												{modifierSet.triggered_by_option && (
 													<Badge
 														variant="outline"
-														className={getTypeColor(
-															modifierSet.selection_type,
-															modifierSet.min_selections > 0
-														)}
+														className="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-400"
 													>
-														{getTypeIcon(modifierSet.selection_type)}{" "}
-														{modifierSet.selection_type === "MULTIPLE"
-															? "Multi"
-															: "Single"}
-														{modifierSet.min_selections > 0 && " • Required"}
+														<Zap className="mr-1 h-3 w-3" />
+														Conditional
 													</Badge>
-													{modifierSet.triggered_by_option && (
-														<Badge
-															variant="outline"
-															className="bg-orange-100 border-orange-300 text-orange-800"
-														>
-															<Zap className="mr-1 h-3 w-3" />
-															Conditional
-														</Badge>
-													)}
+												)}
+											</div>
+
+											{/* Stats Row */}
+											<div className="flex items-center gap-4 text-sm text-muted-foreground">
+												<div className="flex items-center gap-1.5">
+													<Settings className="h-3.5 w-3.5" />
+													<span className="font-medium text-foreground">
+														{modifierSet.options?.length || 0}
+													</span>
+													<span>option{(modifierSet.options?.length || 0) !== 1 ? 's' : ''}</span>
 												</div>
-												<div className="text-sm text-gray-600">
-													<div className="flex items-center gap-4">
-														<span className="flex items-center gap-1">
-															<Settings className="h-3 w-3" />
-															{modifierSet.options?.length || 0} options
-														</span>
-														<span className="flex items-center gap-1">
-															<ShoppingBag className="h-3 w-3" />
-															{modifierSet.product_count || 0} products
-														</span>
-													</div>
+												<div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+												<div className="flex items-center gap-1.5">
+													<ShoppingBag className="h-3.5 w-3.5" />
+													<span className="font-medium text-foreground">
+														{modifierSet.product_count || 0}
+													</span>
+													<span>product{(modifierSet.product_count || 0) !== 1 ? 's' : ''}</span>
 												</div>
-												{modifierSet.options &&
-													modifierSet.options.length > 0 && (
-														<div className="flex flex-wrap gap-1">
+											</div>
+
+											{/* Option Preview */}
+											{modifierSet.options &&
+												modifierSet.options.length > 0 && (
+													<div className="pt-2 border-t border-border">
+														<div className="flex flex-wrap gap-1.5">
 															{modifierSet.options.slice(0, 3).map((option) => (
 																<Badge
 																	key={option.id}
 																	variant="secondary"
-																	className="text-xs"
+																	className="text-xs font-normal"
 																>
 																	{option.name}
-																	{option.price_delta !== 0 && (
-																		<span className="ml-1">
-																			{option.price_delta > 0 ? "+" : ""}$
-																			{option.price_delta}
+																	{option.price_delta != 0 && (
+																		<span className="ml-1 font-medium">
+																			{Number(option.price_delta) > 0 ? "+" : ""}$
+																			{Number(option.price_delta).toFixed(2)}
 																		</span>
 																	)}
 																</Badge>
 															))}
 															{modifierSet.options.length > 3 && (
 																<Badge
-																	variant="secondary"
+																	variant="outline"
 																	className="text-xs"
 																>
 																	+{modifierSet.options.length - 3} more
 																</Badge>
 															)}
 														</div>
-													)}
-											</div>
+													</div>
+												)}
 										</CardContent>
 									</Card>
 								))

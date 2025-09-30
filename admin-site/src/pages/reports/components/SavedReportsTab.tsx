@@ -47,6 +47,9 @@ import {
 	Trash2,
 	Download,
 	RefreshCw,
+	FileText,
+	Calendar,
+	Clock,
 } from "lucide-react";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
@@ -206,11 +209,11 @@ export function SavedReportsTab() {
 	const getStatusBadge = (status: string) => {
 		switch (status) {
 			case "active":
-				return <Badge className="bg-green-100 text-green-800">Active</Badge>;
+				return <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700">Active</Badge>;
 			case "paused":
-				return <Badge variant="secondary">Paused</Badge>;
+				return <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600">Paused</Badge>;
 			case "error":
-				return <Badge variant="destructive">Error</Badge>;
+				return <Badge className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-700">Error</Badge>;
 			default:
 				return <Badge variant="outline">{status}</Badge>;
 		}
@@ -381,20 +384,25 @@ export function SavedReportsTab() {
 			{/* Reports Grid */}
 			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{reports.map((report) => (
-					<Card key={report.id}>
+					<Card key={report.id} className="border-border bg-card hover:shadow-md transition-shadow">
 						<CardHeader className="pb-3">
-							<div className="flex items-start justify-between">
-								<div className="space-y-1">
-									<CardTitle className="text-base">{report.name}</CardTitle>
-									<CardDescription>
-										{getReportTypeLabel(report.report_type)}
-									</CardDescription>
+							<div className="flex items-start justify-between gap-2">
+								<div className="flex items-start gap-3 flex-1 min-w-0">
+									<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex-shrink-0 mt-0.5">
+										<FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+									</div>
+									<div className="space-y-1 flex-1 min-w-0">
+										<CardTitle className="text-base text-foreground">{report.name}</CardTitle>
+										<CardDescription>
+											{getReportTypeLabel(report.report_type)}
+										</CardDescription>
+									</div>
 								</div>
 								<DropdownMenu>
 									<DropdownMenuTrigger asChild>
 										<Button
 											variant="ghost"
-											className="h-8 w-8 p-0"
+											className="h-8 w-8 p-0 flex-shrink-0"
 										>
 											<MoreHorizontal className="h-4 w-4" />
 										</Button>
@@ -432,41 +440,53 @@ export function SavedReportsTab() {
 							</div>
 						</CardHeader>
 						<CardContent className="space-y-4">
-							<div className="flex items-center justify-between">
+							<div className="flex items-center justify-between gap-2">
 								{getStatusBadge(report.status)}
 								<Badge
 									variant="outline"
-									className="capitalize"
+									className="capitalize bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700"
 								>
 									{report.format}
 								</Badge>
 							</div>
 
-							<div className="space-y-2 text-sm">
-								<div className="flex items-center justify-between">
-									<span className="text-muted-foreground">Schedule:</span>
-									<span className="capitalize">{report.schedule}</span>
+							<div className="space-y-2.5 text-sm">
+								<div className="flex items-center justify-between p-2 bg-muted/30 rounded">
+									<div className="flex items-center gap-1.5 text-muted-foreground">
+										<Calendar className="h-3.5 w-3.5" />
+										<span>Schedule:</span>
+									</div>
+									<span className="capitalize font-medium text-foreground">{report.schedule}</span>
 								</div>
 								{report.last_run && (
-									<div className="flex items-center justify-between">
-										<span className="text-muted-foreground">Last Run:</span>
-										<span>
+									<div className="flex items-center justify-between p-2 bg-muted/30 rounded">
+										<div className="flex items-center gap-1.5 text-muted-foreground">
+											<Clock className="h-3.5 w-3.5" />
+											<span>Last Run:</span>
+										</div>
+										<span className="font-medium text-foreground">
 											{format(new Date(report.last_run), "MMM dd, HH:mm")}
 										</span>
 									</div>
 								)}
 								{report.next_run && (
-									<div className="flex items-center justify-between">
-										<span className="text-muted-foreground">Next Run:</span>
-										<span>
+									<div className="flex items-center justify-between p-2 bg-muted/30 rounded">
+										<div className="flex items-center gap-1.5 text-muted-foreground">
+											<Clock className="h-3.5 w-3.5" />
+											<span>Next Run:</span>
+										</div>
+										<span className="font-medium text-foreground">
 											{format(new Date(report.next_run), "MMM dd, HH:mm")}
 										</span>
 									</div>
 								)}
 								{report.file_size_mb > 0 && (
-									<div className="flex items-center justify-between">
-										<span className="text-muted-foreground">File Size:</span>
-										<span>{report.file_size_mb} MB</span>
+									<div className="flex items-center justify-between p-2 bg-muted/30 rounded">
+										<div className="flex items-center gap-1.5 text-muted-foreground">
+											<FileText className="h-3.5 w-3.5" />
+											<span>File Size:</span>
+										</div>
+										<span className="font-medium text-foreground">{report.file_size_mb} MB</span>
 									</div>
 								)}
 							</div>

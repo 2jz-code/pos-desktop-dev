@@ -32,6 +32,10 @@ import {
 	CheckCircle,
 	Download,
 	RefreshCw,
+	Receipt,
+	BarChart3,
+	Clock,
+	Wallet,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -266,118 +270,141 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				</div>
 			</div>
 
-			{/* Key Metrics - Simplified to 4 clear metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Collected
-						</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							${successfullyProcessed.toLocaleString()}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Successfully processed payments
-						</p>
-					</CardContent>
-				</Card>
+			{/* Key Metrics */}
+			<div>
+				<div className="flex items-center gap-2 mb-4">
+					<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+						<Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+					</div>
+					<div>
+						<h3 className="text-lg font-semibold text-foreground">Payment Metrics</h3>
+						<p className="text-sm text-muted-foreground">Overview of payment processing for the selected period</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Total Collected
+							</CardTitle>
+							<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+								<DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								${successfullyProcessed.toLocaleString()}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								Successfully processed payments
+							</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Total Refunds</CardTitle>
-						<RefreshCw className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-orange-600">
-							${totalRefunds.toLocaleString()}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							{refundedCount} transactions refunded
-						</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Total Refunds</CardTitle>
+							<div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+								<RefreshCw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+								${totalRefunds.toLocaleString()}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								{refundedCount} transactions refunded
+							</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total After Refunds
-						</CardTitle>
-						<CreditCard className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold text-green-600">
-							${netRevenue.toLocaleString()}
-						</div>
-						<p className="text-xs text-muted-foreground">After refunds</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Total After Refunds
+							</CardTitle>
+							<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+								<CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-green-600 dark:text-green-400">
+								${netRevenue.toLocaleString()}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">After refunds</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-						<TrendingUp className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{processingSuccessRate.toFixed(1)}%
-						</div>
-						<p className="text-xs text-muted-foreground">
-							{successfulCount} of {totalTransactions} succeeded
-						</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Success Rate</CardTitle>
+							<div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+								<TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{processingSuccessRate.toFixed(1)}%
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								{successfulCount} of {totalTransactions} succeeded
+							</p>
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 
 			{/* Payment Methods Breakdown */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Payment Methods</CardTitle>
-					<CardDescription>
-						Breakdown by payment method with trends
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+							<CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Payment Methods</CardTitle>
+							<CardDescription>
+								Breakdown by payment method with trends
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
-					<div className="space-y-4">
+					<div className="space-y-3">
 						{data?.payment_methods?.map((method, index) => (
 							<div
 								key={method.method}
-								className="flex items-center justify-between p-4 border rounded-lg"
+								className="flex items-center justify-between p-4 border border-border rounded-lg hover:shadow-sm transition-shadow bg-muted/20"
 							>
-								<div className="flex items-center space-x-4">
+								<div className="flex items-center space-x-4 flex-1 min-w-0">
 									<div
-										className="w-4 h-4 rounded-full"
+										className="w-3 h-3 rounded-full flex-shrink-0"
 										style={{ backgroundColor: COLORS[index % COLORS.length] }}
 									/>
-									<div>
-										<p className="font-medium capitalize">
+									<div className="flex-1 min-w-0">
+										<p className="font-semibold capitalize text-foreground">
 											{method.method.replace("_", " ")}
 										</p>
 										<p className="text-sm text-muted-foreground">
-											{method.count} transactions • Avg: $
-											{Number(method.avg_amount || 0).toFixed(2)}
+											{method.count} transactions • Avg: ${Number(method.avg_amount || 0).toFixed(2)}
 										</p>
 										{Number(method.refunded_count || 0) > 0 && (
-											<p className="text-xs text-red-500">
-												{method.refunded_count} refunds (-$
-												{Number(method.refunded_amount || 0).toFixed(2)})
+											<p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+												{method.refunded_count} refunds (-${Number(method.refunded_amount || 0).toFixed(2)})
 											</p>
 										)}
 									</div>
 								</div>
-								<div className="text-right space-y-1">
-									<div className="flex items-center space-x-2">
+								<div className="text-right space-y-1 flex-shrink-0 ml-4">
+									<div className="flex items-center space-x-2 justify-end">
 										<div className="text-right">
-											<div className="font-medium">
+											<div className="text-xl font-bold text-foreground">
 												${Number(method.amount || 0).toLocaleString()}
 											</div>
-											<div className="text-sm text-muted-foreground">
+											<div className="text-xs text-muted-foreground">
 												{Number(method.processing_fees || 0) > 0 && (
 													<span>
-														Fees: $
-														{Number(method.processing_fees || 0).toFixed(2)} |{" "}
+														Fees: ${Number(method.processing_fees || 0).toFixed(2)} |{" "}
 													</span>
 												)}
 												{Number(method.percentage || 0).toFixed(1)}%
@@ -386,6 +413,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 										{method.trend !== 0 && (
 											<Badge
 												variant={method.trend > 0 ? "default" : "secondary"}
+												className="flex-shrink-0"
 											>
 												{method.trend > 0 ? (
 													<TrendingUp className="mr-1 h-3 w-3" />
@@ -405,10 +433,17 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 			{/* Charts Row */}
 			<div className="grid gap-4 md:grid-cols-2">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Payment Volume Trend</CardTitle>
-						<CardDescription>Daily payment volume over time</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+								<BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Payment Volume Trend</CardTitle>
+								<CardDescription>Daily payment volume over time</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ResponsiveContainer
@@ -416,15 +451,17 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 							height={300}
 						>
 							<LineChart data={data?.daily_volume || []}>
-								<CartesianGrid strokeDasharray="3 3" />
+								<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 								<XAxis
 									dataKey="date"
 									tickFormatter={(value) =>
 										format(reportsService.parseLocalDate(value), "MMM dd")
 									}
+									className="text-muted-foreground"
 								/>
 								<YAxis
 									tickFormatter={(value) => `$${value.toLocaleString()}`}
+									className="text-muted-foreground"
 								/>
 								<Tooltip
 									labelFormatter={(value) =>
@@ -438,19 +475,27 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 								<Line
 									type="monotone"
 									dataKey="amount"
-									stroke="#8884d8"
+									stroke="rgb(99, 102, 241)"
 									strokeWidth={2}
-									dot={{ fill: "#8884d8" }}
+									dot={{ fill: "rgb(99, 102, 241)", r: 4 }}
+									activeDot={{ r: 6 }}
 								/>
 							</LineChart>
 						</ResponsiveContainer>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Payment Distribution</CardTitle>
-						<CardDescription>Share of total payment volume</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+								<Wallet className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Payment Distribution</CardTitle>
+								<CardDescription>Share of total payment volume</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ResponsiveContainer
@@ -466,7 +511,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 									label={({ method, percentage }) =>
 										`${method} (${percentage.toFixed(1)}%)`
 									}
-									outerRadius={80}
+									outerRadius={100}
 									fill="#8884d8"
 									dataKey="amount"
 								>
@@ -487,48 +532,67 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 			</div>
 
 			{/* Processing Breakdown */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Transaction Breakdown</CardTitle>
-					<CardDescription>
-						Detailed transaction status breakdown
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-pink-50 dark:bg-pink-900/20 rounded-lg">
+							<Receipt className="h-4 w-4 text-pink-600 dark:text-pink-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Transaction Breakdown</CardTitle>
+							<CardDescription>
+								Detailed transaction status breakdown
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<div className="grid gap-4 md:grid-cols-4">
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Successful</p>
-							<p className="text-2xl font-bold text-green-600">
+						<div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+							<div className="flex items-center gap-2 mb-2">
+								<CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+								<p className="text-sm font-medium text-muted-foreground">Successful</p>
+							</div>
+							<p className="text-3xl font-bold text-green-600 dark:text-green-400">
 								{successfulCount.toLocaleString()}
 							</p>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-muted-foreground mt-1">
 								${successfullyProcessed.toLocaleString()}
 							</p>
 						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Refunded</p>
-							<p className="text-2xl font-bold text-orange-600">
+						<div className="p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+							<div className="flex items-center gap-2 mb-2">
+								<RefreshCw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+								<p className="text-sm font-medium text-muted-foreground">Refunded</p>
+							</div>
+							<p className="text-3xl font-bold text-orange-600 dark:text-orange-400">
 								{refundedCount.toLocaleString()}
 							</p>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-muted-foreground mt-1">
 								${refundedAmount.toLocaleString()}
 							</p>
 						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Failed</p>
-							<p className="text-2xl font-bold text-red-600">
+						<div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+							<div className="flex items-center gap-2 mb-2">
+								<AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+								<p className="text-sm font-medium text-muted-foreground">Failed</p>
+							</div>
+							<p className="text-3xl font-bold text-red-600 dark:text-red-400">
 								{failedCount.toLocaleString()}
 							</p>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-muted-foreground mt-1">
 								${failedAmount.toLocaleString()}
 							</p>
 						</div>
-						<div className="space-y-2">
-							<p className="text-sm font-medium">Canceled</p>
-							<p className="text-2xl font-bold text-muted-foreground">
+						<div className="p-4 bg-muted/30 border border-border rounded-lg">
+							<div className="flex items-center gap-2 mb-2">
+								<AlertCircle className="h-4 w-4 text-muted-foreground" />
+								<p className="text-sm font-medium text-muted-foreground">Canceled</p>
+							</div>
+							<p className="text-3xl font-bold text-foreground">
 								{canceledCount.toLocaleString()}
 							</p>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-muted-foreground mt-1">
 								${canceledAmount.toLocaleString()}
 							</p>
 						</div>

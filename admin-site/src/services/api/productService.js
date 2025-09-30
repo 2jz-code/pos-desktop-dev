@@ -37,6 +37,14 @@ export const bulkUpdateProducts = (data) => {
 	return apiClient.patch("/products/bulk-update/", data);
 };
 
+export const bulkArchiveProducts = (ids) => {
+	return apiClient.post("/products/bulk_archive/", { ids });
+};
+
+export const bulkUnarchiveProducts = (ids) => {
+	return apiClient.post("/products/bulk_unarchive/", { ids });
+};
+
 export const duplicateProduct = (id) => {
 	return apiClient.post(`/products/${id}/duplicate/`);
 };
@@ -93,6 +101,8 @@ export default {
 	unarchiveProduct,
 	getProductPerformance,
 	bulkUpdateProducts,
+	bulkArchiveProducts,
+	bulkUnarchiveProducts,
 	duplicateProduct,
 	getAllActiveProducts,
 	getAllProducts,

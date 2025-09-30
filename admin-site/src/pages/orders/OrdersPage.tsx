@@ -1,15 +1,25 @@
 import { useNavigate } from "react-router-dom";
 import { getAllOrders, voidOrder } from "@/services/api/orderService";
 import { Badge } from "@/components/ui/badge";
-import { TableCell } from "@/components/ui/table";
+import { TableCell, TableHead } from "@/components/ui/table";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
+	DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { EllipsisVertical, ClipboardList } from "lucide-react";
+import {
+	EllipsisVertical,
+	ClipboardList,
+	Eye,
+	Ban,
+	Filter,
+	X,
+	RotateCw,
+} from "lucide-react";
+import { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -22,7 +32,8 @@ import {
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { PaginationControls } from "@/components/ui/pagination";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { formatCurrency } from "@ajeen/ui";
 import {
 	getStatusConfig,
 	getPaymentStatusConfig,
@@ -48,6 +59,7 @@ export default function OrdersPage() {
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const { user } = useAuth();
+	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	// Use shared orders data hook
 	const {
@@ -75,6 +87,16 @@ export default function OrdersPage() {
 		refetch
 	});
 
+	const handleRefresh = async () => {
+		setIsRefreshing(true);
+		await refetch();
+		setIsRefreshing(false);
+		toast({
+			title: "Refreshed",
+			description: "Orders list has been updated.",
+		});
+	};
+
 
 	// Use shared status configurations
 	const getStatusBadgeVariant = (status: string) => {
@@ -85,92 +107,149 @@ export default function OrdersPage() {
 		return getPaymentStatusConfig(status).variant;
 	};
 
+	// Status dot colors
+	const getStatusDotColor = (status: string) => {
+		switch (status) {
+			case "COMPLETED":
+				return "bg-emerald-500";
+			case "PENDING":
+				return "bg-yellow-500";
+			case "HOLD":
+				return "bg-blue-500";
+			case "CANCELLED":
+			case "VOID":
+				return "bg-red-500";
+			default:
+				return "bg-gray-500";
+		}
+	};
+
+	const getPaymentDotColor = (status: string) => {
+		switch (status) {
+			case "PAID":
+				return "bg-emerald-500";
+			case "PARTIALLY_PAID":
+				return "bg-yellow-500";
+			case "UNPAID":
+				return "bg-red-500";
+			case "REFUNDED":
+			case "PARTIALLY_REFUNDED":
+				return "bg-gray-500";
+			default:
+				return "bg-gray-400";
+		}
+	};
 
 	const headers = [
-		{ label: "Order ID" },
-		{ label: "Status" },
-		{ label: "Payment" },
-		{ label: "Type" },
-		{ label: "Total", className: "text-right" },
-		{ label: "Items" },
-		{ label: "Date" },
-		{ label: "Actions", className: "text-right" },
+		{ label: "Order", className: "pl-6 w-[200px]" },
+		{ label: "Customer", className: "w-[180px]" },
+		{ label: "Status", className: "w-[160px]" },
+		{ label: "Amount", className: "text-right w-[120px]" },
+		{ label: "Time", className: "w-[140px]" },
+		{ label: "", className: "text-right pr-6 w-[100px]" },
 	];
 
 	const renderOrderRow = (order: Order) => (
 		<>
-			<TableCell className="font-mono text-xs text-foreground">
-				{order.order_number}
+			{/* Order Number - ENLARGED */}
+			<TableCell className="pl-6 py-3">
+				<div className="flex flex-col gap-0.5">
+					<span className="font-mono text-base font-bold text-foreground">
+						#{order.order_number}
+					</span>
+					<span className="text-xs text-muted-foreground">
+						{order.item_count} {order.item_count === 1 ? "item" : "items"}
+					</span>
+				</div>
 			</TableCell>
-			<TableCell>
-				<Badge
-					variant={getStatusBadgeVariant(order.status)}
-					className="font-medium"
-				>
-					{order.status}
-				</Badge>
+
+			{/* Customer & Type */}
+			<TableCell className="py-3">
+				<div className="flex flex-col gap-1">
+					<span className="text-sm text-foreground font-medium">Guest Order</span>
+					<span className="text-xs text-muted-foreground capitalize">
+						{order.order_type.toLowerCase().replace("_", " ")}
+					</span>
+				</div>
 			</TableCell>
-			<TableCell>
-				<Badge
-					variant={getPaymentStatusBadgeVariant(order.payment_status)}
-					className="font-medium"
-				>
-					{order.payment_status}
-				</Badge>
+
+			{/* Status with DOTS */}
+			<TableCell className="py-3">
+				<div className="flex flex-col gap-1.5">
+					<div className="flex items-center gap-2">
+						<div className={`h-2 w-2 rounded-full ${getStatusDotColor(order.status)}`} />
+						<Badge
+							variant={getStatusBadgeVariant(order.status)}
+							className="text-xs font-semibold"
+						>
+							{order.status}
+						</Badge>
+					</div>
+					<div className="flex items-center gap-2">
+						<div className={`h-2 w-2 rounded-full ${getPaymentDotColor(order.payment_status)}`} />
+						<Badge
+							variant={getPaymentStatusBadgeVariant(order.payment_status)}
+							className="text-xs font-medium"
+						>
+							{order.payment_status}
+						</Badge>
+					</div>
+				</div>
 			</TableCell>
-			<TableCell>
-				<Badge
-					variant="outline"
-					className="border-border"
-				>
-					{order.order_type}
-				</Badge>
+
+			{/* Amount */}
+			<TableCell className="text-right py-3">
+				<span className="text-base font-bold text-foreground">
+					{formatCurrency(Number.parseFloat(order.total_collected || order.total_with_tip))}
+				</span>
 			</TableCell>
-			<TableCell className="text-right font-semibold text-foreground">
-				$
-				{Number.parseFloat(
-					order.total_collected || order.total_with_tip
-				).toFixed(2)}
+
+			{/* Time - RELATIVE */}
+			<TableCell className="py-3">
+				<div className="flex flex-col gap-0.5">
+					<span className="text-sm text-muted-foreground">
+						{formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
+					</span>
+					<span className="text-xs text-muted-foreground/70">
+						{format(new Date(order.created_at), "MMM d, h:mm a")}
+					</span>
+				</div>
 			</TableCell>
-			<TableCell className="text-muted-foreground">
-				{order.item_count}
-			</TableCell>
-			<TableCell className="text-muted-foreground">
-				{format(new Date(order.created_at), "PPP p")}
-			</TableCell>
-			<TableCell
-				onClick={(e) => e.stopPropagation()}
-				className="text-right"
-			>
+
+			{/* Actions */}
+			<TableCell onClick={(e) => e.stopPropagation()} className="text-right pr-6">
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="hover:bg-muted"
-						>
+						<Button variant="ghost" size="icon" className="h-8 w-8">
 							<EllipsisVertical className="h-4 w-4" />
 						</Button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent
-						align="end"
-						className="border-border"
-					>
+					<DropdownMenuContent align="end" className="w-40">
+						<DropdownMenuItem onClick={(e) => {
+							e.stopPropagation();
+							navigate(`/orders/${order.id}`);
+						}}>
+							<Eye className="mr-2 h-4 w-4" />
+							View Details
+						</DropdownMenuItem>
 						{user?.role === "OWNER" &&
 							(order.status === "PENDING" || order.status === "HOLD") && (
-								<DropdownMenuItem
-									inset={false}
-									className="text-red-600 dark:text-red-400"
-									onClick={() =>
-										handleAction(
-											order.id.toString(),
-											voidOrder,
-											"Order voided successfully."
-										)
-									}
-								>
-									Void
-								</DropdownMenuItem>
+								<>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem
+										className="text-destructive focus:text-destructive"
+										onClick={() =>
+											handleAction(
+												order.id.toString(),
+												voidOrder,
+												"Order voided successfully."
+											)
+										}
+									>
+										<Ban className="mr-2 h-4 w-4" />
+										Void Order
+									</DropdownMenuItem>
+								</>
 							)}
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -213,18 +292,71 @@ export default function OrdersPage() {
 		</>
 	);
 
+	// Active filters
+	const activeFilters = Object.entries(filters)
+		.filter(([key, value]) => value && value !== "ALL" && key !== "search")
+		.map(([key, value]) => ({ key, value }));
+
 	return (
 		<DomainPageLayout
-			pageTitle="All Orders"
+			pageTitle="Orders"
 			pageDescription="Manage and track all customer orders"
 			pageIcon={ClipboardList}
+			pageActions={
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleRefresh}
+					disabled={isRefreshing}
+					className="gap-2"
+				>
+					<RotateCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+					{isRefreshing ? "Refreshing..." : "Refresh"}
+				</Button>
+			}
 			title="Filters & Search"
-			searchPlaceholder="Search by order number, customer, or amount..."
+			searchPlaceholder="Search orders..."
 			searchValue={filters.search}
 			onSearchChange={handleSearchChange}
 			filterControls={filterControls}
 			error={error}
 		>
+			{/* Active Filters Display */}
+			{activeFilters.length > 0 && (
+				<div className="flex items-center gap-2 mb-6 flex-wrap">
+					<Filter className="h-4 w-4 text-muted-foreground" />
+					<span className="text-sm text-muted-foreground font-medium">Filters:</span>
+					{activeFilters.map(({ key, value }) => (
+						<Badge
+							key={key}
+							variant="secondary"
+							className="gap-1.5 px-3 py-1"
+						>
+							<span className="text-xs font-medium capitalize">
+								{key === "status" ? `${value}` : value.replace("_", " ")}
+							</span>
+							<button
+								onClick={() => handleFilterChange(key, "ALL")}
+								className="hover:bg-muted-foreground/20 rounded-full p-0.5 transition-colors"
+							>
+								<X className="h-3 w-3" />
+							</button>
+						</Badge>
+					))}
+					{activeFilters.length > 0 && (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={clearFilters}
+							className="h-7 text-xs"
+						>
+							Clear all
+						</Button>
+					)}
+				</div>
+			)}
+
+			{/* Borderless Modern Table */}
 			<StandardTable
 				headers={headers}
 				data={orders}
@@ -232,9 +364,10 @@ export default function OrdersPage() {
 				emptyMessage="No orders found for the selected filters."
 				onRowClick={(order) => navigate(`/orders/${order.id}`)}
 				renderRow={renderOrderRow}
-				colSpan={8}
-				className="border-border"
+				colSpan={6}
+				className="border-0"
 			/>
+
 			<PaginationControls
 				prevUrl={prevUrl}
 				nextUrl={nextUrl}

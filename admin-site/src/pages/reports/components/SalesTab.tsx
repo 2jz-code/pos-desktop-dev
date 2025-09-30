@@ -41,6 +41,9 @@ import {
 	HelpCircle,
 	Info,
 	MinusCircle,
+	Receipt,
+	BarChart3,
+	Clock,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -307,98 +310,121 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 			</div>
 
 			{/* Key Metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							${data?.total_revenue?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Grand total of all orders (inc. tax)
-						</p>
-					</CardContent>
-				</Card>
+			<div>
+				<div className="flex items-center gap-2 mb-4">
+					<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+						<Receipt className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+					</div>
+					<div>
+						<h3 className="text-lg font-semibold text-foreground">Key Sales Metrics</h3>
+						<p className="text-sm text-muted-foreground">Overview of sales performance for the selected period</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+							<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+								<DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								${data?.total_revenue?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								Grand total of all orders (inc. tax)
+							</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-						<ShoppingCart className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.total_orders?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Completed orders</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Total Orders</CardTitle>
+							<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+								<ShoppingCart className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.total_orders?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Completed orders</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Avg Order Value
-						</CardTitle>
-						<TrendingUp className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							${data?.avg_order_value?.toFixed(2) || "0.00"}
-						</div>
-						<p className="text-xs text-muted-foreground">Per order</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Avg Order Value
+							</CardTitle>
+							<div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+								<TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								${data?.avg_order_value?.toFixed(2) || "0.00"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Per order</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Items Sold</CardTitle>
-						<Package className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.total_items?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Total units</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Items Sold</CardTitle>
+							<div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+								<Package className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.total_items?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Total units</p>
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 
 			{/* Revenue Breakdown */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<DollarSign className="h-5 w-5" />
-						Revenue Breakdown
-					</CardTitle>
-					<CardDescription>
-						Clear breakdown of what contributes to your business profit
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+							<DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Revenue Breakdown</CardTitle>
+							<CardDescription>
+								Clear breakdown of what contributes to your business profit
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					{/* Net Revenue Highlight */}
-					<div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+					<div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-2">
 								<RevenueTooltip type="net_revenue">
-									<div className="flex items-center gap-2 cursor-help">
-										<TrendingUp className="h-5 w-5 text-green-600" />
-										<span className="text-lg font-semibold text-green-800">
+									<div className="flex items-center gap-2 cursor-help group">
+										<TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+										<span className="text-lg font-semibold text-green-800 dark:text-green-300">
 											Net Revenue
 										</span>
-										<HelpCircle className="h-4 w-4 text-green-600" />
+										<HelpCircle className="h-4 w-4 text-green-600 dark:text-green-400 group-hover:text-green-700" />
 									</div>
 								</RevenueTooltip>
 							</div>
 							<div className="text-right">
-								<div className="text-3xl font-bold text-green-700">
+								<div className="text-3xl font-bold text-green-700 dark:text-green-400">
 									$
 									{data?.revenue_breakdown?.components?.net_revenue?.toLocaleString() ||
 										data?.net_revenue?.toLocaleString() ||
 										"0"}
 								</div>
-								<div className="text-sm text-green-600">
+								<div className="text-sm text-green-600 dark:text-green-500">
 									Your actual business profit
 								</div>
 							</div>
@@ -408,50 +434,50 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 					{/* Revenue Components */}
 					<div className="space-y-4">
 						<div>
-							<h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+							<h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
 								<TrendingUp className="h-4 w-4 text-green-500" />
 								Revenue Components (Contribute to Profit)
 							</h4>
 							<div className="grid gap-3 md:grid-cols-3">
-								<div className="p-3 bg-blue-50 border border-blue-200 rounded">
+								<div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
 									<RevenueTooltip type="subtotal">
-										<div className="flex items-center justify-between cursor-help">
+										<div className="flex items-center justify-between cursor-help group">
 											<div className="flex items-center gap-2">
-												<DollarSign className="h-4 w-4 text-blue-600" />
-												<span className="text-sm font-medium">Subtotal</span>
-												<HelpCircle className="h-3 w-3 text-blue-600" />
+												<DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+												<span className="text-sm font-medium text-foreground">Subtotal</span>
+												<HelpCircle className="h-3 w-3 text-blue-600 dark:text-blue-400 group-hover:text-blue-700" />
 											</div>
-											<span className="font-bold text-blue-700">
+											<span className="font-bold text-blue-700 dark:text-blue-400">
 												${data?.total_subtotal?.toLocaleString() || "0"}
 											</span>
 										</div>
 									</RevenueTooltip>
 								</div>
 
-								<div className="p-3 bg-green-50 border border-green-200 rounded">
+								<div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
 									<RevenueTooltip type="tips">
-										<div className="flex items-center justify-between cursor-help">
+										<div className="flex items-center justify-between cursor-help group">
 											<div className="flex items-center gap-2">
-												<TrendingUp className="h-4 w-4 text-green-600" />
-												<span className="text-sm font-medium">Tips</span>
-												<HelpCircle className="h-3 w-3 text-green-600" />
+												<TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+												<span className="text-sm font-medium text-foreground">Tips</span>
+												<HelpCircle className="h-3 w-3 text-green-600 dark:text-green-400 group-hover:text-green-700" />
 											</div>
-											<span className="font-bold text-green-700">
+											<span className="font-bold text-green-700 dark:text-green-400">
 												+${data?.total_tips?.toLocaleString() || "0"}
 											</span>
 										</div>
 									</RevenueTooltip>
 								</div>
 
-								<div className="p-3 bg-red-50 border border-red-200 rounded">
+								<div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
 									<RevenueTooltip type="discounts">
-										<div className="flex items-center justify-between cursor-help">
+										<div className="flex items-center justify-between cursor-help group">
 											<div className="flex items-center gap-2">
-												<MinusCircle className="h-4 w-4 text-red-600" />
-												<span className="text-sm font-medium">Discounts</span>
-												<HelpCircle className="h-3 w-3 text-red-600" />
+												<MinusCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+												<span className="text-sm font-medium text-foreground">Discounts</span>
+												<HelpCircle className="h-3 w-3 text-red-600 dark:text-red-400 group-hover:text-red-700" />
 											</div>
-											<span className="font-bold text-red-700">
+											<span className="font-bold text-red-700 dark:text-red-400">
 												-${data?.total_discounts?.toLocaleString() || "0"}
 											</span>
 										</div>
@@ -462,39 +488,39 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 						{/* Non-Revenue Components */}
 						<div>
-							<h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-								<Info className="h-4 w-4 text-gray-500" />
+							<h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+								<Info className="h-4 w-4 text-muted-foreground" />
 								Non-Revenue Components (Informational)
 							</h4>
 							<div className="grid gap-3 md:grid-cols-2">
-								<div className="p-3 bg-gray-50 border border-gray-200 rounded">
+								<div className="p-3 bg-muted/30 border border-border rounded-lg">
 									<RevenueTooltip type="tax">
-										<div className="flex items-center justify-between cursor-help">
+										<div className="flex items-center justify-between cursor-help group">
 											<div className="flex items-center gap-2">
-												<HelpCircle className="h-4 w-4 text-gray-600" />
-												<span className="text-sm font-medium">
+												<HelpCircle className="h-4 w-4 text-muted-foreground" />
+												<span className="text-sm font-medium text-foreground">
 													Tax Collected
 												</span>
-												<span className="text-xs text-gray-500">(Gov)</span>
-												<HelpCircle className="h-3 w-3 text-gray-600" />
+												<span className="text-xs text-muted-foreground">(Gov)</span>
+												<HelpCircle className="h-3 w-3 text-muted-foreground group-hover:text-foreground" />
 											</div>
-											<span className="font-bold text-gray-700">
+											<span className="font-bold text-foreground">
 												${data?.total_tax?.toLocaleString() || "0"}
 											</span>
 										</div>
 									</RevenueTooltip>
 								</div>
 
-								<div className="p-3 bg-orange-50 border border-orange-200 rounded">
+								<div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
 									<RevenueTooltip type="surcharges">
-										<div className="flex items-center justify-between cursor-help">
+										<div className="flex items-center justify-between cursor-help group">
 											<div className="flex items-center gap-2">
-												<CreditCard className="h-4 w-4 text-orange-600" />
-												<span className="text-sm font-medium">Surcharges</span>
-												<span className="text-xs text-orange-500">(Fees)</span>
-												<HelpCircle className="h-3 w-3 text-orange-600" />
+												<CreditCard className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+												<span className="text-sm font-medium text-foreground">Surcharges</span>
+												<span className="text-xs text-orange-600 dark:text-orange-500">(Fees)</span>
+												<HelpCircle className="h-3 w-3 text-orange-600 dark:text-orange-400 group-hover:text-orange-700" />
 											</div>
-											<span className="font-bold text-orange-700">
+											<span className="font-bold text-orange-700 dark:text-orange-400">
 												${data?.total_surcharges?.toLocaleString() || "0"}
 											</span>
 										</div>
@@ -506,10 +532,17 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				</CardContent>
 			</Card>
 			{/* Sales Trend Chart */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Sales Trend</CardTitle>
-					<CardDescription>Revenue and order trends over time</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+							<BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Sales Trend</CardTitle>
+							<CardDescription>Revenue and order trends over time</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<ResponsiveContainer
@@ -517,22 +550,25 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 						height={400}
 					>
 						<AreaChart data={data?.sales_by_period || []}>
-							<CartesianGrid strokeDasharray="3 3" />
+							<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 							<XAxis
 								dataKey="date"
 								tickFormatter={(value) =>
 									format(reportsService.parseLocalDate(value), "MMM dd")
 								}
+								className="text-muted-foreground"
 							/>
 							<YAxis
 								yAxisId="revenue"
 								orientation="left"
 								tickFormatter={(value) => `$${value.toLocaleString()}`}
+								className="text-muted-foreground"
 							/>
 							<YAxis
 								yAxisId="orders"
 								orientation="right"
 								tickFormatter={(value) => value.toString()}
+								className="text-muted-foreground"
 							/>
 							<Tooltip
 								labelFormatter={(value) =>
@@ -550,17 +586,18 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 								type="monotone"
 								dataKey="revenue"
 								stackId="1"
-								stroke="#8884d8"
-								fill="#8884d8"
+								stroke="rgb(99, 102, 241)"
+								fill="rgb(99, 102, 241)"
 								fillOpacity={0.6}
 							/>
 							<Line
 								yAxisId="orders"
 								type="monotone"
 								dataKey="orders"
-								stroke="#82ca9d"
+								stroke="rgb(34, 197, 94)"
 								strokeWidth={2}
-								dot={{ fill: "#82ca9d" }}
+								dot={{ fill: "rgb(34, 197, 94)", r: 4 }}
+								activeDot={{ r: 6 }}
 							/>
 						</AreaChart>
 					</ResponsiveContainer>
@@ -569,12 +606,19 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 			{/* Category Performance and Peak Hours */}
 			<div className="grid gap-4 md:grid-cols-2">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Sales by Category</CardTitle>
-						<CardDescription>
-							Revenue breakdown by product category
-						</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+								<Package className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Sales by Category</CardTitle>
+								<CardDescription>
+									Revenue breakdown by product category
+								</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ResponsiveContainer
@@ -582,32 +626,42 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							height={300}
 						>
 							<BarChart data={data?.sales_by_category || []}>
-								<CartesianGrid strokeDasharray="3 3" />
+								<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 								<XAxis
 									dataKey="category"
 									angle={-45}
 									textAnchor="end"
 									height={80}
+									className="text-muted-foreground"
 								/>
 								<YAxis
 									tickFormatter={(value) => `$${value.toLocaleString()}`}
+									className="text-muted-foreground"
 								/>
 								<Tooltip
 									formatter={(value: number) => `$${value.toLocaleString()}`}
 								/>
 								<Bar
 									dataKey="revenue"
-									fill="#8884d8"
+									fill="rgb(168, 85, 247)"
+									radius={[4, 4, 0, 0]}
 								/>
 							</BarChart>
 						</ResponsiveContainer>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Peak Hours</CardTitle>
-						<CardDescription>Top performing hours by revenue</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+								<Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Peak Hours</CardTitle>
+								<CardDescription>Top performing hours by revenue</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ResponsiveContainer
@@ -615,17 +669,22 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 							height={300}
 						>
 							<BarChart data={data?.top_hours || []}>
-								<CartesianGrid strokeDasharray="3 3" />
-								<XAxis dataKey="hour" />
+								<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+								<XAxis
+									dataKey="hour"
+									className="text-muted-foreground"
+								/>
 								<YAxis
 									tickFormatter={(value) => `$${value.toLocaleString()}`}
+									className="text-muted-foreground"
 								/>
 								<Tooltip
 									formatter={(value: number) => `$${value.toLocaleString()}`}
 								/>
 								<Bar
 									dataKey="revenue"
-									fill="#82ca9d"
+									fill="rgb(245, 158, 11)"
+									radius={[4, 4, 0, 0]}
 								/>
 							</BarChart>
 						</ResponsiveContainer>
@@ -633,15 +692,22 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				</Card>
 			</div>
 			{/* Sales Breakdown by Period */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>
-						Sales by {groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}
-					</CardTitle>
-					<CardDescription>
-						Detailed sales breakdown by {groupBy} - Click on any row to view
-						transactions and tips
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Receipt className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">
+								Sales by {groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}
+							</CardTitle>
+							<CardDescription>
+								Detailed sales breakdown by {groupBy} - Click on any row to view
+								transactions and tips
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<Table>
@@ -663,26 +729,26 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 								return (
 									<React.Fragment key={period.date}>
 										<TableRow
-											className="cursor-pointer hover:bg-muted/50"
+											className="cursor-pointer hover:bg-muted/50 transition-colors"
 											onClick={() => toggleRowExpansion(period.date)}
 										>
-											<TableCell>
+											<TableCell className="py-4">
 												{isExpanded ? (
-													<ChevronDown className="h-4 w-4" />
+													<ChevronDown className="h-4 w-4 text-foreground" />
 												) : (
-													<ChevronRight className="h-4 w-4" />
+													<ChevronRight className="h-4 w-4 text-muted-foreground" />
 												)}
 											</TableCell>
-											<TableCell>
+											<TableCell className="py-4 font-semibold text-foreground">
 												{format(
 													reportsService.parseLocalDate(period.date),
 													"MMM dd, yyyy"
 												)}
 											</TableCell>
-											<TableCell>${period.revenue.toLocaleString()}</TableCell>
-											<TableCell>{period.orders.toLocaleString()}</TableCell>
-											<TableCell>{period.items.toLocaleString()}</TableCell>
-											<TableCell>
+											<TableCell className="py-4 font-semibold text-foreground">${period.revenue.toLocaleString()}</TableCell>
+											<TableCell className="py-4">{period.orders.toLocaleString()}</TableCell>
+											<TableCell className="py-4">{period.items.toLocaleString()}</TableCell>
+											<TableCell className="py-4 text-green-600 dark:text-green-400 font-medium">
 												$
 												{(
 													period.transaction_details?.payment_totals
@@ -696,19 +762,20 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 													colSpan={6}
 													className="p-0"
 												>
-													<div className="p-4 bg-muted/20 border-t">
-														<div className="space-y-4">
+													<div className="p-6 bg-muted/30 border-t border-border">
+														<div className="space-y-6">
 															{/* Payment Summary */}
 															<div>
-																<h4 className="font-semibold mb-2">
+																<h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+																	<DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
 																	Payment Summary
 																</h4>
-																<div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-																	<div>
-																		<span className="text-muted-foreground">
-																			Total Tips:
+																<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+																	<div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+																		<span className="text-xs text-muted-foreground block mb-1">
+																			Total Tips
 																		</span>
-																		<div className="font-medium">
+																		<div className="text-xl font-bold text-green-700 dark:text-green-400">
 																			$
 																			{(
 																				period.transaction_details
@@ -716,11 +783,11 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																			).toLocaleString()}
 																		</div>
 																	</div>
-																	<div>
-																		<span className="text-muted-foreground">
-																			Total Surcharges:
+																	<div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+																		<span className="text-xs text-muted-foreground block mb-1">
+																			Total Surcharges
 																		</span>
-																		<div className="font-medium">
+																		<div className="text-xl font-bold text-orange-700 dark:text-orange-400">
 																			$
 																			{(
 																				period.transaction_details
@@ -729,11 +796,11 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																			).toLocaleString()}
 																		</div>
 																	</div>
-																	<div>
-																		<span className="text-muted-foreground">
-																			Total Collected:
+																	<div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+																		<span className="text-xs text-muted-foreground block mb-1">
+																			Total Collected
 																		</span>
-																		<div className="font-medium">
+																		<div className="text-xl font-bold text-blue-700 dark:text-blue-400">
 																			$
 																			{(
 																				period.transaction_details
@@ -750,32 +817,32 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																	{}
 															).length > 0 && (
 																<div>
-																	<h4 className="font-semibold mb-2">
+																	<h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+																		<CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
 																		Payment Methods
 																	</h4>
-																	<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+																	<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
 																		{Object.entries(
 																			period.transaction_details
 																				?.method_breakdown ?? {}
 																		).map(([method, breakdown]) => (
 																			<div
 																				key={method}
-																				className="flex items-center space-x-2 p-2 bg-background rounded border"
+																				className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg hover:shadow-sm transition-shadow"
 																			>
-																				{getPaymentMethodIcon(method)}
-																				<div className="flex-1">
-																					<div className="font-medium text-sm">
+																				<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg flex-shrink-0">
+																					{getPaymentMethodIcon(method)}
+																				</div>
+																				<div className="flex-1 min-w-0">
+																					<div className="font-semibold text-sm text-foreground">
 																						{getPaymentMethodLabel(method)}
 																					</div>
-																					<div className="text-xs text-muted-foreground">
-																						{breakdown.count} transactions • $
-																						{breakdown.total_amount.toLocaleString()}
+																					<div className="text-xs text-muted-foreground mt-0.5">
+																						{breakdown.count} txns • ${breakdown.total_amount.toLocaleString()}
 																					</div>
-																					<div className="text-xs text-muted-foreground">
-																						Tips: $
-																						{breakdown.total_tips.toLocaleString()}{" "}
-																						• Fees: $
-																						{breakdown.total_surcharges.toLocaleString()}
+																					<div className="text-xs text-muted-foreground mt-0.5">
+																						Tips: <span className="text-green-600 dark:text-green-400 font-medium">${breakdown.total_tips.toLocaleString()}</span>
+																						{" "}• Fees: <span className="text-orange-600 dark:text-orange-400 font-medium">${breakdown.total_surcharges.toLocaleString()}</span>
 																					</div>
 																				</div>
 																			</div>
@@ -788,35 +855,36 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 															{(period.transaction_details?.transactions
 																?.length ?? 0) > 0 && (
 																<div>
-																	<h4 className="font-semibold mb-2">
-																		Individual Transactions (
-																		{period.transaction_details?.transactions
-																			?.length ?? 0}
-																		)
+																	<h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+																		<Receipt className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+																		Individual Transactions
+																		<span className="text-xs font-normal text-muted-foreground">
+																			({period.transaction_details?.transactions?.length ?? 0})
+																		</span>
 																	</h4>
-																	<div className="max-h-64 overflow-y-auto">
+																	<div className="max-h-80 overflow-y-auto border border-border rounded-lg">
 																		<Table>
-																			<TableHeader>
+																			<TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm">
 																				<TableRow>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Order #
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Time
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Amount
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Tip
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Surcharge
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Method
 																					</TableHead>
-																					<TableHead className="text-xs">
+																					<TableHead className="text-xs font-semibold">
 																						Card Info
 																					</TableHead>
 																				</TableRow>
@@ -826,12 +894,12 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																					(transaction, index) => (
 																						<TableRow
 																							key={index}
-																							className="text-xs"
+																							className="text-xs hover:bg-muted/30 transition-colors"
 																						>
-																							<TableCell className="font-mono">
+																							<TableCell className="font-mono font-medium text-foreground py-3">
 																								{transaction.order_number}
 																							</TableCell>
-																							<TableCell>
+																							<TableCell className="py-3">
 																								{format(
 																									new Date(
 																										transaction.created_at
@@ -839,34 +907,34 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																									"HH:mm"
 																								)}
 																							</TableCell>
-																							<TableCell>
+																							<TableCell className="font-semibold text-foreground py-3">
 																								$
 																								{transaction.amount.toLocaleString()}
 																							</TableCell>
-																							<TableCell className="font-medium text-green-600">
+																							<TableCell className="font-semibold text-green-600 dark:text-green-400 py-3">
 																								$
 																								{transaction.tip.toLocaleString()}
 																							</TableCell>
-																							<TableCell>
+																							<TableCell className="text-orange-600 dark:text-orange-400 py-3">
 																								$
 																								{transaction.surcharge.toLocaleString()}
 																							</TableCell>
-																							<TableCell>
-																								<div className="flex items-center space-x-1">
+																							<TableCell className="py-3">
+																								<div className="flex items-center space-x-1.5">
 																									{getPaymentMethodIcon(
 																										transaction.method
 																									)}
-																									<span>
+																									<span className="text-foreground">
 																										{getPaymentMethodLabel(
 																											transaction.method
 																										)}
 																									</span>
 																								</div>
 																							</TableCell>
-																							<TableCell>
+																							<TableCell className="py-3">
 																								{transaction.card_brand &&
 																									transaction.card_last4 && (
-																										<span className="text-muted-foreground">
+																										<span className="text-muted-foreground font-mono text-xs">
 																											{transaction.card_brand}{" "}
 																											****
 																											{transaction.card_last4}

@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 interface TableHeader {
 	label: string;
 	className?: string;
+	renderHeader?: () => React.ReactNode;
 }
 
 interface StandardTableProps<T = Record<string, unknown>> {
@@ -53,7 +54,7 @@ export function StandardTable<T = Record<string, unknown>>({
 									key={index}
 									className={header.className}
 								>
-									{header.label}
+									{header.renderHeader ? header.renderHeader() : header.label}
 								</TableHead>
 							))}
 						</TableRow>

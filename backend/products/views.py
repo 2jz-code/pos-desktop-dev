@@ -434,6 +434,50 @@ class ProductViewSet(BaseViewSet):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminOrHigher])
+    def bulk_archive(self, request):
+        """
+        Override ArchivingViewSetMixin's bulk_archive to add cache invalidation.
+        Archive multiple products by their IDs.
+        Expected payload: {"ids": [1, 2, 3]}
+        """
+        # Call the parent implementation
+        response = super().bulk_archive(request)
+
+        # If successful, invalidate product caches
+        if response.status_code == status.HTTP_200_OK:
+            # Invalidate caches in bulk (using pattern matching)
+            from core_backend.infrastructure.cache import AdvancedCacheManager
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+
+        return response
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminOrHigher])
+    def bulk_unarchive(self, request):
+        """
+        Override ArchivingViewSetMixin's bulk_unarchive to add cache invalidation.
+        Unarchive multiple products by their IDs.
+        Expected payload: {"ids": [1, 2, 3]}
+        """
+        # Call the parent implementation
+        response = super().bulk_unarchive(request)
+
+        # If successful, invalidate product caches
+        if response.status_code == status.HTTP_200_OK:
+            # Invalidate caches in bulk (using pattern matching)
+            from core_backend.infrastructure.cache import AdvancedCacheManager
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
+            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+
+        return response
+
 
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])  # Allow public access for customer website

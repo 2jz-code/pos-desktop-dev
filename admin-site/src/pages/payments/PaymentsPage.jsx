@@ -13,9 +13,16 @@ import {
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { formatCurrency } from "@ajeen/ui";
-import { CreditCard } from "lucide-react";
-import { format } from "date-fns";
+import {
+	CreditCard,
+	Banknote,
+	Gift,
+	Split,
+	RotateCw
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { PaginationControls } from "@/components/ui/pagination";
+import { Button } from "@/components/ui/button";
 
 const PaymentsPage = () => {
 	const [payments, setPayments] = useState([]);
@@ -25,6 +32,7 @@ const PaymentsPage = () => {
 	const [prevUrl, setPrevUrl] = useState(null);
 	const [count, setCount] = useState(0);
 	const [currentPage, setCurrentPage] = useState(1);
+	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [filters, setFilters] = useState({
 		status: "",
 		method: "",
@@ -80,6 +88,12 @@ const PaymentsPage = () => {
 		setFilters((prev) => ({ ...prev, search: value }));
 	};
 
+	const handleRefresh = async () => {
+		setIsRefreshing(true);
+		await fetchPayments();
+		setIsRefreshing(false);
+	};
+
 	const getStatusVariant = (status) => {
 		switch (status?.toUpperCase()) {
 			case "PAID":
@@ -95,6 +109,40 @@ const PaymentsPage = () => {
 			default:
 				return "outline";
 		}
+	};
+
+	// Status dot colors
+	const getStatusDotColor = (status) => {
+		switch (status?.toUpperCase()) {
+			case "PAID":
+				return "bg-emerald-500";
+			case "PARTIALLY_PAID":
+				return "bg-yellow-500";
+			case "PENDING":
+				return "bg-blue-500";
+			case "UNPAID":
+				return "bg-red-500";
+			case "REFUNDED":
+			case "PARTIALLY_REFUNDED":
+				return "bg-gray-500";
+			default:
+				return "bg-gray-400";
+		}
+	};
+
+	// Payment method icons
+	const getMethodIcon = (method) => {
+		const methodStr = method?.toUpperCase();
+		if (methodStr === "CASH") {
+			return <Banknote className="h-3.5 w-3.5" />;
+		}
+		if (methodStr === "GIFT CARD") {
+			return <Gift className="h-3.5 w-3.5" />;
+		}
+		if (methodStr === "SPLIT") {
+			return <Split className="h-3.5 w-3.5" />;
+		}
+		return <CreditCard className="h-3.5 w-3.5" />;
 	};
 
 	const getPaymentMethod = (transactions) => {
@@ -126,46 +174,86 @@ const PaymentsPage = () => {
 	};
 
 	const headers = [
-		{ label: "Payment ID" },
-		{ label: "Order ID" },
-		{ label: "Amount", className: "text-right" },
-		{ label: "Method" },
-		{ label: "Status" },
-		{ label: "Date" },
+		{ label: "Payment", className: "pl-6 w-[200px]" },
+		{ label: "Order", className: "w-[140px]" },
+		{ label: "Method", className: "w-[140px]" },
+		{ label: "Status", className: "w-[140px]" },
+		{ label: "Amount", className: "text-right w-[120px]" },
+		{ label: "Time", className: "w-[160px]" },
 	];
 
-	const renderPaymentRow = (payment) => (
-		<>
-			<TableCell className="font-mono text-xs text-foreground">
-				{payment.payment_number}
-			</TableCell>
-			<TableCell className="font-mono text-xs text-foreground">
-				{payment.order ? `${payment.order_number}` : "N/A"}
-			</TableCell>
-			<TableCell className="text-right font-semibold text-foreground">
-				{formatCurrency(payment.total_collected)}
-			</TableCell>
-			<TableCell>
-				<Badge
-					variant="outline"
-					className="border-border capitalize"
-				>
-					{getPaymentMethod(payment.transactions)}
-				</Badge>
-			</TableCell>
-			<TableCell>
-				<Badge
-					variant={getStatusVariant(payment.status)}
-					className="font-medium"
-				>
-					{payment.status}
-				</Badge>
-			</TableCell>
-			<TableCell className="text-muted-foreground">
-				{format(new Date(payment.created_at), "PPP p")}
-			</TableCell>
-		</>
-	);
+	const renderPaymentRow = (payment) => {
+		const transactionCount = payment.transactions?.length || 0;
+		const method = getPaymentMethod(payment.transactions);
+
+		return (
+			<>
+				{/* Payment Number - ENLARGED */}
+				<TableCell className="pl-6 py-3">
+					<div className="flex flex-col gap-0.5">
+						<span className="font-mono text-base font-bold text-foreground">
+							#{payment.payment_number}
+						</span>
+						<span className="text-xs text-muted-foreground">
+							{transactionCount} {transactionCount === 1 ? "transaction" : "transactions"}
+						</span>
+					</div>
+				</TableCell>
+
+				{/* Order Link */}
+				<TableCell className="py-3">
+					<span className="font-mono text-sm text-foreground font-medium">
+						{payment.order ? `#${payment.order_number}` : "N/A"}
+					</span>
+				</TableCell>
+
+				{/* Payment Method with Icon */}
+				<TableCell className="py-3">
+					<div className="flex items-center gap-2">
+						{getMethodIcon(method)}
+						<Badge
+							variant="outline"
+							className="border-border capitalize text-xs"
+						>
+							{method}
+						</Badge>
+					</div>
+				</TableCell>
+
+				{/* Status with DOT */}
+				<TableCell className="py-3">
+					<div className="flex items-center gap-2">
+						<div className={`h-2 w-2 rounded-full ${getStatusDotColor(payment.status)}`} />
+						<Badge
+							variant={getStatusVariant(payment.status)}
+							className="font-semibold text-xs"
+						>
+							{payment.status}
+						</Badge>
+					</div>
+				</TableCell>
+
+				{/* Amount - PROMINENT */}
+				<TableCell className="text-right py-3">
+					<span className="text-base font-bold text-foreground">
+						{formatCurrency(payment.total_collected)}
+					</span>
+				</TableCell>
+
+				{/* Time - RELATIVE */}
+				<TableCell className="py-3">
+					<div className="flex flex-col gap-0.5">
+						<span className="text-sm text-muted-foreground">
+							{formatDistanceToNow(new Date(payment.created_at), { addSuffix: true })}
+						</span>
+						<span className="text-xs text-muted-foreground/70">
+							{format(new Date(payment.created_at), "MMM d, h:mm a")}
+						</span>
+					</div>
+				</TableCell>
+			</>
+		);
+	};
 
 	const filterControls = (
 		<>
@@ -206,9 +294,21 @@ const PaymentsPage = () => {
 
 	return (
 		<DomainPageLayout
-			pageTitle="All Payments"
+			pageTitle="Payments"
 			pageDescription="Manage and track all payment transactions"
 			pageIcon={CreditCard}
+			pageActions={
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={handleRefresh}
+					disabled={isRefreshing}
+					className="gap-2"
+				>
+					<RotateCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+					{isRefreshing ? "Refreshing..." : "Refresh"}
+				</Button>
+			}
 			title="Filters & Search"
 			searchPlaceholder="Search by payment number, order number, or amount..."
 			searchValue={filters.search}
@@ -223,7 +323,8 @@ const PaymentsPage = () => {
 				emptyMessage="No payments found for the selected filters."
 				onRowClick={(payment) => navigate(`/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
-				className="border-border"
+				colSpan={6}
+				className="border-0"
 			/>
 			<PaginationControls
 				prevUrl={prevUrl}

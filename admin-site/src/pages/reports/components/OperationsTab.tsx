@@ -28,6 +28,9 @@ import {
 	Calendar,
 	Download,
 	RefreshCw,
+	Clock,
+	Target,
+	Zap,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -190,71 +193,97 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 			</div>
 
 			{/* Key Metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-						<Activity className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.summary?.total_orders?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Processed orders</p>
-					</CardContent>
-				</Card>
+			<div>
+				<div className="flex items-center gap-2 mb-4">
+					<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+						<Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+					</div>
+					<div>
+						<h3 className="text-lg font-semibold text-foreground">Operational Metrics</h3>
+						<p className="text-sm text-muted-foreground">Overview of order processing and staff activity for the selected period</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Total Orders</CardTitle>
+							<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+								<Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.summary?.total_orders?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Processed orders</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Daily Average</CardTitle>
-						<Calendar className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.summary?.avg_orders_per_day?.toFixed(1) || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Orders per day</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Daily Average</CardTitle>
+							<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+								<Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.summary?.avg_orders_per_day?.toFixed(1) || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Orders per day</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Slowest Day</CardTitle>
-						<TrendingUp className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.summary?.slowest_day?.orders || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							{data?.summary?.slowest_day?.date
-								? format(new Date(data.summary.slowest_day.date), "MMM dd")
-								: "N/A"}
-						</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Peak Day</CardTitle>
+							<div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+								<TrendingUp className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.summary?.peak_day?.orders || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								{data?.summary?.peak_day?.date
+									? format(new Date(data.summary.peak_day.date), "MMM dd")
+									: "N/A"}
+							</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Staff Members</CardTitle>
-						<Users className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.staff_performance?.length || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Active cashiers</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Staff Members</CardTitle>
+							<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+								<Users className="h-4 w-4 text-green-600 dark:text-green-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.staff_performance?.length || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Active cashiers</p>
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 
 			{/* Hourly Patterns */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Hourly Order Patterns</CardTitle>
-					<CardDescription>
-						Order volume and revenue by hour of day
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+							<Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Hourly Order Patterns</CardTitle>
+							<CardDescription>
+								Order volume and revenue by hour of day
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<ResponsiveContainer
@@ -262,16 +291,18 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 						height={400}
 					>
 						<ComposedChart data={data?.hourly_patterns || []}>
-							<CartesianGrid strokeDasharray="3 3" />
-							<XAxis dataKey="hour" />
+							<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+							<XAxis dataKey="hour" className="text-muted-foreground" />
 							<YAxis
 								yAxisId="orders"
 								orientation="left"
+								className="text-muted-foreground"
 							/>
 							<YAxis
 								yAxisId="revenue"
 								orientation="right"
 								tickFormatter={(value) => `$${value.toLocaleString()}`}
+								className="text-muted-foreground"
 							/>
 							<Tooltip
 								formatter={(value: number, name: string) => [
@@ -285,17 +316,17 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 								yAxisId="orders"
 								type="monotone"
 								dataKey="orders"
-								stroke="#8884d8"
-								fill="#8884d8"
+								stroke="#6366f1"
+								fill="#6366f1"
 								fillOpacity={0.6}
 							/>
 							<Line
 								yAxisId="revenue"
 								type="monotone"
 								dataKey="revenue"
-								stroke="#82ca9d"
+								stroke="#10b981"
 								strokeWidth={2}
-								dot={{ fill: "#82ca9d" }}
+								dot={{ fill: "#10b981" }}
 							/>
 						</ComposedChart>
 					</ResponsiveContainer>
@@ -304,31 +335,41 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 
 			{/* Peak Hours and Daily Volume */}
 			<div className="grid gap-4 md:grid-cols-2">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Peak Hours</CardTitle>
-						<CardDescription>
-							Top 5 busiest hours by order volume
-						</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+								<Zap className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Peak Hours</CardTitle>
+								<CardDescription>
+									Top 5 busiest hours by order volume
+								</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="space-y-4">
+						<div className="space-y-3">
 							{data?.peak_hours?.map((hour, index) => (
 								<div
 									key={hour.hour}
-									className="flex items-center justify-between"
+									className="flex items-center justify-between p-4 border border-border rounded-lg hover:shadow-sm transition-shadow bg-muted/20"
 								>
-									<div className="flex items-center space-x-4">
-										<Badge variant="secondary">{index + 1}</Badge>
-										<div>
-											<p className="font-medium">{hour.hour}</p>
-											<p className="text-sm text-muted-foreground">
+									<div className="flex items-center space-x-4 flex-1 min-w-0">
+										<Badge variant="outline" className="text-sm font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 flex-shrink-0">
+											#{index + 1}
+										</Badge>
+										<div className="flex-1 min-w-0">
+											<p className="font-semibold text-foreground">{hour.hour}</p>
+											<p className="text-sm text-muted-foreground mt-0.5">
 												${hour.revenue.toLocaleString()} revenue
 											</p>
 										</div>
 									</div>
-									<div className="text-right">
-										<p className="font-medium">{hour.orders} orders</p>
+									<div className="text-right ml-4">
+										<p className="font-bold text-lg text-foreground">{hour.orders}</p>
+										<p className="text-xs text-muted-foreground">orders</p>
 									</div>
 								</div>
 							))}
@@ -336,10 +377,17 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader>
-						<CardTitle>Daily Volume Trend</CardTitle>
-						<CardDescription>Order volume over time</CardDescription>
+						<div className="flex items-center gap-2">
+							<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+								<TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+							<div>
+								<CardTitle className="text-foreground">Daily Volume Trend</CardTitle>
+								<CardDescription>Order volume over time</CardDescription>
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ResponsiveContainer
@@ -347,14 +395,15 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 							height={300}
 						>
 							<LineChart data={data?.daily_volume || []}>
-								<CartesianGrid strokeDasharray="3 3" />
+								<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 								<XAxis
 									dataKey="date"
 									tickFormatter={(value) =>
 										format(reportsService.parseLocalDate(value), "MMM dd")
 									}
+									className="text-muted-foreground"
 								/>
-								<YAxis />
+								<YAxis className="text-muted-foreground" />
 								<Tooltip
 									labelFormatter={(value) =>
 										format(reportsService.parseLocalDate(value), "MMM dd, yyyy")
@@ -364,9 +413,9 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 								<Line
 									type="monotone"
 									dataKey="orders"
-									stroke="#8884d8"
+									stroke="#a855f7"
 									strokeWidth={2}
-									dot={{ fill: "#8884d8" }}
+									dot={{ fill: "#a855f7" }}
 								/>
 							</LineChart>
 						</ResponsiveContainer>
@@ -375,24 +424,39 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 			</div>
 
 			{/* Staff Performance */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Staff Performance</CardTitle>
-					<CardDescription>Orders processed by cashier</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+							<Users className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Staff Performance</CardTitle>
+							<CardDescription>Orders processed by cashier</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
-					<div className="space-y-4">
+					<div className="space-y-3">
 						{data?.staff_performance?.map((staff, index) => (
 							<div
 								key={staff.cashier}
-								className="flex items-center justify-between p-4 border rounded-lg"
+								className="flex items-center justify-between p-4 border border-border rounded-lg hover:shadow-sm transition-shadow bg-muted/20"
 							>
-								<div className="flex items-center space-x-4">
-									<Badge variant="outline">{index + 1}</Badge>
-									<p className="font-medium">{staff.cashier}</p>
+								<div className="flex items-center space-x-4 flex-1 min-w-0">
+									<Badge variant="outline" className="text-sm font-semibold bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border-teal-300 dark:border-teal-700 flex-shrink-0">
+										#{index + 1}
+									</Badge>
+									<div className="flex-1 min-w-0">
+										<p className="font-semibold text-foreground">{staff.cashier}</p>
+										<p className="text-sm text-muted-foreground mt-0.5">
+											Avg: ${staff.avg_order_value.toFixed(2)} • Revenue: ${staff.revenue.toLocaleString()}
+										</p>
+									</div>
 								</div>
-								<div className="text-right">
-									<p className="font-medium">{staff.orders_processed} orders</p>
+								<div className="text-right ml-4">
+									<p className="font-bold text-lg text-foreground">{staff.orders_processed}</p>
+									<p className="text-xs text-muted-foreground">orders</p>
 								</div>
 							</div>
 						))}

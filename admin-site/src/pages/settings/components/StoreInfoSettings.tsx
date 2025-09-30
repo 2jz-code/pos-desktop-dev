@@ -93,12 +93,16 @@ export function StoreInfoSettings() {
 
 	if (isLoading) {
 		return (
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<Store className="h-5 w-5" />
-						Store Information
-					</CardTitle>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Store className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Store Information</CardTitle>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<div className="flex items-center justify-center py-8">
@@ -115,15 +119,19 @@ export function StoreInfoSettings() {
 	}
 
 	return (
-		<Card>
+		<Card className="border-border bg-card">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					<Store className="h-5 w-5" />
-					Store Information
-				</CardTitle>
-				<CardDescription>
-					Configure your business information that appears on receipts and communications.
-				</CardDescription>
+				<div className="flex items-center gap-2">
+					<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+						<Store className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+					</div>
+					<div>
+						<CardTitle className="text-foreground">Store Information</CardTitle>
+						<CardDescription>
+							Configure your business information that appears on receipts and communications.
+						</CardDescription>
+					</div>
+				</div>
 			</CardHeader>
 			<CardContent>
 				<Form {...form}>

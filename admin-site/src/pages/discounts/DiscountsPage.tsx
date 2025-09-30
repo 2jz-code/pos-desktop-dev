@@ -1,23 +1,16 @@
 import { useState } from "react";
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { TableCell } from "../../components/ui/table";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { MoreHorizontal, Plus, Trash2, Edit, Search, Archive, ArchiveRestore } from "lucide-react";
+import { MoreHorizontal, Plus, Edit, Archive, ArchiveRestore, Tag, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 // @ts-expect-error - JS module with no types
@@ -25,6 +18,8 @@ import discountService from "../../services/api/discountService";
 import AddEditDiscountDialog from "../../components/AddEditDiscountDialog";
 import { useDebounce } from "@ajeen/ui";
 import { useConfirmation } from "../../components/ui/confirmation-dialog";
+import { DomainPageLayout } from "../../components/shared/DomainPageLayout";
+import { StandardTable } from "../../components/shared/StandardTable";
 
 interface Product {
 	id: number;
@@ -79,11 +74,8 @@ export const DiscountsPage = () => {
 		isLoading,
 		error,
 	} = useQuery<{ results: Discount[] }, Error>({
-		queryKey: ["discounts", { search: debouncedSearchQuery, includeArchived: showArchivedDiscounts }],
-		queryFn: () =>
-			discountService.getDiscounts({ 
-				search: debouncedSearchQuery
-			}),
+		queryKey: ["discounts"],
+		queryFn: () => discountService.getDiscounts({}),
 	});
 
 	const mutationOptions = {
@@ -257,162 +249,195 @@ export const DiscountsPage = () => {
 		if (discount.type === "PERCENTAGE") {
 			return `${discount.value}%`;
 		}
-		return `${parseFloat(String(discount.value)).toFixed(2)}`;
+		return `$${parseFloat(String(discount.value)).toFixed(2)}`;
 	};
 
-	return (
-		<div className="h-screen flex flex-col bg-background p-6">
-			<div className="flex items-center justify-between mb-6">
-				<div>
-					<h1 className="text-3xl font-bold">Discount Management</h1>
-					<p className="text-muted-foreground">
-						Create, manage, and schedule all promotional discounts.
-					</p>
-				</div>
-				<div className="flex items-center gap-4">
-					<Button
-						variant={showArchivedDiscounts ? "default" : "outline"}
-						size="sm"
-						onClick={() => setShowArchivedDiscounts(!showArchivedDiscounts)}
-					>
-						{showArchivedDiscounts ? (
-							<ArchiveRestore className="mr-2 h-4 w-4" />
-						) : (
-							<Archive className="mr-2 h-4 w-4" />
-						)}
-						{showArchivedDiscounts ? "Show Active" : "Show Archived"}
-					</Button>
-					<Button onClick={openAddDialog}>
-						<Plus className="mr-2 h-4 w-4" />
-						Add Discount
-					</Button>
-				</div>
-			</div>
+	const getStatusDotColor = (discount: Discount) => {
+		const now = new Date();
+		const startDate = discount.start_date ? new Date(discount.start_date) : null;
+		const endDate = discount.end_date ? new Date(discount.end_date) : null;
 
-			<Card>
-				<CardHeader>
-					<CardTitle>
-						{showArchivedDiscounts ? "Archived Discounts" : "Active Discounts"}
-					</CardTitle>
-					<CardDescription>
-						<div className="relative w-full max-w-sm">
-							<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-							<Input
-								placeholder="Search by name or code..."
-								value={searchQuery}
-								onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-									setSearchQuery(e.target.value)
-								}
-								className="pl-10"
-							/>
-						</div>
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="rounded-md border">
-						<table className="w-full">
-							<thead>
-								<tr className="border-b bg-muted/50">
-									<th className="p-4 text-left font-medium">Status</th>
-									<th className="p-4 text-left font-medium">Name</th>
-									<th className="p-4 text-left font-medium">Type</th>
-									<th className="p-4 text-left font-medium">Scope</th>
-									<th className="p-4 text-left font-medium">Applies To</th>
-									<th className="p-4 text-left font-medium">Value</th>
-									<th className="p-4 text-left font-medium">Start Date</th>
-									<th className="p-4 text-left font-medium">End Date</th>
-									<th className="p-4 text-right font-medium">Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								{isLoading ? (
-									<tr>
-										<td
-											colSpan={9}
-											className="text-center py-8"
-										>
-											Loading...
-										</td>
-									</tr>
-								) : error ? (
-									<tr>
-										<td
-											colSpan={9}
-											className="text-center py-8 text-red-500"
-										>
-											Failed to load discounts.
-										</td>
-									</tr>
-								) : (
-									discounts?.results
-										?.filter((discount) => showArchivedDiscounts ? !discount.is_active : discount.is_active)
-										.map((discount) => (
-										<tr
-											key={discount.id}
-											className="border-b"
-										>
-											<td className="p-4">{getStatusBadge(discount)}</td>
-											<td className="p-4 font-medium">{discount.name}</td>
-											<td className="p-4">
-												<Badge variant="outline">{discount.type}</Badge>
-											</td>
-											<td className="p-4">
-												<Badge variant="secondary">{discount.scope}</Badge>
-											</td>
-											<td className="p-4">{getAppliesToText(discount)}</td>
-											<td className="p-4 font-mono">
-												{getDiscountValue(discount)}
-											</td>
-											<td className="p-4">{formatDate(discount.start_date)}</td>
-											<td className="p-4">{formatDate(discount.end_date)}</td>
-											<td className="p-4 text-right">
-												<DropdownMenu>
-													<DropdownMenuTrigger asChild>
-														<Button
-															variant="ghost"
-															className="h-8 w-8 p-0"
-														>
-															<MoreHorizontal className="h-4 w-4" />
-														</Button>
-													</DropdownMenuTrigger>
-													{/* @ts-expect-error - DropdownMenuContent typing issue */}
-													<DropdownMenuContent align="end">
-														{/* @ts-expect-error - DropdownMenuItem typing issue */}
-														<DropdownMenuItem
-															onClick={() => openEditDialog(discount)}
-														>
-															<Edit className="mr-2 h-4 w-4" />
-															Edit
-														</DropdownMenuItem>
-														{/* @ts-expect-error - DropdownMenuItem typing issue */}
-														{showArchivedDiscounts ? (
-															<DropdownMenuItem
-																onClick={() => handleUnarchive(discount.id)}
-																className="text-green-600"
-															>
-																<ArchiveRestore className="mr-2 h-4 w-4" />
-																Unarchive
-															</DropdownMenuItem>
-														) : (
-															<DropdownMenuItem
-																onClick={() => handleArchive(discount.id)}
-																className="text-orange-600"
-															>
-																<Archive className="mr-2 h-4 w-4" />
-																Archive
-															</DropdownMenuItem>
-														)}
-													</DropdownMenuContent>
-												</DropdownMenu>
-											</td>
-										</tr>
-									))
-								)}
-							</tbody>
-						</table>
-					</div>
-				</CardContent>
-			</Card>
+		if (!discount.is_active) {
+			return "bg-gray-500";
+		}
+		if (startDate && now < startDate) {
+			return "bg-blue-500";
+		}
+		if (endDate && now > endDate) {
+			return "bg-red-500";
+		}
+		return "bg-emerald-500";
+	};
+
+	const filteredDiscounts = discounts?.results?.filter((discount) => {
+		// Filter by active/archived status
+		const matchesActiveStatus = showArchivedDiscounts ? !discount.is_active : discount.is_active;
+
+		// Filter by search query
+		if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
+			const searchLower = debouncedSearchQuery.toLowerCase();
+			const matchesSearch =
+				discount.name.toLowerCase().includes(searchLower) ||
+				(discount.code && discount.code.toLowerCase().includes(searchLower));
+
+			return matchesActiveStatus && matchesSearch;
+		}
+
+		return matchesActiveStatus;
+	}) || [];
+
+	const headers = [
+		{ label: "Status", className: "w-[140px]" },
+		{ label: "Name", className: "w-[220px]" },
+		{ label: "Type", className: "w-[140px]" },
+		{ label: "Scope", className: "w-[120px]" },
+		{ label: "Applies To", className: "w-[180px]" },
+		{ label: "Value", className: "w-[120px]" },
+		{ label: "Start Date", className: "w-[140px]" },
+		{ label: "End Date", className: "w-[140px]" },
+		{ label: "", className: "text-right pr-6 w-[80px]" },
+	];
+
+	const renderDiscountRow = (discount: Discount) => (
+		<>
+			<TableCell className="py-3">
+				<div className="flex items-center gap-2">
+					<div className={`h-2 w-2 rounded-full ${getStatusDotColor(discount)} flex-shrink-0`} />
+					{getStatusBadge(discount)}
+				</div>
+			</TableCell>
+			<TableCell className="py-3">
+				<div className="flex flex-col gap-0.5">
+					<span className="font-semibold text-foreground">{discount.name}</span>
+					{discount.code && (
+						<span className="text-xs text-muted-foreground font-mono">
+							{discount.code}
+						</span>
+					)}
+				</div>
+			</TableCell>
+			<TableCell className="py-3">
+				<Badge variant="outline" className="font-normal text-xs">
+					{discount.type === "PERCENTAGE" ? "Percentage" : "Fixed Amount"}
+				</Badge>
+			</TableCell>
+			<TableCell className="py-3">
+				<Badge variant="secondary" className="font-normal text-xs">
+					{discount.scope === "ORDER" ? "Order" : discount.scope === "PRODUCT" ? "Product" : "Category"}
+				</Badge>
+			</TableCell>
+			<TableCell className="py-3 text-foreground">
+				{getAppliesToText(discount)}
+			</TableCell>
+			<TableCell className="py-3">
+				<span className="font-mono font-bold text-base text-foreground">
+					{getDiscountValue(discount)}
+				</span>
+			</TableCell>
+			<TableCell className="py-3 text-foreground">
+				<div className="flex items-center gap-1.5">
+					<Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+					{formatDate(discount.start_date)}
+				</div>
+			</TableCell>
+			<TableCell className="py-3 text-foreground">
+				<div className="flex items-center gap-1.5">
+					<Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+					{formatDate(discount.end_date)}
+				</div>
+			</TableCell>
+			<TableCell className="text-right pr-6">
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button variant="ghost" size="icon" className="h-8 w-8">
+							<MoreHorizontal className="h-4 w-4" />
+						</Button>
+					</DropdownMenuTrigger>
+					{/* @ts-expect-error - DropdownMenuContent typing issue */}
+					<DropdownMenuContent align="end">
+						{/* @ts-expect-error - DropdownMenuItem typing issue */}
+						<DropdownMenuItem onClick={() => openEditDialog(discount)}>
+							<Edit className="mr-2 h-4 w-4" />
+							Edit
+						</DropdownMenuItem>
+						{/* @ts-expect-error - DropdownMenuItem typing issue */}
+						{showArchivedDiscounts ? (
+							<DropdownMenuItem
+								onClick={() => handleUnarchive(discount.id)}
+								className="text-green-600"
+							>
+								<ArchiveRestore className="mr-2 h-4 w-4" />
+								Unarchive
+							</DropdownMenuItem>
+						) : (
+							<DropdownMenuItem
+								onClick={() => handleArchive(discount.id)}
+								className="text-orange-600"
+							>
+								<Archive className="mr-2 h-4 w-4" />
+								Archive
+							</DropdownMenuItem>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</TableCell>
+		</>
+	);
+
+	return (
+		<>
+			<DomainPageLayout
+				pageIcon={Tag}
+				pageTitle="Discount Management"
+				pageDescription="Create, manage, and schedule all promotional discounts"
+				pageActions={
+					<>
+						<Button
+							variant={showArchivedDiscounts ? "default" : "outline"}
+							size="sm"
+							onClick={() => setShowArchivedDiscounts(!showArchivedDiscounts)}
+						>
+							{showArchivedDiscounts ? (
+								<ArchiveRestore className="mr-2 h-4 w-4" />
+							) : (
+								<Archive className="mr-2 h-4 w-4" />
+							)}
+							{showArchivedDiscounts ? "Show Active" : "Show Archived"}
+						</Button>
+						<Button onClick={openAddDialog} size="sm">
+							<Plus className="mr-2 h-4 w-4" />
+							Add Discount
+						</Button>
+					</>
+				}
+				title={showArchivedDiscounts ? "Archived Discounts" : "Active Discounts"}
+				description={
+					showArchivedDiscounts
+						? "Previously archived promotional discounts"
+						: "Manage all promotional discounts and codes"
+				}
+				searchPlaceholder="Search by name or code..."
+				searchValue={searchQuery}
+				onSearchChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+					setSearchQuery(e.target.value)
+				}
+			>
+				<StandardTable
+					headers={headers}
+					data={filteredDiscounts}
+					loading={isLoading}
+					emptyMessage={
+						showArchivedDiscounts
+							? "No archived discounts available."
+							: searchQuery
+							? "No discounts match your search."
+							: "Create your first discount to get started."
+					}
+					renderRow={renderDiscountRow}
+					colSpan={9}
+					className="border-0"
+				/>
+			</DomainPageLayout>
 
 			<AddEditDiscountDialog
 				isOpen={isDialogOpen}
@@ -425,7 +450,7 @@ export const DiscountsPage = () => {
 			/>
 
 			{confirmation.dialog}
-		</div>
+		</>
 	);
 };
 
