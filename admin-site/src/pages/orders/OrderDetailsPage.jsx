@@ -261,10 +261,6 @@ const OrderDetailsPage = () => {
 							<RotateCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
 							{isRefreshing ? "Refreshing..." : "Refresh"}
 						</Button>
-						<Button variant="outline" size="sm" onClick={() => window.print()}>
-							<Printer className="h-4 w-4 mr-2" />
-							Print
-						</Button>
 						{status === "COMPLETED" && (
 							<Button
 								variant="default"
@@ -317,13 +313,19 @@ const OrderDetailsPage = () => {
 											</span>
 										</div>
 									</div>
-									<div className="text-right">
-										<Badge variant="outline" className="mb-2 capitalize">
-											{order.order_type.toLowerCase().replace("_", " ")}
+									<div className="text-right flex flex-col items-end gap-2">
+										<Badge
+											variant={order.order_type === "WEB" ? "default" : "secondary"}
+											className="text-lg font-bold px-4 py-2"
+										>
+											{order.order_type}
 										</Badge>
-										<p className="text-xs text-muted-foreground">
+										<Badge
+											variant="outline"
+											className="text-sm font-semibold px-3 py-1"
+										>
 											{order.dining_preference === "DINE_IN" ? "Dine In" : "Take Out"}
-										</p>
+										</Badge>
 									</div>
 								</div>
 

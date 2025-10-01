@@ -9,8 +9,6 @@ import {
 	PanelLeftOpen,
 	Sun,
 	Moon,
-	Zap,
-	Bell,
 } from "lucide-react";
 import { useNavigationRoutes } from "@/hooks/useNavigationRoutes";
 import { NavigationItem } from "@/components/navigation/NavigationItem";
@@ -108,19 +106,14 @@ export function Layout({ children }: LayoutProps) {
 
 					<div className="relative flex h-full flex-col">
 						{/* Logo */}
-						<div className="flex h-16 items-center justify-center border-b border-border/30 px-5">
+						<div className="flex h-16 items-center justify-center border-b border-border/30">
 							<Link
 								to="/"
-								className="group flex items-center gap-3 transition-opacity hover:opacity-80"
+								className="group transition-opacity hover:opacity-80"
 							>
-								<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20 transition-transform duration-200 group-hover:scale-105">
-									<Zap className="h-5 w-5 text-primary-foreground" />
-								</div>
-								{!isCollapsed && (
-									<span className="text-base font-semibold text-foreground">
-										Ajeen Admin
-									</span>
-								)}
+								<span className="text-xl font-bold text-foreground">
+									{isCollapsed ? 'A' : 'Ajeen'}
+								</span>
 							</Link>
 						</div>
 
@@ -222,12 +215,9 @@ export function Layout({ children }: LayoutProps) {
 							<nav className="grid gap-2">
 								<Link
 									to="/dashboard"
-									className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2"
+									className="mb-2 flex items-center rounded-lg px-3 py-2"
 								>
-									<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80">
-										<Zap className="h-5 w-5 text-primary-foreground" />
-									</div>
-									<span className="font-semibold">Ajeen Admin</span>
+									<span className="font-semibold">Ajeen</span>
 								</Link>
 
 								{navigationRoutes.map((route) => (
@@ -255,18 +245,6 @@ export function Layout({ children }: LayoutProps) {
 
 					{/* Actions */}
 					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="icon"
-							className="relative h-9 w-9 border-border/40 bg-background/50 transition-all duration-150 hover:bg-accent"
-						>
-							<Bell className="h-4 w-4" />
-							<span className="absolute right-1 top-1 flex h-2 w-2">
-								<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-								<span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-							</span>
-						</Button>
-
 						<Button
 							variant="outline"
 							size="icon"

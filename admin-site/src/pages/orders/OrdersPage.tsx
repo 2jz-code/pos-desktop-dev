@@ -142,7 +142,8 @@ export default function OrdersPage() {
 
 	const headers = [
 		{ label: "Order", className: "pl-6 w-[200px]" },
-		{ label: "Customer", className: "w-[180px]" },
+		{ label: "Source", className: "w-[120px]" },
+		{ label: "Customer", className: "w-[160px]" },
 		{ label: "Status", className: "w-[160px]" },
 		{ label: "Amount", className: "text-right w-[120px]" },
 		{ label: "Time", className: "w-[140px]" },
@@ -163,14 +164,19 @@ export default function OrdersPage() {
 				</div>
 			</TableCell>
 
-			{/* Customer & Type */}
+			{/* Source - PROMINENT */}
 			<TableCell className="py-3">
-				<div className="flex flex-col gap-1">
-					<span className="text-sm text-foreground font-medium">Guest Order</span>
-					<span className="text-xs text-muted-foreground capitalize">
-						{order.order_type.toLowerCase().replace("_", " ")}
-					</span>
-				</div>
+				<Badge
+					variant={order.order_type === "WEB" ? "default" : "secondary"}
+					className="text-sm font-bold px-3 py-1"
+				>
+					{order.order_type}
+				</Badge>
+			</TableCell>
+
+			{/* Customer */}
+			<TableCell className="py-3">
+				<span className="text-sm text-foreground font-medium">Guest Order</span>
 			</TableCell>
 
 			{/* Status with DOTS */}
@@ -364,7 +370,7 @@ export default function OrdersPage() {
 				emptyMessage="No orders found for the selected filters."
 				onRowClick={(order) => navigate(`/orders/${order.id}`)}
 				renderRow={renderOrderRow}
-				colSpan={6}
+				colSpan={7}
 				className="border-0"
 			/>
 
