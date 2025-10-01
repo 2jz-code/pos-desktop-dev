@@ -7,8 +7,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { X, Check } from "lucide-react";
-import { bulkUpdateProducts } from "@/services/api/productService";
+import { X, Check, Archive, ArchiveRestore } from "lucide-react";
+import {
+	bulkUpdateProducts,
+	bulkArchiveProducts,
+	bulkUnarchiveProducts,
+} from "@/services/api/productService";
 import { useToast } from "@/components/ui/use-toast";
 
 interface BulkActionsToolbarProps {
@@ -84,6 +88,50 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
 		}
 	};
 
+	const handleBulkArchive = async () => {
+		if (selectedProductIds.length === 0) return;
+
+		setIsApplying(true);
+		try {
+			const response = await bulkArchiveProducts(selectedProductIds);
+			toast({
+				title: "Success",
+				description: `Archived ${response.data.archived_count} products`,
+			});
+			onSuccess();
+		} catch (err: any) {
+			toast({
+				title: "Error",
+				description: err.response?.data?.error || "Failed to archive products",
+				variant: "destructive",
+			});
+		} finally {
+			setIsApplying(false);
+		}
+	};
+
+	const handleBulkUnarchive = async () => {
+		if (selectedProductIds.length === 0) return;
+
+		setIsApplying(true);
+		try {
+			const response = await bulkUnarchiveProducts(selectedProductIds);
+			toast({
+				title: "Success",
+				description: `Restored ${response.data.unarchived_count} products`,
+			});
+			onSuccess();
+		} catch (err: any) {
+			toast({
+				title: "Error",
+				description: err.response?.data?.error || "Failed to restore products",
+				variant: "destructive",
+			});
+		} finally {
+			setIsApplying(false);
+		}
+	};
+
 	return (
 		<div className="sticky top-0 z-10 bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800 p-4 mb-4 rounded-lg shadow-sm animate-in slide-in-from-top duration-150">
 			<div className="flex items-center justify-between flex-wrap gap-4">
@@ -133,7 +181,7 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
 					</div>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-2 flex-wrap">
 					<Button
 						onClick={handleApplyChanges}
 						disabled={(!selectedCategory && !selectedProductType) || loading || isApplying}
@@ -142,6 +190,24 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
 					>
 						<Check className="h-4 w-4 mr-2" />
 						Apply Changes
+					</Button>
+					<Button
+						onClick={handleBulkArchive}
+						disabled={loading || isApplying}
+						size="sm"
+						variant="destructive"
+					>
+						<Archive className="h-4 w-4 mr-2" />
+						Archive Selected
+					</Button>
+					<Button
+						onClick={handleBulkUnarchive}
+						disabled={loading || isApplying}
+						size="sm"
+						variant="secondary"
+					>
+						<ArchiveRestore className="h-4 w-4 mr-2" />
+						Restore Selected
 					</Button>
 					<Button
 						onClick={onClear}

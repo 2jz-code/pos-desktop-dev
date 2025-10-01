@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -32,8 +32,11 @@ import {
 	DollarSign,
 	ExternalLink,
 	RefreshCw,
+	Clock,
 } from "lucide-react";
 import { RefundDialog } from "@/components/RefundDialog";
+import { Timeline } from "@/components/ui/Timeline";
+import { generatePaymentTimeline } from "@/utils/paymentTimeline";
 
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
@@ -88,6 +91,12 @@ const PaymentDetailsPage = () => {
 		processRefund(refundDetails);
 	};
 
+	// Generate timeline events - must be before early returns to satisfy Rules of Hooks
+	const timelineEvents = useMemo(() => {
+		if (!payment) return [];
+		return generatePaymentTimeline(payment);
+	}, [payment]);
+
 	if (isLoading)
 		return (
 			<div className="flex items-center justify-center h-full">
@@ -137,6 +146,24 @@ const PaymentDetailsPage = () => {
 		}
 	};
 
+	const getStatusDotColor = (status) => {
+		switch (status?.toUpperCase()) {
+			case "PAID":
+				return "bg-emerald-500";
+			case "PARTIALLY_PAID":
+				return "bg-yellow-500";
+			case "PENDING":
+				return "bg-blue-500";
+			case "UNPAID":
+				return "bg-red-500";
+			case "REFUNDED":
+			case "PARTIALLY_REFUNDED":
+				return "bg-gray-500";
+			default:
+				return "bg-gray-400";
+		}
+	};
+
 	return (
 		<div className="flex flex-col h-full">
 			{/* Page Header */}
@@ -175,12 +202,15 @@ const PaymentDetailsPage = () => {
 							<RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
 							Refresh
 						</Button>
-						<Badge
-							variant={getStatusVariant(payment.status)}
-							className="px-3 py-1"
-						>
-							{payment.status}
-						</Badge>
+						<div className="flex items-center gap-2">
+							<div className={`h-2 w-2 rounded-full ${getStatusDotColor(payment.status)}`} />
+							<Badge
+								variant={getStatusVariant(payment.status)}
+								className="px-3 py-1 font-semibold"
+							>
+								{payment.status}
+							</Badge>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -278,8 +308,38 @@ const PaymentDetailsPage = () => {
 								</CardContent>
 							</Card>
 
-							{/* Transaction History Card */}
+							{/* Payment Timeline Card */}
 							<Card className="lg:col-span-2 border-border bg-card">
+								<CardHeader className="pb-4">
+									<div className="flex items-center gap-3">
+										<div className="p-2.5 bg-muted rounded-lg">
+											<Clock className="h-5 w-5 text-foreground" />
+										</div>
+										<div>
+											<CardTitle className="text-lg font-semibold text-foreground">
+												Payment Timeline
+											</CardTitle>
+											<CardDescription className="text-muted-foreground mt-1">
+												Complete history of payment events
+											</CardDescription>
+										</div>
+									</div>
+								</CardHeader>
+								<CardContent>
+									{timelineEvents.length > 0 ? (
+										<Timeline items={timelineEvents} />
+									) : (
+										<p className="text-muted-foreground text-center py-8">
+											No timeline events available
+										</p>
+									)}
+								</CardContent>
+							</Card>
+						</div>
+
+						{/* Transaction Details Table */}
+						<div className="mt-6">
+							<Card className="border-border bg-card">
 								<CardHeader className="pb-4">
 									<div className="flex items-center gap-3">
 										<div className="p-2.5 bg-muted rounded-lg">
@@ -287,7 +347,7 @@ const PaymentDetailsPage = () => {
 										</div>
 										<div>
 											<CardTitle className="text-lg font-semibold text-foreground">
-												Transaction History
+												Transaction Details
 											</CardTitle>
 											<CardDescription className="text-muted-foreground mt-1">
 												Individual transactions associated with this payment

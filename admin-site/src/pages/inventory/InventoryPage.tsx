@@ -464,65 +464,94 @@ export const InventoryPage = () => {
 			</header>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 flex-shrink-0">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Total Products
 						</CardTitle>
-						<Package className="h-4 w-4 text-muted-foreground" />
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">
+						<div className="text-3xl font-bold text-foreground">
 							{dashboardData?.summary?.total_products || 0}
 						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Items tracked
+						</p>
 					</CardContent>
 				</Card>
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Low Stock Items
 						</CardTitle>
-						<AlertTriangle className="h-4 w-4 text-warning" />
+						<div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+							<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-warning">
+						<div className="text-3xl font-bold text-amber-600 dark:text-amber-400">
 							{dashboardData?.summary?.low_stock_count || 0}
 						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Need restocking
+						</p>
 					</CardContent>
 				</Card>
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Expiring Soon</CardTitle>
-						<Clock className="h-4 w-4 text-warning" />
+						<CardTitle className="text-sm font-medium text-muted-foreground">
+							Expiring Soon
+						</CardTitle>
+						<div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+							<Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-warning">
+						<div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
 							{dashboardData?.summary?.expiring_soon_count || 0}
 						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Within threshold
+						</p>
 					</CardContent>
 				</Card>
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
-						<TrendingDown className="h-4 w-4 text-destructive" />
+						<CardTitle className="text-sm font-medium text-muted-foreground">
+							Out of Stock
+						</CardTitle>
+						<div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+							<TrendingDown className="h-4 w-4 text-destructive" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold text-destructive">
+						<div className="text-3xl font-bold text-destructive">
 							{dashboardData?.summary?.out_of_stock_count || 0}
 						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Require immediate action
+						</p>
 					</CardContent>
 				</Card>
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Total Inventory Value
 						</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
+						<div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+							<DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">
+						<div className="text-3xl font-bold text-foreground">
 							{formatCurrency(dashboardData?.summary?.total_value || 0)}
 						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Stock valuation
+						</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -550,46 +579,52 @@ export const InventoryPage = () => {
 						</p>
 						{dashboardData?.low_stock_items &&
 							dashboardData.low_stock_items.length > 0 && (
-								<Card className="mt-4 border-amber-200 bg-amber-50 dark:bg-amber-900/20">
-									<CardHeader>
-										<CardTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
-											<AlertTriangle className="h-5 w-5" />
-											Low Stock Alert
-										</CardTitle>
-										<CardDescription>
-											Items that need restocking soon
-										</CardDescription>
+								<Card className="mt-4 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+									<CardHeader className="pb-3">
+										<div className="flex items-start gap-3">
+											<div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex-shrink-0">
+												<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+											</div>
+											<div className="flex-1">
+												<CardTitle className="text-base font-semibold text-amber-900 dark:text-amber-100">
+													Low Stock Alert
+												</CardTitle>
+												<CardDescription className="text-amber-700 dark:text-amber-300 text-sm mt-1">
+													{dashboardData.low_stock_items.length} item{dashboardData.low_stock_items.length !== 1 ? 's' : ''} need restocking soon
+												</CardDescription>
+											</div>
+										</div>
 									</CardHeader>
-									<CardContent className="space-y-3">
+									<CardContent className="space-y-2.5">
 										{dashboardData.low_stock_items
 											.slice(0, 5)
 											.map((item: LowStockItem) => (
 												<div
 													key={item.product_id}
-													className="flex items-center justify-between p-3 bg-card rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm"
+													className="flex items-center justify-between p-3 bg-card rounded-lg border border-amber-100 dark:border-amber-800/50 shadow-sm hover:shadow-md transition-shadow"
 												>
-													<div className="flex items-center gap-3">
-														<div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-														<div>
-															<div className="font-medium text-foreground">
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														<div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div>
+														<div className="min-w-0 flex-1">
+															<div className="font-semibold text-foreground truncate">
 																{item.product_name}
 															</div>
-															<div className="text-sm text-muted-foreground">
-																{Number(item.quantity)} units remaining
+															<div className="text-xs text-muted-foreground">
+																{Number(item.quantity).toFixed(1)} units remaining
 															</div>
 														</div>
 													</div>
-													<div className="flex items-center gap-2">
+													<div className="flex items-center gap-2 flex-shrink-0">
 														<Badge
-															variant="secondary"
-															className="bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
+															variant="outline"
+															className="bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700"
 														>
-															{Number(item.quantity)} left
+															{Number(item.quantity).toFixed(1)} left
 														</Badge>
 														<Button
 															size="sm"
 															variant="outline"
-															className="h-8 px-3 text-xs border-amber-200 hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/50"
+															className="h-8 px-3 text-xs border-amber-200 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50"
 															onClick={() =>
 																handleStockAdjustmentDialog(true, {
 																	id: item.product_id,
@@ -610,46 +645,52 @@ export const InventoryPage = () => {
 
 						{dashboardData?.expiring_soon_items &&
 							dashboardData.expiring_soon_items.length > 0 && (
-								<Card className="mt-4 border-orange-200 bg-orange-50 dark:bg-orange-900/20">
-									<CardHeader>
-										<CardTitle className="text-orange-800 dark:text-orange-200 flex items-center gap-2">
-											<Clock className="h-5 w-5" />
-											Expiring Soon Alert
-										</CardTitle>
-										<CardDescription>
-											Items that will expire within their warning threshold
-										</CardDescription>
+								<Card className="mt-4 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
+									<CardHeader className="pb-3">
+										<div className="flex items-start gap-3">
+											<div className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded-lg flex-shrink-0">
+												<Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+											</div>
+											<div className="flex-1">
+												<CardTitle className="text-base font-semibold text-orange-900 dark:text-orange-100">
+													Expiring Soon Alert
+												</CardTitle>
+												<CardDescription className="text-orange-700 dark:text-orange-300 text-sm mt-1">
+													{dashboardData.expiring_soon_items.length} item{dashboardData.expiring_soon_items.length !== 1 ? 's' : ''} expiring within threshold
+												</CardDescription>
+											</div>
+										</div>
 									</CardHeader>
-									<CardContent className="space-y-3">
+									<CardContent className="space-y-2.5">
 										{dashboardData.expiring_soon_items
 											.slice(0, 5)
 											.map((item: LowStockItem) => (
 												<div
 													key={item.product_id}
-													className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-orange-100 dark:border-orange-800/50 shadow-sm"
+													className="flex items-center justify-between p-3 bg-card rounded-lg border border-orange-100 dark:border-orange-800/50 shadow-sm hover:shadow-md transition-shadow"
 												>
-													<div className="flex items-center gap-3">
-														<div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-														<div>
-															<div className="font-medium text-foreground">
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														<div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
+														<div className="min-w-0 flex-1">
+															<div className="font-semibold text-foreground truncate">
 																{item.product_name}
 															</div>
-															<div className="text-sm text-muted-foreground">
-																{Number(item.quantity)} units
+															<div className="text-xs text-muted-foreground">
+																{Number(item.quantity).toFixed(1)} units in stock
 															</div>
 														</div>
 													</div>
-													<div className="flex items-center gap-2">
+													<div className="flex items-center gap-2 flex-shrink-0">
 														<Badge
-															variant="secondary"
-															className="bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+															variant="outline"
+															className="bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700"
 														>
-															{Number(item.quantity)} units
+															{Number(item.quantity).toFixed(1)} units
 														</Badge>
 														<Button
 															size="sm"
 															variant="outline"
-															className="h-8 px-3 text-xs border-orange-200 hover:bg-orange-100 dark:border-orange-800 dark:hover:bg-orange-900/50"
+															className="h-8 px-3 text-xs border-orange-200 hover:bg-orange-100 dark:border-orange-700 dark:hover:bg-orange-900/50"
 															onClick={() =>
 																handleStockAdjustmentDialog(true, {
 																	id: item.product_id,
@@ -736,17 +777,17 @@ export const InventoryPage = () => {
 						<CardContent className="flex-grow overflow-hidden min-h-0">
 							<div className="h-full flex flex-col">
 								{/* Table Header */}
-								<div className="grid grid-cols-12 gap-4 px-4 py-2 bg-muted font-medium rounded-t-lg flex-shrink-0">
+								<div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 font-medium text-sm text-muted-foreground rounded-t-lg flex-shrink-0 border-b border-border">
 									<div className="col-span-3">Product</div>
 									<div className="col-span-2">Location</div>
 									<div className="col-span-2 text-right">Quantity</div>
-									<div className="col-span-2 text-center">Expiration</div>
-									<div className="col-span-2 text-center">Status</div>
+									<div className="col-span-2">Expiration</div>
+									<div className="col-span-2">Status</div>
 									<div className="col-span-1 text-right">Actions</div>
 								</div>
 
 								{/* Table Body */}
-								<div ref={tableContainerRef} className="overflow-y-auto flex-grow min-h-0">
+								<div ref={tableContainerRef} className="overflow-y-auto flex-grow min-h-0 divide-y divide-border">
 									{stockLoading ? (
 										<div className="flex justify-center items-center h-full">
 											<RefreshCw className="h-6 w-6 animate-spin" />
@@ -778,84 +819,123 @@ export const InventoryPage = () => {
 												statusText = "Low Stock";
 											}
 
+											// Determine status dot color
+											const statusDotColor = isOutOfStock
+												? "bg-red-500"
+												: isExpiringSoon
+												? "bg-orange-500"
+												: isLowStock
+												? "bg-amber-500"
+												: "bg-emerald-500";
+
 											return (
 												<div
 													key={item.id}
 													data-product-id={item.product.id}
-													className={`grid grid-cols-12 gap-4 px-4 py-3 items-center border-b last:border-b-0 ${
+													className={`grid grid-cols-12 gap-4 px-4 py-4 items-center hover:bg-muted/50 transition-colors ${
 														isHighlighted
 															? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse"
 															: ""
 													}`}
 												>
-													<div className="col-span-3 font-medium">
-														{item.product.name}
-													</div>
-													<div className="col-span-2 text-muted-foreground flex items-center">
-														<MapPin className="h-4 w-4 mr-2" />
-														{item.location.name}
-													</div>
-													<div className="col-span-2 text-right">
-														{Number(item.quantity).toFixed(2)}
-													</div>
-													<div className="col-span-2">
-														<div className="text-center">
-															{item.expiration_date ? (
-																<div className="text-sm">
-																	<div>
-																		{new Date(
-																			item.expiration_date
-																		).toLocaleDateString()}
-																	</div>
-																	{isExpiringSoon && (
-																		<div className="text-xs text-warning dark:text-orange-400">
-																			{item.effective_expiration_threshold} day
-																			threshold
-																		</div>
-																	)}
+													{/* Product with status dot */}
+													<div className="col-span-3">
+														<div className="flex items-center gap-2.5">
+															<div className={`h-2 w-2 rounded-full ${statusDotColor} flex-shrink-0`} />
+															<div className="min-w-0 flex-1">
+																<div className="font-semibold text-foreground truncate">
+																	{item.product.name}
 																</div>
-															) : (
-																<span className="text-muted-foreground text-sm">
-																	No expiration
-																</span>
-															)}
+																{item.product.sku && (
+																	<div className="text-xs text-muted-foreground font-mono">
+																		{item.product.sku}
+																	</div>
+																)}
+															</div>
 														</div>
 													</div>
+
+													{/* Location */}
 													<div className="col-span-2">
-														<div className="text-center space-y-1">
-															<div>
-																<Badge
-																	variant={statusVariant}
-																	className={
-																		isExpiringSoon && !isOutOfStock
-																			? "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/50 dark:text-orange-200"
-																			: ""
-																	}
-																>
-																	{statusText}
-																</Badge>
+														<div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+															<MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+															<span className="truncate">{item.location.name}</span>
+														</div>
+													</div>
+
+													{/* Quantity */}
+													<div className="col-span-2 text-right">
+														<div className="font-bold text-lg text-foreground">
+															{Number(item.quantity).toFixed(1)}
+														</div>
+														{item.low_stock_threshold && (
+															<div className="text-xs text-muted-foreground">
+																Min: {item.effective_low_stock_threshold}
 															</div>
+														)}
+													</div>
+
+													{/* Expiration */}
+													<div className="col-span-2">
+														{item.expiration_date ? (
+															<div className="space-y-0.5">
+																<div className="text-sm font-medium text-foreground">
+																	{new Date(
+																		item.expiration_date
+																	).toLocaleDateString()}
+																</div>
+																{isExpiringSoon && (
+																	<div className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+																		⚠ Within {item.effective_expiration_threshold}d threshold
+																	</div>
+																)}
+															</div>
+														) : (
+															<span className="text-sm text-muted-foreground">
+																No expiration
+															</span>
+														)}
+													</div>
+
+													{/* Status */}
+													<div className="col-span-2">
+														<div className="flex flex-col gap-1.5">
+															<Badge
+																variant={statusVariant}
+																className={
+																	isOutOfStock
+																		? ""
+																		: isExpiringSoon
+																		? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700"
+																		: isLowStock
+																		? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700"
+																		: ""
+																}
+															>
+																{statusText}
+															</Badge>
 															{/* Show additional status if item has multiple issues */}
 															{isExpiringSoon &&
 																isLowStock &&
 																!isOutOfStock && (
-																	<div>
-																		<Badge
-																			variant="secondary"
-																			className="text-xs"
-																		>
-																			Low Stock
-																		</Badge>
-																	</div>
+																	<Badge
+																		variant="outline"
+																		className="text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700"
+																	>
+																		Also Low Stock
+																	</Badge>
 																)}
 														</div>
 													</div>
+
+													{/* Actions */}
 													<div className="col-span-1 flex justify-end">
 														<DropdownMenu>
 															<DropdownMenuTrigger asChild>
 																<Button
 																	variant="ghost"
 																	size="icon"
+																	className="h-8 w-8"
 																>
 																	<MoreVertical className="h-4 w-4" />
 																</Button>
@@ -939,60 +1019,96 @@ export const InventoryPage = () => {
 							</div>
 						</CardHeader>
 						<CardContent className="flex-grow overflow-y-auto min-h-0">
-							<div className="grid gap-4">
+							<div className="grid gap-4 md:grid-cols-2">
 								{locationsLoading ? (
-									<p>Loading locations...</p>
-								) : (
-									locations?.map((loc) => (
-										<div
+									<div className="col-span-full flex justify-center py-8">
+										<RefreshCw className="h-6 w-6 animate-spin" />
+									</div>
+								) : locations && locations.length > 0 ? (
+									locations.map((loc) => (
+										<Card
 											key={loc.id}
-											className="flex items-center justify-between p-4 border rounded-lg"
+											className="border-border bg-card hover:shadow-md transition-all duration-200"
 										>
-											<div className="flex items-center gap-4">
-												<div className="p-2 bg-muted rounded-md">
-													{loc.name.toLowerCase().includes("store") ? (
-														<Building className="h-5 w-5" />
-													) : (
-														<Warehouse className="h-5 w-5" />
-													)}
+											<CardHeader className="pb-3">
+												<div className="flex items-start justify-between gap-3">
+													<div className="flex items-start gap-3 flex-1 min-w-0">
+														<div className={`p-2.5 rounded-lg flex-shrink-0 ${
+															loc.name.toLowerCase().includes("store")
+																? "bg-blue-50 dark:bg-blue-900/20"
+																: "bg-purple-50 dark:bg-purple-900/20"
+														}`}>
+															{loc.name.toLowerCase().includes("store") ? (
+																<Building className={`h-5 w-5 ${
+																	loc.name.toLowerCase().includes("store")
+																		? "text-blue-600 dark:text-blue-400"
+																		: "text-purple-600 dark:text-purple-400"
+																}`} />
+															) : (
+																<Warehouse className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+															)}
+														</div>
+														<div className="flex-1 min-w-0">
+															<div className="flex items-center gap-2 mb-1">
+																<div className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
+																<CardTitle className="text-base font-bold text-foreground truncate">
+																	{loc.name}
+																</CardTitle>
+															</div>
+															<CardDescription className="text-sm text-muted-foreground line-clamp-2">
+																{loc.description || "No description provided"}
+															</CardDescription>
+														</div>
+													</div>
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<Button
+																variant="ghost"
+																size="icon"
+																className="h-8 w-8 flex-shrink-0"
+															>
+																<MoreVertical className="h-4 w-4" />
+															</Button>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end">
+															<DropdownMenuItem
+																onClick={() =>
+																	handleLocationDialog(true, loc, "edit")
+																}
+															>
+																<Edit className="mr-2 h-4 w-4" />
+																Edit Location
+															</DropdownMenuItem>
+															<DropdownMenuItem
+																onClick={() => handleDeleteLocation(loc.id)}
+																className="text-destructive"
+																disabled={deleteLocationMutation.isPending}
+															>
+																<Trash2 className="mr-2 h-4 w-4" />
+																Delete Location
+															</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
 												</div>
-												<div>
-													<p className="font-semibold">{loc.name}</p>
-													<p className="text-sm text-muted-foreground">
-														{loc.description || "No description"}
-													</p>
-												</div>
-											</div>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button
-														variant="ghost"
-														size="icon"
-													>
-														<MoreVertical className="h-4 w-4" />
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align="end">
-													<DropdownMenuItem
-														onClick={() =>
-															handleLocationDialog(true, loc, "edit")
-														}
-													>
-														<Edit className="mr-2 h-4 w-4" />
-														Edit
-													</DropdownMenuItem>
-													<DropdownMenuItem
-														onClick={() => handleDeleteLocation(loc.id)}
-														className="text-destructive"
-														disabled={deleteLocationMutation.isPending}
-													>
-														<Trash2 className="mr-2 h-4 w-4" />
-														Delete
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</div>
+											</CardHeader>
+										</Card>
 									))
+								) : (
+									<div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
+										<div className="p-4 bg-muted rounded-full mb-4">
+											<Warehouse className="h-8 w-8 text-muted-foreground" />
+										</div>
+										<h3 className="text-lg font-semibold mb-2">No locations yet</h3>
+										<p className="text-sm text-muted-foreground mb-4 max-w-sm">
+											Create your first location to start tracking inventory across different areas.
+										</p>
+										<Button
+											onClick={() => handleLocationDialog(true, undefined, "create")}
+										>
+											<Plus className="mr-2 h-4 w-4" />
+											Add First Location
+										</Button>
+									</div>
 								)}
 							</div>
 						</CardContent>

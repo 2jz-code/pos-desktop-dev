@@ -2,11 +2,27 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProductById } from "@/services/api/productService";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Edit, Archive, ArchiveRestore, Package } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+	ArrowLeft,
+	Edit,
+	Archive,
+	ArchiveRestore,
+	Package,
+	RefreshCw,
+	DollarSign,
+	Info,
+	Eye,
+	Tag,
+	Clock,
+	Barcode as BarcodeIcon,
+	Settings
+} from "lucide-react";
 import { formatCurrency } from "@ajeen/ui";
+import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { archiveProduct, unarchiveProduct } from "@/services/api/productService";
 import { ProductFormDialog } from "@/components/ProductFormDialog";
@@ -110,38 +126,58 @@ export const ProductDetailsPage = () => {
 		);
 	}
 
+	const statusDotColor = product.is_active ? "bg-emerald-500" : "bg-gray-500";
+
 	return (
-		<>
-			<div className="container mx-auto py-6 px-4">
-				{/* Header */}
-				<div className="flex items-center justify-between mb-6">
-					<div className="flex items-center gap-4">
-						<Button
-							variant="ghost"
-							onClick={handleBack}
-							className="flex items-center gap-2"
-						>
-							<ArrowLeft className="h-4 w-4" />
-							Back to Products
-						</Button>
+		<div className="flex flex-col h-full">
+			{/* Page Header */}
+			<div className="flex-shrink-0 border-b border-border bg-background p-4 md:p-6">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-3">
+						<div className="p-2.5 bg-muted rounded-lg">
+							<Package className="h-5 w-5 text-foreground" />
+						</div>
 						<div>
-							<h1 className="text-3xl font-bold">{product.name}</h1>
-							<p className="text-muted-foreground">
+							<h1 className="text-xl font-bold text-foreground">
+								{product.name}
+							</h1>
+							<p className="text-muted-foreground text-sm">
 								Product ID: {product.id}
 							</p>
 						</div>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-3">
 						<Button
+							onClick={handleBack}
 							variant="outline"
-							onClick={handleEdit}
+							size="sm"
+							className="border-border"
 						>
-							<Edit className="mr-2 h-4 w-4" />
-							Edit Product
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to Products
 						</Button>
 						<Button
-							variant={product.is_active ? "destructive" : "default"}
+							onClick={fetchProduct}
+							variant="outline"
+							size="sm"
+							className="border-border"
+						>
+							<RefreshCw className="mr-2 h-4 w-4" />
+							Refresh
+						</Button>
+						<Button
+							onClick={handleEdit}
+							variant="outline"
+							size="sm"
+							className="border-border"
+						>
+							<Edit className="mr-2 h-4 w-4" />
+							Edit
+						</Button>
+						<Button
 							onClick={handleArchiveToggle}
+							variant={product.is_active ? "destructive" : "default"}
+							size="sm"
 						>
 							{product.is_active ? (
 								<>
@@ -155,140 +191,276 @@ export const ProductDetailsPage = () => {
 								</>
 							)}
 						</Button>
+						<div className="flex items-center gap-2">
+							<div className={`h-2 w-2 rounded-full ${statusDotColor}`} />
+							<Badge
+								variant={product.is_active ? "default" : "secondary"}
+								className="px-3 py-1 font-semibold"
+							>
+								{product.is_active ? "Active" : "Archived"}
+							</Badge>
+						</div>
 					</div>
 				</div>
+			</div>
 
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-					{/* Product Image */}
-					<div className="lg:col-span-1">
-						<Card>
-							<CardContent className="p-0">
-								{product.image ? (
-									<img
-										src={product.image}
-										alt={product.name}
-										className="w-full max-h-96 object-contain rounded-lg bg-gray-50"
-									/>
-								) : (
-									<div className="w-full h-64 bg-muted rounded-lg flex items-center justify-center">
-										<div className="text-center">
-											<Package className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-											<p className="text-sm text-muted-foreground">No image available</p>
+			{/* Scrollable Content Area */}
+			<div className="flex-1 min-h-0 p-4 md:p-6">
+				<ScrollArea className="h-full">
+					<div className="pb-8">
+						<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+							{/* Product Image Card */}
+							<Card className="lg:col-span-1 border-border bg-card">
+								<CardHeader className="pb-4">
+									<div className="flex items-center gap-3">
+										<div className="p-2.5 bg-muted rounded-lg">
+											<Package className="h-5 w-5 text-foreground" />
+										</div>
+										<div>
+											<CardTitle className="text-lg font-semibold text-foreground">
+												Product Image
+											</CardTitle>
 										</div>
 									</div>
-								)}
-							</CardContent>
-						</Card>
-					</div>
+								</CardHeader>
+								<CardContent>
+									{product.image ? (
+										<div className="rounded-lg border border-border overflow-hidden bg-muted">
+											<img
+												src={product.image}
+												alt={product.name}
+												className="w-full h-auto object-contain"
+											/>
+										</div>
+									) : (
+										<div className="w-full h-64 bg-muted rounded-lg border border-border flex items-center justify-center">
+											<div className="text-center">
+												<Package className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+												<p className="text-sm text-muted-foreground">No image available</p>
+											</div>
+										</div>
+									)}
+								</CardContent>
+							</Card>
 
-					{/* Product Details */}
-					<div className="lg:col-span-2">
-						<Card>
-							<CardHeader>
-								<CardTitle>Product Information</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-6">
-								{/* Basic Info */}
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<h3 className="font-semibold mb-2">Name</h3>
-										<p className="text-muted-foreground">{product.name}</p>
+							{/* Pricing & Basic Info Card */}
+							<Card className="lg:col-span-2 border-border bg-card">
+								<CardHeader className="pb-4">
+									<div className="flex items-center gap-3">
+										<div className="p-2.5 bg-muted rounded-lg">
+											<DollarSign className="h-5 w-5 text-foreground" />
+										</div>
+										<div>
+											<CardTitle className="text-lg font-semibold text-foreground">
+												Pricing & Details
+											</CardTitle>
+											<CardDescription className="text-muted-foreground mt-1">
+												Core product information and pricing
+											</CardDescription>
+										</div>
 									</div>
-									<div>
-										<h3 className="font-semibold mb-2">Price</h3>
-										<p className="text-2xl font-bold text-primary">
-											{formatCurrency(product.price)}
-										</p>
+								</CardHeader>
+								<CardContent className="space-y-4">
+									<div className="grid grid-cols-2 gap-4">
+										<div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+											<span className="text-sm text-muted-foreground block mb-1">Price</span>
+											<span className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+												{formatCurrency(product.price)}
+											</span>
+										</div>
+										<div className="p-3 bg-muted rounded-lg border border-border">
+											<span className="text-sm text-muted-foreground block mb-1">Barcode</span>
+											{product.barcode ? (
+												<span className="text-base font-mono font-semibold text-foreground">
+													{product.barcode}
+												</span>
+											) : (
+												<span className="text-sm text-muted-foreground">No barcode</span>
+											)}
+										</div>
 									</div>
-								</div>
 
-								<Separator />
+									<Separator />
 
-								{/* Category and Type */}
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<h3 className="font-semibold mb-2">Category</h3>
-										{product.category ? (
-											<Badge variant="outline">{product.category.name}</Badge>
-										) : (
-											<span className="text-muted-foreground">No Category</span>
-										)}
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<span className="text-sm text-muted-foreground block mb-2">Category</span>
+											{product.category ? (
+												<Badge variant="outline" className="text-sm">
+													{product.category.name}
+												</Badge>
+											) : (
+												<span className="text-sm text-muted-foreground">Uncategorized</span>
+											)}
+										</div>
+										<div>
+											<span className="text-sm text-muted-foreground block mb-2">Product Type</span>
+											{product.product_type ? (
+												<Badge variant="default" className="text-sm">
+													{product.product_type.name}
+												</Badge>
+											) : (
+												<span className="text-sm text-muted-foreground">No Type</span>
+											)}
+										</div>
 									</div>
-									<div>
-										<h3 className="font-semibold mb-2">Product Type</h3>
-										{product.product_type ? (
-											<Badge variant="secondary">{product.product_type.name}</Badge>
-										) : (
-											<span className="text-muted-foreground">No Type</span>
-										)}
+								</CardContent>
+							</Card>
+						</div>
+
+						{/* Description Card */}
+						{product.description && (
+							<Card className="mt-6 border-border bg-card">
+								<CardHeader className="pb-4">
+									<div className="flex items-center gap-3">
+										<div className="p-2.5 bg-muted rounded-lg">
+											<Info className="h-5 w-5 text-foreground" />
+										</div>
+										<div>
+											<CardTitle className="text-lg font-semibold text-foreground">
+												Description
+											</CardTitle>
+										</div>
 									</div>
-								</div>
-
-								<Separator />
-
-								{/* Description */}
-								<div>
-									<h3 className="font-semibold mb-2">Description</h3>
-									<p className="text-muted-foreground">
-										{product.description || "No description available."}
+								</CardHeader>
+								<CardContent>
+									<p className="text-sm text-muted-foreground leading-relaxed">
+										{product.description}
 									</p>
+								</CardContent>
+							</Card>
+						)}
+
+						{/* Settings & Visibility Card */}
+						<Card className="mt-6 border-border bg-card">
+							<CardHeader className="pb-4">
+								<div className="flex items-center gap-3">
+									<div className="p-2.5 bg-muted rounded-lg">
+										<Settings className="h-5 w-5 text-foreground" />
+									</div>
+									<div>
+										<CardTitle className="text-lg font-semibold text-foreground">
+											Settings & Visibility
+										</CardTitle>
+										<CardDescription className="text-muted-foreground mt-1">
+											Product configuration and display options
+										</CardDescription>
+									</div>
 								</div>
-
-								<Separator />
-
-								{/* Additional Details */}
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<h3 className="font-semibold mb-2">Barcode</h3>
-										<p className="text-muted-foreground font-mono">
-											{product.barcode || "No barcode"}
-										</p>
+							</CardHeader>
+							<CardContent>
+								<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+									<div className="p-3 bg-muted rounded-lg border border-border">
+										<span className="text-xs text-muted-foreground block mb-2">Status</span>
+										<div className="flex items-center gap-2">
+											<div className={`h-2 w-2 rounded-full ${statusDotColor}`} />
+											<span className="text-sm font-semibold text-foreground">
+												{product.is_active ? "Active" : "Archived"}
+											</span>
+										</div>
 									</div>
-									<div>
-										<h3 className="font-semibold mb-2">Status</h3>
-										<Badge variant={product.is_active ? "default" : "destructive"}>
-											{product.is_active ? "Active" : "Archived"}
-										</Badge>
-									</div>
-								</div>
-
-								{/* Inventory Tracking */}
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<h3 className="font-semibold mb-2">Inventory Tracking</h3>
-										<Badge variant={product.track_inventory ? "default" : "outline"}>
-											{product.track_inventory ? "Enabled" : "Disabled"}
-										</Badge>
-									</div>
-									<div>
-										<h3 className="font-semibold mb-2">Public Visibility</h3>
-										<Badge variant={product.is_public ? "default" : "outline"}>
+									<div className="p-3 bg-muted rounded-lg border border-border">
+										<span className="text-xs text-muted-foreground block mb-2">Visibility</span>
+										<Badge variant={product.is_public ? "default" : "outline"} className="text-xs">
 											{product.is_public ? "Public" : "Private"}
 										</Badge>
 									</div>
-								</div>
-
-								<Separator />
-
-								{/* Timestamps */}
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<h3 className="font-semibold mb-2">Created</h3>
-										<p className="text-muted-foreground">
-											{new Date(product.created_at).toLocaleDateString()}
-										</p>
+									<div className="p-3 bg-muted rounded-lg border border-border">
+										<span className="text-xs text-muted-foreground block mb-2">Inventory</span>
+										<Badge variant={product.track_inventory ? "default" : "outline"} className="text-xs">
+											{product.track_inventory ? "Tracked" : "Not Tracked"}
+										</Badge>
 									</div>
-									<div>
-										<h3 className="font-semibold mb-2">Last Updated</h3>
-										<p className="text-muted-foreground">
-											{new Date(product.updated_at).toLocaleDateString()}
-										</p>
+									<div className="p-3 bg-muted rounded-lg border border-border">
+										<span className="text-xs text-muted-foreground block mb-2">Product ID</span>
+										<span className="text-sm font-mono font-semibold text-foreground">
+											{product.id}
+										</span>
 									</div>
 								</div>
 							</CardContent>
 						</Card>
+
+						{/* Timestamps Card */}
+						<Card className="mt-6 border-border bg-card">
+							<CardHeader className="pb-4">
+								<div className="flex items-center gap-3">
+									<div className="p-2.5 bg-muted rounded-lg">
+										<Clock className="h-5 w-5 text-foreground" />
+									</div>
+									<div>
+										<CardTitle className="text-lg font-semibold text-foreground">
+											Timeline
+										</CardTitle>
+										<CardDescription className="text-muted-foreground mt-1">
+											Product creation and modification history
+										</CardDescription>
+									</div>
+								</div>
+							</CardHeader>
+							<CardContent>
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+									<div className="space-y-2">
+										<span className="text-sm font-semibold text-foreground">Created</span>
+										<div className="flex flex-col gap-0.5">
+											<span className="text-sm text-muted-foreground">
+												{formatDistanceToNow(new Date(product.created_at), { addSuffix: true })}
+											</span>
+											<span className="text-xs text-muted-foreground/70">
+												{format(new Date(product.created_at), "MMM d, yyyy 'at' h:mm a")}
+											</span>
+										</div>
+									</div>
+									<div className="space-y-2">
+										<span className="text-sm font-semibold text-foreground">Last Updated</span>
+										<div className="flex flex-col gap-0.5">
+											<span className="text-sm text-muted-foreground">
+												{formatDistanceToNow(new Date(product.updated_at), { addSuffix: true })}
+											</span>
+											<span className="text-xs text-muted-foreground/70">
+												{format(new Date(product.updated_at), "MMM d, yyyy 'at' h:mm a")}
+											</span>
+										</div>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+
+						{/* Modifier Groups (if any) */}
+						{product.modifier_groups && product.modifier_groups.length > 0 && (
+							<Card className="mt-6 border-border bg-card">
+								<CardHeader className="pb-4">
+									<div className="flex items-center gap-3">
+										<div className="p-2.5 bg-muted rounded-lg">
+											<Tag className="h-5 w-5 text-foreground" />
+										</div>
+										<div>
+											<CardTitle className="text-lg font-semibold text-foreground">
+												Modifier Groups
+											</CardTitle>
+											<CardDescription className="text-muted-foreground mt-1">
+												{product.modifier_groups.length} modifier {product.modifier_groups.length === 1 ? 'group' : 'groups'} attached to this product
+											</CardDescription>
+										</div>
+									</div>
+								</CardHeader>
+								<CardContent>
+									<div className="flex flex-wrap gap-2">
+										{product.modifier_groups.map((group: any) => (
+											<Badge
+												key={group.id}
+												variant="secondary"
+												className="text-sm px-3 py-1"
+											>
+												{group.name}
+											</Badge>
+										))}
+									</div>
+								</CardContent>
+							</Card>
+						)}
 					</div>
-				</div>
+				</ScrollArea>
 			</div>
 
 			{/* Edit Dialog */}
@@ -298,6 +470,6 @@ export const ProductDetailsPage = () => {
 				productId={product.id}
 				onSuccess={handleEditSuccess}
 			/>
-		</>
+		</div>
 	);
 };

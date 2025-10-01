@@ -95,12 +95,16 @@ export function FinancialSettings() {
 
 	if (isLoading) {
 		return (
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2">
-						<DollarSign className="h-5 w-5" />
-						Financial Settings
-					</CardTitle>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+							<DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Financial Settings</CardTitle>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<div className="flex items-center justify-center py-8">
@@ -117,15 +121,19 @@ export function FinancialSettings() {
 	}
 
 	return (
-		<Card>
+		<Card className="border-border bg-card">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					<DollarSign className="h-5 w-5" />
-					Financial Settings
-				</CardTitle>
-				<CardDescription>
-					Configure tax rates, surcharges, and discount policies for your business
-				</CardDescription>
+				<div className="flex items-center gap-2">
+					<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+						<DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+					</div>
+					<div>
+						<CardTitle className="text-foreground">Financial Settings</CardTitle>
+						<CardDescription>
+							Configure tax rates, surcharges, and discount policies for your business
+						</CardDescription>
+					</div>
+				</div>
 			</CardHeader>
 			<CardContent>
 				<Form {...form}>

@@ -35,6 +35,10 @@ import {
 	Star,
 	Download,
 	RefreshCw,
+	BarChart3,
+	ShoppingBag,
+	Layers,
+	Award,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -325,75 +329,101 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 			</div>
 
 			{/* Key Metrics */}
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Products Sold
-						</CardTitle>
-						<Package className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.summary?.total_products?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Unique SKUs with sales
-						</p>
-					</CardContent>
-				</Card>
+			<div>
+				<div className="flex items-center gap-2 mb-4">
+					<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+						<ShoppingBag className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+					</div>
+					<div>
+						<h3 className="text-lg font-semibold text-foreground">Product Performance Metrics</h3>
+						<p className="text-sm text-muted-foreground">Overview of product sales and revenue for the selected period</p>
+					</div>
+				</div>
+				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Products Sold
+							</CardTitle>
+							<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+								<Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.summary?.total_products?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								Unique SKUs with sales
+							</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							${data?.summary?.total_revenue?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">From product sales</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+							<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+								<DollarSign className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								${data?.summary?.total_revenue?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">From product sales</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Units Sold</CardTitle>
-						<TrendingUp className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							{data?.summary?.total_units_sold?.toLocaleString() || "0"}
-						</div>
-						<p className="text-xs text-muted-foreground">Total quantity</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">Units Sold</CardTitle>
+							<div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+								<TrendingUp className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								{data?.summary?.total_units_sold?.toLocaleString() || "0"}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Total quantity</p>
+						</CardContent>
+					</Card>
 
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Avg Revenue/Product
-						</CardTitle>
-						<Star className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">
-							$
-							{(
-								(data?.summary?.total_revenue || 0) /
-								(data?.summary?.total_products || 1)
-							).toFixed(2)}
-						</div>
-						<p className="text-xs text-muted-foreground">Per product</p>
-					</CardContent>
-				</Card>
+					<Card className="border-border bg-card">
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium text-muted-foreground">
+								Avg Revenue/Product
+							</CardTitle>
+							<div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+								<Star className="h-4 w-4 text-green-600 dark:text-green-400" />
+							</div>
+						</CardHeader>
+						<CardContent>
+							<div className="text-3xl font-bold text-foreground">
+								$
+								{(
+									(data?.summary?.total_revenue || 0) /
+									(data?.summary?.total_products || 1)
+								).toFixed(2)}
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">Per product</p>
+						</CardContent>
+					</Card>
+				</div>
 			</div>
 
 			{/* Top Products Table */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>{getTopProductsTitle()}</CardTitle>
-					<CardDescription>{getTopProductsDescription()}</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+							<Award className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">{getTopProductsTitle()}</CardTitle>
+							<CardDescription>{getTopProductsDescription()}</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					{sortBy === "margin" ? (
@@ -404,43 +434,62 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 							</p>
 						</div>
 					) : (
-						<div className="space-y-4">
-							{sortedTopProducts?.map((product, index) => (
-								<div
-									key={product.id}
-									className="flex items-center justify-between"
-								>
-									<div className="flex items-center space-x-4">
-										<Badge variant="secondary">{index + 1}</Badge>
-										<div>
-											<p className="font-medium">{product.name}</p>
-											<p className="text-sm text-muted-foreground">
-												{product.sold} units • Avg: $
-												{product.avg_price.toFixed(2)}
+						<div className="space-y-3">
+							{sortedTopProducts?.map((product, index) => {
+								const rankBadgeStyles =
+									index === 0 ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700" :
+									index === 1 ? "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600" :
+									index === 2 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700" :
+									"bg-muted text-muted-foreground border-border";
+
+								return (
+									<div
+										key={product.id}
+										className="flex items-center justify-between p-4 border border-border rounded-lg hover:shadow-sm transition-shadow bg-muted/20"
+									>
+										<div className="flex items-center space-x-4 flex-1 min-w-0">
+											<Badge variant="outline" className={`text-sm font-semibold ${rankBadgeStyles} flex-shrink-0`}>
+												#{index + 1}
+											</Badge>
+											<div className="flex-1 min-w-0">
+												<p className="font-semibold text-foreground">{product.name}</p>
+												<p className="text-sm text-muted-foreground mt-0.5">
+													{product.sold} units • Avg: ${product.avg_price.toFixed(2)}
+												</p>
+											</div>
+										</div>
+										<div className="text-right ml-4">
+											<p className="font-bold text-lg text-foreground">
+												{sortBy === "quantity"
+													? `${product.sold}`
+													: `$${product.revenue.toLocaleString()}`}
+											</p>
+											<p className="text-xs text-muted-foreground">
+												{sortBy === "quantity" ? "units" : "revenue"}
 											</p>
 										</div>
 									</div>
-									<div className="text-right">
-										<p className="font-medium">
-											{sortBy === "quantity"
-												? `${product.sold} units`
-												: `$${product.revenue.toLocaleString()}`}
-										</p>
-									</div>
-								</div>
-							))}
+								);
+							})}
 						</div>
 					)}
 				</CardContent>
 			</Card>
 
 			{/* Category Performance */}
-			<Card>
+			<Card className="border-border bg-card">
 				<CardHeader>
-					<CardTitle>Category Performance</CardTitle>
-					<CardDescription>
-						Revenue breakdown by product category
-					</CardDescription>
+					<div className="flex items-center gap-2">
+						<div className="p-2 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+							<Layers className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+						</div>
+						<div>
+							<CardTitle className="text-foreground">Category Performance</CardTitle>
+							<CardDescription>
+								Revenue breakdown by product category
+							</CardDescription>
+						</div>
+					</div>
 				</CardHeader>
 				<CardContent>
 					<ResponsiveContainer
@@ -448,20 +497,25 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 						height={300}
 					>
 						<BarChart data={data?.category_performance || []}>
-							<CartesianGrid strokeDasharray="3 3" />
+							<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 							<XAxis
 								dataKey="category"
 								angle={-45}
 								textAnchor="end"
 								height={80}
+								className="text-muted-foreground"
 							/>
-							<YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+							<YAxis
+								tickFormatter={(value) => `$${value.toLocaleString()}`}
+								className="text-muted-foreground"
+							/>
 							<Tooltip
 								formatter={(value: number) => `$${value.toLocaleString()}`}
 							/>
 							<Bar
 								dataKey="revenue"
-								fill="#8884d8"
+								fill="#14b8a6"
+								radius={[4, 4, 0, 0]}
 							/>
 						</BarChart>
 					</ResponsiveContainer>
@@ -530,12 +584,19 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 					const tooltipFormat = getTooltipFormat(actualPeriod);
 
 					return (
-						<Card>
+						<Card className="border-border bg-card">
 							<CardHeader>
-								<CardTitle>Product Trends</CardTitle>
-								<CardDescription>
-									Sales trends for top products over time ({actualPeriod})
-								</CardDescription>
+								<div className="flex items-center gap-2">
+									<div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+										<BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+									</div>
+									<div>
+										<CardTitle className="text-foreground">Product Trends</CardTitle>
+										<CardDescription>
+											Sales trends for top products over time ({actualPeriod})
+										</CardDescription>
+									</div>
+								</div>
 							</CardHeader>
 							<CardContent>
 								<ResponsiveContainer
@@ -546,14 +607,15 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 										key={actualPeriod}
 										data={unifiedData}
 									>
-										<CartesianGrid strokeDasharray="3 3" />
+										<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
 										<XAxis
 											dataKey="date"
 											tickFormatter={(value) =>
 												format(reportsService.parseLocalDate(value), dateFormat)
 											}
+											className="text-muted-foreground"
 										/>
-										<YAxis />
+										<YAxis className="text-muted-foreground" />
 										<Tooltip
 											labelFormatter={(value) =>
 												format(

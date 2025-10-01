@@ -34,6 +34,7 @@ import {
 	Settings,
 	Tags,
 	FolderOpen,
+	Package,
 } from "lucide-react";
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
@@ -118,17 +119,19 @@ export const ProductsPage = () => {
 			setLoading(true);
 			// Use include_archived parameter to control which products are returned
 			const params = {};
-			
+
 			if (includeArchived) {
 				params.include_archived = 'only'; // Show only archived products
+			} else {
+				// Explicitly request only active products when not viewing archived
+				params.is_active = 'true';
 			}
-			// When includeArchived is false, don't pass any parameter to show only active products (default behavior)
-			
+
 			// If we have a modifier context, we need to include all modifiers to see conditional ones
 			if (modifierContext) {
 				params.include_all_modifiers = true;
 			}
-			
+
 			const response = await getProducts(params);
 			const fetchedProducts = response.data?.results || response.data || [];
 			setAllProducts(fetchedProducts); // Store complete list
@@ -455,49 +458,103 @@ export const ProductsPage = () => {
 					onCheckedChange={handleSelectAll}
 				/>
 			),
-			className: "w-12",
+			className: "w-12 pl-6",
 		},
-		{ label: "Name" },
-		{ label: "Category" },
-		{ label: "Product Type" },
-		{ label: "Price", className: "text-right" },
-		{ label: "Actions", className: "text-right" },
+		{ label: "Product", className: "w-[300px]" },
+		{ label: "Category", className: "w-[180px]" },
+		{ label: "Type", className: "w-[140px]" },
+		{ label: "Price", className: "text-right w-[120px]" },
+		{ label: "Status", className: "w-[100px]" },
+		{ label: "", className: "text-right pr-6 w-[80px]" },
 	];
 
 	const renderProductRow = (product) => {
 		const isSelected = selectedProductIds.includes(product.id);
+		const statusDotColor = product.is_active ? "bg-emerald-500" : "bg-gray-500";
 
 		return (
 			<>
-				<TableCell onClick={(e) => e.stopPropagation()}>
+				{/* Checkbox */}
+				<TableCell onClick={(e) => e.stopPropagation()} className="pl-6">
 					<Checkbox
 						checked={isSelected}
 						onCheckedChange={(checked) => handleSelectProduct(product.id, checked as boolean)}
 					/>
 				</TableCell>
-				<TableCell className="font-medium">{product.name}</TableCell>
-				<TableCell>
-					<Badge variant={product.category ? "outline" : "secondary"}>
+
+				{/* Product with Image & Name */}
+				<TableCell className="py-3">
+					<div className="flex items-center gap-3">
+						{/* Product Thumbnail */}
+						<div className="w-12 h-12 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
+							{product.image ? (
+								<img
+									src={product.image}
+									alt={product.name}
+									className="w-full h-full object-cover"
+								/>
+							) : (
+								<div className="w-full h-full flex items-center justify-center">
+									<Package className="h-5 w-5 text-muted-foreground" />
+								</div>
+							)}
+						</div>
+						{/* Product Info */}
+						<div className="flex flex-col gap-0.5 min-w-0">
+							<span className="text-base font-bold text-foreground truncate">
+								{product.name}
+							</span>
+							{product.barcode && (
+								<span className="text-xs text-muted-foreground font-mono">
+									{product.barcode}
+								</span>
+							)}
+						</div>
+					</div>
+				</TableCell>
+
+				{/* Category */}
+				<TableCell className="py-3">
+					<Badge variant={product.category ? "outline" : "secondary"} className="text-xs">
 						{product.category_display_name || product.category?.name || "Uncategorized"}
 					</Badge>
 				</TableCell>
-				<TableCell>
-					<Badge variant={product.product_type ? "default" : "secondary"}>
+
+				{/* Product Type */}
+				<TableCell className="py-3">
+					<Badge variant={product.product_type ? "default" : "secondary"} className="text-xs font-medium">
 						{product.product_type?.name || "No Type"}
 					</Badge>
 				</TableCell>
-				<TableCell className="text-right font-medium">
-					{formatCurrency(product.price)}
+
+				{/* Price - PROMINENT */}
+				<TableCell className="text-right py-3">
+					<span className="text-base font-bold text-foreground">
+						{formatCurrency(product.price)}
+					</span>
 				</TableCell>
+
+				{/* Status with Dot */}
+				<TableCell className="py-3">
+					<div className="flex items-center gap-2">
+						<div className={`h-2 w-2 rounded-full ${statusDotColor}`} />
+						<span className="text-xs font-medium text-muted-foreground">
+							{product.is_active ? "Active" : "Archived"}
+						</span>
+					</div>
+				</TableCell>
+
+				{/* Actions */}
 				<TableCell
 					onClick={(e) => e.stopPropagation()}
-					className="text-right"
+					className="text-right pr-6"
 				>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
 								variant="ghost"
 								size="icon"
+								className="h-8 w-8"
 							>
 								<MoreHorizontal className="h-4 w-4" />
 							</Button>
@@ -731,6 +788,8 @@ export const ProductsPage = () => {
 					})}
 					highlightedItemId={highlightedProductId}
 					itemIdKey="id"
+					colSpan={7}
+					className="border-0"
 				/>
 			</DomainPageLayout>
 

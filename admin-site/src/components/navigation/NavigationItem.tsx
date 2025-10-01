@@ -45,7 +45,7 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 	// Desktop expandable behavior (when not collapsed)
 	if (!isCollapsed && !isMobile) {
 		return (
-			<div className="space-y-1">
+			<>
 				<button
 					onClick={() => setIsExpanded(!isExpanded)}
 					className={cn(
@@ -61,9 +61,9 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 						<ChevronRight className="h-3 w-3 flex-shrink-0" />
 					)}
 				</button>
-				
+
 				{isExpanded && (
-					<div className="ml-7 space-y-1">
+					<div className="ml-7 space-y-1 mt-1">
 						<Link
 							to={route.path}
 							className={cn(
@@ -87,7 +87,7 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 						))}
 					</div>
 				)}
-			</div>
+			</>
 		);
 	}
 
@@ -99,15 +99,15 @@ export function NavigationItem({ route, isCollapsed, isMobile = false }: Navigat
 				<DropdownMenuTrigger asChild>
 					<button
 						className={cn(
-							"flex items-center justify-center rounded-lg px-2 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
+							"w-full flex items-center justify-center rounded-lg px-2 py-2.5 text-muted-foreground transition-all hover:text-foreground hover:bg-accent",
 							isActive && "bg-accent text-accent-foreground font-medium"
 						)}
 					>
 						<route.icon className="h-4 w-4 flex-shrink-0" />
 					</button>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent 
-					side="right" 
+				<DropdownMenuContent
+					side="right"
 					align="start"
 					className="bg-popover border-border"
 				>

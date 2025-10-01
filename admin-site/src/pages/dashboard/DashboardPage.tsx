@@ -1,117 +1,61 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRolePermissions } from "@/hooks/useRolePermissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import {
-	Home,
 	ClipboardList,
 	CreditCard,
 	Users,
 	Package,
 	Percent,
 	Settings,
-	DollarSign,
-	Activity,
-	ArrowRight,
 	FileText,
 	Shield,
+	ArrowRight,
+	Zap,
+	Activity,
+	DollarSign,
+	ShoppingCart,
+	TrendingUp,
+	AlertTriangle,
+	Clock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import dashboardService from "@/services/api/dashboardService";
+import type { DashboardMetrics, ActivityItem } from "@/services/api/dashboardService";
 
-const STATUS_STYLES = {
-	online: {
-		dot: "bg-primary",
-		badge: "border border-primary/30 bg-primary/15 text-primary",
-		label: "Online",
-	},
-	active: {
-		dot: "bg-accent-foreground",
-		badge: "border border-accent/25 bg-accent/15 text-accent-foreground",
-		label: "Active",
-	},
-	default: {
-		dot: "bg-muted-foreground/60",
-		badge: "border border-muted/30 bg-muted/20 text-muted-foreground",
-		label: "Idle",
-	},
-};
-
-interface StatsCardProps {
-	icon: LucideIcon;
-	label: string;
-	value: string;
-	status?: "online" | "active" | "default";
-}
-
-const StatsCard: React.FC<StatsCardProps> = ({ icon: IconComponent, label, value, status = "default" }) => {
-	const style = STATUS_STYLES[status] ?? STATUS_STYLES.default;
-
-	return (
-		<Card className="border border-border/60 bg-card/80 shadow-sm">
-			<CardContent className="flex items-center justify-between gap-4 p-5">
-				<div className="flex items-center gap-3">
-					<div className="flex size-10 items-center justify-center rounded-lg bg-muted/20 text-primary ring-1 ring-inset ring-border/30">
-						<IconComponent className="size-5" />
-					</div>
-					<div className="space-y-1">
-						<p className="text-[0.7rem] uppercase tracking-[0.32em] text-muted-foreground">
-							{label}
-						</p>
-						<p className="text-lg font-semibold text-foreground">{value}</p>
-					</div>
-				</div>
-				<span
-					className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200 ease-standard ${style.badge}`}
-				>
-					<span className={`size-1.5 rounded-full ${style.dot}`} />
-					{style.label}
-				</span>
-			</CardContent>
-		</Card>
-	);
-};
-
-interface DashboardCardProps {
+interface QuickAccessCardProps {
 	to: string;
 	title: string;
 	description: string;
 	icon: LucideIcon;
-	roleRequired?: boolean;
 }
 
-const ProfessionalDashboardCard: React.FC<DashboardCardProps> = ({
+const QuickAccessCard: React.FC<QuickAccessCardProps> = ({
 	to,
 	title,
 	description,
 	icon: IconComponent,
-	roleRequired = false,
 }) => (
-	<Link className="group block focus-visible:outline-none" to={to}>
-		<Card className="h-full border border-border/60 bg-card/80 shadow-sm transition-all duration-200 ease-standard group-hover:-translate-y-0.5 group-hover:border-border group-hover:shadow-lg group-focus-visible:ring-2 group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-background">
-			<CardHeader className="flex flex-col gap-4 pb-3">
-				<div className="flex items-start justify-between gap-4">
+	<Link
+		className="group block transition-all duration-200 focus-visible:outline-none"
+		to={to}
+	>
+		<Card className="h-full border border-border/40 bg-card/95 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 group-focus-visible:ring-2 group-focus-visible:ring-ring/60 group-focus-visible:ring-offset-2">
+			<CardHeader className="pb-3">
+				<div className="flex items-start justify-between gap-3">
 					<div className="flex items-start gap-3">
-						<div className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-inset ring-primary/30 transition-colors duration-200 ease-standard group-hover:bg-primary/20">
-							<IconComponent className="size-5" />
+						<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200 group-hover:bg-primary/15 group-hover:scale-105">
+							<IconComponent className="h-5 w-5" />
 						</div>
-						<div className="space-y-1">
-							<CardTitle className="text-base font-semibold text-foreground">
-								{title}
-							</CardTitle>
-						</div>
+						<CardTitle className="text-base font-semibold text-foreground group-hover:text-primary transition-colors duration-200">
+							{title}
+						</CardTitle>
 					</div>
-					<ArrowRight className="mt-1 size-4 text-muted-foreground/60 transition-transform duration-200 ease-standard group-hover:translate-x-1 group-hover:text-primary" />
+					<ArrowRight className="h-5 w-5 text-muted-foreground/40 transition-all duration-200 group-hover:translate-x-1 group-hover:text-primary" />
 				</div>
-				{roleRequired && (
-					<Badge
-						variant="outline"
-						className="w-fit rounded-full border-dashed border-border/60 bg-transparent px-2.5 py-0.5 text-[0.65rem] uppercase tracking-wide text-muted-foreground"
-					>
-						Manager Access
-					</Badge>
-				)}
 			</CardHeader>
 			<CardContent className="pt-0">
 				<p className="text-sm leading-relaxed text-muted-foreground">
@@ -122,24 +66,237 @@ const ProfessionalDashboardCard: React.FC<DashboardCardProps> = ({
 	</Link>
 );
 
+interface MetricCardProps {
+	icon: LucideIcon;
+	label: string;
+	value: string;
+	subtitle?: string;
+	trend?: "up" | "down" | "neutral";
+	trendValue?: string;
+	comparison?: string;
+	linkTo?: string;
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({
+	icon: IconComponent,
+	label,
+	value,
+	subtitle,
+	trend,
+	trendValue,
+	comparison,
+	linkTo,
+}) => {
+	const cardContent = (
+		<Card className={`h-[180px] border border-border/40 bg-card/95 shadow-md transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 ${linkTo ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}>
+			<CardContent className="p-6 pb-8 h-full flex flex-col justify-between">
+				<div className="flex items-start justify-between gap-3">
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-2 mb-1">
+							<IconComponent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+							<p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+								{label}
+							</p>
+						</div>
+						<p className={`font-bold text-foreground mt-2 ${label === "Top Product" ? "text-lg leading-tight line-clamp-2" : "text-3xl"}`}>{value}</p>
+						{subtitle && (
+							<p className="text-xs text-muted-foreground mt-1 line-clamp-1">{subtitle}</p>
+						)}
+						{comparison && (
+							<p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">
+								{comparison}
+							</p>
+						)}
+					</div>
+					{trend && trendValue && (
+						<Badge
+							variant="outline"
+							className={`flex items-center gap-1 px-2 py-1 flex-shrink-0 ${
+								trend === "up"
+									? "border-success/40 bg-success/10 text-success"
+									: trend === "down"
+									? "border-destructive/40 bg-destructive/10 text-destructive"
+									: "border-muted/40 bg-muted/10 text-muted-foreground"
+							}`}
+						>
+							<TrendingUp
+								className={`h-3 w-3 ${trend === "down" ? "rotate-180" : ""}`}
+							/>
+							{trendValue}
+						</Badge>
+					)}
+				</div>
+			</CardContent>
+		</Card>
+	);
+
+	if (linkTo) {
+		return (
+			<Link to={linkTo} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg">
+				{cardContent}
+			</Link>
+		);
+	}
+
+	return cardContent;
+};
+
+const getIconForType = (type: string): LucideIcon => {
+	switch (type) {
+		case "order":
+			return ShoppingCart;
+		case "product":
+			return Package;
+		case "inventory":
+			return AlertTriangle;
+		case "user":
+			return Users;
+		default:
+			return Activity;
+	}
+};
+
+interface RecentActivityFeedProps {
+	activities: ActivityItem[];
+	loading: boolean;
+}
+
+const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
+	activities,
+	loading,
+}) => {
+	if (loading) {
+		return (
+			<Card className="border border-border/40 bg-card/95 shadow-md">
+				<CardHeader className="pb-3">
+					<div className="flex items-center gap-2">
+						<Clock className="h-5 w-5 text-primary" />
+						<CardTitle className="text-lg font-semibold text-foreground">
+							Recent Activity
+						</CardTitle>
+					</div>
+				</CardHeader>
+				<CardContent className="pt-0">
+					<div className="flex items-center justify-center py-8">
+						<div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+					</div>
+				</CardContent>
+			</Card>
+		);
+	}
+
+	if (activities.length === 0) {
+		return (
+			<Card className="border border-border/40 bg-card/95 shadow-md">
+				<CardHeader className="pb-3">
+					<div className="flex items-center gap-2">
+						<Clock className="h-5 w-5 text-primary" />
+						<CardTitle className="text-lg font-semibold text-foreground">
+							Recent Activity
+						</CardTitle>
+					</div>
+				</CardHeader>
+				<CardContent className="pt-0">
+					<p className="py-8 text-center text-sm text-muted-foreground">
+						No recent activity
+					</p>
+				</CardContent>
+			</Card>
+		);
+	}
+
+	return (
+		<Card className="border border-border/40 bg-card/95 shadow-md">
+			<CardHeader className="pb-3">
+				<div className="flex items-center gap-2">
+					<Clock className="h-5 w-5 text-primary" />
+					<CardTitle className="text-lg font-semibold text-foreground">
+						Recent Activity
+					</CardTitle>
+				</div>
+			</CardHeader>
+			<CardContent className="pt-0">
+				<div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border/20">
+					{activities.map((activity) => {
+						const IconComponent = getIconForType(activity.type);
+						const activityContent = (
+							<div className="flex items-start gap-3 rounded-lg p-3 transition-colors duration-150 hover:bg-muted/30">
+								<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary flex-shrink-0">
+									<IconComponent className="h-4 w-4" />
+								</div>
+								<div className="flex-1 min-w-0">
+									<p className="text-sm text-foreground">{activity.message}</p>
+									<p className="text-xs text-muted-foreground mt-0.5">
+										{activity.timestamp}
+									</p>
+								</div>
+							</div>
+						);
+
+						if (activity.linkTo) {
+							return (
+								<Link
+									key={activity.id}
+									to={activity.linkTo}
+									className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg"
+								>
+									{activityContent}
+								</Link>
+							);
+						}
+
+						return <div key={activity.id}>{activityContent}</div>;
+					})}
+				</div>
+			</CardContent>
+		</Card>
+	);
+};
+
 export function DashboardPage() {
 	const { user: authUser, loading: authLoading } = useAuth();
 	const permissions = useRolePermissions();
+	const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+	const [activities, setActivities] = useState<ActivityItem[]>([]);
+	const [metricsLoading, setMetricsLoading] = useState(true);
+	const [activitiesLoading, setActivitiesLoading] = useState(true);
+
+	useEffect(() => {
+		if (!authLoading && authUser) {
+			// Fetch dashboard metrics
+			dashboardService
+				.getDashboardMetrics()
+				.then(setMetrics)
+				.catch((err) => console.error("Error fetching metrics:", err))
+				.finally(() => setMetricsLoading(false));
+
+			// Fetch recent activity
+			dashboardService
+				.getRecentActivity()
+				.then(setActivities)
+				.catch((err) => console.error("Error fetching activity:", err))
+				.finally(() => setActivitiesLoading(false));
+		}
+	}, [authLoading, authUser]);
 
 	if (authLoading) {
 		return (
-			<div className="flex items-center justify-center min-h-screen">
-				<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" />
+			<div className="flex min-h-screen items-center justify-center">
+				<div className="space-y-4 text-center">
+					<div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+					<p className="text-sm text-muted-foreground">Loading dashboard...</p>
+				</div>
 			</div>
 		);
 	}
 
 	if (!authUser) {
 		return (
-			<div className="flex min-h-screen items-center justify-center bg-background">
-				<Card className="w-full max-w-md border border-border/60 bg-card/80 shadow-sm">
-					<CardContent className="text-center text-muted-foreground p-6">
-						Please log in to view the dashboard.
+			<div className="flex min-h-screen items-center justify-center">
+				<Card className="w-full max-w-md border border-border/40 bg-card/80 shadow-lg">
+					<CardContent className="p-8 text-center text-muted-foreground">
+						<Shield className="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
+						<p className="text-lg font-medium">Please log in to view the dashboard.</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -167,7 +324,6 @@ export function DashboardPage() {
 			description: "Manage stock levels, track inventory, and handle adjustments",
 			icon: Package,
 			show: permissions.canAccessInventory(),
-			roleRequired: true,
 		},
 		{
 			to: "/payments",
@@ -175,7 +331,6 @@ export function DashboardPage() {
 			description: "Payment history, refunds, and financial records",
 			icon: CreditCard,
 			show: permissions.canAccessPayments(),
-			roleRequired: true,
 		},
 		{
 			to: "/users",
@@ -183,7 +338,6 @@ export function DashboardPage() {
 			description: "Manage staff accounts, roles, and permissions",
 			icon: Users,
 			show: permissions.canAccessUsers(),
-			roleRequired: true,
 		},
 		{
 			to: "/discounts",
@@ -191,7 +345,6 @@ export function DashboardPage() {
 			description: "Create and manage promotional offers",
 			icon: Percent,
 			show: permissions.canAccessDiscounts(),
-			roleRequired: true,
 		},
 		{
 			to: "/reports",
@@ -199,7 +352,6 @@ export function DashboardPage() {
 			description: "Generate business reports and analytics",
 			icon: FileText,
 			show: permissions.canAccessReports(),
-			roleRequired: true,
 		},
 		{
 			to: "/audit",
@@ -207,7 +359,6 @@ export function DashboardPage() {
 			description: "Security logs and system audit trails",
 			icon: Shield,
 			show: permissions.canAccessAudits(),
-			roleRequired: true,
 		},
 		{
 			to: "/settings",
@@ -220,131 +371,150 @@ export function DashboardPage() {
 
 	const visibleCards = dashboardCards.filter((card) => card.show);
 
-	const stats = [
-		{
-			icon: Activity,
-			label: "System Status",
-			value: "Healthy",
-			status: "online" as const,
-		},
-		{
-			icon: DollarSign,
-			label: "Today's Sales",
-			value: "Active",
-			status: "active" as const,
-		},
-		{
-			icon: Home,
-			label: "Access Level",
-			value: authUser?.role || "User",
-			status: "default" as const,
-		},
-	];
-
 	return (
-		<div className="min-h-full bg-background">
-			<div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-				<header className="rounded-2xl border border-border/60 bg-card/80 px-6 py-7 shadow-sm backdrop-blur">
-					<div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-						<div className="space-y-2">
-							<span className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
-								Control Center
-							</span>
-							<h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
-							<p className="text-sm leading-relaxed text-muted-foreground">
-								Welcome back, <span className="text-foreground font-medium">{authUser?.username || authUser?.email}</span>. Your business dashboard is ready.
+		<div className="min-h-full animate-fade-in-up">
+			<div className="mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 pb-12 pt-8 sm:px-6 lg:px-10">
+				{/* Hero Header */}
+				<header className="rounded-2xl border border-border/40 bg-card/95 p-8 shadow-lg lg:p-12">
+					<div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+						<div className="space-y-4">
+							<div className="flex items-center gap-4">
+								<div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20">
+									<Zap className="h-7 w-7 text-primary-foreground" />
+								</div>
+								<div>
+									<h1 className="text-3xl font-bold tracking-tight text-foreground lg:text-4xl">
+										Welcome Back!
+									</h1>
+									<p className="mt-1 text-base text-muted-foreground">
+										<span className="font-medium text-foreground">
+											{authUser?.username || authUser?.email}
+										</span>{" "}
+										• {authUser?.role}
+									</p>
+								</div>
+							</div>
+							<p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+								Your command center for managing all aspects of your business. Access key features and workflows instantly.
 							</p>
 						</div>
-						<div className="flex flex-col items-start gap-3 text-sm text-muted-foreground md:items-end">
-							<span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/20 px-3 py-1 text-xs uppercase tracking-wide">
-								<span className="size-1.5 rounded-full bg-primary" />
-								System online
-							</span>
-							<Badge
-								variant="outline"
-								className="rounded-full border-border/60 bg-transparent px-3 py-1 text-xs uppercase tracking-wide text-muted-foreground"
-							>
-								{authUser?.role}
+
+						{/* Status Badges */}
+						<div className="flex flex-wrap gap-3 lg:flex-col lg:items-end">
+							<Badge className="flex items-center gap-2 rounded-full border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
+								<Activity className="h-4 w-4" />
+								System Online
+								<span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
 							</Badge>
 						</div>
 					</div>
 				</header>
 
-				<section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-					{stats.map((stat) => (
-						<StatsCard
-							key={stat.label}
-							icon={stat.icon}
-							label={stat.label}
-							value={stat.value}
-							status={stat.status}
-						/>
-					))}
+				{/* Metrics Grid */}
+				<section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+					{metricsLoading ? (
+						<>
+							{[1, 2, 3, 4].map((i) => (
+								<Card
+									key={i}
+									className="border border-border/40 bg-card/95 shadow-md"
+								>
+									<CardContent className="p-6">
+										<div className="animate-pulse space-y-3">
+											<div className="h-4 w-24 rounded bg-muted" />
+											<div className="h-8 w-32 rounded bg-muted" />
+											<div className="h-3 w-20 rounded bg-muted" />
+										</div>
+									</CardContent>
+								</Card>
+							))}
+						</>
+					) : metrics ? (
+						<>
+							<MetricCard
+								icon={DollarSign}
+								label="Today's Sales"
+								value={metrics.todaySales.value}
+								subtitle="Net revenue"
+								trend={metrics.todaySales.trend}
+								trendValue={metrics.todaySales.trendValue}
+								comparison={metrics.todaySales.comparison}
+								linkTo="/reports?filter=today&type=sales"
+							/>
+							<MetricCard
+								icon={ShoppingCart}
+								label="Orders"
+								value={metrics.ordersCount.value}
+								subtitle={metrics.ordersCount.subtitle}
+								trend={metrics.ordersCount.trend}
+								trendValue={metrics.ordersCount.trendValue}
+								comparison={metrics.ordersCount.comparison}
+								linkTo="/orders?filter=today"
+							/>
+							<MetricCard
+								icon={Package}
+								label="Top Product"
+								value={metrics.topProduct.value}
+								subtitle={metrics.topProduct.subtitle}
+								trend="neutral"
+								comparison={metrics.topProduct.comparison}
+								linkTo="/products"
+							/>
+							<MetricCard
+								icon={AlertTriangle}
+								label="Low Stock"
+								value={metrics.lowStockCount.value}
+								subtitle={metrics.lowStockCount.subtitle}
+								trend="neutral"
+								linkTo="/inventory?filter=low-stock"
+							/>
+						</>
+					) : (
+						<div className="col-span-4">
+							<Card className="border border-border/40 bg-card/95">
+								<CardContent className="p-6 text-center text-muted-foreground">
+									Failed to load metrics
+								</CardContent>
+							</Card>
+						</div>
+					)}
 				</section>
 
-				<section className="space-y-4">
-					<div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-						<div>
-							<h2 className="text-lg font-semibold text-foreground">Quick Access</h2>
-							<p className="text-sm text-muted-foreground">
-								Jump into the workflows you use most often.
-							</p>
+				{/* Two Column Section */}
+				<section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+					{/* Quick Access Grid */}
+					<div className="space-y-5">
+						<div className="flex items-center justify-between">
+							<div className="space-y-1">
+								<h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+									<Zap className="h-6 w-6 text-primary" />
+									Quick Access
+								</h2>
+								<p className="text-sm text-muted-foreground">
+									Navigate to your most frequently used modules
+								</p>
+							</div>
+						</div>
+
+						<div className="grid gap-4 sm:grid-cols-2">
+							{visibleCards.map((card) => (
+								<QuickAccessCard
+									key={card.to}
+									to={card.to}
+									title={card.title}
+									description={card.description}
+									icon={card.icon}
+								/>
+							))}
 						</div>
 					</div>
-					<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-						{visibleCards.map((card) => (
-							<ProfessionalDashboardCard
-								key={card.to}
-								to={card.to}
-								title={card.title}
-								description={card.description}
-								icon={card.icon}
-								roleRequired={card.roleRequired}
-							/>
-						))}
-					</div>
-				</section>
 
-				{permissions.isCashier && (
-					<Card className="border border-border/60 bg-card/80 shadow-sm">
-						<CardHeader className="pb-2">
-							<CardTitle className="text-base font-semibold text-foreground">
-								Cashier Quick Guide
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-6">
-							<div className="grid gap-6 md:grid-cols-2">
-								<div>
-									<h4 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-										Your main tasks
-									</h4>
-									<ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-										{[
-											"View orders and transactions",
-											"Browse product catalog",
-											"View basic reports",
-											"Adjust display settings",
-										].map((item) => (
-											<li key={item} className="flex items-center gap-2">
-												<span className="size-1.5 rounded-full bg-muted-foreground/50" />
-												{item}
-											</li>
-										))}
-									</ul>
-								</div>
-								<div className="space-y-3 text-sm text-muted-foreground">
-									<h4 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-										Need help?
-									</h4>
-									<p>
-										Ask your manager to unlock advanced features like user management,
-										inventory adjustments, or business settings configuration.
-									</p>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				)}
+					{/* Recent Activity Feed */}
+					<RecentActivityFeed
+						activities={activities}
+						loading={activitiesLoading}
+					/>
+				</section>
 			</div>
 		</div>
 	);

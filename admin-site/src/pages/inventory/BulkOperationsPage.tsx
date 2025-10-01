@@ -386,29 +386,35 @@ export const BulkOperationsPage = () => {
 
 			{/* Summary Cards */}
 			<div className="grid gap-4 md:grid-cols-2 flex-shrink-0">
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="text-sm font-medium text-muted-foreground">
 							Total Products
 						</CardTitle>
-						<Warehouse className="h-4 w-4 text-muted-foreground" />
+						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Warehouse className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">{products?.length || 0}</div>
-						<p className="text-xs text-muted-foreground">
+						<div className="text-3xl font-bold text-foreground">{products?.length || 0}</div>
+						<p className="text-xs text-muted-foreground mt-1">
 							Available for operations
 						</p>
 					</CardContent>
 				</Card>
 
-				<Card>
+				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">Locations</CardTitle>
-						<ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+						<CardTitle className="text-sm font-medium text-muted-foreground">
+							Locations
+						</CardTitle>
+						<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+							<ArrowUpDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-2xl font-bold">{locations?.length || 0}</div>
-						<p className="text-xs text-muted-foreground">Storage locations</p>
+						<div className="text-3xl font-bold text-foreground">{locations?.length || 0}</div>
+						<p className="text-xs text-muted-foreground mt-1">Storage locations</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -438,39 +444,45 @@ export const BulkOperationsPage = () => {
 					value="adjustments"
 					className="flex-grow overflow-y-auto min-h-0"
 				>
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Edit className="h-5 w-5" />
-								Bulk Stock Adjustments
-							</CardTitle>
-							<CardDescription>
-								Add or subtract stock quantities across multiple products and
-								locations simultaneously
-							</CardDescription>
+					<Card className="border-border bg-card">
+						<CardHeader className="pb-4">
+							<div className="flex items-start gap-3">
+								<div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex-shrink-0">
+									<Edit className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+								</div>
+								<div className="flex-1">
+									<CardTitle className="text-xl font-bold text-foreground">
+										Bulk Stock Adjustments
+									</CardTitle>
+									<CardDescription className="text-sm text-muted-foreground mt-1">
+										Add or subtract stock quantities across multiple products and
+										locations simultaneously
+									</CardDescription>
+								</div>
+							</div>
 						</CardHeader>
 						<CardContent>
 							<form onSubmit={handleAdjustmentSubmit(onAdjustmentSubmit)}>
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Product</TableHead>
-											<TableHead>Location</TableHead>
-											<TableHead>Type</TableHead>
-											<TableHead>Quantity</TableHead>
-											<TableHead>Reason</TableHead>
-											<TableHead>Details</TableHead>
-											<TableHead></TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{adjustmentFields.map((field, index) => (
-											<TableRow
-												key={field.id}
-												className="border-b border-spacing-y-2"
-												style={{ height: "80px" }}
-											>
-												<TableCell className="align-top">
+								<div className="rounded-lg border border-border overflow-hidden">
+									<Table>
+										<TableHeader>
+											<TableRow className="bg-muted/50 hover:bg-muted/50">
+												<TableHead className="font-semibold text-foreground">Product</TableHead>
+												<TableHead className="font-semibold text-foreground">Location</TableHead>
+												<TableHead className="font-semibold text-foreground">Type</TableHead>
+												<TableHead className="font-semibold text-foreground">Quantity</TableHead>
+												<TableHead className="font-semibold text-foreground">Reason</TableHead>
+												<TableHead className="font-semibold text-foreground">Details</TableHead>
+												<TableHead></TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{adjustmentFields.map((field, index) => (
+												<TableRow
+													key={field.id}
+													className="hover:bg-muted/30 transition-colors"
+												>
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`adjustments.${index}.product_id`}
 														control={adjustmentControl}
@@ -500,7 +512,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`adjustments.${index}.location_id`}
 														control={adjustmentControl}
@@ -543,7 +555,7 @@ export const BulkOperationsPage = () => {
 														}}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`adjustments.${index}.adjustment_type`}
 														control={adjustmentControl}
@@ -565,14 +577,14 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<AdjustmentQuantityField 
 														index={index} 
 														control={adjustmentControl}
 														productStockLevels={productStockLevels}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`adjustments.${index}.reason_id`}
 														control={adjustmentControl}
@@ -588,7 +600,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`adjustments.${index}.detailed_reason`}
 														control={adjustmentControl}
@@ -604,7 +616,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Button
 														type="button"
 														variant="ghost"
@@ -614,10 +626,11 @@ export const BulkOperationsPage = () => {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
 								<Button
 									type="button"
 									variant="outline"
@@ -668,39 +681,45 @@ export const BulkOperationsPage = () => {
 					value="transfers"
 					className="flex-grow overflow-y-auto min-h-0"
 				>
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<ArrowUpDown className="h-5 w-5" />
-								Bulk Stock Transfers
-							</CardTitle>
-							<CardDescription>
-								Transfer stock quantities between locations for multiple
-								products at once
-							</CardDescription>
+					<Card className="border-border bg-card">
+						<CardHeader className="pb-4">
+							<div className="flex items-start gap-3">
+								<div className="p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg flex-shrink-0">
+									<ArrowUpDown className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+								</div>
+								<div className="flex-1">
+									<CardTitle className="text-xl font-bold text-foreground">
+										Bulk Stock Transfers
+									</CardTitle>
+									<CardDescription className="text-sm text-muted-foreground mt-1">
+										Transfer stock quantities between locations for multiple
+										products at once
+									</CardDescription>
+								</div>
+							</div>
 						</CardHeader>
 						<CardContent>
 							<form onSubmit={handleTransferSubmit(onTransferSubmit)}>
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Product</TableHead>
-											<TableHead>From Location</TableHead>
-											<TableHead>To Location</TableHead>
-											<TableHead>Quantity</TableHead>
-											<TableHead>Reason</TableHead>
-											<TableHead>Details</TableHead>
-											<TableHead></TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{transferFields.map((field, index) => (
-											<TableRow
-												key={field.id}
-												className="border-b border-spacing-y-2"
-												style={{ height: "80px" }}
-											>
-												<TableCell className="align-top">
+								<div className="rounded-lg border border-border overflow-hidden">
+									<Table>
+										<TableHeader>
+											<TableRow className="bg-muted/50 hover:bg-muted/50">
+												<TableHead className="font-semibold text-foreground">Product</TableHead>
+												<TableHead className="font-semibold text-foreground">From Location</TableHead>
+												<TableHead className="font-semibold text-foreground">To Location</TableHead>
+												<TableHead className="font-semibold text-foreground">Quantity</TableHead>
+												<TableHead className="font-semibold text-foreground">Reason</TableHead>
+												<TableHead className="font-semibold text-foreground">Details</TableHead>
+												<TableHead></TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{transferFields.map((field, index) => (
+												<TableRow
+													key={field.id}
+													className="hover:bg-muted/30 transition-colors"
+												>
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`transfers.${index}.product_id`}
 														control={transferControl}
@@ -730,7 +749,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`transfers.${index}.from_location_id`}
 														control={transferControl}
@@ -778,7 +797,7 @@ export const BulkOperationsPage = () => {
 														}}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`transfers.${index}.to_location_id`}
 														control={transferControl}
@@ -822,14 +841,14 @@ export const BulkOperationsPage = () => {
 														}}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<TransferQuantityField 
 														index={index} 
 														control={transferControl}
 														productStockLevels={productStockLevels}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`transfers.${index}.reason_id`}
 														control={transferControl}
@@ -846,7 +865,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Controller
 														name={`transfers.${index}.detailed_reason`}
 														control={transferControl}
@@ -862,7 +881,7 @@ export const BulkOperationsPage = () => {
 														)}
 													/>
 												</TableCell>
-												<TableCell className="align-top">
+												<TableCell className="align-top py-4">
 													<Button
 														type="button"
 														variant="ghost"
@@ -872,10 +891,11 @@ export const BulkOperationsPage = () => {
 														<Trash2 className="h-4 w-4" />
 													</Button>
 												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
 								<Button
 									type="button"
 									variant="outline"
