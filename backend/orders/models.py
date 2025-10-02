@@ -22,8 +22,6 @@ class OrderDiscount(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='order_discounts'
     )
     order = models.ForeignKey(
@@ -82,8 +80,6 @@ class Order(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='orders'
     )
     status = models.CharField(
@@ -413,8 +409,6 @@ class OrderItem(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='order_items'
     )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
@@ -501,8 +495,6 @@ class OrderItemModifier(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='order_item_modifiers'
     )
     order_item = models.ForeignKey('OrderItem', on_delete=models.CASCADE, related_name='selected_modifiers_snapshot')

@@ -27,8 +27,6 @@ class Payment(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='payments'
     )
     order = models.OneToOneField(
@@ -219,8 +217,6 @@ class PaymentTransaction(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='payment_transactions'
     )
     payment = models.ForeignKey(
@@ -334,8 +330,6 @@ class GiftCard(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='gift_cards'
     )
     code = models.CharField(

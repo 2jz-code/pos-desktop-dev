@@ -8,8 +8,8 @@ from tenant.managers import TenantManager, TenantSoftDeleteManager
 
 
 class Category(MPTTModel):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='categories')
 
     # Name is unique per tenant
     name = models.CharField(
@@ -60,9 +60,10 @@ class Category(MPTTModel):
         help_text="User who archived this record."
     )
 
-    # Use custom manager that combines MPTT with archiving
+    # Use custom manager that combines MPTT with tenant filtering and archiving
     from .managers import CategoryManager
     objects = CategoryManager()
+    all_objects = models.Manager()  # Bypass tenant filtering (admin only)
 
     class MPTTMeta:
         order_insertion_by = ["order", "name"]
@@ -152,8 +153,8 @@ class Category(MPTTModel):
 
 
 class Tax(models.Model):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='taxes', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='taxes')
 
     # Name is unique per tenant
     name = models.CharField(
@@ -188,8 +189,8 @@ class Tax(models.Model):
 
 
 class ProductType(SoftDeleteMixin):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_types', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_types')
 
     # Name is unique per tenant
     name = models.CharField(
@@ -315,8 +316,8 @@ class ProductType(SoftDeleteMixin):
 
 
 class Product(SoftDeleteMixin):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='products', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='products')
 
     product_type = models.ForeignKey(
         ProductType,
@@ -443,8 +444,8 @@ class ModifierSet(models.Model):
         SINGLE = "SINGLE", _("Single Choice")
         MULTIPLE = "MULTIPLE", _("Multiple Choices")
 
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_sets', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_sets')
 
     name = models.CharField(
         max_length=100, help_text=_("Customer-facing name, e.g., 'Choose your size'")
@@ -498,8 +499,8 @@ class ModifierSet(models.Model):
 
 
 class ModifierOption(models.Model):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_options', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_options')
 
     modifier_set = models.ForeignKey(
         ModifierSet, on_delete=models.CASCADE, related_name="options"
@@ -539,8 +540,8 @@ class ModifierOption(models.Model):
 
 
 class ProductSpecificOption(models.Model):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_specific_options', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_specific_options')
 
     product_modifier_set = models.ForeignKey(
         "ProductModifierSet", on_delete=models.CASCADE
@@ -564,8 +565,8 @@ class ProductSpecificOption(models.Model):
 
 
 class ProductModifierSet(models.Model):
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_modifier_sets_link', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_modifier_sets_link')
 
     product = models.ForeignKey(
         "Product", on_delete=models.CASCADE, related_name="product_modifier_sets"

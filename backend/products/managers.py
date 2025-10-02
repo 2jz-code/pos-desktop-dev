@@ -11,6 +11,8 @@ from django.contrib.auth import get_user_model
 from mptt.managers import TreeManager
 from mptt.querysets import TreeQuerySet
 
+from tenant.managers import get_current_tenant
+
 
 class CategoryQuerySet(TreeQuerySet):
     """
@@ -84,25 +86,61 @@ class CategoryQuerySet(TreeQuerySet):
 class CategoryManager(TreeManager):
     """
     Custom manager for Category model that combines MPTT tree functionality
-    with archiving (soft delete) capabilities.
+    with tenant filtering and archiving (soft delete) capabilities.
     """
-    
+
     def get_queryset(self):
-        """Return only active categories by default."""
-        return CategoryQuerySet(self.model, using=self._db).active()
-    
+        """Return only active categories for the current tenant."""
+        tenant = get_current_tenant()
+
+        # Get base queryset from TreeManager
+        qs = super().get_queryset()
+
+        # Apply tenant filter (fail-closed: return empty if no tenant context)
+        if tenant:
+            qs = qs.filter(tenant=tenant, is_active=True)
+        else:
+            qs = qs.none()
+
+        return qs
+
     def with_archived(self):
-        """Return all categories including archived ones."""
-        return CategoryQuerySet(self.model, using=self._db)
-    
+        """Return all categories (including archived) for the current tenant."""
+        tenant = get_current_tenant()
+
+        qs = CategoryQuerySet(self.model, using=self._db)
+
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
+
+        return qs
+
     def archived_only(self):
-        """Return only archived categories."""
-        return CategoryQuerySet(self.model, using=self._db).archived()
-    
+        """Return only archived categories for the current tenant."""
+        tenant = get_current_tenant()
+
+        qs = CategoryQuerySet(self.model, using=self._db).archived()
+
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
+
+        return qs
+
+    def all_tenants(self):
+        """
+        Return all categories across all tenants (admin only).
+        Bypasses tenant filtering for Django admin and system operations.
+        """
+        return CategoryQuerySet(self.model, using=self._db)
+
     def hierarchical_order(self):
-        """Return active categories in hierarchical order."""
+        """Return active categories in hierarchical order for current tenant."""
         return self.get_queryset().hierarchical_order()
-    
+
     def all_hierarchical_order(self):
-        """Return all categories (including archived) in hierarchical order."""
+        """Return all categories (including archived) in hierarchical order for current tenant."""
         return self.with_archived().hierarchical_order()

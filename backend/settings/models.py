@@ -55,8 +55,6 @@ class StoreLocation(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='store_locations'
     )
     name = models.CharField(max_length=100)
@@ -101,8 +99,6 @@ class GlobalSettings(models.Model):
     tenant = models.OneToOneField(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='global_settings'
     )
 
@@ -284,8 +280,6 @@ class PrinterConfiguration(models.Model):
     tenant = models.OneToOneField(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='printer_configuration'
     )
 
@@ -357,8 +351,6 @@ class WebOrderSettings(SingletonModel):
     tenant = models.OneToOneField(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='web_order_settings'
     )
 
@@ -405,8 +397,6 @@ class TerminalRegistration(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='terminal_registrations'
     )
     device_id = models.CharField(max_length=255, primary_key=True)
@@ -463,8 +453,6 @@ class TerminalLocation(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='terminal_locations'
     )
     store_location = models.OneToOneField(
@@ -520,8 +508,6 @@ class StockActionReasonConfig(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='stock_action_reason_configs'
     )
     name = models.CharField(

@@ -16,8 +16,6 @@ class Location(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='inventory_locations'
     )
     name = models.CharField(
@@ -87,8 +85,6 @@ class InventoryStock(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='inventory_stocks'
     )
     product = models.ForeignKey(
@@ -205,8 +201,6 @@ class Recipe(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='recipes'
     )
     menu_item = models.OneToOneField(
@@ -246,8 +240,6 @@ class RecipeItem(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='recipe_items'
     )
     recipe = models.ForeignKey(Recipe, on_delete=models.PROTECT)
@@ -302,8 +294,6 @@ class StockHistoryEntry(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='stock_history_entries'
     )
     product = models.ForeignKey(

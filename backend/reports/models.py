@@ -41,8 +41,6 @@ class ReportCache(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='report_caches'
     )
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
@@ -89,8 +87,6 @@ class SavedReport(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='saved_reports'
     )
     user = models.ForeignKey(
@@ -193,8 +189,6 @@ class ReportTemplate(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='report_templates'
     )
     name = models.CharField(max_length=200)
@@ -230,8 +224,6 @@ class ReportExecution(models.Model):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        null=True,  # Temporary for migration
-        blank=True,
         related_name='report_executions'
     )
     saved_report = models.ForeignKey(

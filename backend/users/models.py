@@ -19,13 +19,10 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         CASHIER = "CASHIER", _("Cashier")
 
     # Multi-tenancy: Each user belongs to a tenant
-    # TEMPORARILY NULLABLE for migration - will be made required after data migration
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='users',
-        null=True,  # Temporary for migration
-        blank=True,
         help_text=_("The tenant this user belongs to")
     )
 

@@ -19,8 +19,8 @@ class Discount(SoftDeleteMixin):
         PRODUCT = "PRODUCT", "Specific Products"
         CATEGORY = "CATEGORY", "Specific Categories"
 
-    # Multi-tenancy - TEMPORARILY NULLABLE for migration
-    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='discounts', null=True, blank=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='discounts')
 
     # Name and code are unique per tenant
     name = models.CharField(max_length=255)
