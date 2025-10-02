@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_redis",
     # My Apps
+    "tenant",  # Multi-tenancy support
     "business_hours",
     "products",
     "inventory",
@@ -90,6 +91,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "tenant.middleware.TenantMiddleware",  # Multi-tenancy: Resolve tenant from request
     "django_ratelimit.middleware.RatelimitMiddleware",
     # "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement - TEMPORARILY DISABLED FOR TESTING
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
@@ -99,6 +101,15 @@ MIDDLEWARE = [
     # Global CSRF enforcement for API endpoints (cookie-JWT flows)
     "core_backend.infrastructure.csrf_api_middleware.CSRFApiMiddleware",
 ]
+
+# ==============================================================================
+# MULTI-TENANCY CONFIGURATION
+# ==============================================================================
+# Fallback tenant resolution for development and system hosts
+# DEFAULT_TENANT_SLUG: Used for localhost/IPs during local development
+# SYSTEM_TENANT_SLUG: Used for admin.ajeen.com, api.ajeen.com, and bare domain
+DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "myrestaurant")
+SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG", "system")
 
 INTERNAL_IPS = [
     "127.0.0.1",
@@ -260,6 +271,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom User Model
 AUTH_USER_MODEL = "users.User"
+
+# Silence system checks for multi-tenancy
+# auth.E003: USERNAME_FIELD must be unique - we enforce uniqueness per tenant via DB constraint
+SILENCED_SYSTEM_CHECKS = [
+    'auth.E003',
+]
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True

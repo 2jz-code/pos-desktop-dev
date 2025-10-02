@@ -19,6 +19,10 @@ else
   echo "SKIP_MIGRATIONS is set to true, skipping migrations."
 fi
 
+# Ensure system tenant exists (idempotent)
+echo "Ensuring system tenant exists..."
+python manage.py ensure_system_tenant
+
 # Create initial superuser if credentials are provided and user doesn't exist
 echo "Checking for initial superuser..."
 python -c "

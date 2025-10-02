@@ -4,11 +4,16 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from mptt.models import MPTTModel, TreeForeignKey
 from core_backend.utils.archiving import SoftDeleteMixin
+from tenant.managers import TenantManager, TenantSoftDeleteManager
 
 
 class Category(MPTTModel):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
+
+    # Name is unique per tenant
     name = models.CharField(
-        max_length=100, unique=True, help_text=_("Name of the product category.")
+        max_length=100, help_text=_("Name of the product category (unique per tenant).")
     )
     description = models.TextField(
         blank=True, help_text=_("Description of the category.")
@@ -66,6 +71,17 @@ class Category(MPTTModel):
         verbose_name = _("Category")
         verbose_name_plural = _("Categories")
         ordering = ["order", "name"]
+        constraints = [
+            # Name must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_category_name_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'is_active']),
+            models.Index(fields=['tenant', 'is_public']),
+        ]
 
     def __str__(self):
         return self.name
@@ -136,10 +152,13 @@ class Category(MPTTModel):
 
 
 class Tax(models.Model):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='taxes', null=True, blank=True)
+
+    # Name is unique per tenant
     name = models.CharField(
         max_length=50,
-        unique=True,
-        help_text=_("Name of the tax, e.g., 'VAT' or 'Sales Tax'."),
+        help_text=_("Name of the tax, e.g., 'VAT' or 'Sales Tax' (unique per tenant)."),
     )
     rate = models.DecimalField(
         max_digits=5,
@@ -147,17 +166,34 @@ class Tax(models.Model):
         help_text=_("Tax rate in percentage, e.g., 8.25 for 8.25%."),
     )
 
+    # Managers
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Tax")
         verbose_name_plural = _("Taxes")
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_tax_name_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'name']),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.rate}%)"
 
 
 class ProductType(SoftDeleteMixin):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_types', null=True, blank=True)
+
+    # Name is unique per tenant
     name = models.CharField(
-        max_length=100, unique=True, help_text=_("Name of the product type.")
+        max_length=100, help_text=_("Name of the product type (unique per tenant).")
     )
     description = models.TextField(
         blank=True, help_text=_("Description of the product type.")
@@ -236,9 +272,23 @@ class ProductType(SoftDeleteMixin):
         help_text=_("Prevent discounts from being applied to this product type."),
     )
 
+    # Managers - use combined manager for tenant + soft delete
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Product Type")
         verbose_name_plural = _("Product Types")
+        constraints = [
+            # Name must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_producttype_name_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'is_active']),
+        ]
 
     def __str__(self):
         return self.name
@@ -265,6 +315,9 @@ class ProductType(SoftDeleteMixin):
 
 
 class Product(SoftDeleteMixin):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='products', null=True, blank=True)
+
     product_type = models.ForeignKey(
         ProductType,
         on_delete=models.PROTECT,
@@ -317,12 +370,12 @@ class Product(SoftDeleteMixin):
             "Whether to track inventory levels for this product. When enabled, inventory records will be created and stock will be monitored."
         ),
     )
+    # Barcode is unique per tenant
     barcode = models.CharField(
         max_length=50,
         blank=True,
         null=True,
-        unique=True,
-        help_text=_("Product barcode for scanning"),
+        help_text=_("Product barcode for scanning (unique per tenant)"),
     )
     has_modifiers = models.BooleanField(
         default=False,
@@ -340,13 +393,27 @@ class Product(SoftDeleteMixin):
     )
     # The ForeignKey to Recipe will be added later when we create the Inventory app.
 
+    # Managers - use combined manager for tenant + soft delete
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Product")
         verbose_name_plural = _("Products")
         ordering = ["name"]
+        constraints = [
+            # Barcode must be unique per tenant (if provided)
+            models.UniqueConstraint(
+                fields=['tenant', 'barcode'],
+                name='unique_product_barcode_per_tenant',
+                condition=models.Q(barcode__isnull=False)
+            ),
+        ]
         indexes = [
-            models.Index(fields=['is_public'], name='product_is_public_idx'),
-            models.Index(fields=['track_inventory'], name='product_track_inventory_idx'),
+            models.Index(fields=['tenant', 'is_public']),
+            models.Index(fields=['tenant', 'track_inventory']),
+            models.Index(fields=['tenant', 'barcode']),
+            models.Index(fields=['tenant', 'category']),
             models.Index(fields=['category'], name='product_category_idx'),
             models.Index(fields=['barcode'], name='product_barcode_idx'),
             # Performance-critical indexes
@@ -376,13 +443,16 @@ class ModifierSet(models.Model):
         SINGLE = "SINGLE", _("Single Choice")
         MULTIPLE = "MULTIPLE", _("Multiple Choices")
 
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_sets', null=True, blank=True)
+
     name = models.CharField(
         max_length=100, help_text=_("Customer-facing name, e.g., 'Choose your size'")
     )
+    # Internal name is unique per tenant
     internal_name = models.CharField(
         max_length=100,
-        unique=True,
-        help_text=_("Internal name for easy reference, e.g., 'drink-size'"),
+        help_text=_("Internal name for easy reference, e.g., 'drink-size' (unique per tenant)"),
     )
     selection_type = models.CharField(
         max_length=10, choices=SelectionType.choices, default=SelectionType.SINGLE
@@ -408,11 +478,29 @@ class ModifierSet(models.Model):
         ),
     )
 
+    # Managers
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'internal_name'],
+                name='unique_modifierset_internal_name_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'internal_name']),
+        ]
+
     def __str__(self):
         return self.name
 
 
 class ModifierOption(models.Model):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='modifier_options', null=True, blank=True)
+
     modifier_set = models.ForeignKey(
         ModifierSet, on_delete=models.CASCADE, related_name="options"
     )
@@ -429,25 +517,56 @@ class ModifierOption(models.Model):
         help_text=_("Whether this option is specific to certain products or available globally."),
     )
 
+    # Managers
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["display_order", "name"]
-        unique_together = ("modifier_set", "name")
+        constraints = [
+            # Name must be unique per modifier_set (which is already tenant-scoped)
+            models.UniqueConstraint(
+                fields=['tenant', 'modifier_set', 'name'],
+                name='unique_modifieroption_name_per_set_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'modifier_set']),
+        ]
 
     def __str__(self):
         return f"{self.modifier_set.name} - {self.name}"
 
 
 class ProductSpecificOption(models.Model):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_specific_options', null=True, blank=True)
+
     product_modifier_set = models.ForeignKey(
         "ProductModifierSet", on_delete=models.CASCADE
     )
     modifier_option = models.ForeignKey(ModifierOption, on_delete=models.CASCADE)
 
+    # Managers
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
-        unique_together = ("product_modifier_set", "modifier_option")
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product_modifier_set', 'modifier_option'],
+                name='unique_productspecificoption_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant']),
+        ]
 
 
 class ProductModifierSet(models.Model):
+    # Multi-tenancy - TEMPORARILY NULLABLE for migration
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='product_modifier_sets_link', null=True, blank=True)
+
     product = models.ForeignKey(
         "Product", on_delete=models.CASCADE, related_name="product_modifier_sets"
     )
@@ -480,6 +599,18 @@ class ProductModifierSet(models.Model):
         blank=True,
     )
 
+    # Managers
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["display_order"]
-        unique_together = ("product", "modifier_set")
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product', 'modifier_set'],
+                name='unique_productmodifierset_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'product']),
+        ]
