@@ -7,6 +7,7 @@ from products.models import Product
 from users.models import User
 from customers.models import Customer
 from discounts.models import Discount
+from tenant.managers import TenantManager
 import random
 import string
 import re  # Add this import for regular expressions
@@ -18,6 +19,13 @@ class OrderDiscount(models.Model):
     calculated discount amount at the time of application.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='order_discounts'
+    )
     order = models.ForeignKey(
         "Order", on_delete=models.CASCADE, related_name="applied_discounts"
     )
@@ -29,8 +37,14 @@ class OrderDiscount(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         unique_together = ("order", "discount")
+        indexes = [
+            models.Index(fields=['tenant', 'order']),
+        ]
 
 
 class Order(models.Model):
@@ -65,12 +79,19 @@ class Order(models.Model):
         TAKE_OUT = "TAKE_OUT", _("Take Out")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='orders'
+    )
     status = models.CharField(
         max_length=10, choices=OrderStatus.choices, default=OrderStatus.PENDING
     )
 
     # order_number as CharField
-    order_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    order_number = models.CharField(max_length=20, blank=True, null=True)
 
     order_type = models.CharField(
         max_length=10, choices=OrderType.choices, default=OrderType.POS
@@ -158,29 +179,37 @@ class Order(models.Model):
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order ID from the old system.")
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         # Show newest orders first, with order_number as secondary sort for same timestamps
         ordering = ["-created_at", "order_number"]
         verbose_name = _("Order")
         verbose_name_plural = _("Orders")
         indexes = [
-            models.Index(fields=['status'], name='order_stat_idx'),
-            models.Index(fields=['order_type'], name='order_type_idx'),
-            models.Index(fields=['payment_status'], name='order_pay_stat_idx'),
-            models.Index(fields=['created_at'], name='order_created_idx'),
-            models.Index(fields=['customer', 'status'], name='order_cust_stat_idx'),
-            models.Index(fields=['guest_id', 'status'], name='order_guest_stat_idx'),
-            models.Index(fields=['cashier'], name='order_cashier_idx'),
-            models.Index(fields=['order_number'], name='order_num_idx'),
+            models.Index(fields=['tenant', 'status'], name='order_tenant_stat_idx'),
+            models.Index(fields=['tenant', 'order_type'], name='order_tenant_type_idx'),
+            models.Index(fields=['tenant', 'payment_status'], name='order_tenant_pay_stat_idx'),
+            models.Index(fields=['tenant', 'created_at'], name='order_tenant_created_idx'),
+            models.Index(fields=['tenant', 'customer', 'status'], name='order_ten_cust_stat_idx'),
+            models.Index(fields=['tenant', 'guest_id', 'status'], name='order_ten_guest_stat_idx'),
+            models.Index(fields=['tenant', 'cashier'], name='order_tenant_cashier_idx'),
+            models.Index(fields=['tenant', 'order_number'], name='order_tenant_num_idx'),
             # Performance-critical compound indexes
-            models.Index(fields=['status', 'created_at'], name='order_stat_dt_idx'),
-            models.Index(fields=['payment_status', 'status'], name='order_pay_st_st_idx'),
+            models.Index(fields=['tenant', 'status', 'created_at'], name='order_ten_stat_dt_idx'),
+            models.Index(fields=['tenant', 'payment_status', 'status'], name='order_ten_pay_st_st_idx'),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["guest_id"],
+                fields=["tenant", "order_number"],
+                condition=models.Q(order_number__isnull=False),
+                name="unique_order_number_per_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "guest_id"],
                 condition=models.Q(status="PENDING", guest_id__isnull=False),
-                name="unique_guest_pending_order",
+                name="unique_guest_pending_order_per_tenant",
             ),
         ]
 
@@ -381,6 +410,13 @@ class OrderItem(models.Model):
         READY = "READY", _("Ready for Pickup")
         SERVED = "SERVED", _("Served")
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='order_items'
+    )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="order_items",
@@ -436,16 +472,18 @@ class OrderItem(models.Model):
         help_text=_("Special preparation instructions for kitchen staff")
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Order Item")
         verbose_name_plural = _("Order Items")
         ordering = ['variation_group', 'item_sequence']
         indexes = [
-            models.Index(fields=['order'], name='item_order_idx'),
-            models.Index(fields=['product'], name='item_product_idx'),
-            models.Index(fields=['status'], name='item_stat_idx'),
-            models.Index(fields=['kitchen_printed_at'], name='item_kitchen_dt_idx'),
-            models.Index(fields=['variation_group', 'item_sequence'], name='item_var_seq_idx'),
+            models.Index(fields=['tenant', 'order'], name='item_tenant_order_idx'),
+            models.Index(fields=['tenant', 'product'], name='item_tenant_product_idx'),
+            models.Index(fields=['tenant', 'status'], name='item_tenant_stat_idx'),
+            models.Index(fields=['tenant', 'kitchen_printed_at'], name='item_tenant_kitchen_dt_idx'),
         ]
 
     def __str__(self):
@@ -460,12 +498,27 @@ class OrderItem(models.Model):
         return self.quantity * self.price_at_sale
 
 class OrderItemModifier(models.Model):
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='order_item_modifiers'
+    )
     order_item = models.ForeignKey('OrderItem', on_delete=models.CASCADE, related_name='selected_modifiers_snapshot')
-    
+
     modifier_set_name = models.CharField(max_length=100)
     option_name = models.CharField(max_length=100)
     price_at_sale = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant', 'order_item']),
+        ]
 
     def __str__(self):
         return f"{self.modifier_set_name}: {self.option_name} ({self.price_at_sale})"

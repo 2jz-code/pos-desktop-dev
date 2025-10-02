@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 from core_backend.utils.archiving import SoftDeleteMixin
+from tenant.managers import TenantManager, TenantSoftDeleteManager
 
 User = get_user_model()
 
@@ -37,17 +38,33 @@ class ReportStatus(models.TextChoices):
 class ReportCache(models.Model):
     """Intelligent caching for expensive report queries"""
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='report_caches'
+    )
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
-    parameters_hash = models.CharField(max_length=64, unique=True)
+    parameters_hash = models.CharField(max_length=64)
     parameters = models.JSONField()
     data = models.JSONField()
     generated_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         indexes = [
-            models.Index(fields=["report_type", "parameters_hash"]),
-            models.Index(fields=["expires_at"]),
+            models.Index(fields=["tenant", "report_type", "parameters_hash"]),
+            models.Index(fields=["tenant", "expires_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "parameters_hash"],
+                name="unique_report_cache_per_tenant",
+            ),
         ]
         verbose_name = "Report Cache"
         verbose_name_plural = "Report Caches"
@@ -69,6 +86,13 @@ class ReportCache(models.Model):
 class SavedReport(SoftDeleteMixin):
     """Extended saved reports with file management"""
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='saved_reports'
+    )
     user = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name="saved_reports"
     )
@@ -100,13 +124,16 @@ class SavedReport(SoftDeleteMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Saved Report"
         verbose_name_plural = "Saved Reports"
         indexes = [
-            models.Index(fields=["user", "report_type"]),
-            models.Index(fields=["status", "next_run"]),
+            models.Index(fields=["tenant", "user", "report_type"]),
+            models.Index(fields=["tenant", "status", "next_run"]),
         ]
 
     def __str__(self):
@@ -163,6 +190,13 @@ class SavedReport(SoftDeleteMixin):
 class ReportTemplate(SoftDeleteMixin):
     """Pre-configured report templates"""
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='report_templates'
+    )
     name = models.CharField(max_length=200)
     description = models.TextField()
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
@@ -174,10 +208,17 @@ class ReportTemplate(SoftDeleteMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["name"]
         verbose_name = "Report Template"
         verbose_name_plural = "Report Templates"
+        indexes = [
+            models.Index(fields=["tenant", "name"]),
+            models.Index(fields=["tenant", "report_type"]),
+        ]
 
     def __str__(self):
         return self.name
@@ -186,6 +227,13 @@ class ReportTemplate(SoftDeleteMixin):
 class ReportExecution(models.Model):
     """Track report execution history"""
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='report_executions'
+    )
     saved_report = models.ForeignKey(
         SavedReport, on_delete=models.CASCADE, related_name="executions"
     )
@@ -206,14 +254,17 @@ class ReportExecution(models.Model):
     row_count = models.IntegerField(null=True, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-started_at"]
         verbose_name = "Report Execution"
         verbose_name_plural = "Report Executions"
         indexes = [
-            models.Index(fields=['status', 'started_at']),  # For execution monitoring
-            models.Index(fields=['saved_report', 'status']),  # For report tracking
-            models.Index(fields=['started_at']),  # For time-based queries
+            models.Index(fields=['tenant', 'status', 'started_at']),
+            models.Index(fields=['tenant', 'saved_report', 'status']),
+            models.Index(fields=['tenant', 'started_at']),
         ]
 
     def __str__(self):

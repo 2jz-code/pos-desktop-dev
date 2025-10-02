@@ -2,6 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from core_backend.utils.archiving import SoftDeleteMixin
+from tenant.managers import TenantManager, TenantSoftDeleteManager
 import logging
 import zoneinfo
 
@@ -51,6 +52,13 @@ class StoreLocation(SoftDeleteMixin):
     This is the definitive source of truth for business locations.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='store_locations'
+    )
     name = models.CharField(max_length=100)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
@@ -59,13 +67,22 @@ class StoreLocation(SoftDeleteMixin):
         default=False, help_text="Is this the default location for inventory deduction?"
     )
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant', 'name']),
+            models.Index(fields=['tenant', 'is_default']),
+        ]
+
     def __str__(self):
         return self.name
 
     def save(self, *args, **kwargs):
         if self.is_default:
-            # ensure only one default location exists
-            StoreLocation.objects.filter(is_default=True).exclude(pk=self.pk).update(
+            # ensure only one default location exists per tenant
+            StoreLocation.objects.filter(tenant=self.tenant, is_default=True).exclude(pk=self.pk).update(
                 is_default=False
             )
         super().save(*args, **kwargs)
@@ -78,7 +95,16 @@ class GlobalSettings(models.Model):
     """
     A singleton model to store globally accessible settings for the application.
     These settings affect ALL terminals and should be managed centrally.
+    Now tenant-scoped: one instance per tenant.
     """
+
+    tenant = models.OneToOneField(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='global_settings'
+    )
 
     # === TAX & FINANCIAL SETTINGS ===
     tax_rate = models.DecimalField(
@@ -171,10 +197,17 @@ class GlobalSettings(models.Model):
         help_text="Default number of days before expiration to warn about expiring stock. Can be overridden per product.",
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        verbose_name = "Global Settings"
+
     def clean(self):
-        if GlobalSettings.objects.exists() and not self.pk:
-            raise ValidationError("There can only be one GlobalSettings instance.")
-        
+        # Ensure only one instance per tenant
+        if self.tenant and GlobalSettings.objects.filter(tenant=self.tenant).exclude(pk=self.pk).exists():
+            raise ValidationError(f"There can only be one GlobalSettings instance per tenant.")
+
         # Validate timezone
         if self.timezone:
             try:
@@ -206,7 +239,8 @@ class GlobalSettings(models.Model):
                 BaseReportService.invalidate_cache_for_report_type(report_type)
 
     def __str__(self):
-        return "Global Settings"
+        tenant_name = self.tenant.name if self.tenant else "System"
+        return f"Global Settings ({tenant_name})"
 
     def is_business_open(self) -> bool:
         """
@@ -240,14 +274,20 @@ class GlobalSettings(models.Model):
             logger.error(f"Business hours check failed: {e}")
             return True
 
-    class Meta:
-        verbose_name = "Global Settings"
-
 
 class PrinterConfiguration(models.Model):
     """
     Singleton model for storing printer configurations, centralized in the backend.
+    Now tenant-scoped: one instance per tenant.
     """
+
+    tenant = models.OneToOneField(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='printer_configuration'
+    )
 
     receipt_printers = models.JSONField(
         default=list,
@@ -265,19 +305,23 @@ class PrinterConfiguration(models.Model):
         help_text="Kitchen zone configurations with category filters (e.g., [{'name': 'Grill Station', 'printer_name': 'Kitchen Printer', 'category_ids': [1, 2]}])",
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     def clean(self):
-        if PrinterConfiguration.objects.exists() and not self.pk:
+        # Ensure only one instance per tenant
+        if self.tenant and PrinterConfiguration.objects.filter(tenant=self.tenant).exclude(pk=self.pk).exists():
             raise ValidationError(
-                "There can only be one PrinterConfiguration instance."
+                "There can only be one PrinterConfiguration instance per tenant."
             )
 
     def save(self, *args, **kwargs):
-        self.pk = 1
         self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return "Printer & Kitchen Zone Configuration"
+        tenant_name = self.tenant.name if self.tenant else "System"
+        return f"Printer & Kitchen Zone Configuration ({tenant_name})"
 
     class Meta:
         verbose_name_plural = "Printer Configuration"
@@ -307,7 +351,16 @@ class SingletonModel(models.Model):
 class WebOrderSettings(SingletonModel):
     """
     Singleton model for web order specific settings.
+    Now tenant-scoped: one instance per tenant.
     """
+
+    tenant = models.OneToOneField(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='web_order_settings'
+    )
 
     enable_notifications = models.BooleanField(
         default=True, help_text="Enable all notifications for new web orders."
@@ -329,8 +382,12 @@ class WebOrderSettings(SingletonModel):
         related_name="web_order_notifications",
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     def __str__(self):
-        return "Web Order Settings"
+        tenant_name = self.tenant.name if self.tenant else "System"
+        return f"Web Order Settings ({tenant_name})"
 
     class Meta:
         verbose_name = "Web Order Settings"
@@ -345,7 +402,14 @@ class TerminalRegistration(models.Model):
     Replaces the old POSDevice model.
     """
 
-    device_id = models.CharField(max_length=255, unique=True, primary_key=True)
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='terminal_registrations'
+    )
+    device_id = models.CharField(max_length=255, primary_key=True)
     nickname = models.CharField(
         max_length=100,
         blank=True,
@@ -366,6 +430,9 @@ class TerminalRegistration(models.Model):
         help_text="The ID of the Stripe Terminal reader assigned to this device (e.g., tmr_...).",
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     def __str__(self):
         location_name = (
             self.store_location.name if self.store_location else "Unassigned"
@@ -375,6 +442,15 @@ class TerminalRegistration(models.Model):
     class Meta:
         verbose_name = "Terminal Registration"
         verbose_name_plural = "Terminal Registrations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "device_id"],
+                name="unique_device_id_per_tenant",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'store_location']),
+        ]
 
 
 class TerminalLocation(SoftDeleteMixin):
@@ -384,6 +460,13 @@ class TerminalLocation(SoftDeleteMixin):
     to a specific business location without tying core logic to Stripe.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='terminal_locations'
+    )
     store_location = models.OneToOneField(
         StoreLocation,
         on_delete=models.PROTECT,
@@ -392,9 +475,11 @@ class TerminalLocation(SoftDeleteMixin):
     )
     stripe_id = models.CharField(
         max_length=255,
-        unique=True,
         help_text="The ID of the location from Stripe (e.g., tml_...).",
     )
+
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
 
     def __str__(self):
         return f"{self.store_location.name} (Stripe Config: {self.stripe_id})"
@@ -402,6 +487,15 @@ class TerminalLocation(SoftDeleteMixin):
     class Meta:
         verbose_name = "Stripe Location Link"
         verbose_name_plural = "Stripe Location Links"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "stripe_id"],
+                name="unique_stripe_id_per_tenant",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'store_location']),
+        ]
 
 
 class StockActionReasonConfig(SoftDeleteMixin):
@@ -409,7 +503,7 @@ class StockActionReasonConfig(SoftDeleteMixin):
     Configurable reasons for stock actions. Owners can define custom reasons
     while system reasons are built-in and protected from modification.
     """
-    
+
     # Reason categories matching the existing StockHistoryEntry categories
     CATEGORY_CHOICES = [
         ('SYSTEM', 'System'),
@@ -422,7 +516,14 @@ class StockActionReasonConfig(SoftDeleteMixin):
         ('BULK', 'Bulk'),
         ('OTHER', 'Other'),
     ]
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        null=True,  # Temporary for migration
+        blank=True,
+        related_name='stock_action_reason_configs'
+    )
     name = models.CharField(
         max_length=100,
         help_text="Name of the stock action reason (e.g., 'Damaged Items', 'Inventory Count')"
@@ -447,14 +548,17 @@ class StockActionReasonConfig(SoftDeleteMixin):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = "Stock Action Reason"
         verbose_name_plural = "Stock Action Reasons"
         ordering = ['category', 'name']
         indexes = [
-            models.Index(fields=['is_active', 'category']),
-            models.Index(fields=['is_system_reason']),
+            models.Index(fields=['tenant', 'is_active', 'category']),
+            models.Index(fields=['tenant', 'is_system_reason']),
         ]
     
     def __str__(self):
@@ -463,19 +567,20 @@ class StockActionReasonConfig(SoftDeleteMixin):
     def clean(self):
         """Validate the model before saving"""
         from django.core.exceptions import ValidationError
-        
+
         # Ensure system reasons cannot be deactivated
         if self.is_system_reason and not self.is_active:
             raise ValidationError("System reasons cannot be deactivated")
-        
-        # Ensure name is unique within active reasons
+
+        # Ensure name is unique within active reasons per tenant
         existing = StockActionReasonConfig.objects.filter(
+            tenant=self.tenant,
             name=self.name,
             is_active=True
         ).exclude(pk=self.pk)
-        
+
         if existing.exists():
-            raise ValidationError(f"An active reason with the name '{self.name}' already exists")
+            raise ValidationError(f"An active reason with the name '{self.name}' already exists for this tenant")
     
     def save(self, *args, **kwargs):
         self.clean()
