@@ -93,8 +93,8 @@ class CategoryManager(TreeManager):
         """Return only active categories for the current tenant."""
         tenant = get_current_tenant()
 
-        # Get base queryset from TreeManager
-        qs = super().get_queryset()
+        # Use CategoryQuerySet instead of TreeQuerySet
+        qs = CategoryQuerySet(self.model, using=self._db).order_by(self.tree_id_attr, self.left_attr)
 
         # Apply tenant filter (fail-closed: return empty if no tenant context)
         if tenant:

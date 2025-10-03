@@ -117,6 +117,7 @@ INTERNAL_IPS = [
 
 DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
+    "IS_RUNNING_TESTS": False,  # Allow tests to run without debug toolbar
 }
 
 INTERNAL_IPS = ["192.168.5.144", "192.168.2.27"]
