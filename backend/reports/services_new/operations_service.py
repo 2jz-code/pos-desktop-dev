@@ -33,16 +33,17 @@ class OperationsReportService(BaseReportService):
 
     @staticmethod
     def generate_operations_report(
+        tenant,
         start_date: datetime, end_date: datetime, use_cache: bool = True
     ) -> Dict[str, Any]:
         """Generate comprehensive operations report"""
-        
+
         cache_key = OperationsReportService._generate_cache_key(
             "operations", {"start_date": start_date, "end_date": end_date}
         )
 
         if use_cache:
-            cached_data = OperationsReportService._get_cached_report(cache_key)
+            cached_data = OperationsReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 logger.info(f"Operations report served from cache: {cache_key[:8]}...")
                 return cached_data
@@ -53,13 +54,13 @@ class OperationsReportService(BaseReportService):
         try:
             # Generate the operations data
             operations_data = OperationsReportService._generate_operations_data(
-                start_date, end_date
+                tenant, start_date, end_date
             )
 
             # Cache the result
             generation_time = time.time() - start_time
             OperationsReportService._cache_report(
-                cache_key, operations_data, ttl_hours=OperationsReportService.CACHE_TTL_HOURS
+                cache_key, operations_data, tenant, report_type="operations", ttl_hours=OperationsReportService.CACHE_TTL_HOURS
             )
 
             logger.info(f"Operations report generated in {generation_time:.2f}s")
@@ -70,11 +71,12 @@ class OperationsReportService(BaseReportService):
             raise
 
     @staticmethod
-    def _generate_operations_data(start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _generate_operations_data(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Generate the core operations report data"""
-        
+
         # Base queryset
         orders = Order.objects.filter(
+            tenant=tenant,
             status=Order.OrderStatus.COMPLETED,
             created_at__range=(start_date, end_date),
             subtotal__gt=0,  # Exclude orders with $0.00 subtotals

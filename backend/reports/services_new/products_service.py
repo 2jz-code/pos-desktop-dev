@@ -31,6 +31,7 @@ class ProductsReportService(BaseReportService):
     @staticmethod
     @transaction.atomic
     def generate_products_report(
+        tenant,
         start_date: datetime,
         end_date: datetime,
         category_id: Optional[int] = None,
@@ -52,7 +53,7 @@ class ProductsReportService(BaseReportService):
         )
 
         if use_cache:
-            cached_data = ProductsReportService._get_cached_report(cache_key)
+            cached_data = ProductsReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 logger.info(f"Products report served from cache: {cache_key[:8]}...")
                 return cached_data
@@ -62,27 +63,27 @@ class ProductsReportService(BaseReportService):
 
         # Get base data
         order_items = ProductsReportService._get_base_order_items_queryset(
-            start_date, end_date, category_id
+            tenant, start_date, end_date, category_id
         )
-        
+
         # Calculate core metrics
         products_data = {}
-        
+
         # Top products by revenue
         products_data["top_products"] = ProductsReportService._get_top_products_by_revenue(
             order_items, limit
         )
-        
+
         # Best sellers by quantity
         products_data["best_sellers"] = ProductsReportService._get_best_sellers_by_quantity(
             order_items, limit
         )
-        
+
         # Category performance
         products_data["category_performance"] = ProductsReportService._get_category_performance(
             order_items
         )
-        
+
         # Product trends
         actual_period = ProductsReportService._determine_trend_period(
             start_date, end_date, trend_period
@@ -90,7 +91,7 @@ class ProductsReportService(BaseReportService):
         products_data["product_trends"] = ProductsReportService._get_product_trends(
             order_items, products_data["top_products"], actual_period
         )
-        
+
         # Summary stats
         products_data["summary"] = ProductsReportService._calculate_summary_stats(order_items)
 
@@ -110,7 +111,7 @@ class ProductsReportService(BaseReportService):
         # Cache the result
         generation_time = time.time() - start_time
         ProductsReportService._cache_report(
-            cache_key, products_data, ttl_hours=ProductsReportService.CACHE_TTL["products"]
+            cache_key, products_data, tenant, report_type="products", ttl_hours=ProductsReportService.CACHE_TTL["products"]
         )
 
         logger.info(f"Products report generated in {generation_time:.2f}s")
@@ -118,10 +119,11 @@ class ProductsReportService(BaseReportService):
 
     @staticmethod
     def _get_base_order_items_queryset(
-        start_date: datetime, end_date: datetime, category_id: Optional[int] = None
+        tenant, start_date: datetime, end_date: datetime, category_id: Optional[int] = None
     ):
         """Get optimized base queryset for order items in date range."""
         queryset = OrderItem.objects.filter(
+            order__tenant=tenant,
             order__status=Order.OrderStatus.COMPLETED,
             order__created_at__range=(start_date, end_date),
             order__subtotal__gt=0,  # Exclude orders with $0.00 subtotals

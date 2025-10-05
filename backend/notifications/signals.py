@@ -128,14 +128,15 @@ def handle_web_order_notification(sender, **kwargs):
 
         # Send WebSocket notifications to selected terminals
         for terminal in selected_terminals:
-            terminal_group = f"terminal_{terminal.device_id}"
+            # Use tenant-scoped channel group
+            terminal_group = f"tenant_{terminal.tenant.id}_terminal_{terminal.device_id}"
 
             try:
                 async_to_sync(channel_layer.group_send)(
                     terminal_group,
                     {"type": "web_order_notification", "data": serializable_payload},
                 )
-                logger.info(f"Notification sent to terminal {terminal.device_id}")
+                logger.info(f"Notification sent to terminal {terminal.device_id} (tenant: {terminal.tenant.slug})")
             except Exception as e:
                 logger.error(
                     f"Failed to send notification to terminal {terminal.device_id}: {e}"

@@ -30,6 +30,7 @@ class SummaryReportService(BaseReportService):
     @staticmethod
     @transaction.atomic
     def generate_summary_report(
+        tenant,
         start_date: datetime,
         end_date: datetime,
         use_cache: bool = True,
@@ -42,7 +43,7 @@ class SummaryReportService(BaseReportService):
         )
 
         if use_cache:
-            cached_data = SummaryReportService._get_cached_report(cache_key)
+            cached_data = SummaryReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 return cached_data
 
@@ -50,20 +51,20 @@ class SummaryReportService(BaseReportService):
         start_time = time.time()
 
         # Get base data
-        orders_queryset = SummaryReportService._get_base_orders_queryset(start_date, end_date)
-        
+        orders_queryset = SummaryReportService._get_base_orders_queryset(tenant, start_date, end_date)
+
         # Calculate core metrics
         summary_data = SummaryReportService._calculate_core_summary_metrics(orders_queryset)
-        
+
         # Add growth metrics
-        summary_data.update(SummaryReportService._calculate_growth_metrics(start_date, end_date, summary_data))
-        
+        summary_data.update(SummaryReportService._calculate_growth_metrics(tenant, start_date, end_date, summary_data))
+
         # Add detailed breakdowns
         summary_data.update(SummaryReportService._calculate_product_metrics(orders_queryset))
         summary_data.update(SummaryReportService._calculate_sales_trend(orders_queryset))
         summary_data.update(SummaryReportService._calculate_payment_distribution(orders_queryset))
         summary_data.update(SummaryReportService._calculate_hourly_performance(orders_queryset))
-        
+
         # Add metadata
         summary_data["generated_at"] = timezone.now().isoformat()
         summary_data["date_range"] = {
@@ -74,17 +75,18 @@ class SummaryReportService(BaseReportService):
         # Cache the result
         generation_time = time.time() - start_time
         SummaryReportService._cache_report(
-            cache_key, summary_data, ttl_hours=SummaryReportService.CACHE_TTL["summary"]
+            cache_key, summary_data, tenant, report_type="summary", ttl_hours=SummaryReportService.CACHE_TTL["summary"]
         )
 
         logger.info(f"Summary report generated in {generation_time:.2f}s")
         return summary_data
 
     @staticmethod
-    def _get_base_orders_queryset(start_date: datetime, end_date: datetime):
+    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime):
         """Get optimized base queryset for completed orders in date range."""
         return (
             Order.objects.filter(
+                tenant=tenant,
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_date, end_date),
                 subtotal__gt=0,  # Exclude orders with $0.00 subtotals
@@ -135,15 +137,16 @@ class SummaryReportService(BaseReportService):
         return summary_data
 
     @staticmethod
-    def _calculate_growth_metrics(start_date: datetime, end_date: datetime, current_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_growth_metrics(tenant, start_date: datetime, end_date: datetime, current_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate growth metrics compared to previous period."""
-        
+
         # Calculate previous period
         previous_period_days = (end_date - start_date).days
         previous_start = start_date - timedelta(days=previous_period_days)
         previous_end = start_date
 
         previous_data = Order.objects.filter(
+            tenant=tenant,
             status=Order.OrderStatus.COMPLETED,
             created_at__range=(previous_start, previous_end),
             subtotal__gt=0,

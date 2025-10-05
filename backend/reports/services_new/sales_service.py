@@ -41,6 +41,7 @@ class SalesReportService(BaseReportService):
     @staticmethod
     @transaction.atomic
     def generate_sales_report(
+        tenant,
         start_date: datetime,
         end_date: datetime,
         group_by: str = "day",
@@ -54,7 +55,7 @@ class SalesReportService(BaseReportService):
         )
 
         if use_cache:
-            cached_data = SalesReportService._get_cached_report(cache_key)
+            cached_data = SalesReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 return cached_data
 
@@ -62,17 +63,17 @@ class SalesReportService(BaseReportService):
         start_time = time.time()
 
         # Get base data
-        orders_queryset = SalesReportService._get_base_orders_queryset(start_date, end_date)
-        
+        orders_queryset = SalesReportService._get_base_orders_queryset(tenant, start_date, end_date)
+
         # Calculate core metrics
         sales_data = SalesReportService._calculate_core_sales_metrics(orders_queryset)
-        
+
         # Add detailed breakdowns
         sales_data.update(SalesReportService._calculate_sales_by_period(orders_queryset, group_by))
         sales_data.update(SalesReportService._calculate_category_sales(orders_queryset))
         sales_data.update(SalesReportService._calculate_peak_hours(orders_queryset))
-        sales_data.update(SalesReportService._calculate_payment_reconciliation(start_date, end_date))
-        
+        sales_data.update(SalesReportService._calculate_payment_reconciliation(tenant, start_date, end_date))
+
         # Add metadata
         sales_data["generated_at"] = timezone.now().isoformat()
         sales_data["date_range"] = {
@@ -83,17 +84,18 @@ class SalesReportService(BaseReportService):
         # Cache the result
         generation_time = time.time() - start_time
         SalesReportService._cache_report(
-            cache_key, sales_data, ttl_hours=SalesReportService.CACHE_TTL["sales"]
+            cache_key, sales_data, tenant, report_type="sales", ttl_hours=SalesReportService.CACHE_TTL["sales"]
         )
 
         logger.info(f"Sales report generated in {generation_time:.2f}s")
         return sales_data
     
     @staticmethod
-    def _get_base_orders_queryset(start_date: datetime, end_date: datetime):
+    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime):
         """Get optimized base queryset for completed orders in date range."""
         return (
             Order.objects.filter(
+                tenant=tenant,
                 status=Order.OrderStatus.COMPLETED,
                 created_at__range=(start_date, end_date),
                 subtotal__gt=0,  # Exclude orders with $0.00 subtotals
@@ -386,16 +388,17 @@ class SalesReportService(BaseReportService):
         return {"top_hours": top_hours}
     
     @staticmethod
-    def _calculate_payment_reconciliation(start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _calculate_payment_reconciliation(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Calculate payment success metrics focusing on transaction success rates."""
-        
+
         # Get all orders in the date range
         all_orders = Order.objects.filter(
+            tenant=tenant,
             created_at__range=(start_date, end_date),
             subtotal__gt=0  # Exclude $0 orders
         )
-        
-        # Get payments for these orders 
+
+        # Get payments for these orders
         all_payments = Payment.objects.filter(
             order__in=all_orders
         )

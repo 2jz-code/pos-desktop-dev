@@ -38,6 +38,7 @@ class PaymentsReportService(BaseReportService):
     @staticmethod
     @transaction.atomic
     def generate_payments_report(
+        tenant,
         start_date: datetime,
         end_date: datetime,
         use_cache: bool = True,
@@ -50,7 +51,7 @@ class PaymentsReportService(BaseReportService):
         )
 
         if use_cache:
-            cached_data = PaymentsReportService._get_cached_report(cache_key)
+            cached_data = PaymentsReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 return cached_data
 
@@ -58,25 +59,25 @@ class PaymentsReportService(BaseReportService):
         start_time = time.time()
 
         # Get base transaction querysets
-        transaction_querysets = PaymentsReportService._get_transaction_querysets(start_date, end_date)
-        
+        transaction_querysets = PaymentsReportService._get_transaction_querysets(tenant, start_date, end_date)
+
         # Calculate payment method breakdown
         payment_methods = PaymentsReportService._calculate_payment_methods(transaction_querysets)
-        
+
         # Get daily volume data
-        daily_volume = PaymentsReportService._calculate_daily_volume(start_date, end_date)
-        
+        daily_volume = PaymentsReportService._calculate_daily_volume(tenant, start_date, end_date)
+
         # Get daily breakdown by method
         daily_breakdown = PaymentsReportService._calculate_daily_breakdown(transaction_querysets['successful'])
-        
+
         # Calculate comprehensive summary
         summary = PaymentsReportService._calculate_payments_summary(transaction_querysets, start_date, end_date)
-        
+
         # Get processing statistics
-        processing_stats = PaymentsReportService._calculate_processing_stats(start_date, end_date)
-        
+        processing_stats = PaymentsReportService._calculate_processing_stats(tenant, start_date, end_date)
+
         # Get reconciliation data
-        order_totals_comparison = PaymentsReportService._calculate_order_reconciliation(start_date, end_date, summary)
+        order_totals_comparison = PaymentsReportService._calculate_order_reconciliation(tenant, start_date, end_date, summary)
 
         # Build final report data
         payments_data = {
@@ -96,20 +97,21 @@ class PaymentsReportService(BaseReportService):
         # Cache the result
         generation_time = time.time() - start_time
         PaymentsReportService._cache_report(
-            cache_key, payments_data, ttl_hours=PaymentsReportService.CACHE_TTL["payments"]
+            cache_key, payments_data, tenant, report_type="payments", ttl_hours=PaymentsReportService.CACHE_TTL["payments"]
         )
 
         logger.info(f"Payments report generated in {generation_time:.2f}s")
         return payments_data
 
     @staticmethod
-    def _get_transaction_querysets(start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _get_transaction_querysets(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Get base transaction querysets for different statuses."""
         base_filter = {
+            "payment__order__tenant": tenant,
             "payment__order__created_at__range": (start_date, end_date),
             "payment__order__subtotal__gt": 0,
         }
-        
+
         successful_transactions = PaymentTransaction.objects.select_related(
             "payment", "payment__order"
         ).filter(
@@ -225,9 +227,10 @@ class PaymentsReportService(BaseReportService):
         return payment_methods
 
     @staticmethod
-    def _calculate_daily_volume(start_date: datetime, end_date: datetime) -> list:
+    def _calculate_daily_volume(tenant, start_date: datetime, end_date: datetime) -> list:
         """Calculate daily payment volume using Payment model."""
         payments = Payment.objects.filter(
+            order__tenant=tenant,
             order__status=Order.OrderStatus.COMPLETED,
             order__created_at__range=(start_date, end_date),
             order__subtotal__gt=0,
@@ -358,11 +361,12 @@ class PaymentsReportService(BaseReportService):
         }
 
     @staticmethod
-    def _calculate_processing_stats(start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _calculate_processing_stats(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """Calculate processing statistics for all transactions."""
         all_transactions = PaymentTransaction.objects.select_related(
             "payment", "payment__order"
         ).filter(
+            payment__order__tenant=tenant,
             payment__order__status=Order.OrderStatus.COMPLETED,
             payment__order__created_at__range=(start_date, end_date),
             payment__order__subtotal__gt=0,
@@ -389,9 +393,10 @@ class PaymentsReportService(BaseReportService):
         }
 
     @staticmethod
-    def _calculate_order_reconciliation(start_date: datetime, end_date: datetime, summary: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_order_reconciliation(tenant, start_date: datetime, end_date: datetime, summary: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate order totals comparison for reconciliation."""
         completed_orders = Order.objects.filter(
+            tenant=tenant,
             status=Order.OrderStatus.COMPLETED,
             created_at__range=(start_date, end_date),
             subtotal__gt=0,

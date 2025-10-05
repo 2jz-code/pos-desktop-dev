@@ -63,6 +63,7 @@ class ReportViewSet(viewsets.ViewSet):
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SummaryReportService.generate_summary_report(
+                tenant=request.tenant,
                 start_date=start_date, end_date=end_date, use_cache=use_cache
             )
 
@@ -89,6 +90,7 @@ class ReportViewSet(viewsets.ViewSet):
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SalesReportService.generate_sales_report(
+                tenant=request.tenant,
                 start_date=start_date, end_date=end_date, group_by=group_by, use_cache=use_cache
             )
 
@@ -117,6 +119,7 @@ class ReportViewSet(viewsets.ViewSet):
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = ProductsReportService.generate_products_report(
+                tenant=request.tenant,
                 start_date=start_date,
                 end_date=end_date,
                 category_id=category_id,
@@ -147,6 +150,7 @@ class ReportViewSet(viewsets.ViewSet):
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = PaymentsReportService.generate_payments_report(
+                tenant=request.tenant,
                 start_date=start_date, end_date=end_date, use_cache=use_cache
             )
 
@@ -172,6 +176,7 @@ class ReportViewSet(viewsets.ViewSet):
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = OperationsReportService.generate_operations_report(
+                tenant=request.tenant,
                 start_date=start_date, end_date=end_date, use_cache=use_cache
             )
 

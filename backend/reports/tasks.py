@@ -8,7 +8,7 @@ import logging
 import os
 from typing import Dict, Any, Optional, List
 
-from .models import SavedReport, ReportExecution, ReportCache
+from .models import SavedReport, ReportExecution, ReportCache, ReportStatus, ScheduleType
 from .services_new.summary_service import SummaryReportService
 from .services_new.sales_service import SalesReportService
 from .services_new.payments_service import PaymentsReportService
@@ -22,12 +22,13 @@ from users.models import User
 logger = logging.getLogger(__name__)
 
 
-def _generate_products_report_wrapper(user, start_date, end_date, filters=None):
+def _generate_products_report_wrapper(tenant, user, start_date, end_date, filters=None):
     """Wrapper to match the expected signature for tasks"""
     if filters is None:
         filters = {}
-    
+
     return ProductsReportService.generate_products_report(
+        tenant=tenant,
         start_date=start_date,
         end_date=end_date,
         category_id=filters.get("category_id"),
@@ -57,10 +58,12 @@ def generate_report_async(
     """
     try:
         # Get the user
-        user = User.objects.get(id=user_id)
+        user = User.all_objects.get(id=user_id)
+        tenant = user.tenant
 
         # Create execution record
         execution = ReportExecution.objects.create(
+            tenant=tenant,
             report_type=report_type,
             user=user,
             parameters={
@@ -94,7 +97,11 @@ def generate_report_async(
 
         # Call the appropriate report generation method
         report_method = report_method_map[report_type]
-        report_data = report_method(user, start_date_obj, end_date_obj, filters)
+        # Pass tenant as first argument (user.tenant)
+        if report_type == "products":
+            report_data = report_method(user.tenant, user, start_date_obj, end_date_obj, filters)
+        else:
+            report_data = report_method(user.tenant, start_date_obj, end_date_obj)
 
         # Update execution record with results
         execution.status = "completed"
@@ -164,7 +171,7 @@ def export_report_async(saved_report_id: int, format: str):
     Supported formats: csv, xlsx, pdf
     """
     try:
-        saved_report = SavedReport.objects.get(id=saved_report_id)
+        saved_report = SavedReport.all_objects.get(id=saved_report_id)
 
         logger.info(f"Starting export of saved report {saved_report_id} to {format}")
 
@@ -245,10 +252,12 @@ def generate_scheduled_reports():
         current_time = now.time()
         current_weekday = now.weekday()  # 0=Monday, 6=Sunday
 
-        # Find reports that should be generated
-        scheduled_reports = SavedReport.objects.filter(
-            is_scheduled=True, is_active=True, next_run_at__lte=now
-        )
+        # Find reports that should be generated (across all tenants)
+        # Filter for reports that are not manual (i.e., scheduled)
+        scheduled_reports = SavedReport.all_objects.filter(
+            status=ReportStatus.ACTIVE,
+            next_run__lte=now
+        ).exclude(schedule=ScheduleType.MANUAL)
 
         generated_count = 0
 
@@ -320,21 +329,21 @@ def cleanup_old_reports():
         # Clean up old report files (older than 30 days)
         cutoff_date = timezone.now() - timedelta(days=30)
 
-        old_reports = SavedReport.objects.filter(
-            created_at__lt=cutoff_date, file__isnull=False
+        old_reports = SavedReport.all_objects.filter(
+            created_at__lt=cutoff_date, last_generated_file__isnull=False
         )
 
         for report in old_reports:
             try:
                 # Delete the file
-                if report.file:
-                    file_path = report.file.path
+                if report.last_generated_file:
+                    file_path = report.last_generated_file.path
                     if os.path.exists(file_path):
                         os.remove(file_path)
                         logger.info(f"Deleted old report file: {file_path}")
 
                     # Clear the file field
-                    report.file = None
+                    report.last_generated_file = None
                     report.save()
                     cleanup_count += 1
 
@@ -346,7 +355,7 @@ def cleanup_old_reports():
 
         # Clean up old execution records (older than 90 days)
         execution_cutoff = timezone.now() - timedelta(days=90)
-        old_executions = ReportExecution.objects.filter(created_at__lt=execution_cutoff)
+        old_executions = ReportExecution.all_objects.filter(started_at__lt=execution_cutoff)
 
         execution_count = old_executions.count()
         old_executions.delete()
@@ -430,7 +439,10 @@ def warm_report_caches():
                     }
 
                     report_method = report_method_map[report_type]
-                    report_method(admin_user, start_date, end_date)
+                    if report_type == "products":
+                        report_method(admin_user.tenant, admin_user, start_date, end_date)
+                    else:
+                        report_method(admin_user.tenant, start_date, end_date)
                     reports_warmed += 1
 
                 except Exception as exc:
