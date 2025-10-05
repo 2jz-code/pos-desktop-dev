@@ -3,6 +3,7 @@ import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
 import { useInventoryBarcodeWithScroll } from "@/hooks/useBarcode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	Card,
 	CardContent,
@@ -112,6 +113,8 @@ interface DashboardData {
 
 export const InventoryPage = () => {
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [highlightedProductId] = useState<number | null>(null);
 	const [currentEditingProduct, setCurrentEditingProduct] =
 		useState<Product | null>(null);
@@ -440,20 +443,20 @@ export const InventoryPage = () => {
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
-								onClick={() => navigate("/inventory/bulk-operations")}
+								onClick={() => navigate(`/${tenantSlug}/inventory/bulk-operations`)}
 							>
 								<Warehouse className="mr-2 h-4 w-4" />
 								Bulk Operations
 							</DropdownMenuItem>
 							<DropdownMenuItem
-								onClick={() => navigate("/inventory/stock-history")}
+								onClick={() => navigate(`/${tenantSlug}/inventory/stock-history`)}
 							>
 								<Clock className="mr-2 h-4 w-4" />
 								Stock History
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
-								onClick={() => navigate("/settings?tab=inventory")}
+								onClick={() => navigate(`/${tenantSlug}/settings?tab=inventory`)}
 							>
 								<Settings className="mr-2 h-4 w-4" />
 								Configure Defaults

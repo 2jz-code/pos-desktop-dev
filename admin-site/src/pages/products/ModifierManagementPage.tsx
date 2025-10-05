@@ -48,6 +48,7 @@ import * as modifierService from "@/services/api/modifierService";
 import ModifierQuickCreate from "@/components/modifiers/ModifierQuickCreate";
 import UsageAnalytics from "@/components/modifiers/UsageAnalytics";
 import ModifierSetEditor from "@/components/modifiers/ModifierSetEditor";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ModifierOption {
 	id: number;
@@ -68,6 +69,8 @@ interface ModifierSet {
 
 const ModifierManagementPage: React.FC = () => {
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [activeTab, setActiveTab] = useState("library");
 	const [modifierSets, setModifierSets] = useState<ModifierSet[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -210,7 +213,7 @@ const ModifierManagementPage: React.FC = () => {
 				<div className="flex items-center gap-2">
 					<Button
 						variant="outline"
-						onClick={() => navigate("/products")}
+						onClick={() => navigate(`/${tenantSlug}/products`)}
 						className="flex items-center gap-2"
 					>
 						<ArrowLeft className="h-4 w-4" />

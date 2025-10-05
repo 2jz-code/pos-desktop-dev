@@ -160,7 +160,7 @@ class DashboardService {
 	/**
 	 * Get recent activity feed
 	 */
-	async getRecentActivity(): Promise<ActivityItem[]> {
+	async getRecentActivity(tenantSlug?: string): Promise<ActivityItem[]> {
 		try {
 			// Fetch recent orders
 			const recentOrders = await getAllOrders({
@@ -177,13 +177,14 @@ class DashboardService {
 			// Convert orders to activity items
 			orders.slice(0, 5).forEach((order: any) => {
 				const timeAgo = this.getTimeAgo(new Date(order.created_at));
+				const ordersPath = tenantSlug ? `/${tenantSlug}/orders` : '/orders';
 				activities.push({
 					id: `order-${order.id}`,
 					type: "order",
 					message: `${order.status === "completed" ? "Order completed" : "New order"} #${order.order_number}`,
 					timestamp: timeAgo,
 					icon: "ShoppingCart",
-					linkTo: `/orders?highlight=${order.order_number}`,
+					linkTo: `${ordersPath}?highlight=${order.order_number}`,
 				});
 			});
 

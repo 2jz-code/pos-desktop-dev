@@ -58,7 +58,8 @@ interface Order {
 export default function OrdersPage() {
 	const navigate = useNavigate();
 	const { toast } = useToast();
-	const { user } = useAuth();
+	const { user, tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	// Use shared orders data hook
@@ -233,7 +234,7 @@ export default function OrdersPage() {
 					<DropdownMenuContent align="end" className="w-40">
 						<DropdownMenuItem onClick={(e) => {
 							e.stopPropagation();
-							navigate(`/orders/${order.id}`);
+							navigate(`/${tenantSlug}/orders/${order.id}`);
 						}}>
 							<Eye className="mr-2 h-4 w-4" />
 							View Details
@@ -368,7 +369,7 @@ export default function OrdersPage() {
 				data={orders}
 				loading={loading}
 				emptyMessage="No orders found for the selected filters."
-				onRowClick={(order) => navigate(`/orders/${order.id}`)}
+				onRowClick={(order) => navigate(`/${tenantSlug}/orders/${order.id}`)}
 				renderRow={renderOrderRow}
 				colSpan={7}
 				className="border-0"

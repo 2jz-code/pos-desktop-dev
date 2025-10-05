@@ -119,6 +119,16 @@ class UserAdmin(TenantAdminMixin, BaseUserAdmin):
         ),
     )
 
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly only when editing (not when creating)."""
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+
+        # Remove tenant from readonly fields during creation (obj is None)
+        if obj is None and 'tenant' in readonly_fields:
+            readonly_fields.remove('tenant')
+
+        return readonly_fields
+
     # PIN is managed via API, so we don't include it in the admin forms.
 
     actions = [clear_login_locks]

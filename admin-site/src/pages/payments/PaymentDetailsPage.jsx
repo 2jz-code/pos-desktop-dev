@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	getPaymentById,
 	refundTransaction,
@@ -43,6 +44,8 @@ const PaymentDetailsPage = () => {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 
 	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
 	const [selectedTransaction, setSelectedTransaction] = useState(null);
@@ -184,7 +187,7 @@ const PaymentDetailsPage = () => {
 					</div>
 					<div className="flex items-center gap-3">
 						<Button
-							onClick={() => navigate("/payments")}
+							onClick={() => navigate(`/${tenantSlug}/payments`)}
 							variant="outline"
 							size="sm"
 							className="border-border"
@@ -296,7 +299,7 @@ const PaymentDetailsPage = () => {
 													Related Order
 												</span>
 												<Link
-													to={`/orders/${payment.order.id}`}
+													to={`/${tenantSlug}/orders/${payment.order.id}`}
 													className="flex items-center gap-1 font-mono text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline"
 												>
 													{payment.order_number}

@@ -8,6 +8,7 @@ import {
 } from "@/services/api/orderService";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -74,6 +75,8 @@ const OrderDetailsPage = () => {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	const {
@@ -225,7 +228,7 @@ const OrderDetailsPage = () => {
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-4">
 						<Button
-							onClick={() => navigate("/orders")}
+							onClick={() => navigate(`/${tenantSlug}/orders`)}
 							variant="ghost"
 							size="sm"
 							className="gap-2"
@@ -604,7 +607,7 @@ const OrderDetailsPage = () => {
 									</h3>
 									{payment_details && (
 										<Link
-											to={`/payments/${payment_details.id}`}
+											to={`/${tenantSlug}/payments/${payment_details.id}`}
 											className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
 										>
 											View Full

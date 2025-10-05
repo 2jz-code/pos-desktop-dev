@@ -254,12 +254,15 @@ const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
 };
 
 export function DashboardPage() {
-	const { user: authUser, loading: authLoading } = useAuth();
+	const { user: authUser, tenant, loading: authLoading } = useAuth();
 	const permissions = useRolePermissions();
 	const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 	const [activities, setActivities] = useState<ActivityItem[]>([]);
 	const [metricsLoading, setMetricsLoading] = useState(true);
 	const [activitiesLoading, setActivitiesLoading] = useState(true);
+
+	// Get tenant slug for routing
+	const tenantSlug = tenant?.slug || '';
 
 	useEffect(() => {
 		if (!authLoading && authUser) {
@@ -272,12 +275,12 @@ export function DashboardPage() {
 
 			// Fetch recent activity
 			dashboardService
-				.getRecentActivity()
+				.getRecentActivity(tenantSlug)
 				.then(setActivities)
 				.catch((err) => console.error("Error fetching activity:", err))
 				.finally(() => setActivitiesLoading(false));
 		}
-	}, [authLoading, authUser]);
+	}, [authLoading, authUser, tenantSlug]);
 
 	if (authLoading) {
 		return (
@@ -305,63 +308,63 @@ export function DashboardPage() {
 
 	const dashboardCards = [
 		{
-			to: "/orders",
+			to: `/${tenantSlug}/orders`,
 			title: "Orders",
 			description: "View order history and manage transactions",
 			icon: ClipboardList,
 			show: permissions.canAccessOrders(),
 		},
 		{
-			to: "/products",
+			to: `/${tenantSlug}/products`,
 			title: "Products",
 			description: "Browse product catalog and manage inventory",
 			icon: Package,
 			show: permissions.canAccessProducts(),
 		},
 		{
-			to: "/inventory",
+			to: `/${tenantSlug}/inventory`,
 			title: "Inventory",
 			description: "Manage stock levels, track inventory, and handle adjustments",
 			icon: Package,
 			show: permissions.canAccessInventory(),
 		},
 		{
-			to: "/payments",
+			to: `/${tenantSlug}/payments`,
 			title: "Payments",
 			description: "Payment history, refunds, and financial records",
 			icon: CreditCard,
 			show: permissions.canAccessPayments(),
 		},
 		{
-			to: "/users",
+			to: `/${tenantSlug}/users`,
 			title: "Users",
 			description: "Manage staff accounts, roles, and permissions",
 			icon: Users,
 			show: permissions.canAccessUsers(),
 		},
 		{
-			to: "/discounts",
+			to: `/${tenantSlug}/discounts`,
 			title: "Discounts",
 			description: "Create and manage promotional offers",
 			icon: Percent,
 			show: permissions.canAccessDiscounts(),
 		},
 		{
-			to: "/reports",
+			to: `/${tenantSlug}/reports`,
 			title: "Reports",
 			description: "Generate business reports and analytics",
 			icon: FileText,
 			show: permissions.canAccessReports(),
 		},
 		{
-			to: "/audit",
+			to: `/${tenantSlug}/audit`,
 			title: "Audit",
 			description: "Security logs and system audit trails",
 			icon: Shield,
 			show: permissions.canAccessAudits(),
 		},
 		{
-			to: "/settings",
+			to: `/${tenantSlug}/settings`,
 			title: "Settings",
 			description: "Configure system preferences and business settings",
 			icon: Settings,
@@ -439,7 +442,7 @@ export function DashboardPage() {
 								trend={metrics.todaySales.trend}
 								trendValue={metrics.todaySales.trendValue}
 								comparison={metrics.todaySales.comparison}
-								linkTo="/reports?filter=today&type=sales"
+								linkTo={`/${tenantSlug}/reports?filter=today&type=sales`}
 							/>
 							<MetricCard
 								icon={ShoppingCart}
@@ -449,7 +452,7 @@ export function DashboardPage() {
 								trend={metrics.ordersCount.trend}
 								trendValue={metrics.ordersCount.trendValue}
 								comparison={metrics.ordersCount.comparison}
-								linkTo="/orders?filter=today"
+								linkTo={`/${tenantSlug}/orders?filter=today`}
 							/>
 							<MetricCard
 								icon={Package}
@@ -458,7 +461,7 @@ export function DashboardPage() {
 								subtitle={metrics.topProduct.subtitle}
 								trend="neutral"
 								comparison={metrics.topProduct.comparison}
-								linkTo="/products"
+								linkTo={`/${tenantSlug}/products`}
 							/>
 							<MetricCard
 								icon={AlertTriangle}
@@ -466,7 +469,7 @@ export function DashboardPage() {
 								value={metrics.lowStockCount.value}
 								subtitle={metrics.lowStockCount.subtitle}
 								trend="neutral"
-								linkTo="/inventory?filter=low-stock"
+								linkTo={`/${tenantSlug}/inventory?filter=low-stock`}
 							/>
 						</>
 					) : (

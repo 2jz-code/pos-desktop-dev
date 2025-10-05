@@ -26,11 +26,14 @@ import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { archiveProduct, unarchiveProduct } from "@/services/api/productService";
 import { ProductFormDialog } from "@/components/ProductFormDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const ProductDetailsPage = () => {
 	const { productId } = useParams<{ productId: string }>();
 	const navigate = useNavigate();
 	const { toast } = useToast();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	
 	const [product, setProduct] = useState<any>(null);
 	const [loading, setLoading] = useState(true);
@@ -58,7 +61,7 @@ export const ProductDetailsPage = () => {
 	}, [productId]);
 
 	const handleBack = () => {
-		navigate("/products");
+		navigate(`/${tenantSlug}/products`);
 	};
 
 	const handleEdit = () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { getPayments } from "@/services/api/paymentService";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
@@ -39,6 +40,8 @@ const PaymentsPage = () => {
 		search: "",
 	});
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 
 	const fetchPayments = useCallback(
 		async (url = null) => {
@@ -321,7 +324,7 @@ const PaymentsPage = () => {
 				data={payments}
 				loading={loading}
 				emptyMessage="No payments found for the selected filters."
-				onRowClick={(payment) => navigate(`/payments/${payment.id}`)}
+				onRowClick={(payment) => navigate(`/${tenantSlug}/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
 				colSpan={6}
 				className="border-0"

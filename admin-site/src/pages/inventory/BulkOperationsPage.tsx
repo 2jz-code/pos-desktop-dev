@@ -150,7 +150,8 @@ const TransferQuantityField = ({ index, control, productStockLevels }) => {
 
 export const BulkOperationsPage = () => {
 	const navigate = useNavigate();
-	const { user } = useAuth();
+	const { user, tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const queryClient = useQueryClient();
 
 	// State for tracking stock levels for selected products
@@ -376,7 +377,7 @@ export const BulkOperationsPage = () => {
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => navigate("/inventory")}
+						onClick={() => navigate(`/${tenantSlug}/inventory`)}
 					>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back to Inventory

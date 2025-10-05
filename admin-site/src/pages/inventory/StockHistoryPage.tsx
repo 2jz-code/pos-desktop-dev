@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	Card,
 	CardContent,
@@ -121,6 +122,8 @@ const OPERATION_TYPES = {
 
 export const StockHistoryPage = () => {
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
@@ -281,7 +284,7 @@ export const StockHistoryPage = () => {
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => navigate("/inventory")}
+						onClick={() => navigate(`/${tenantSlug}/inventory`)}
 					>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back to Inventory
