@@ -53,17 +53,27 @@ class InventoryService:
             logger.error(f"Failed to log stock operation for {product.name} at {location.name}: {e}")
     
     @staticmethod
-    @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
+    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
+    # @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
     def get_stock_levels_by_location(location_id):
-        """Cache stock levels for POS availability checks"""
+        """Cache stock levels for POS availability checks
+
+        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
+        causing all tenants to share the same cached results.
+        """
         return dict(InventoryStock.objects.filter(
             location_id=location_id
         ).values_list('product_id', 'quantity'))
     
     @staticmethod
-    @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
+    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
+    # @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
     def get_recipe_ingredients_map():
-        """Cache recipe-to-ingredients mapping for menu items"""
+        """Cache recipe-to-ingredients mapping for menu items
+
+        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
+        causing all tenants to share the same cached results.
+        """
         recipes = {}
         # FIX: Add select_related to prevent N+1 queries when accessing product.name and product.product_type.name
         for recipe in Recipe.objects.prefetch_related(
@@ -81,9 +91,14 @@ class InventoryService:
         return recipes
     
     @staticmethod
-    @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
+    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
+    # @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
     def get_inventory_availability_status(location_id=None):
-        """Cache product availability status for POS display"""
+        """Cache product availability status for POS display
+
+        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
+        causing all tenants to share the same cached results.
+        """
         from settings.config import app_settings
         
         if not location_id:
@@ -727,10 +742,11 @@ class InventoryService:
         # Low stock filtering with effective thresholds
         is_low_stock = filters.get("is_low_stock")
         if is_low_stock and is_low_stock.lower() == "true":
+            from django.db import models
             queryset = queryset.filter(
                 quantity__lte=Case(
                     When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
-                    default=Value(app_settings.default_low_stock_threshold),
+                    default=Value(app_settings.default_low_stock_threshold, output_field=models.DecimalField()),
                 )
             )
         

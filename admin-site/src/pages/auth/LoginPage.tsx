@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Package, Eye, EyeOff, Loader2 } from "lucide-react";
+import { TenantSelectorDialog } from "./TenantSelectorDialog";
 
 const loginSchema = z.object({
 	email: z
@@ -31,11 +32,26 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+interface Tenant {
+	tenant_id: string;
+	tenant_name: string;
+	tenant_slug: string;
+	user_id: string;
+	role: string;
+}
+
 export const LoginPage = () => {
-	const { login } = useAuth();
+	const { login, handleTenantSelection } = useAuth();
 	const navigate = useNavigate();
 	const [showPassword, setShowPassword] = useState(false);
 	const [loginError, setLoginError] = useState<string | null>(null);
+	const [tenants, setTenants] = useState<Tenant[]>([]);
+	const [showTenantSelector, setShowTenantSelector] = useState(false);
+	const [credentials, setCredentials] = useState<{
+		email: string;
+		password: string;
+	} | null>(null);
+	const [isTenantSelecting, setIsTenantSelecting] = useState(false);
 
 	const form = useForm<LoginFormData>({
 		resolver: zodResolver(loginSchema),
@@ -48,8 +64,18 @@ export const LoginPage = () => {
 	const onSubmit = async (data: LoginFormData) => {
 		try {
 			setLoginError(null);
-			await login(data.email, data.password);
-			navigate("/dashboard");
+			const result = await login(data.email, data.password);
+
+			// Check if multiple tenants - show tenant selector
+			if (result.multiple_tenants) {
+				setTenants(result.tenants);
+				setCredentials({ email: data.email, password: data.password });
+				setShowTenantSelector(true);
+				return;
+			}
+
+			// Single tenant - navigate to dashboard with tenant slug in path
+			navigate(`/${result.tenant.slug}/dashboard`);
 		} catch (error: any) {
 			console.error("Login error:", error);
 
@@ -66,6 +92,40 @@ export const LoginPage = () => {
 				setLoginError(error.message);
 			} else {
 				setLoginError("An unexpected error occurred. Please try again.");
+			}
+		}
+	};
+
+	const onTenantSelect = async (tenantId: string) => {
+		if (!credentials) return;
+
+		try {
+			setIsTenantSelecting(true);
+			setLoginError(null);
+
+			const result = await handleTenantSelection(
+				credentials.email,
+				credentials.password,
+				tenantId
+			);
+
+			// Success - navigate to dashboard with tenant slug in path
+			navigate(`/${result.tenant.slug}/dashboard`);
+		} catch (error: any) {
+			console.error("Tenant selection error:", error);
+
+			// Close dialog and show error
+			setShowTenantSelector(false);
+			setIsTenantSelecting(false);
+
+			if (error.response?.data?.error) {
+				setLoginError(error.response.data.error);
+			} else if (error.message) {
+				setLoginError(error.message);
+			} else {
+				setLoginError(
+					"Failed to select tenant. Please try logging in again."
+				);
 			}
 		}
 	};
@@ -179,6 +239,14 @@ export const LoginPage = () => {
 						</div>
 					</CardContent>
 				</Card>
+
+				{/* Tenant Selector Dialog */}
+				<TenantSelectorDialog
+					open={showTenantSelector}
+					tenants={tenants}
+					onSelectTenant={onTenantSelect}
+					isLoading={isTenantSelecting}
+				/>
 			</div>
 		</div>
 	);

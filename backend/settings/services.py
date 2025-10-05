@@ -35,13 +35,35 @@ class SettingsService:
     @staticmethod
     def get_global_settings() -> GlobalSettings:
         """
-        Get the singleton GlobalSettings instance.
-        Creates one if it doesn't exist.
-        
+        Get the tenant-scoped GlobalSettings instance.
+        Creates one if it doesn't exist for the current tenant.
+
+        TenantManager automatically filters by current tenant context.
+        OneToOneField ensures only one instance per tenant.
+
         Returns:
-            GlobalSettings: The singleton settings instance
+            GlobalSettings: The tenant's settings instance
         """
-        obj, created = GlobalSettings.objects.get_or_create(pk=1)
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValidationError("No tenant context available for settings")
+
+        # Try to get existing settings for this tenant
+        try:
+            obj = GlobalSettings.objects.get(tenant=tenant)
+        except GlobalSettings.DoesNotExist:
+            # Create new settings - avoid get_or_create due to id sequence conflicts
+            obj = GlobalSettings(
+                tenant=tenant,
+                store_name=f"{tenant.name}",
+                store_address='',
+                store_phone='',
+                store_email='',
+            )
+            obj.save()
+
         return obj
     
     @staticmethod
@@ -390,15 +412,31 @@ class PrinterConfigurationService:
     @staticmethod
     def get_printer_configuration() -> PrinterConfiguration:
         """
-        Get the singleton PrinterConfiguration instance.
-        Creates one if it doesn't exist.
-        
+        Get the tenant-scoped PrinterConfiguration instance.
+        Creates one if it doesn't exist for the current tenant.
+
+        TenantManager automatically filters by current tenant context.
+        OneToOneField ensures only one instance per tenant.
+
         Extracted from PrinterConfigurationViewSet.get_object().
-        
+
         Returns:
-            PrinterConfiguration: The singleton printer config instance
+            PrinterConfiguration: The tenant's printer config instance
         """
-        obj, created = PrinterConfiguration.objects.get_or_create(pk=1)
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValidationError("No tenant context available for printer configuration")
+
+        # Try to get existing config for this tenant
+        try:
+            obj = PrinterConfiguration.objects.get(tenant=tenant)
+        except PrinterConfiguration.DoesNotExist:
+            # Create new config - avoid get_or_create due to id sequence conflicts
+            obj = PrinterConfiguration(tenant=tenant)
+            obj.save()
+
         return obj
     
     @staticmethod
@@ -447,17 +485,32 @@ class WebOrderSettingsService:
     @staticmethod
     def get_web_order_settings() -> WebOrderSettings:
         """
-        Get the singleton WebOrderSettings instance with optimized query.
-        Creates one if it doesn't exist.
-        
+        Get the tenant-scoped WebOrderSettings instance with optimized query.
+        Creates one if it doesn't exist for the current tenant.
+
+        TenantManager automatically filters by current tenant context.
+        OneToOneField ensures only one instance per tenant.
+
         Extracted from WebOrderSettingsViewSet.get_object() with prefetch optimization.
-        
+
         Returns:
-            WebOrderSettings: The singleton web order settings instance
+            WebOrderSettings: The tenant's web order settings instance
         """
-        obj, created = WebOrderSettings.objects.prefetch_related(
-            'web_receipt_terminals__store_location'
-        ).get_or_create(pk=1)
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValidationError("No tenant context available for web order settings")
+
+        # Try to get existing settings for this tenant
+        try:
+            obj = WebOrderSettings.objects.prefetch_related(
+                'web_receipt_terminals__store_location'
+            ).get(tenant=tenant)
+        except WebOrderSettings.DoesNotExist:
+            # Create new settings - avoid get_or_create due to id sequence conflicts
+            obj = WebOrderSettings(tenant=tenant)
+            obj.save()
         return obj
     
     @staticmethod

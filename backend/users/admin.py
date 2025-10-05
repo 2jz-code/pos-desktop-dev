@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from core_backend.admin.mixins import TenantAdminMixin
 from .models import User
 from .forms import UserAdminChangeForm, UserAdminCreationForm
 from django.core.cache import cache
@@ -33,7 +34,7 @@ def clear_login_locks(modeladmin, request, queryset):
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class UserAdmin(TenantAdminMixin, BaseUserAdmin):
     form = UserAdminChangeForm
     add_form = UserAdminCreationForm
 
@@ -60,6 +61,10 @@ class UserAdmin(BaseUserAdmin):
     )
     search_fields = ("email", "username", "first_name", "last_name", "tenant__name", "tenant__slug")
     ordering = ("email",)
+
+    def get_queryset(self, request):
+        """Show users from ALL tenants in Django admin"""
+        return User.all_objects.select_related('tenant')
 
     def get_tenant_name(self, obj):
         """Display tenant name"""

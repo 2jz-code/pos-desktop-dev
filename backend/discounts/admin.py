@@ -1,9 +1,10 @@
 from django.contrib import admin
 from .models import Discount
+from core_backend.admin.mixins import TenantAdminMixin
 
 
 @admin.register(Discount)
-class DiscountAdmin(admin.ModelAdmin):
+class DiscountAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin interface for managing discounts.
     """
@@ -64,10 +65,12 @@ class DiscountAdmin(admin.ModelAdmin):
         js = ("admin/js/discount_admin.js",)
 
     def get_queryset(self, request):
-        # Prefetch related fields to optimize performance in the admin list view
-        # Include archived records by default in admin
-        queryset = self.model.objects.with_archived() if hasattr(self.model.objects, 'with_archived') else self.model.objects.all()
-        return queryset.prefetch_related("applicable_products", "applicable_categories").select_related("archived_by")
+        """Show all tenants in Django admin with optimized queries"""
+        # all_objects already includes archived records from all tenants
+        return self.model.all_objects.prefetch_related(
+            "applicable_products",
+            "applicable_categories"
+        ).select_related("tenant", "archived_by")
 
 
 # This will add a simple view for the through model in the admin, mostly for debugging.

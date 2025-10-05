@@ -11,11 +11,11 @@ from .models import (
     WebOrderSettings,
     StockActionReasonConfig,
 )
-from core_backend.admin.mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin
 
 
 @admin.register(GlobalSettings)
-class GlobalSettingsAdmin(admin.ModelAdmin):
+class GlobalSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the singleton GlobalSettings model.
     Redirects from the list view to the single change form.
@@ -68,15 +68,19 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         messages.success(request, "Report cache has been cleared. Reports will regenerate with the new timezone settings.")
     clear_report_cache.short_description = "Clear report cache (use after changing timezone)"
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return GlobalSettings.all_objects.select_related('tenant')
+
     def has_add_permission(self, request):
-        return self.model.objects.count() == 0
+        return self.model.all_objects.count() == 0
 
     def has_delete_permission(self, request, obj=None):
         return False
 
     def changelist_view(self, request, extra_context=None):
-        if self.model.objects.exists():
-            obj = self.model.objects.first()
+        if self.model.all_objects.exists():
+            obj = self.model.all_objects.first()
             return HttpResponseRedirect(
                 reverse("admin:settings_globalsettings_change", args=[obj.pk])
             )
@@ -84,20 +88,24 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
 
 
 @admin.register(PrinterConfiguration)
-class PrinterConfigurationAdmin(admin.ModelAdmin):
+class PrinterConfigurationAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the singleton PrinterConfiguration model.
     """
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return PrinterConfiguration.all_objects.select_related('tenant')
+
     def has_add_permission(self, request):
-        return self.model.objects.count() == 0
+        return self.model.all_objects.count() == 0
 
     def has_delete_permission(self, request, obj=None):
         return False
 
     def changelist_view(self, request, extra_context=None):
         # Ensure the singleton object exists, then redirect to it.
-        obj, created = self.model.objects.get_or_create(pk=1)
+        obj, created = self.model.all_objects.get_or_create(pk=1)
         return HttpResponseRedirect(
             reverse("admin:settings_printerconfiguration_change", args=[obj.pk])
         )
@@ -119,7 +127,7 @@ class TerminalLocationInline(admin.StackedInline):
 
 
 @admin.register(StoreLocation)
-class StoreLocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     """
     Admin view for the primary StoreLocation model.
     Includes an inline for the Stripe configuration.
@@ -130,9 +138,13 @@ class StoreLocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
     search_fields = ("name",)
     inlines = [TerminalLocationInline]
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return StoreLocation.all_objects.select_related('tenant')
+
 
 @admin.register(TerminalRegistration)
-class TerminalRegistrationAdmin(admin.ModelAdmin):
+class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for managing TerminalRegistration, the new standard for POS devices.
     """
@@ -143,9 +155,13 @@ class TerminalRegistrationAdmin(admin.ModelAdmin):
     readonly_fields = ("last_seen",)
     autocomplete_fields = ["store_location"]
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return TerminalRegistration.all_objects.select_related('tenant', 'store_location')
+
 
 @admin.register(WebOrderSettings)
-class WebOrderSettingsAdmin(admin.ModelAdmin):
+class WebOrderSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the singleton WebOrderSettings model.
     Manages terminal selection for web order notifications.
@@ -160,23 +176,27 @@ class WebOrderSettingsAdmin(admin.ModelAdmin):
     )
     filter_horizontal = ("web_receipt_terminals",)
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return WebOrderSettings.all_objects.select_related('tenant')
+
     def has_add_permission(self, request):
         # Prevent adding new instances from the admin
-        return not WebOrderSettings.objects.exists()
+        return not WebOrderSettings.all_objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
 
     def changelist_view(self, request, extra_context=None):
         # Ensure the singleton object exists, then redirect to it.
-        obj, created = self.model.objects.get_or_create(pk=1)
+        obj, created = self.model.all_objects.get_or_create(pk=1)
         return HttpResponseRedirect(
             reverse("admin:settings_webordersettings_change", args=[obj.pk])
         )
 
 
 @admin.register(StockActionReasonConfig)
-class StockActionReasonConfigAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class StockActionReasonConfigAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     """
     Admin view for managing stock action reasons.
     Only owners can create/edit/delete custom reasons.
@@ -205,6 +225,10 @@ class StockActionReasonConfigAdmin(ArchivingAdminMixin, admin.ModelAdmin):
         "updated_at",
     )
     ordering = ["category", "name"]
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return StockActionReasonConfig.all_objects.select_related('tenant')
 
     fieldsets = (
         (

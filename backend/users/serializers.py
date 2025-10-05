@@ -71,6 +71,28 @@ class POSLoginSerializer(serializers.Serializer):
     pin = serializers.CharField(
         required=True, write_only=True, style={"input_type": "password"}
     )
+    tenant_id = serializers.CharField(required=False, help_text="Optional tenant ID from POS device configuration")
+
+
+class AdminLoginSerializer(serializers.Serializer):
+    """
+    Email-first admin login serializer.
+    Searches across all tenants and returns either:
+    - User data (single tenant)
+    - Tenant picker list (multiple tenants)
+    """
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True, style={"input_type": "password"})
+
+
+class TenantSelectionSerializer(serializers.Serializer):
+    """
+    Serializer for selecting a tenant when user belongs to multiple tenants.
+    Used after AdminLoginSerializer returns multiple_tenants response.
+    """
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True, style={"input_type": "password"})
+    tenant_id = serializers.CharField(required=True, help_text="Selected tenant ID from tenant picker")
 
 
 class WebLoginSerializer(TokenObtainPairSerializer):

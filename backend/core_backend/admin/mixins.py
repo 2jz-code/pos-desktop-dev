@@ -1,7 +1,7 @@
 """
-Admin mixins for archiving functionality.
+Admin mixins for archiving and multi-tenancy functionality.
 
-Provides reusable admin components for models using the SoftDeleteMixin.
+Provides reusable admin components for models using the SoftDeleteMixin and TenantMixin.
 """
 
 from django.contrib import admin
@@ -10,6 +10,140 @@ from django.urls import reverse
 from django.contrib import messages
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+
+
+class TenantFilter(admin.SimpleListFilter):
+    """
+    Custom admin filter for tenants that shows tenant names instead of IDs.
+    Provides a user-friendly filtering experience in Django admin.
+    """
+    title = 'tenant'
+    parameter_name = 'tenant'
+
+    def lookups(self, request, model_admin):
+        """
+        Return list of (tenant_id, tenant_name) tuples for filter options.
+        Shows all tenants that have data in this model.
+        """
+        from tenant.models import Tenant
+
+        # Get all tenants that have records in this model
+        if hasattr(model_admin.model, 'all_objects'):
+            tenant_ids = model_admin.model.all_objects.values_list('tenant', flat=True).distinct()
+            tenants = Tenant.objects.filter(id__in=tenant_ids).order_by('name')
+        else:
+            # Fallback: show all active tenants
+            tenants = Tenant.objects.filter(is_active=True).order_by('name')
+
+        return [(str(tenant.id), f"{tenant.name} ({tenant.slug})") for tenant in tenants]
+
+    def queryset(self, request, queryset):
+        """
+        Filter queryset by selected tenant.
+        """
+        if self.value():
+            return queryset.filter(tenant_id=self.value())
+        return queryset
+
+
+class TenantAdminMixin:
+    """
+    Admin mixin for multi-tenant models.
+
+    Django admin should ALWAYS show ALL data across ALL tenants with ability to filter by tenant.
+    This mixin:
+    - Uses all_objects manager to bypass tenant filtering
+    - Adds tenant to list_display and list_filter
+    - Makes tenant field readonly (can't change tenant in admin)
+
+    Usage:
+        @admin.register(Product)
+        class ProductAdmin(TenantAdminMixin, admin.ModelAdmin):
+            pass
+    """
+
+    def get_queryset(self, request):
+        """
+        Use all_objects manager to show data from ALL tenants.
+        Django admin operates without tenant context (middleware sets tenant=None).
+        """
+        # Get the base queryset from parent
+        qs = super().get_queryset(request)
+
+        # If model has all_objects manager (multi-tenant), use it instead of default
+        if hasattr(self.model, 'all_objects'):
+            # Start fresh with all_objects to bypass tenant filtering
+            qs = self.model.all_objects.all()
+
+            # Preserve any select_related/prefetch_related optimizations
+            # from subclass get_queryset() implementations
+            if hasattr(super(), 'get_queryset'):
+                parent_qs = super().get_queryset(request)
+                if hasattr(parent_qs, '_prefetch_related_lookups'):
+                    qs = qs.prefetch_related(*parent_qs._prefetch_related_lookups)
+                if hasattr(parent_qs, 'query') and hasattr(parent_qs.query, 'select_related'):
+                    select_related_fields = parent_qs.query.select_related
+                    if select_related_fields and select_related_fields is not True:
+                        qs = qs.select_related(*select_related_fields.keys())
+
+        return qs
+
+    def get_list_display(self, request):
+        """Add tenant to list display if model has tenant field."""
+        list_display = list(super().get_list_display(request) if hasattr(super(), 'get_list_display')
+                           else getattr(self, 'list_display', []))
+
+        # Add tenant display method at the beginning if model has tenant and it's not already in list
+        tenant_fields = ['tenant', 'get_tenant_display', 'tenant__name']
+        has_tenant_display = any(field in list_display for field in tenant_fields)
+
+        if hasattr(self.model, 'tenant') and not has_tenant_display:
+            list_display.insert(0, 'get_tenant_display')
+
+        return list_display
+
+    @admin.display(description='Tenant', ordering='tenant__name')
+    def get_tenant_display(self, obj):
+        """
+        Display tenant with name and slug in a user-friendly format.
+        Shows warning icon if tenant is missing.
+        """
+        if not obj.tenant:
+            return format_html('<span style="color: red;">⚠️ NO TENANT</span>')
+
+        return format_html(
+            '<strong>{}</strong> <span style="color: #666;">({})</span>',
+            obj.tenant.name,
+            obj.tenant.slug
+        )
+
+    def get_list_filter(self, request):
+        """Add custom tenant filter if model has tenant field."""
+        list_filter = list(super().get_list_filter(request) if hasattr(super(), 'get_list_filter')
+                          else getattr(self, 'list_filter', []))
+
+        # Add custom TenantFilter at the beginning if model has tenant and it's not already there
+        # Check for both 'tenant' string and TenantFilter class
+        has_tenant_filter = any(
+            f == 'tenant' or f == TenantFilter or (isinstance(f, type) and issubclass(f, TenantFilter))
+            for f in list_filter
+        )
+
+        if hasattr(self.model, 'tenant') and not has_tenant_filter:
+            list_filter.insert(0, TenantFilter)
+
+        return list_filter
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant field readonly (can't change tenant in admin)."""
+        readonly_fields = list(super().get_readonly_fields(request, obj) if hasattr(super(), 'get_readonly_fields')
+                              else getattr(self, 'readonly_fields', []))
+
+        # Add tenant as readonly if model has it and it's not already readonly
+        if hasattr(self.model, 'tenant') and 'tenant' not in readonly_fields:
+            readonly_fields.append('tenant')
+
+        return readonly_fields
 
 
 class ArchivingAdminMixin:

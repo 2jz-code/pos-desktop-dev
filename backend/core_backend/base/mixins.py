@@ -79,11 +79,14 @@ class SerializerOptimizedMixin:
     """
     Mixin for APIView/GenericAPIView that applies serializer optimization fields.
     Useful for views that don't inherit from ViewSetMixin but still want optimization.
+
+    IMPORTANT: When using this mixin, child classes should override get_queryset() to
+    re-evaluate their queryset at request time for proper tenant context.
     """
-    
+
     def get_queryset(self):
         queryset = super().get_queryset()
-        
+
         # Get serializer class and apply optimizations
         serializer_class = self.get_serializer_class()
         if hasattr(serializer_class, "Meta"):

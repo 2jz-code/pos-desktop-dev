@@ -2,6 +2,8 @@ from django.http import JsonResponse
 from django.conf import settings
 from .models import Tenant
 from .managers import set_current_tenant
+import jwt
+from jwt.exceptions import InvalidTokenError
 
 
 class TenantNotFoundError(Exception):
@@ -96,11 +98,17 @@ class TenantMiddleware:
                 except Tenant.DoesNotExist:
                     pass
 
-        # 2. Authenticated user's tenant (Staff POS) - MOST COMMON
-        # Staff user logs in with email/password → user.tenant determines tenant
-        # NO tenant parameter needed in login or subsequent requests
-        if request.user.is_authenticated and hasattr(request.user, 'tenant') and request.user.tenant:
-            return request.user.tenant
+        # 2. JWT token with tenant claims (Staff POS/Admin) - MOST COMMON
+        # Enterprise JWT pattern: Extract tenant from JWT claims
+        # - Middleware runs BEFORE DRF authentication, so request.user is AnonymousUser
+        # - We decode JWT here to get tenant_id from claims
+        # - JWT payload contains: {'user_id': 24, 'tenant_id': 'uuid', 'tenant_slug': 'jimmys-pizza'}
+        # - This provides stateless, cryptographically-signed tenant binding
+        # - Supports multi-tab usage (each tab has independent JWT context)
+        # - NO session state needed for tenant resolution
+        tenant_from_jwt = self.get_tenant_from_jwt(request)
+        if tenant_from_jwt:
+            return tenant_from_jwt
 
         # 3. Admin subdomain with path-based tenant (admin.ajeen.com/joespizza)
         # Staff admin React app uses path parameter for tenant
@@ -197,6 +205,62 @@ class TenantMiddleware:
             return parts[0]
 
         return None
+
+    def get_tenant_from_jwt(self, request):
+        """
+        Extract tenant from JWT token claims (enterprise multi-tenancy pattern).
+
+        This runs in middleware BEFORE DRF authentication, allowing us to:
+        1. Decode JWT to get tenant_id from claims
+        2. Set tenant context early in request lifecycle
+        3. Support stateless, cryptographically-signed tenant binding
+        4. Enable multi-tab usage (each tab has independent JWT context)
+
+        Args:
+            request: Django HttpRequest object
+
+        Returns:
+            Tenant instance if JWT contains valid tenant_id, None otherwise
+
+        Note:
+            This is a lightweight decode for tenant extraction only.
+            Full JWT validation happens later in DRF authentication.
+        """
+        # Try to get JWT from cookies (check both admin and POS cookie names)
+        admin_cookie_name = getattr(settings, 'SIMPLE_JWT_ADMIN', {}).get('AUTH_COOKIE')
+        access_token = None
+
+        if admin_cookie_name:
+            access_token = request.COOKIES.get(admin_cookie_name)
+        if not access_token:
+            access_token = request.COOKIES.get(settings.SIMPLE_JWT.get("AUTH_COOKIE"))
+
+        if not access_token:
+            return None
+
+        try:
+            # Decode JWT without verification (we just need tenant_id for context)
+            # Full verification happens in DRF CookieJWTAuthentication
+            # options={'verify_signature': False} is safe here because:
+            # 1. We only use this for tenant lookup, not authorization
+            # 2. DRF will do full signature verification later
+            # 3. Invalid tenant_id will just fail to find tenant (graceful fallback)
+            payload = jwt.decode(
+                access_token,
+                options={'verify_signature': False, 'verify_exp': False}
+            )
+
+            tenant_id = payload.get('tenant_id')
+            if not tenant_id:
+                return None
+
+            # Look up tenant by ID from JWT claims
+            return Tenant.objects.get(id=tenant_id, is_active=True)
+
+        except (InvalidTokenError, Tenant.DoesNotExist, KeyError, ValueError):
+            # Invalid JWT format, tenant not found, or other decode errors
+            # Fall through to other tenant resolution methods
+            return None
 
     def get_fallback_tenant_slug(self, host, subdomain):
         """

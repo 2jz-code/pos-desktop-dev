@@ -32,6 +32,45 @@ async function ensureCsrfToken(): Promise<string | null> {
   return csrfPromise;
 }
 
+// Token refresh state management
+let isRefreshing = false;
+let refreshPromise: Promise<void> | null = null;
+
+async function refreshToken(): Promise<void> {
+  // If refresh is already in progress, wait for it
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+
+  // Start a new refresh
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      // Get CSRF token first
+      const token = await ensureCsrfToken();
+
+      // Use baseClient to avoid interceptor recursion
+      await baseClient.post("/users/token/refresh/", {}, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { 'X-CSRF-Token': token } : {})
+        }
+      });
+
+      // Success - new token is set in cookies automatically
+    } catch (error) {
+      // Refresh failed - clear state and throw
+      throw error;
+    } finally {
+      // Clear refresh state
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 // Request interceptor: add CSRF headers for unsafe methods
 apiClient.interceptors.request.use(
   async (config) => {
@@ -96,7 +135,9 @@ apiClient.interceptors.response.use(
 			originalRequest._retry = true; // Mark the request to prevent infinite loops
 
 			try {
-				await apiClient.post("/users/token/refresh/");
+				// Use centralized refresh function to prevent concurrent refresh attempts
+				await refreshToken();
+				// Token refreshed successfully, retry the original request
 				return apiClient(originalRequest);
 			} catch (refreshError) {
 				// If refresh fails, just reject.

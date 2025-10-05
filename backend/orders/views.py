@@ -86,7 +86,7 @@ class OrderViewSet(BaseViewSet):
     queryset = Order.objects.all()
     authentication_classes = [CookieJWTAuthentication]  # Admin/staff authentication only
     permission_classes = [IsAuthenticatedOrGuestOrder]
-    
+
     # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_fields = ["status", "payment_status", "order_type"]
     search_fields = ["id", "customer__email", "customer__first_name", "customer__last_name", "cashier__username"]

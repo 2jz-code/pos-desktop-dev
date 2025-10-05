@@ -4,6 +4,8 @@ from .views import (
     UserViewSet,
     SetPinView,
     POSLoginView,
+    AdminLoginView,
+    TenantSelectionView,
     WebLoginView,
     WebTokenRefreshView,
     LogoutView,
@@ -18,6 +20,8 @@ app_name = "users"
 urlpatterns = [
     # Auth
     path("login/pos/", POSLoginView.as_view(), name="login-pos"),
+    path("login/admin/", AdminLoginView.as_view(), name="login-admin"),
+    path("login/admin/select-tenant/", TenantSelectionView.as_view(), name="select-tenant"),
     path("login/web/", WebLoginView.as_view(), name="login-web"),
     path("token/refresh/", WebTokenRefreshView.as_view(), name="token-refresh"),
     path("logout/", LogoutView.as_view(), name="logout"),

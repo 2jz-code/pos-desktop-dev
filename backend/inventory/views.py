@@ -56,20 +56,30 @@ class InventoryStockViewSet(BaseViewSet):
 class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
     serializer_class = OptimizedInventoryStockSerializer
     permission_classes = [IsAdminOrHigher]
-    
+
     # Base queryset that the mixin will optimize
     queryset = InventoryStock.objects.filter(archived_at__isnull=True)
 
     def get_queryset(self):
-        # First get the base optimized queryset from the mixin
+        """
+        Re-evaluate queryset at request time to ensure tenant context is applied.
+
+        IMPORTANT: The class-level queryset is evaluated at import time (before tenant context exists),
+        so we must call Model.objects again here to get a fresh queryset with tenant filtering.
+        """
+        # Re-evaluate queryset at request time to pick up tenant context
+        # Temporarily override self.queryset so super().get_queryset() uses the fresh one
+        self.queryset = InventoryStock.objects.filter(archived_at__isnull=True)
+
+        # Let the mixin apply optimizations to the fresh queryset
         queryset = super().get_queryset()
-        
+
         # Then apply filtering logic from service
         # Convert QueryDict to plain dict, taking first value from lists
         filters = {}
         for key, value in self.request.query_params.items():
             filters[key] = value
-            
+
         # Apply filters to the already-optimized queryset
         return InventoryService.apply_stock_filters(queryset, filters)
 
@@ -347,7 +357,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     queryset = StockHistoryEntry.objects.all()
     serializer_class = StockHistoryEntrySerializer
     permission_classes = [IsAdminOrHigher]
-    
+
     # Enable search and filtering via filter backends
     filter_backends = [
         filters.SearchFilter,
@@ -355,8 +365,14 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     ]
     search_fields = ['product__name', 'product__barcode', 'reason', 'notes', 'reference_id']
     ordering = ['-timestamp']
-    
+
     def get_queryset(self):
+        """
+        Re-evaluate queryset at request time to ensure tenant context is applied.
+        """
+        # Re-evaluate queryset at request time to pick up tenant context
+        self.queryset = StockHistoryEntry.objects.all()
+
         # Get the optimized queryset from SerializerOptimizedMixin
         queryset = super().get_queryset()
         

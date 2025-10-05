@@ -64,13 +64,36 @@ class AppSettings:
         """
         Load settings from the database and populate instance attributes.
         This method performs the database query and caches the results.
+
+        Multi-tenant: TenantManager automatically filters by current tenant.
+        Each tenant gets their own GlobalSettings instance.
         """
         # Import here to avoid circular imports
         from .models import GlobalSettings
+        from tenant.managers import get_current_tenant
 
         try:
-            # Use get_or_create with pk=1 to ensure we always have settings
-            settings_obj, created = GlobalSettings.objects.get_or_create(pk=1)
+            tenant = get_current_tenant()
+            if not tenant:
+                raise ImproperlyConfigured("No tenant context available for settings")
+
+            # Try to get existing settings for this tenant
+            try:
+                settings_obj = GlobalSettings.objects.get(tenant=tenant)
+                created = False
+            except GlobalSettings.DoesNotExist:
+                # Create new settings for this tenant
+                # Note: Don't use get_or_create due to potential id sequence conflicts
+                # from pre-multi-tenancy data
+                settings_obj = GlobalSettings(
+                    tenant=tenant,
+                    store_name=f"{tenant.name}",
+                    store_address='',
+                    store_phone='',
+                    store_email='',
+                )
+                settings_obj.save()
+                created = True
 
             # === TAX & FINANCIAL SETTINGS ===
             self.tax_rate: Decimal = settings_obj.tax_rate
@@ -118,11 +141,27 @@ class AppSettings:
             raise ImproperlyConfigured(f"Failed to load settings: {e}")
 
     def _load_printer_config(self) -> None:
-        """Load printer configurations from the singleton PrinterConfiguration model."""
+        """
+        Load printer configurations from tenant-scoped PrinterConfiguration model.
+        TenantManager automatically filters by current tenant.
+        """
         from .models import PrinterConfiguration
+        from tenant.managers import get_current_tenant
 
         try:
-            printer_config, created = PrinterConfiguration.objects.get_or_create(pk=1)
+            tenant = get_current_tenant()
+            if not tenant:
+                raise Exception("No tenant context available")
+
+            # Try to get existing config for this tenant
+            try:
+                printer_config = PrinterConfiguration.objects.get(tenant=tenant)
+                created = False
+            except PrinterConfiguration.DoesNotExist:
+                # Create new config - avoid get_or_create due to id sequence conflicts
+                printer_config = PrinterConfiguration(tenant=tenant)
+                printer_config.save()
+                created = True
             self.receipt_printers: List[Dict[str, Any]] = (
                 printer_config.receipt_printers
             )
@@ -140,11 +179,28 @@ class AppSettings:
             self.kitchen_zones = []
 
     def _load_web_order_config(self) -> None:
-        """Load web order settings from the singleton WebOrderSettings model."""
+        """
+        Load web order settings from tenant-scoped WebOrderSettings model.
+        TenantManager automatically filters by current tenant.
+        """
         from .models import WebOrderSettings
+        from tenant.managers import get_current_tenant
 
         try:
-            web_settings, created = WebOrderSettings.objects.get_or_create(pk=1)
+            tenant = get_current_tenant()
+            if not tenant:
+                raise Exception("No tenant context available")
+
+            # Try to get existing config for this tenant
+            try:
+                web_settings = WebOrderSettings.objects.get(tenant=tenant)
+                created = False
+            except WebOrderSettings.DoesNotExist:
+                # Create new config - avoid get_or_create due to id sequence conflicts
+                web_settings = WebOrderSettings(tenant=tenant)
+                web_settings.save()
+                created = True
+
             # Map model fields to AppSettings attributes
             self.enable_web_order_notifications: bool = web_settings.enable_notifications
             self.web_order_notification_sound: bool = web_settings.play_notification_sound
@@ -172,20 +228,22 @@ class AppSettings:
         """
         Get the default inventory location. Creates one if none exists.
         Maintained for backwards compatibility and inventory separation.
+
+        Multi-tenant: TenantManager automatically filters by current tenant.
         """
         if self.default_inventory_location is None:
             # Import here to avoid circular imports
             from inventory.models import Location
             from .models import GlobalSettings
 
-            # Create a default location if none exists
+            # Create a default location if none exists (tenant-scoped)
             default_location, created = Location.objects.get_or_create(
                 name="Main Store",
                 defaults={"description": "Default main store location"},
             )
 
-            # Update the settings to use this location
-            settings_obj = GlobalSettings.objects.get(pk=1)
+            # Update the settings to use this location (tenant-scoped)
+            settings_obj = GlobalSettings.objects.get()  # TenantManager filters by current tenant
             settings_obj.default_inventory_location = default_location
             settings_obj.save()
 
@@ -200,17 +258,19 @@ class AppSettings:
         """
         Get the default store location. Creates one if none exists.
         This is the primary method for getting the default physical location.
+
+        Multi-tenant: TenantManager automatically filters by current tenant.
         """
         if self.default_store_location is None:
             from .models import StoreLocation, GlobalSettings
 
-            # Create or get a default store location
+            # Create or get a default store location (tenant-scoped)
             default_location, created = StoreLocation.objects.get_or_create(
                 is_default=True, defaults={"name": "Main Location"}
             )
 
-            # Update the global settings to use this new location
-            settings_obj = GlobalSettings.objects.get(pk=1)
+            # Update the global settings to use this new location (tenant-scoped)
+            settings_obj = GlobalSettings.objects.get()  # TenantManager filters by current tenant
             settings_obj.default_store_location = default_location
             settings_obj.save()
 

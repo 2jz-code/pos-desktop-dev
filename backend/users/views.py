@@ -25,6 +25,8 @@ from .serializers import (
     UserRegistrationSerializer,
     SetPinSerializer,
     POSLoginSerializer,
+    AdminLoginSerializer,
+    TenantSelectionSerializer,
     WebLoginSerializer,
     WebTokenRefreshSerializer,
 )
@@ -185,6 +187,161 @@ class POSLoginView(APIView):
 @method_decorator(
     ratelimit(key="ip", rate="5/m", method="POST", block=True), name="post"
 )
+class AdminLoginView(APIView):
+    """
+    Email-first admin login with automatic tenant discovery.
+
+    Flow:
+    1. User provides email + password
+    2. Backend searches ALL tenants for matching admin/manager/owner users
+    3. If single tenant: auto-login with tokens
+    4. If multiple tenants: return tenant picker list
+    5. Frontend shows tenant picker if needed, then calls TenantSelectionView
+    """
+    permission_classes = [
+        permissions.AllowAny,
+        RequiresAntiCSRFHeader,
+        DoubleSubmitCSRFPremission,
+    ]
+
+    def post(self, request, *args, **kwargs):
+        serializer = AdminLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = UserService.authenticate_admin_user(
+            email=serializer.validated_data["email"],
+            password=serializer.validated_data["password"]
+        )
+
+        if result is None:
+            return Response(
+                {"error": "Invalid credentials"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Multiple tenants - return tenant picker
+        if isinstance(result, dict) and result.get("multiple_tenants"):
+            return Response({
+                "multiple_tenants": True,
+                "tenants": result["tenants"]
+            }, status=status.HTTP_200_OK)
+
+        # Single tenant - auto-login
+        user = result
+        tokens = UserService.generate_tokens_for_user(user)
+
+        response = Response({
+            "user": UserSerializer(user).data,
+            "tenant": {
+                "id": str(user.tenant.id),
+                "name": user.tenant.name,
+                "slug": user.tenant.slug,
+            }
+        })
+
+        # Set auth cookies for admin
+        # Tenant context is now in JWT claims - no session needed
+        AuthCookieService.set_admin_auth_cookies(
+            response, tokens["access"], tokens["refresh"]
+        )
+
+        return response
+
+
+@method_decorator(
+    ratelimit(key="ip", rate="5/m", method="POST", block=True), name="post"
+)
+class TenantSelectionView(APIView):
+    """
+    Handle tenant selection when user belongs to multiple tenants.
+
+    Called after AdminLoginView returns multiple_tenants response.
+    User selects a tenant from the picker and this endpoint authenticates
+    them with that specific tenant context.
+    """
+    permission_classes = [
+        permissions.AllowAny,
+        RequiresAntiCSRFHeader,
+        DoubleSubmitCSRFPremission,
+    ]
+
+    def post(self, request, *args, **kwargs):
+        serializer = TenantSelectionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Re-authenticate to verify credentials and get user for selected tenant
+        result = UserService.authenticate_admin_user(
+            email=serializer.validated_data["email"],
+            password=serializer.validated_data["password"]
+        )
+
+        if result is None:
+            return Response(
+                {"error": "Invalid credentials"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Extract tenant_id from request
+        selected_tenant_id = serializer.validated_data["tenant_id"]
+
+        # If single tenant, just return it (shouldn't happen, but handle gracefully)
+        if isinstance(result, User):
+            if str(result.tenant.id) == selected_tenant_id:
+                user = result
+            else:
+                return Response(
+                    {"error": "Selected tenant does not match user's tenant"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Multiple tenants - find the selected one
+            tenants_data = result.get("tenants", [])
+            selected_user = None
+
+            for tenant_data in tenants_data:
+                if tenant_data["tenant_id"] == selected_tenant_id:
+                    # Get the actual user object for this tenant
+                    try:
+                        selected_user = User.all_objects.get(
+                            id=tenant_data["user_id"],
+                            tenant_id=selected_tenant_id
+                        )
+                        break
+                    except User.DoesNotExist:
+                        pass
+
+            if selected_user is None:
+                return Response(
+                    {"error": "Invalid tenant selection"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user = selected_user
+
+        # Generate tokens and return user data
+        tokens = UserService.generate_tokens_for_user(user)
+
+        response = Response({
+            "user": UserSerializer(user).data,
+            "tenant": {
+                "id": str(user.tenant.id),
+                "name": user.tenant.name,
+                "slug": user.tenant.slug,
+            }
+        })
+
+        # Set auth cookies for admin
+        # Tenant context is now in JWT claims - no session needed
+        AuthCookieService.set_admin_auth_cookies(
+            response, tokens["access"], tokens["refresh"]
+        )
+
+        return response
+
+
+@method_decorator(
+    ratelimit(key="ip", rate="5/m", method="POST", block=True), name="post"
+)
 class WebLoginView(TokenObtainPairView):
     serializer_class = WebLoginSerializer
     permission_classes = [
@@ -313,6 +470,7 @@ class LogoutView(APIView):
         )
 
         # Use centralized service for complete logout logic
+        # JWT tokens are invalidated via blacklist, no session to clear
         AuthCookieService.perform_complete_logout(request, response)
 
         return response
@@ -322,8 +480,18 @@ class CurrentUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        user = request.user
+        serializer = UserSerializer(user)
+
+        # Return user + tenant info (matching login response format)
+        return Response({
+            "user": serializer.data,
+            "tenant": {
+                "id": str(user.tenant.id),
+                "name": user.tenant.name,
+                "slug": user.tenant.slug,
+            }
+        })
 
 
 class DebugCookiesView(APIView):

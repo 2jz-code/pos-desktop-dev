@@ -4,6 +4,7 @@ import {
 	Routes,
 	Route,
 	Navigate,
+	Outlet,
 } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -40,7 +41,7 @@ const queryClient = new QueryClient({
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-	const { isAuthenticated, loading } = useAuth();
+	const { isAuthenticated, loading, tenant } = useAuth();
 
 	if (loading) {
 		return (
@@ -67,16 +68,16 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // Application routes
 const AppRoutes = () => {
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, tenant } = useAuth();
 
 	return (
 		<Routes>
 			<Route
 				path="/login"
 				element={
-					isAuthenticated ? (
+					isAuthenticated && tenant ? (
 						<Navigate
-							to="/dashboard"
+							to={`/${tenant.slug}/dashboard`}
 							replace
 						/>
 					) : (
@@ -87,213 +88,225 @@ const AppRoutes = () => {
 			<Route
 				path="/"
 				element={
-					<Navigate
-						to="/dashboard"
-						replace
-					/>
+					isAuthenticated && tenant ? (
+						<Navigate
+							to={`/${tenant.slug}/dashboard`}
+							replace
+						/>
+					) : (
+						<Navigate
+							to="/login"
+							replace
+						/>
+					)
 				}
 			/>
-			<Route
-				path="/dashboard"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<DashboardPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/orders"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<OrdersPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/orders/:orderId"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<OrderDetailsPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/products"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<ProductsPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/products/:productId"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<ProductDetailsPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/products/modifiers"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<ModifierManagementPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/users"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessUsers()}
-							>
-								<UsersPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/inventory"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessInventory()}
-							>
-								<InventoryPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/inventory/bulk-operations"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessInventory()}
-							>
-								<BulkOperationsPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/inventory/stock-history"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessInventory()}
-							>
-								<StockHistoryPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/reports"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessReports()}
-							>
-								<ReportsPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/audit"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessAudits()}
-							>
-								<AuditPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/payments"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessPayments()}
-							>
-								<PaymentsPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/payments/:paymentId"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessPayments()}
-							>
-								<PaymentDetailsPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/discounts"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<RoleProtectedRoute
-								requiredPermission={(p: any) => p.canAccessDiscounts()}
-							>
-								<DiscountsPage />
-							</RoleProtectedRoute>
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
-			<Route
-				path="/settings"
-				element={
-					<ProtectedRoute>
-						<Layout>
-							<SettingsPage />
-						</Layout>
-					</ProtectedRoute>
-				}
-			/>
+
+			{/* All tenant-scoped routes wrapped under /:tenantSlug */}
+			<Route path="/:tenantSlug" element={<Outlet />}>
+				<Route
+					path="dashboard"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<DashboardPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="orders"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<OrdersPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="orders/:orderId"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<OrderDetailsPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="products"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<ProductsPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="products/:productId"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<ProductDetailsPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="products/modifiers"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<ModifierManagementPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="users"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessUsers()}
+								>
+									<UsersPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="inventory"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessInventory()}
+								>
+									<InventoryPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="inventory/bulk-operations"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessInventory()}
+								>
+									<BulkOperationsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="inventory/stock-history"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessInventory()}
+								>
+									<StockHistoryPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="reports"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessReports()}
+								>
+									<ReportsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="audit"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessAudits()}
+								>
+									<AuditPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="payments"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessPayments()}
+								>
+									<PaymentsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="payments/:paymentId"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessPayments()}
+								>
+									<PaymentDetailsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="discounts"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessDiscounts()}
+								>
+									<DiscountsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="settings"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<SettingsPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+			</Route>
+
 			<Route
 				path="*"
 				element={
 					<Navigate
-						to="/dashboard"
+						to="/login"
 						replace
 					/>
 				}

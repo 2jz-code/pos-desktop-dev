@@ -317,8 +317,19 @@ class ProductViewSet(BaseViewSet):
         """
         Get queryset using ProductSearchService for business logic.
         Extracted filtering logic (30+ lines) to service layer.
+
+        IMPORTANT: Uses BaseViewSet to ensure tenant context, then applies Product-specific logic.
         """
         from .services import ProductSearchService
+        from tenant.managers import get_current_tenant
+
+        # DEBUG: Check tenant context
+        tenant = get_current_tenant()
+        if not tenant:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ NO TENANT CONTEXT in ProductViewSet.get_queryset()!")
+            return Product.objects.none()
 
         is_for_website = self.request.query_params.get("for_website") == "true"
 
@@ -326,8 +337,36 @@ class ProductViewSet(BaseViewSet):
             # Use service for website-specific filtering
             queryset = ProductSearchService.get_products_for_website()
         else:
-            # Use hierarchical ordering for POS and other non-website requests
-            queryset = super().get_queryset()
+            # Call Product.objects.with_archived() directly at request time
+            # This ensures tenant context is applied by TenantSoftDeleteManager
+            queryset = (
+                Product.objects.with_archived()
+                .select_related("category", "category__parent", "product_type")
+                .prefetch_related("product_type__default_taxes")
+                .annotate(
+                    # Calculate parent order for hierarchical sorting
+                    parent_order=models.Case(
+                        models.When(
+                            category__parent_id__isnull=True, then=models.F("category__order")
+                        ),
+                        default=models.F("category__parent__order"),
+                        output_field=models.IntegerField(),
+                    ),
+                    # Mark category level (0 for parent, 1 for child)
+                    category_level=models.Case(
+                        models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                        default=models.Value(1),
+                        output_field=models.IntegerField(),
+                    ),
+                )
+                .order_by(
+                    "parent_order",
+                    "category_level",
+                    "category__order",
+                    "category__name",
+                    "name",
+                )
+            )
 
         # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
@@ -343,22 +382,26 @@ class ProductViewSet(BaseViewSet):
         return queryset
 
     def list(self, request, *args, **kwargs):
-        # Cache for common POS queries
-        query_params = dict(request.GET.items())
+        # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
+        # Cache is currently disabled because cache keys don't include tenant
+        # This causes all tenants to share the same cached (empty) results
 
-        # Cache unfiltered requests
-        if not query_params:
-            products = ProductService.get_cached_products_list()
-            serializer = self.get_serializer(products, many=True)
-            return Response(serializer.data)
+        # # Cache for common POS queries
+        # query_params = dict(request.GET.items())
+        #
+        # # Cache unfiltered requests
+        # if not query_params:
+        #     products = ProductService.get_cached_products_list()
+        #     serializer = self.get_serializer(products, many=True)
+        #     return Response(serializer.data)
+        #
+        # # Cache the most common POS query: ?is_active=true
+        # if query_params == {"is_active": "true"}:
+        #     products = ProductService.get_cached_active_products_list()
+        #     serializer = self.get_serializer(products, many=True)
+        #     return Response(serializer.data)
 
-        # Cache the most common POS query: ?is_active=true
-        if query_params == {"is_active": "true"}:
-            products = ProductService.get_cached_active_products_list()
-            serializer = self.get_serializer(products, many=True)
-            return Response(serializer.data)
-
-        # Fall back to optimized queryset for other filtered requests
+        # Fall back to optimized queryset (no caching for now)
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
