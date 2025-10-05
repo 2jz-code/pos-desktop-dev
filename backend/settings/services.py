@@ -17,10 +17,10 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
 )
+from terminals.models import TerminalRegistration
 from payments.strategies import StripeTerminalStrategy
 
 

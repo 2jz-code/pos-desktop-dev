@@ -3,7 +3,6 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     GlobalSettingsViewSet,
     StoreLocationViewSet,
-    TerminalRegistrationViewSet,
     SyncStripeLocationsView,
     PrinterConfigurationViewSet,
     TerminalLocationViewSet,
@@ -18,11 +17,6 @@ app_name = "settings"
 router = DefaultRouter()
 router.register(r"global-settings", GlobalSettingsViewSet, basename="global-settings")
 router.register(r"store-locations", StoreLocationViewSet, basename="store-locations")
-router.register(
-    r"terminal-registrations",
-    TerminalRegistrationViewSet,
-    basename="terminal-registrations",
-)
 # Custom URL for singleton printer config instead of using the router
 # router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
 router.register(

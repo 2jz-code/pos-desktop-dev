@@ -368,7 +368,7 @@ class WebOrderSettings(SingletonModel):
         help_text="Automatically print kitchen tickets for new web orders.",
     )
     web_receipt_terminals = models.ManyToManyField(
-        "TerminalRegistration",
+        "terminals.TerminalRegistration",
         blank=True,
         help_text="Select terminals that should receive and print web order notifications/receipts.",
         related_name="web_order_notifications",
@@ -386,61 +386,6 @@ class WebOrderSettings(SingletonModel):
 
 
 # === DEVICE & PROVIDER-SPECIFIC MODELS ===
-
-
-class TerminalRegistration(models.Model):
-    """
-    Links a physical device to a primary StoreLocation. This is the new standard for device management.
-    Replaces the old POSDevice model.
-    """
-
-    tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='terminal_registrations'
-    )
-    device_id = models.CharField(max_length=255, primary_key=True)
-    nickname = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="A friendly name for the device (e.g., 'Front Counter').",
-    )
-    store_location = models.ForeignKey(
-        "StoreLocation",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="The primary store location this terminal is physically in.",
-    )
-    last_seen = models.DateTimeField(auto_now=True)
-    is_active = models.BooleanField(default=True)
-    reader_id = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="The ID of the Stripe Terminal reader assigned to this device (e.g., tmr_...).",
-    )
-
-    objects = TenantManager()
-    all_objects = models.Manager()
-
-    def __str__(self):
-        location_name = (
-            self.store_location.name if self.store_location else "Unassigned"
-        )
-        return f"{self.nickname or self.device_id} @ {location_name}"
-
-    class Meta:
-        verbose_name = "Terminal Registration"
-        verbose_name_plural = "Terminal Registrations"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "device_id"],
-                name="unique_device_id_per_tenant",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=['tenant', 'store_location']),
-        ]
 
 
 class TerminalLocation(SoftDeleteMixin):

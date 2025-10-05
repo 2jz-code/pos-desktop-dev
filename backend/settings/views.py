@@ -9,7 +9,6 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
     StockActionReasonConfig,
@@ -18,7 +17,6 @@ from .serializers import (
     GlobalSettingsSerializer,
     StoreLocationSerializer,
     TerminalLocationSerializer,
-    TerminalRegistrationSerializer,
     PrinterConfigurationSerializer,
     WebOrderSettingsSerializer,
     StockActionReasonConfigSerializer,
@@ -290,64 +288,6 @@ class WebOrderSettingsViewSet(BaseViewSet):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
-class TerminalRegistrationViewSet(BaseViewSet):
-    """
-    API endpoint for managing Terminal Registrations.
-    This replaces the old POSDeviceViewSet.
-    """
-
-    queryset = TerminalRegistration.objects.all()
-    serializer_class = TerminalRegistrationSerializer
-    lookup_field = "device_id"
-    ordering = ["device_id"]  # Override default ordering since this model uses device_id as PK
-
-    def get_queryset(self):
-        return TerminalRegistration.objects.select_related('store_location')
-
-    def perform_create(self, serializer):
-        """
-        Saves the serializer instance.
-        """
-        serializer.save()
-
-    def create(self, request, *args, **kwargs):
-        """
-        Creates or updates a terminal registration (UPSERT).
-        Complex business logic (40+ lines) extracted to TerminalService.
-        """
-        try:
-            instance, created = TerminalService.upsert_terminal_registration(
-                request.data
-            )
-            serializer = self.get_serializer(instance)
-            
-            # Return appropriate status code
-            status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-            headers = (
-                self.get_success_headers(serializer.data)
-                if created else {}
-            )
-            
-            return Response(serializer.data, status=status_code, headers=headers)
-        except ValidationError as e:
-            if isinstance(e.message_dict if hasattr(e, 'message_dict') else e, dict):
-                return Response(e.message_dict, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                return Response(
-                    {"error": str(e)}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-    def update(self, request, *args, **kwargs):
-        """
-        Handles standard updates for a terminal registration.
-        """
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
 
 class StoreLocationViewSet(BaseViewSet):
     """

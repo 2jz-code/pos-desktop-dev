@@ -78,6 +78,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "customers.apps.CustomersConfig",
     "settings",
+    "terminals",  # Terminal registration & pairing
     "integrations",
     "notifications",
     "reports",

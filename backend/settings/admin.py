@@ -6,7 +6,6 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
     StockActionReasonConfig,
@@ -141,23 +140,6 @@ class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
         return StoreLocation.all_objects.select_related('tenant')
-
-
-@admin.register(TerminalRegistration)
-class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
-    """
-    Admin view for managing TerminalRegistration, the new standard for POS devices.
-    """
-
-    list_display = ("device_id", "nickname", "store_location", "is_active", "last_seen")
-    list_filter = ("store_location", "is_active")
-    search_fields = ("device_id", "nickname", "reader_id")
-    readonly_fields = ("last_seen",)
-    autocomplete_fields = ["store_location"]
-
-    def get_queryset(self, request):
-        """Show all tenants in Django admin"""
-        return TerminalRegistration.all_objects.select_related('tenant', 'store_location')
 
 
 @admin.register(WebOrderSettings)

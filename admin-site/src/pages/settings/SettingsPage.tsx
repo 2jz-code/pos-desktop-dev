@@ -24,6 +24,7 @@ import {
 	Printer,
 	Receipt,
 	Bell,
+	Monitor,
 	Settings as SettingsIcon,
 } from "lucide-react";
 
@@ -35,6 +36,7 @@ import { PrinterSettings } from "./components/PrinterSettings";
 import { InventorySettings } from "./components/InventorySettings";
 import { StockReasonSettings } from "./components/StockReasonSettings";
 import { StoreInfoSettings } from "./components/StoreInfoSettings";
+import { TerminalSettings } from "./components/TerminalSettings";
 import { BusinessHours } from "./components/business-hours";
 
 export function SettingsPage() {
@@ -112,6 +114,13 @@ export function SettingsPage() {
 										<Bell className="h-4 w-4" />
 										<span className="hidden sm:inline">Notifications</span>
 									</TabsTrigger>
+									<TabsTrigger
+										value="terminals"
+										className="inline-flex items-center gap-2 px-4 py-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+									>
+										<Monitor className="h-4 w-4" />
+										<span className="hidden sm:inline">Terminals</span>
+									</TabsTrigger>
 								</TabsList>
 							</ScrollArea>
 						</div>
@@ -171,6 +180,10 @@ export function SettingsPage() {
 												<WebOrderNotificationSettings />
 											</CardContent>
 										</Card>
+									</TabsContent>
+
+									<TabsContent value="terminals" className="mt-0">
+										<TerminalSettings />
 									</TabsContent>
 								</div>
 							</ScrollArea>

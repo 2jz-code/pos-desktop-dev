@@ -4,11 +4,11 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
     PrinterConfiguration,
     WebOrderSettings,
     StockActionReasonConfig,
 )
+from terminals.models import TerminalRegistration
 
 
 class GlobalSettingsSerializer(BaseModelSerializer):
@@ -55,31 +55,6 @@ class NestedStoreLocationSerializer(BaseModelSerializer):
         model = StoreLocation
         fields = ("id", "name")
         select_related_fields = []
-        prefetch_related_fields = []
-
-
-class TerminalRegistrationSerializer(BaseModelSerializer):
-    store_location = NestedStoreLocationSerializer(read_only=True)
-    store_location_id = serializers.PrimaryKeyRelatedField(
-        queryset=StoreLocation.objects.all(),
-        source='store_location',
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
-
-    class Meta:
-        model = TerminalRegistration
-        fields = [
-            "device_id",
-            "nickname",
-            "store_location",
-            "store_location_id",
-            "is_active",
-            "last_seen",
-            "reader_id",
-        ]
-        select_related_fields = ["store_location"]
         prefetch_related_fields = []
 
 
@@ -133,7 +108,8 @@ class WebOrderSettingsSerializer(BaseModelSerializer):
     Handles the web order notification configuration including terminal selection.
     """
 
-    web_receipt_terminals = TerminalRegistrationSerializer(many=True, read_only=True)
+    # Simple representation - detailed terminal info available via separate endpoint
+    web_receipt_terminals = serializers.SerializerMethodField()
 
     class Meta:
         model = WebOrderSettings
@@ -147,6 +123,10 @@ class WebOrderSettingsSerializer(BaseModelSerializer):
         select_related_fields = []
         prefetch_related_fields = ["web_receipt_terminals"]
 
+    def get_web_receipt_terminals(self, obj):
+        """Return list of terminal device_ids"""
+        return [terminal.device_id for terminal in obj.web_receipt_terminals.all()]
+
     def update(self, instance, validated_data):
         # Handle web_receipt_terminals update separately since it's a ManyToMany field
         if "web_receipt_terminals" in self.initial_data:
@@ -154,7 +134,7 @@ class WebOrderSettingsSerializer(BaseModelSerializer):
             # Clear existing and set new terminals
             instance.web_receipt_terminals.clear()
             if terminal_ids:
-                from .models import TerminalRegistration
+                from terminals.models import TerminalRegistration
 
                 terminals = TerminalRegistration.objects.filter(
                     device_id__in=terminal_ids
