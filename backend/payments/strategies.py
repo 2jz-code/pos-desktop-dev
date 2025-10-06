@@ -194,6 +194,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
             surcharge=surcharge,
             method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             status=PaymentTransaction.TransactionStatus.PENDING,
+            tenant=payment.tenant,
         )
 
         amount_cents = int(total_amount_for_intent * 100)

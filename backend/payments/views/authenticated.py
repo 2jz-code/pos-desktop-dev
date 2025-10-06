@@ -172,9 +172,15 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
     ordering = ["-created_at"]  # Override BaseViewSet default to show newest payments first
 
     def get_queryset(self):
-        """Optimized queryset for payment operations"""
-        user = self.request.user
-        queryset = Payment.objects.select_related(
+        """
+        Optimized queryset for payment operations.
+        Tenant context and archiving handled by super().
+        """
+        # Call super() first to get tenant-filtered queryset
+        queryset = super().get_queryset()
+
+        # Add custom optimizations
+        queryset = queryset.select_related(
             'order',
             'order__customer',
             'order__cashier'
@@ -183,6 +189,8 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
             'order__items__product'
         )
 
+        # Filter by user access
+        user = self.request.user
         if user.is_pos_staff:
             return queryset
 
@@ -438,6 +446,7 @@ class CreatePaymentView(BasePaymentView):
             defaults={
                 "total_amount_due": order.grand_total,
                 "status": Payment.PaymentStatus.PENDING,
+                "tenant": order.tenant,
             },
         )
 

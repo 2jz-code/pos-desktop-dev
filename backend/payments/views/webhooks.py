@@ -256,6 +256,7 @@ class StripeWebhookView(BasePaymentView):
                     "method": PaymentTransaction.PaymentMethod.CARD_ONLINE,
                     "status": PaymentTransaction.TransactionStatus.PENDING,
                     "provider_response": payment_intent,
+                    "tenant": payment.tenant,
                 },
             )
             if created:

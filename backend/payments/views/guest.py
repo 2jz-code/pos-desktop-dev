@@ -98,6 +98,7 @@ class CreateGuestPaymentIntentView(
                 defaults={
                     "total_amount_due": amount_decimal,
                     "guest_session_key": request.session.session_key,
+                    "tenant": order.tenant,
                 },
             )
 
@@ -148,6 +149,7 @@ class CreateGuestPaymentIntentView(
                 method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
                 status=PaymentTransaction.TransactionStatus.PENDING,
                 transaction_id=intent.id,
+                tenant=payment.tenant,
             )
 
             return self.create_success_response(
