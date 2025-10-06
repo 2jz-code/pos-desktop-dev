@@ -105,24 +105,42 @@ class OrderService:
     @staticmethod
     @transaction.atomic
     def create_new_order(
-        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS
+        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS, tenant=None
     ) -> Order:
         """
         Creates a new, empty order.
+
+        Args:
+            cashier: The cashier creating the order
+            customer: Optional customer for the order
+            order_type: Type of order (POS, WEB, etc.)
+            tenant: Tenant for the order (REQUIRED for multi-tenancy)
+
+        Raises:
+            ValueError: If tenant is not provided
         """
+        if tenant is None:
+            raise ValueError("tenant parameter is required for creating orders")
+
         order = Order.objects.create(
-            order_type=order_type, cashier=cashier, customer=customer
+            order_type=order_type, cashier=cashier, customer=customer, tenant=tenant
         )
         return order
 
     @staticmethod
     @transaction.atomic
-    def create_order(order_type: str, cashier: User, customer: User = None) -> Order:
+    def create_order(order_type: str, cashier: User, customer: User = None, tenant=None) -> Order:
         """
         Creates a new, empty order.
         Compatibility method for existing tests and code.
+
+        Args:
+            order_type: Type of order (POS, WEB, etc.)
+            cashier: The cashier creating the order
+            customer: Optional customer for the order
+            tenant: Tenant for the order (REQUIRED for multi-tenancy)
         """
-        return OrderService.create_new_order(cashier, customer, order_type)
+        return OrderService.create_new_order(cashier, customer, order_type, tenant)
 
     @staticmethod
     @transaction.atomic
@@ -258,6 +276,7 @@ class OrderService:
                     notes=notes,
                     item_sequence=existing_count + i + 1,
                     variation_group=variation_group,
+                    tenant=order.tenant
                 )
                 created_items.append(individual_item)
             
@@ -292,6 +311,7 @@ class OrderService:
                     notes=notes,
                     item_sequence=existing_count + 1,
                     variation_group=variation_group,
+                    tenant=order.tenant
                 )
 
         # Create snapshot records for the selected modifiers
@@ -322,7 +342,8 @@ class OrderService:
                             modifier_set_name=modifier_option.modifier_set.name,
                             option_name=modifier_option.name,
                             price_at_sale=modifier_option.price_delta,
-                            quantity=mod_quantity
+                            quantity=mod_quantity,
+                            tenant=order.tenant
                         )
                         logger.debug(f"Created OrderItemModifier: {created_modifier}")
                     except ModifierOption.DoesNotExist:
@@ -362,6 +383,7 @@ class OrderService:
             price_at_sale=price,  # Use the custom price as price_at_sale
             notes=notes,
             item_sequence=1,  # Custom items don't need sequence tracking
+            tenant=order.tenant
         )
 
         OrderService.recalculate_order_totals(order)
@@ -525,6 +547,7 @@ class OrderService:
         new_order = Order.objects.create(
             customer=user,
             order_type=source_order.order_type,
+            tenant=source_order.tenant,  # Use same tenant as source order
             # Copy other relevant fields if necessary, e.g., location
         )
 
@@ -537,6 +560,7 @@ class OrderService:
                 quantity=item.quantity,
                 price_at_sale=item.product.price,  # Use current price from pre-fetched data
                 notes=item.notes,
+                tenant=new_order.tenant
             )
 
         # Recalculate totals for the new order
@@ -1044,7 +1068,10 @@ class GuestSessionService:
 
         # Create new order only if none exists
         order = Order.objects.create(
-            guest_id=guest_id, order_type=order_type, status=Order.OrderStatus.PENDING
+            guest_id=guest_id,
+            order_type=order_type,
+            status=Order.OrderStatus.PENDING,
+            tenant=request.tenant
         )
 
         # Store order ID in session for quick access

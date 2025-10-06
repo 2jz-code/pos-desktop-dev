@@ -115,7 +115,7 @@ class OrderViewSet(BaseViewSet):
         if user and user.is_authenticated:
             if order_type == Order.OrderType.POS:
                 # For POS orders, the authenticated user is the cashier
-                serializer.save(cashier=user)
+                serializer.save(cashier=user, tenant=self.request.tenant)
             else:  # For WEB, APP, etc.
                 # For authenticated customers, check for an existing pending order
                 existing_order = (
@@ -131,7 +131,7 @@ class OrderViewSet(BaseViewSet):
                     serializer.instance = existing_order
                 else:
                     # If no pending order, create a new one and set the customer
-                    serializer.save(customer=user)
+                    serializer.save(customer=user, tenant=self.request.tenant)
         else:
             # For guest users, the service layer handles getting or creating
             guest_order = GuestSessionService.create_guest_order(
@@ -509,8 +509,10 @@ class OrderItemViewSet(BaseViewSet):
     def get_queryset(self):
         """
         Filter items based on the order_pk provided in the URL.
+        Tenant context and archiving handled by super().
         """
-        return self.queryset.filter(order__pk=self.kwargs["order_pk"])
+        queryset = super().get_queryset()
+        return queryset.filter(order__pk=self.kwargs["order_pk"])
 
     def get_object(self):
         """

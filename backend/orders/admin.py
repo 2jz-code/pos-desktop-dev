@@ -14,6 +14,11 @@ class OrderItemModifierInline(admin.TabularInline):
     readonly_fields = ('modifier_set_name', 'option_name', 'price_at_sale', 'quantity')
     can_delete = False
 
+    def get_queryset(self, request):
+        """Use all_objects to bypass TenantManager, Django will filter by parent FK"""
+        # Start with all_objects, Django's inline mechanism will filter by order_item FK
+        return OrderItemModifier.all_objects.all()
+
     def has_add_permission(self, request, obj=None):
         return False
 
@@ -23,6 +28,19 @@ class OrderItemInline(admin.TabularInline):
     readonly_fields = ("price_at_sale", "get_line_item_total")
     fields = ("product", "quantity", "price_at_sale", "get_line_item_total")
     autocomplete_fields = ("product",)
+
+    def get_queryset(self, request):
+        """Use all_objects to bypass TenantManager, Django will filter by parent FK"""
+        # Start with all_objects and prefetch product to ensure it's available
+        return OrderItem.all_objects.select_related('product').all()
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ensure product queryset uses all_objects so current product is available"""
+        if db_field.name == "product":
+            from products.models import Product
+            # Use all_objects so the currently selected product is available
+            kwargs["queryset"] = Product.all_objects.all()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_line_item_total(self, obj):
         return f"${(obj.price_at_sale * obj.quantity):,.2f}"
