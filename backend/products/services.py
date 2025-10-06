@@ -9,13 +9,20 @@ from typing import Optional, Dict, Any, List
 class ProductService:
     @staticmethod
     @transaction.atomic
-    def create_product(**kwargs):
+    def create_product(tenant=None, **kwargs):
         """
         Creates a new product.
 
         Args:
+            tenant: Tenant from request.tenant (required for tenant isolation)
             **kwargs: The data for the product.
+
+        Raises:
+            ValueError: If tenant is not provided or if related objects don't belong to tenant
         """
+        if not tenant:
+            raise ValueError("Tenant is required to create a product")
+
         category_id = kwargs.pop("category_id", None)
         tax_ids = kwargs.pop("tax_ids", [])
         # Keep the image_file in kwargs so the model gets it and the signal can process it
@@ -25,8 +32,16 @@ class ProductService:
         initial_stock = kwargs.pop("initial_stock", 0)
         location_id = kwargs.pop("location_id", None)
 
+        # Validate and set category (must belong to same tenant)
         if category_id:
-            kwargs["category"] = Category.objects.get(id=category_id)
+            try:
+                category = Category.objects.get(id=category_id, tenant=tenant)
+                kwargs["category"] = category
+            except Category.DoesNotExist:
+                raise ValueError(f"Category with ID {category_id} not found or does not belong to this tenant")
+
+        # Set tenant on the product
+        kwargs["tenant"] = tenant
 
         product = Product.objects.create(**kwargs)
 
@@ -36,8 +51,12 @@ class ProductService:
         #     product.image.save(processed_image.name, processed_image, save=True)
         #     product.save()  # Save product again to update image field
 
+        # Validate and set taxes (must belong to same tenant)
         if tax_ids:
-            product.taxes.set(Tax.objects.filter(id__in=tax_ids))
+            taxes = Tax.objects.filter(id__in=tax_ids, tenant=tenant)
+            if taxes.count() != len(tax_ids):
+                raise ValueError("One or more tax IDs not found or do not belong to this tenant")
+            product.taxes.set(taxes)
 
         # Create initial stock record if tracking inventory
         if kwargs.get("track_inventory", False):
@@ -46,16 +65,23 @@ class ProductService:
 
             # Use provided location or default location
             if location_id:
-                location = Location.objects.get(id=location_id)
+                try:
+                    location = Location.objects.get(id=location_id, tenant=tenant)
+                except Location.DoesNotExist:
+                    raise ValueError(f"Location with ID {location_id} not found or does not belong to this tenant")
             else:
-                # Get default location from settings
-                settings = GlobalSettings.objects.first()
+                # Get default location from settings (filtered by tenant)
+                settings = GlobalSettings.objects.filter(tenant=tenant).first()
                 if settings and settings.default_inventory_location:
+                    # Verify the default location belongs to this tenant
+                    if settings.default_inventory_location.tenant != tenant:
+                        raise ValueError("Default inventory location does not belong to this tenant")
                     location = settings.default_inventory_location
                 else:
-                    # Create a default location if none exists
+                    # Create a default location for this tenant if none exists
                     location, created = Location.objects.get_or_create(
                         name="Main Storage",
+                        tenant=tenant,
                         defaults={"description": "Default inventory location"},
                     )
                     if created and settings:
@@ -64,7 +90,7 @@ class ProductService:
 
             # Create the stock record
             InventoryStock.objects.create(
-                product=product, location=location, quantity=float(initial_stock)
+                product=product, location=location, quantity=float(initial_stock), tenant=tenant
             )
 
         return product
@@ -1258,20 +1284,21 @@ class CategoryService:
     Service layer for category management operations.
     Follows the established architecture pattern for business logic encapsulation.
     """
-    
+
     @staticmethod
     @transaction.atomic
-    def bulk_update_categories(category_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def bulk_update_categories(category_updates: List[Dict[str, Any]], tenant=None) -> Dict[str, Any]:
         """
         Bulk update multiple categories in a single transaction.
-        
+
         Args:
+            tenant: Tenant from request.tenant (required for tenant isolation)
             category_updates: List of dictionaries containing category data:
                 [
                     {"id": 1, "name": "Category 1", "order": 1, ...},
                     {"id": 2, "name": "Category 2", "order": 2, ...},
                 ]
-        
+
         Returns:
             Dict containing update results:
             {
@@ -1280,32 +1307,35 @@ class CategoryService:
                 "updated_categories": [...],
                 "errors": [...]
             }
-        
+
         Raises:
             ValidationError: If validation fails for any category
         """
+        if not tenant:
+            raise ValueError("Tenant is required for bulk category updates")
+
         if not category_updates:
             raise ValidationError("No category updates provided")
-        
+
         updated_categories = []
         errors = []
-        
+
         for update_data in category_updates:
             category_id = update_data.get("id")
             if not category_id:
                 errors.append({"error": "Missing category ID in update data"})
                 continue
-            
+
             try:
-                # Get the category instance
-                category = Category.objects.select_for_update().get(id=category_id)
-                
+                # Get the category instance (validate tenant)
+                category = Category.objects.select_for_update().get(id=category_id, tenant=tenant)
+
                 # Validate and update fields
-                CategoryService._update_category_fields(category, update_data)
-                
+                CategoryService._update_category_fields(category, update_data, tenant=tenant)
+
                 # Save the category
                 category.save()
-                
+
                 # Add to successful updates
                 updated_categories.append(category)
                 
@@ -1337,28 +1367,32 @@ class CategoryService:
         }
     
     @staticmethod
-    def _update_category_fields(category: 'Category', update_data: Dict[str, Any]) -> None:
+    def _update_category_fields(category: 'Category', update_data: Dict[str, Any], tenant=None) -> None:
         """
         Update category fields with validation.
-        
+
         Args:
             category: Category instance to update
             update_data: Dictionary of fields to update
-            
+            tenant: Tenant for validation (required)
+
         Raises:
             ValidationError: If validation fails
         """
+        if not tenant:
+            raise ValueError("Tenant is required for category field updates")
+
         # Update name with validation
         if "name" in update_data:
             name = update_data["name"]
             if not name or not name.strip():
                 raise ValidationError("Category name cannot be empty")
             category.name = name.strip()
-        
+
         # Update description
         if "description" in update_data:
             category.description = update_data["description"] or ""
-        
+
         # Update order with validation
         if "order" in update_data:
             order = update_data["order"]
@@ -1367,8 +1401,8 @@ class CategoryService:
                     category.order = int(order)
                 except (ValueError, TypeError):
                     raise ValidationError("Order must be a valid integer")
-        
-        # Update parent with validation
+
+        # Update parent with validation (must belong to same tenant)
         if "parent_id" in update_data:
             parent_id = update_data["parent_id"]
             if parent_id is None:
@@ -1379,17 +1413,18 @@ class CategoryService:
                     # Prevent self-reference
                     if parent_id == category.id:
                         raise ValidationError("Cannot set category as its own parent")
-                    
-                    parent = Category.objects.get(id=parent_id)
+
+                    # Validate parent belongs to same tenant
+                    parent = Category.objects.get(id=parent_id, tenant=tenant)
                     if not parent.is_active:
                         raise ValidationError("Cannot set inactive category as parent")
-                    
+
                     category.parent = parent
                 except (ValueError, TypeError):
                     raise ValidationError("Parent ID must be a valid integer")
                 except Category.DoesNotExist:
-                    raise ValidationError(f"Parent category with ID {parent_id} does not exist")
-        
+                    raise ValidationError(f"Parent category with ID {parent_id} does not exist or does not belong to this tenant")
+
         # Update public status
         if "is_public" in update_data:
             category.is_public = bool(update_data["is_public"])
@@ -1446,50 +1481,55 @@ class CategoryService:
             raise ValidationError("Cannot create circular reference in category hierarchy")
     
     @staticmethod
-    def reorder_categories_in_level(parent_id: int = None, category_orders: List[Dict[str, Any]] = None) -> List['Category']:
+    def reorder_categories_in_level(parent_id: int = None, category_orders: List[Dict[str, Any]] = None, tenant=None) -> List['Category']:
         """
         Reorder categories within the same hierarchical level.
-        
+
         Args:
             parent_id: ID of parent category (None for root level)
             category_orders: List of {"id": int, "order": int} dictionaries
-            
+            tenant: Tenant from request.tenant (required for tenant isolation)
+
         Returns:
             List of updated Category instances
-            
+
         Raises:
             ValidationError: If validation fails
         """
+        if not tenant:
+            raise ValueError("Tenant is required for category reordering")
+
         if not category_orders:
             return []
-        
+
         with transaction.atomic():
             updated_categories = []
-            
+
             for item in category_orders:
                 category_id = item.get("id")
                 new_order = item.get("order")
-                
+
                 if not category_id or new_order is None:
                     continue
-                
+
                 try:
                     category = Category.objects.select_for_update().get(
                         id=category_id,
-                        parent_id=parent_id
+                        parent_id=parent_id,
+                        tenant=tenant
                     )
                     category.order = int(new_order)
                     category.save()
                     updated_categories.append(category)
-                    
+
                 except Category.DoesNotExist:
                     raise ValidationError(
-                        f"Category {category_id} not found in specified parent level"
+                        f"Category {category_id} not found in specified parent level or does not belong to this tenant"
                     )
                 except (ValueError, TypeError):
                     raise ValidationError(f"Invalid order value for category {category_id}")
-            
+
             # Invalidate caches after reordering
             CategoryService._invalidate_category_caches()
-            
+
             return updated_categories

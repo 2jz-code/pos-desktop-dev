@@ -23,9 +23,36 @@ class ModifierOptionSerializer(BaseModelSerializer):
             "is_product_specific",
         ]
 
+    def __init__(self, *args, **kwargs):
+        """Initialize with tenant-filtered querysets"""
+        super().__init__(*args, **kwargs)
+
+        # Filter modifier_set queryset by tenant (it's a ForeignKey field auto-converted to PrimaryKeyRelatedField)
+        request = self.context.get('request')
+        if request and hasattr(request, 'tenant') and request.tenant:
+            if 'modifier_set' in self.fields and hasattr(self.fields['modifier_set'], 'queryset'):
+                self.fields['modifier_set'].queryset = ModifierSet.objects.filter(tenant=request.tenant)
+
+
+class NestedModifierOptionSerializer(serializers.Serializer):
+    """
+    Serializer for creating/updating options nested within a ModifierSet.
+    This is used for validation only - the actual creation happens in ModifierSetSerializer.
+    Does not require modifier_set field since it's set by the parent.
+    """
+    name = serializers.CharField(max_length=255)
+    price_delta = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
+    display_order = serializers.IntegerField(default=0)
+    is_product_specific = serializers.BooleanField(default=False)
+
 
 class ModifierSetSerializer(BaseModelSerializer):
-    options = serializers.SerializerMethodField()
+    # For reading: return all options with full details
+    options = ModifierOptionSerializer(many=True, read_only=True)
+
+    # For writing: accept options data to create/update (no modifier_set required)
+    options_data = NestedModifierOptionSerializer(many=True, write_only=True, required=False)
+
     product_count = serializers.SerializerMethodField()
     related_products = serializers.SerializerMethodField()
 
@@ -40,15 +67,11 @@ class ModifierSetSerializer(BaseModelSerializer):
             "max_selections",
             "triggered_by_option",
             "options",
+            "options_data",  # Write-only field for creating/updating options
             "product_count",
             "related_products",
         ]
         prefetch_related_fields = ["options", "product_modifier_sets__product"]
-
-    def get_options(self, obj):
-        # Only return non-product-specific options for global modifier set views
-        global_options = obj.options.filter(is_product_specific=False)
-        return ModifierOptionSerializer(global_options, many=True).data
 
     def get_product_count(self, obj):
         """Return the count of products using this modifier set"""
@@ -59,6 +82,83 @@ class ModifierSetSerializer(BaseModelSerializer):
         # Access the prefetched products to avoid N+1 queries
         products = [pms.product for pms in obj.product_modifier_sets.all()]
         return BasicProductSerializer(products, many=True).data
+
+    def __init__(self, *args, **kwargs):
+        """Initialize with tenant-filtered querysets"""
+        super().__init__(*args, **kwargs)
+
+        # Filter triggered_by_option queryset by tenant (ForeignKey auto-converted to PrimaryKeyRelatedField)
+        request = self.context.get('request')
+        if request and hasattr(request, 'tenant') and request.tenant:
+            if 'triggered_by_option' in self.fields and hasattr(self.fields['triggered_by_option'], 'queryset'):
+                self.fields['triggered_by_option'].queryset = ModifierOption.objects.filter(tenant=request.tenant)
+
+    def create(self, validated_data):
+        """Create modifier set with tenant validation and nested options"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        if not tenant:
+            raise serializers.ValidationError("Tenant is required to create a modifier set")
+
+        # Validate triggered_by_option belongs to tenant if provided
+        triggered_by_option = validated_data.get('triggered_by_option')
+        if triggered_by_option and triggered_by_option.tenant != tenant:
+            raise serializers.ValidationError({
+                "triggered_by_option": "Trigger option does not belong to this tenant"
+            })
+
+        # Extract options_data before creating the set
+        options_data = validated_data.pop('options_data', [])
+
+        # Set tenant on new modifier set
+        validated_data['tenant'] = tenant
+        modifier_set = super().create(validated_data)
+
+        # Create nested options
+        for option_data in options_data:
+            ModifierOption.objects.create(
+                modifier_set=modifier_set,
+                tenant=tenant,
+                **option_data
+            )
+
+        return modifier_set
+
+    def update(self, instance, validated_data):
+        """Update modifier set with tenant validation and nested options"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        # Validate triggered_by_option belongs to tenant if being updated
+        triggered_by_option = validated_data.get('triggered_by_option')
+        if triggered_by_option and tenant and triggered_by_option.tenant != tenant:
+            raise serializers.ValidationError({
+                "triggered_by_option": "Trigger option does not belong to this tenant"
+            })
+
+        # Extract options_data if provided
+        options_data = validated_data.pop('options_data', None)
+
+        # Update the modifier set
+        instance = super().update(instance, validated_data)
+
+        # If options_data provided, replace existing options
+        if options_data is not None:
+            # Delete existing options (only non-product-specific ones)
+            instance.options.filter(is_product_specific=False).delete()
+
+            # Create new options
+            for option_data in options_data:
+                ModifierOption.objects.create(
+                    modifier_set=instance,
+                    tenant=tenant,
+                    **option_data
+                )
+
+        return instance
 
 
 class ProductModifierSetSerializer(BaseModelSerializer):
@@ -83,7 +183,7 @@ class ProductModifierSetSerializer(BaseModelSerializer):
     # Add the field needed for creation
     modifier_set_id = serializers.PrimaryKeyRelatedField(
         source="modifier_set",
-        queryset=ModifierSet.objects.all(),
+        queryset=ModifierSet.objects.all(),  # TenantManager will auto-filter by tenant
         write_only=True
     )
 
@@ -103,6 +203,16 @@ class ProductModifierSetSerializer(BaseModelSerializer):
         ]
         select_related_fields = ["modifier_set", "product"]
         prefetch_related_fields = ["modifier_set__options", "hidden_options", "extra_options"]
+
+    def __init__(self, *args, **kwargs):
+        """Initialize with tenant-filtered querysets"""
+        super().__init__(*args, **kwargs)
+
+        # The queryset ModifierSet.objects.all() is already tenant-filtered by TenantManager
+        # This is defensive - ensures context exists
+        request = self.context.get('request')
+        if request and hasattr(request, 'tenant') and request.tenant:
+            self.fields['modifier_set_id'].queryset = ModifierSet.objects.all()
 
     def get_options(self, obj):
         # Get all options from the modifier set (already prefetched)
@@ -209,10 +319,11 @@ class BasicTaxSerializer(BaseModelSerializer):
 
 class ProductTypeSerializer(BaseModelSerializer):
     default_taxes = BasicTaxSerializer(many=True, read_only=True)
+    # Don't set queryset at class level - defer to __init__ when we have tenant context
     default_taxes_ids = serializers.PrimaryKeyRelatedField(
         source="default_taxes",
         many=True,
-        queryset=Tax.objects.all(),
+        queryset=Tax.objects.none(),  # Empty by default, will be set in __init__
         required=False,
         write_only=True,
         allow_empty=True,
@@ -243,15 +354,95 @@ class ProductTypeSerializer(BaseModelSerializer):
         ]
         prefetch_related_fields = ["default_taxes"]
 
+    def __init__(self, *args, **kwargs):
+        """Initialize with tenant-filtered querysets"""
+        super().__init__(*args, **kwargs)
+
+        # IMPORTANT: We must EXPLICITLY filter by tenant, not rely on TenantManager's lazy evaluation
+        # DRF validation happens later and might not have tenant context available at that point
+        request = self.context.get('request')
+        if request and hasattr(request, 'tenant') and request.tenant:
+            # Explicitly filter by tenant - this creates a queryset that's tenant-scoped NOW
+            import logging
+            logger = logging.getLogger(__name__)
+
+            # For many=True fields, the queryset is on child_relation
+            field = self.fields['default_taxes_ids']
+
+            # Before setting
+            logger.info(f"ProductTypeSerializer.__init__() - BEFORE: queryset = {field.child_relation.queryset}")
+
+            field.child_relation.queryset = Tax.objects.filter(tenant=request.tenant)
+
+            # After setting
+            tax_ids = list(field.child_relation.queryset.values_list('id', flat=True))
+            logger.info(f"ProductTypeSerializer.__init__() - AFTER: Tenant: {request.tenant.slug}, Available Tax IDs: {tax_ids}")
+            logger.info(f"ProductTypeSerializer.__init__() - Queryset object: {field.child_relation.queryset}")
+
+    def validate(self, data):
+        """Add debugging to see what's happening during validation"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        # Check what taxes were received
+        taxes = data.get('default_taxes', [])
+        logger.info(f"ProductTypeSerializer.validate() - Tenant: {tenant.slug if tenant else 'None'}, Received taxes: {[t.id for t in taxes]}")
+
+        # Debug the queryset (for many=True fields, use child_relation)
+        field = self.fields['default_taxes_ids']
+        queryset = field.child_relation.queryset
+        logger.info(f"ProductTypeSerializer.validate() - Queryset: {queryset}")
+        logger.info(f"ProductTypeSerializer.validate() - Queryset count: {queryset.count()}")
+        logger.info(f"ProductTypeSerializer.validate() - Queryset IDs: {list(queryset.values_list('id', flat=True))}")
+
+        return data
+
     def create(self, validated_data):
+        """Create product type with tenant validation"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        if not tenant:
+            raise serializers.ValidationError("Tenant is required to create a product type")
+
         taxes = validated_data.pop("default_taxes", None)
+
+        # Validate taxes belong to tenant
+        if taxes:
+            for tax in taxes:
+                if tax.tenant != tenant:
+                    raise serializers.ValidationError({
+                        "default_taxes_ids": "One or more taxes do not belong to this tenant"
+                    })
+
+        # Set tenant on new product type
+        validated_data['tenant'] = tenant
         instance = super().create(validated_data)
+
         if taxes is not None:
             instance.default_taxes.set(taxes)
         return instance
 
     def update(self, instance, validated_data):
+        """Update product type with tenant validation"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
         taxes = validated_data.pop("default_taxes", None)
+
+        # Validate taxes belong to tenant
+        if taxes and tenant:
+            for tax in taxes:
+                if tax.tenant != tenant:
+                    raise serializers.ValidationError({
+                        "default_taxes_ids": "One or more taxes do not belong to this tenant"
+                    })
+
         instance = super().update(instance, validated_data)
         if taxes is not None:
             instance.default_taxes.set(taxes)
@@ -262,7 +453,7 @@ class CategorySerializer(BaseModelSerializer):
     parent = BasicCategorySerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(
         source="parent",
-        queryset=Category.objects.all(),
+        queryset=Category.objects.all(),  # TenantManager will auto-filter by tenant
         allow_null=True,
         required=False,
         write_only=True,
@@ -282,6 +473,51 @@ class CategorySerializer(BaseModelSerializer):
         ]
         select_related_fields = ["parent"]
         prefetch_related_fields = ["children"]
+
+    def __init__(self, *args, **kwargs):
+        """Initialize with tenant-filtered querysets"""
+        super().__init__(*args, **kwargs)
+
+        # The queryset Category.objects.all() is already tenant-filtered by CategoryManager
+        # This is defensive - ensures context exists
+        request = self.context.get('request')
+        if request and hasattr(request, 'tenant') and request.tenant:
+            self.fields['parent_id'].queryset = Category.objects.all()
+
+    def create(self, validated_data):
+        """Create category with tenant validation"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        if not tenant:
+            raise serializers.ValidationError("Tenant is required to create a category")
+
+        # Validate parent belongs to tenant if provided
+        parent = validated_data.get('parent')
+        if parent and parent.tenant != tenant:
+            raise serializers.ValidationError({
+                "parent_id": "Parent category does not belong to this tenant"
+            })
+
+        # Set tenant on new category
+        validated_data['tenant'] = tenant
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """Update category with tenant validation"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        # Validate parent belongs to tenant if being updated
+        parent = validated_data.get('parent')
+        if parent and tenant and parent.tenant != tenant:
+            raise serializers.ValidationError({
+                "parent_id": "Parent category does not belong to this tenant"
+            })
+
+        return super().update(instance, validated_data)
 
 
 class CategoryBulkUpdateSerializer(serializers.Serializer):
@@ -317,10 +553,14 @@ class CategoryBulkUpdateSerializer(serializers.Serializer):
     def create(self, validated_data):
         """Handle bulk update through CategoryService"""
         from .services import CategoryService
-        
+
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
         updates = validated_data['updates']
-        result = CategoryService.bulk_update_categories(updates)
-        
+        result = CategoryService.bulk_update_categories(updates, tenant=tenant)
+
         # Serialize the updated categories for response
         if result['updated_categories']:
             result['updated_categories'] = CategorySerializer(
@@ -328,7 +568,7 @@ class CategoryBulkUpdateSerializer(serializers.Serializer):
                 many=True,
                 context=self.context
             ).data
-            
+
         return result
 
 
@@ -377,6 +617,19 @@ class TaxSerializer(BaseModelSerializer):
     class Meta:
         model = Tax
         fields = ["id", "name", "rate"]
+
+    def create(self, validated_data):
+        """Create tax with tenant"""
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        if not tenant:
+            raise serializers.ValidationError("Tenant is required to create a tax")
+
+        # Set tenant on new tax
+        validated_data['tenant'] = tenant
+        return super().create(validated_data)
 
 
 class ProductSerializer(BaseModelSerializer):
@@ -640,7 +893,13 @@ class ProductCreateSerializer(BaseModelSerializer):
 
     def create(self, validated_data):
         image = validated_data.pop("image", None)
-        product = ProductService.create_product(**validated_data)
+
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
+        # Pass tenant to service for tenant isolation
+        product = ProductService.create_product(tenant=tenant, **validated_data)
 
         if image:
             # Process image asynchronously
@@ -655,21 +914,43 @@ class ProductCreateSerializer(BaseModelSerializer):
         Handle updates, including writable extras like category_id and tax_ids.
         Image updates are processed by signals; inventory adjustments are handled separately.
         """
+        # Extract tenant from request (set by TenantMiddleware)
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None) if request else None
+
         # Extract write-only helper fields
         category_id = validated_data.pop("category_id", None)
         tax_ids = validated_data.pop("tax_ids", None)
+
         # Standard model fields update
         for field, value in validated_data.items():
             setattr(instance, field, value)
 
-        # Handle category change if provided
+        # Handle category change if provided (validate tenant)
         if category_id is not None:
-            instance.category = Category.objects.get(id=category_id) if category_id else None
+            if category_id:
+                try:
+                    category = Category.objects.get(id=category_id, tenant=tenant)
+                    instance.category = category
+                except Category.DoesNotExist:
+                    raise serializers.ValidationError({
+                        "category_id": f"Category with ID {category_id} not found or does not belong to this tenant"
+                    })
+            else:
+                instance.category = None
 
         instance.save()
 
-        # Handle taxes update if provided
+        # Handle taxes update if provided (validate tenant)
         if tax_ids is not None:
-            instance.taxes.set(Tax.objects.filter(id__in=tax_ids))
+            if tenant:
+                taxes = Tax.objects.filter(id__in=tax_ids, tenant=tenant)
+                if taxes.count() != len(tax_ids):
+                    raise serializers.ValidationError({
+                        "tax_ids": "One or more tax IDs not found or do not belong to this tenant"
+                    })
+                instance.taxes.set(taxes)
+            else:
+                instance.taxes.set(Tax.objects.filter(id__in=tax_ids))
 
         return instance

@@ -43,10 +43,15 @@ class ProductModifierSetViewSet(BaseViewSet):
     permission_classes = [IsAdminOrHigher]
 
     def get_queryset(self):
-        return self.queryset.filter(product_id=self.kwargs["product_pk"])
+        # Call .all() fresh to ensure tenant context is applied by TenantManager
+        return ProductModifierSet.objects.all().filter(product_id=self.kwargs["product_pk"])
 
     def perform_create(self, serializer):
-        serializer.save(product_id=self.kwargs["product_pk"])
+        # Set tenant from request (middleware ensures it's set)
+        serializer.save(
+            product_id=self.kwargs["product_pk"],
+            tenant=self.request.tenant
+        )
 
     @action(detail=True, methods=["post"], url_path="add-product-specific-option")
     def add_product_specific_option(self, request, product_pk=None, pk=None):
@@ -66,14 +71,15 @@ class ProductModifierSetViewSet(BaseViewSet):
                 "is_product_specific": True,  # Mark as product-specific
             }
 
-            option_serializer = ModifierOptionSerializer(data=option_data)
+            option_serializer = ModifierOptionSerializer(data=option_data, context={'request': request})
             if option_serializer.is_valid():
-                modifier_option = option_serializer.save()
+                modifier_option = option_serializer.save(tenant=request.tenant)
 
                 # Create the product-specific relationship
                 ProductSpecificOption.objects.create(
                     product_modifier_set=product_modifier_set,
                     modifier_option=modifier_option,
+                    tenant=request.tenant,
                 )
 
                 # Invalidate product cache to ensure the new option appears in API responses
@@ -262,6 +268,10 @@ class ModifierOptionViewSet(BaseViewSet):
     serializer_class = ModifierOptionSerializer
     permission_classes = [IsAdminOrHigher]
 
+    def perform_create(self, serializer):
+        # Set tenant from request (middleware ensures it's set)
+        serializer.save(tenant=self.request.tenant)
+
 
 # Create your views here.
 
@@ -374,6 +384,20 @@ class ProductViewSet(BaseViewSet):
                     "name",
                 )
             )
+
+        # Apply archiving filter based on include_archived parameter
+        # This replicates the logic from ArchivingViewSetMixin since we're not calling super()
+        include_archived = self.request.query_params.get('include_archived', '').lower()
+
+        if include_archived in ['true', '1', 'yes']:
+            # Include both active and archived records - queryset already includes all via with_archived()
+            pass
+        elif include_archived == 'only':
+            # Show only archived records
+            queryset = queryset.filter(is_active=False)
+        else:
+            # Default: show only active records
+            queryset = queryset.filter(is_active=True)
 
         # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
@@ -641,6 +665,51 @@ class CategoryViewSet(BaseViewSet):
             # Admin/POS: Simple flat ordering by order field
             queryset = queryset.order_by("order", "name")
 
+        # Apply archiving filter - must be done AFTER all other filtering
+        # Don't apply if for_website (website should only see active categories)
+        if not is_for_website:
+            include_archived = self.request.query_params.get('include_archived', '').lower()
+
+            if include_archived in ['true', '1', 'yes']:
+                # Include both active and archived - use with_archived() if available
+                if hasattr(Category.objects, 'with_archived'):
+                    # Re-fetch with archived to ensure we get all records
+                    base_qs = Category.objects.with_archived()
+                    # Re-apply all the filters that were applied above
+                    parent_id = self.request.query_params.get("parent")
+                    if parent_id is not None:
+                        if parent_id == "null":
+                            queryset = base_qs.filter(parent__isnull=True).order_by("order", "name")
+                        elif parent_id == "uncategorized":
+                            queryset = base_qs.none()
+                        else:
+                            try:
+                                int(parent_id)
+                                queryset = base_qs.filter(parent_id=parent_id).order_by("order", "name")
+                            except ValueError:
+                                queryset = base_qs.none()
+                    else:
+                        queryset = base_qs.order_by("order", "name")
+            elif include_archived == 'only':
+                # Show only archived records - need to start with with_archived() to bypass the default active-only filter
+                base_qs = Category.objects.with_archived()
+                # Re-apply parent filtering if applicable
+                parent_id = self.request.query_params.get("parent")
+                if parent_id is not None:
+                    if parent_id == "null":
+                        queryset = base_qs.filter(parent__isnull=True, is_active=False).order_by("order", "name")
+                    elif parent_id == "uncategorized":
+                        queryset = base_qs.none()
+                    else:
+                        try:
+                            int(parent_id)
+                            queryset = base_qs.filter(parent_id=parent_id, is_active=False).order_by("order", "name")
+                        except ValueError:
+                            queryset = base_qs.none()
+                else:
+                    queryset = base_qs.filter(is_active=False).order_by("order", "name")
+            # else: default behavior - show only active (already filtered by TenantSoftDeleteManager)
+
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -694,3 +763,21 @@ class ProductTypeViewSet(BaseViewSet):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]
+
+    def get_queryset(self):
+        # Get base queryset from parent (handles tenant context)
+        queryset = super().get_queryset()
+
+        # Apply archiving filter explicitly
+        include_archived = self.request.query_params.get('include_archived', '').lower()
+
+        if include_archived in ['true', '1', 'yes']:
+            # Include both active and archived - use with_archived() if available
+            if hasattr(ProductType.objects, 'with_archived'):
+                queryset = ProductType.objects.with_archived()
+        elif include_archived == 'only':
+            # Show only archived records - need to start with with_archived() to bypass the default active-only filter
+            queryset = ProductType.objects.with_archived().filter(is_active=False)
+        # else: default behavior - show only active (already filtered by TenantSoftDeleteManager)
+
+        return queryset

@@ -11,6 +11,11 @@ class ModifierOptionInline(admin.TabularInline):
     model = ModifierOption
     extra = 1
 
+    def get_queryset(self, request):
+        """Use all_objects manager to bypass TenantManager in admin"""
+        # Use all_objects to show all options, Django will filter by parent FK automatically
+        return ModifierOption.all_objects.all()
+
 @admin.register(ModifierSet)
 class ModifierSetAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'internal_name', 'selection_type', 'min_selections', 'max_selections')

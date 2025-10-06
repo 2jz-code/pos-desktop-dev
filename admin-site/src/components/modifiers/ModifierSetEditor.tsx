@@ -252,6 +252,16 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
 
     setLoading(true);
     try {
+      // Prepare valid options (filter out empty ones and format for backend)
+      const validOptions = options
+        .filter(opt => opt.name.trim())
+        .map((opt, index) => ({
+          name: opt.name.trim(),
+          price_delta: String(opt.price_delta || 0),
+          display_order: index,
+          is_product_specific: opt.is_product_specific || false,
+        }));
+
       const submitData = {
         name: formData.name.trim(),
         internal_name: formData.internal_name.trim(),
@@ -264,25 +274,16 @@ const ModifierSetEditor: React.FC<ModifierSetEditorProps> = ({
             ? parseInt(String(formData.max_selections))
             : null,
         triggered_by_option: formData.triggered_by_option || null,
+        // Include options_data for nested creation/update
+        options_data: validOptions,
       };
 
       let savedModifierSet;
       if (isEditing) {
         savedModifierSet = await modifierService.updateModifierSet(Number(modifierSet!.id), submitData);
-        
-        // Save options separately for existing modifier set
-        const validOptions = options.filter(opt => opt.name.trim());
-        if (validOptions.length > 0) {
-          await modifierService.updateModifierOptions(Number(modifierSet!.id), validOptions);
-        }
       } else {
+        // Create modifier set with options in a single request
         savedModifierSet = await modifierService.createModifierSet(submitData);
-        
-        // Add options to the newly created modifier set
-        const validOptions = options.filter(opt => opt.name.trim());
-        if (validOptions.length > 0 && savedModifierSet.id) {
-          await modifierService.updateModifierOptions(savedModifierSet.id, validOptions);
-        }
       }
 
       toast({
