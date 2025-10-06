@@ -8,10 +8,10 @@ from rest_framework.fields import ImageField
 from django.conf import settings
 from collections import defaultdict
 
-from core_backend.base.serializers import BaseModelSerializer
+from core_backend.base.serializers import BaseModelSerializer, TenantFilteredSerializerMixin
 
 
-class ModifierOptionSerializer(BaseModelSerializer):
+class ModifierOptionSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     class Meta:
         model = ModifierOption
         fields = [
@@ -22,16 +22,6 @@ class ModifierOptionSerializer(BaseModelSerializer):
             "modifier_set",
             "is_product_specific",
         ]
-
-    def __init__(self, *args, **kwargs):
-        """Initialize with tenant-filtered querysets"""
-        super().__init__(*args, **kwargs)
-
-        # Filter modifier_set queryset by tenant (it's a ForeignKey field auto-converted to PrimaryKeyRelatedField)
-        request = self.context.get('request')
-        if request and hasattr(request, 'tenant') and request.tenant:
-            if 'modifier_set' in self.fields and hasattr(self.fields['modifier_set'], 'queryset'):
-                self.fields['modifier_set'].queryset = ModifierSet.objects.filter(tenant=request.tenant)
 
 
 class NestedModifierOptionSerializer(serializers.Serializer):
@@ -46,7 +36,7 @@ class NestedModifierOptionSerializer(serializers.Serializer):
     is_product_specific = serializers.BooleanField(default=False)
 
 
-class ModifierSetSerializer(BaseModelSerializer):
+class ModifierSetSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     # For reading: return all options with full details
     options = ModifierOptionSerializer(many=True, read_only=True)
 
@@ -82,16 +72,6 @@ class ModifierSetSerializer(BaseModelSerializer):
         # Access the prefetched products to avoid N+1 queries
         products = [pms.product for pms in obj.product_modifier_sets.all()]
         return BasicProductSerializer(products, many=True).data
-
-    def __init__(self, *args, **kwargs):
-        """Initialize with tenant-filtered querysets"""
-        super().__init__(*args, **kwargs)
-
-        # Filter triggered_by_option queryset by tenant (ForeignKey auto-converted to PrimaryKeyRelatedField)
-        request = self.context.get('request')
-        if request and hasattr(request, 'tenant') and request.tenant:
-            if 'triggered_by_option' in self.fields and hasattr(self.fields['triggered_by_option'], 'queryset'):
-                self.fields['triggered_by_option'].queryset = ModifierOption.objects.filter(tenant=request.tenant)
 
     def create(self, validated_data):
         """Create modifier set with tenant validation and nested options"""
@@ -161,7 +141,7 @@ class ModifierSetSerializer(BaseModelSerializer):
         return instance
 
 
-class ProductModifierSetSerializer(BaseModelSerializer):
+class ProductModifierSetSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     # Include the full modifier set data instead of just the ID
     id = serializers.IntegerField(source="modifier_set.id", read_only=True)
     relationship_id = serializers.IntegerField(source="id", read_only=True)
@@ -179,11 +159,11 @@ class ProductModifierSetSerializer(BaseModelSerializer):
         source="modifier_set.max_selections", read_only=True
     )
     options = serializers.SerializerMethodField()
-    
+
     # Add the field needed for creation
     modifier_set_id = serializers.PrimaryKeyRelatedField(
         source="modifier_set",
-        queryset=ModifierSet.objects.all(),  # TenantManager will auto-filter by tenant
+        queryset=ModifierSet.objects.all(),  # Mixin auto-filters by tenant
         write_only=True
     )
 
@@ -203,16 +183,6 @@ class ProductModifierSetSerializer(BaseModelSerializer):
         ]
         select_related_fields = ["modifier_set", "product"]
         prefetch_related_fields = ["modifier_set__options", "hidden_options", "extra_options"]
-
-    def __init__(self, *args, **kwargs):
-        """Initialize with tenant-filtered querysets"""
-        super().__init__(*args, **kwargs)
-
-        # The queryset ModifierSet.objects.all() is already tenant-filtered by TenantManager
-        # This is defensive - ensures context exists
-        request = self.context.get('request')
-        if request and hasattr(request, 'tenant') and request.tenant:
-            self.fields['modifier_set_id'].queryset = ModifierSet.objects.all()
 
     def get_options(self, obj):
         # Get all options from the modifier set (already prefetched)
@@ -317,13 +287,12 @@ class BasicTaxSerializer(BaseModelSerializer):
         fields = ["id", "name", "rate"]
 
 
-class ProductTypeSerializer(BaseModelSerializer):
+class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     default_taxes = BasicTaxSerializer(many=True, read_only=True)
-    # Don't set queryset at class level - defer to __init__ when we have tenant context
     default_taxes_ids = serializers.PrimaryKeyRelatedField(
         source="default_taxes",
         many=True,
-        queryset=Tax.objects.none(),  # Empty by default, will be set in __init__
+        queryset=Tax.objects.all(),  # Mixin auto-filters by tenant
         required=False,
         write_only=True,
         allow_empty=True,
@@ -353,52 +322,6 @@ class ProductTypeSerializer(BaseModelSerializer):
             "exclude_from_discounts",
         ]
         prefetch_related_fields = ["default_taxes"]
-
-    def __init__(self, *args, **kwargs):
-        """Initialize with tenant-filtered querysets"""
-        super().__init__(*args, **kwargs)
-
-        # IMPORTANT: We must EXPLICITLY filter by tenant, not rely on TenantManager's lazy evaluation
-        # DRF validation happens later and might not have tenant context available at that point
-        request = self.context.get('request')
-        if request and hasattr(request, 'tenant') and request.tenant:
-            # Explicitly filter by tenant - this creates a queryset that's tenant-scoped NOW
-            import logging
-            logger = logging.getLogger(__name__)
-
-            # For many=True fields, the queryset is on child_relation
-            field = self.fields['default_taxes_ids']
-
-            # Before setting
-            logger.info(f"ProductTypeSerializer.__init__() - BEFORE: queryset = {field.child_relation.queryset}")
-
-            field.child_relation.queryset = Tax.objects.filter(tenant=request.tenant)
-
-            # After setting
-            tax_ids = list(field.child_relation.queryset.values_list('id', flat=True))
-            logger.info(f"ProductTypeSerializer.__init__() - AFTER: Tenant: {request.tenant.slug}, Available Tax IDs: {tax_ids}")
-            logger.info(f"ProductTypeSerializer.__init__() - Queryset object: {field.child_relation.queryset}")
-
-    def validate(self, data):
-        """Add debugging to see what's happening during validation"""
-        import logging
-        logger = logging.getLogger(__name__)
-
-        request = self.context.get('request')
-        tenant = getattr(request, 'tenant', None) if request else None
-
-        # Check what taxes were received
-        taxes = data.get('default_taxes', [])
-        logger.info(f"ProductTypeSerializer.validate() - Tenant: {tenant.slug if tenant else 'None'}, Received taxes: {[t.id for t in taxes]}")
-
-        # Debug the queryset (for many=True fields, use child_relation)
-        field = self.fields['default_taxes_ids']
-        queryset = field.child_relation.queryset
-        logger.info(f"ProductTypeSerializer.validate() - Queryset: {queryset}")
-        logger.info(f"ProductTypeSerializer.validate() - Queryset count: {queryset.count()}")
-        logger.info(f"ProductTypeSerializer.validate() - Queryset IDs: {list(queryset.values_list('id', flat=True))}")
-
-        return data
 
     def create(self, validated_data):
         """Create product type with tenant validation"""
@@ -449,11 +372,11 @@ class ProductTypeSerializer(BaseModelSerializer):
         return instance
 
 
-class CategorySerializer(BaseModelSerializer):
+class CategorySerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     parent = BasicCategorySerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(
         source="parent",
-        queryset=Category.objects.all(),  # TenantManager will auto-filter by tenant
+        queryset=Category.objects.all(),  # Mixin auto-filters by tenant
         allow_null=True,
         required=False,
         write_only=True,
@@ -473,16 +396,6 @@ class CategorySerializer(BaseModelSerializer):
         ]
         select_related_fields = ["parent"]
         prefetch_related_fields = ["children"]
-
-    def __init__(self, *args, **kwargs):
-        """Initialize with tenant-filtered querysets"""
-        super().__init__(*args, **kwargs)
-
-        # The queryset Category.objects.all() is already tenant-filtered by CategoryManager
-        # This is defensive - ensures context exists
-        request = self.context.get('request')
-        if request and hasattr(request, 'tenant') and request.tenant:
-            self.fields['parent_id'].queryset = Category.objects.all()
 
     def create(self, validated_data):
         """Create category with tenant validation"""

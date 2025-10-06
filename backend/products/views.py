@@ -277,35 +277,8 @@ class ModifierOptionViewSet(BaseViewSet):
 
 
 class ProductViewSet(BaseViewSet):
-    # Products ordered hierarchically by category (parent categories first, then subcategories)
-    queryset = (
-        Product.objects.with_archived()
-        .select_related("category", "category__parent", "product_type")
-        .prefetch_related("product_type__default_taxes")
-        .annotate(
-            # Calculate parent order for hierarchical sorting
-            parent_order=models.Case(
-                models.When(
-                    category__parent_id__isnull=True, then=models.F("category__order")
-                ),
-                default=models.F("category__parent__order"),
-                output_field=models.IntegerField(),
-            ),
-            # Mark category level (0 for parent, 1 for child)
-            category_level=models.Case(
-                models.When(category__parent_id__isnull=True, then=models.Value(0)),
-                default=models.Value(1),
-                output_field=models.IntegerField(),
-            ),
-        )
-        .order_by(
-            "parent_order",
-            "category_level",
-            "category__order",
-            "category__name",
-            "name",
-        )
-    )
+    # Base queryset - archiving will be handled by ArchivingViewSetMixin
+    queryset = Product.objects.all()
     permission_classes = [
         permissions.AllowAny
     ]  # Allow public access for customer website
@@ -332,72 +305,43 @@ class ProductViewSet(BaseViewSet):
 
     def get_queryset(self):
         """
-        Get queryset using ProductSearchService for business logic.
-        Extracted filtering logic (30+ lines) to service layer.
-
-        IMPORTANT: Uses BaseViewSet to ensure tenant context, then applies Product-specific logic.
+        Get queryset with archiving handled by ArchivingViewSetMixin.
+        Adds Product-specific annotations and filtering on top.
         """
         from .services import ProductSearchService
-        from tenant.managers import get_current_tenant
-
-        # DEBUG: Check tenant context
-        tenant = get_current_tenant()
-        if not tenant:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"❌ NO TENANT CONTEXT in ProductViewSet.get_queryset()!")
-            return Product.objects.none()
 
         is_for_website = self.request.query_params.get("for_website") == "true"
 
         if is_for_website:
-            # Use service for website-specific filtering
-            queryset = ProductSearchService.get_products_for_website()
-        else:
-            # Call Product.objects.with_archived() directly at request time
-            # This ensures tenant context is applied by TenantSoftDeleteManager
-            queryset = (
-                Product.objects.with_archived()
-                .select_related("category", "category__parent", "product_type")
-                .prefetch_related("product_type__default_taxes")
-                .annotate(
-                    # Calculate parent order for hierarchical sorting
-                    parent_order=models.Case(
-                        models.When(
-                            category__parent_id__isnull=True, then=models.F("category__order")
-                        ),
-                        default=models.F("category__parent__order"),
-                        output_field=models.IntegerField(),
-                    ),
-                    # Mark category level (0 for parent, 1 for child)
-                    category_level=models.Case(
-                        models.When(category__parent_id__isnull=True, then=models.Value(0)),
-                        default=models.Value(1),
-                        output_field=models.IntegerField(),
-                    ),
-                )
-                .order_by(
-                    "parent_order",
-                    "category_level",
-                    "category__order",
-                    "category__name",
-                    "name",
-                )
-            )
+            # Use service for website-specific filtering (returns active products only)
+            return ProductSearchService.get_products_for_website()
 
-        # Apply archiving filter based on include_archived parameter
-        # This replicates the logic from ArchivingViewSetMixin since we're not calling super()
-        include_archived = self.request.query_params.get('include_archived', '').lower()
+        # Call super() to let mixin chain handle tenant context and archiving
+        queryset = super().get_queryset()
 
-        if include_archived in ['true', '1', 'yes']:
-            # Include both active and archived records - queryset already includes all via with_archived()
-            pass
-        elif include_archived == 'only':
-            # Show only archived records
-            queryset = queryset.filter(is_active=False)
-        else:
-            # Default: show only active records
-            queryset = queryset.filter(is_active=True)
+        # Add Product-specific annotations for hierarchical sorting
+        queryset = queryset.select_related("category", "category__parent", "product_type").prefetch_related("product_type__default_taxes").annotate(
+            # Calculate parent order for hierarchical sorting
+            parent_order=models.Case(
+                models.When(
+                    category__parent_id__isnull=True, then=models.F("category__order")
+                ),
+                default=models.F("category__parent__order"),
+                output_field=models.IntegerField(),
+            ),
+            # Mark category level (0 for parent, 1 for child)
+            category_level=models.Case(
+                models.When(category__parent_id__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField(),
+            ),
+        ).order_by(
+            "parent_order",
+            "category_level",
+            "category__order",
+            "category__name",
+            "name",
+        )
 
         # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
@@ -609,106 +553,53 @@ class CategoryViewSet(BaseViewSet):
         return super().paginator
 
     def get_queryset(self):
-        # Get queryset with archiving logic applied by parent classes (ArchivingViewSetMixin)
+        """
+        Get queryset with archiving handled by ArchivingViewSetMixin.
+        Adds category-specific filtering and ordering on top.
+        """
+        # Call super() to let mixin chain handle tenant context and archiving
         queryset = super().get_queryset()
 
         is_for_website = self.request.query_params.get("for_website") == "true"
         if is_for_website:
+            # Website should only see public, active categories
             queryset = queryset.filter(is_public=True, is_active=True)
 
+        # Handle delta sync (placeholder - replace with updated_at when available)
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:
             try:
                 modified_since_dt = parse_datetime(modified_since)
                 if modified_since_dt:
-                    queryset = queryset.filter(
-                        id__gte=1
-                    )  # Replace with updated_at if available
+                    queryset = queryset.filter(id__gte=1)
             except (ValueError, TypeError):
                 pass
 
+        # Apply parent filtering
         parent_id = self.request.query_params.get("parent")
         if parent_id is not None:
             if parent_id == "null":
-                # Show only parent categories, ordered by their order field
-                queryset = queryset.filter(parent__isnull=True).order_by(
-                    "order", "name"
-                )
+                queryset = queryset.filter(parent__isnull=True).order_by("order", "name")
             elif parent_id == "uncategorized":
-                # "uncategorized" doesn't make sense for categories - return empty queryset
                 queryset = queryset.none()
             else:
-                # Show subcategories of specific parent, ordered by their order field
                 try:
-                    # Ensure parent_id is a valid integer
                     int(parent_id)
-                    queryset = queryset.filter(parent_id=parent_id).order_by(
-                        "order", "name"
-                    )
+                    queryset = queryset.filter(parent_id=parent_id).order_by("order", "name")
                 except ValueError:
-                    # Invalid parent_id format, return empty queryset
                     queryset = queryset.none()
         elif is_for_website:
-            # Website: Hierarchical ordering - parents first, then children grouped under parents
+            # Website: Hierarchical ordering - parents first, then children grouped
             queryset = queryset.annotate(
-                # For parent categories, use their own order
-                # For child categories, use parent's order as primary sort + 0.1 + child order as secondary
                 hierarchical_order=models.Case(
                     models.When(parent__isnull=True, then=models.F("order")),
-                    default=models.F("parent__order")
-                    + 0.1
-                    + (models.F("order") * 0.01),
+                    default=models.F("parent__order") + 0.1 + (models.F("order") * 0.01),
                     output_field=models.FloatField(),
                 )
             ).order_by("hierarchical_order", "name")
         else:
-            # Admin/POS: Simple flat ordering by order field
+            # Admin/POS: Simple flat ordering
             queryset = queryset.order_by("order", "name")
-
-        # Apply archiving filter - must be done AFTER all other filtering
-        # Don't apply if for_website (website should only see active categories)
-        if not is_for_website:
-            include_archived = self.request.query_params.get('include_archived', '').lower()
-
-            if include_archived in ['true', '1', 'yes']:
-                # Include both active and archived - use with_archived() if available
-                if hasattr(Category.objects, 'with_archived'):
-                    # Re-fetch with archived to ensure we get all records
-                    base_qs = Category.objects.with_archived()
-                    # Re-apply all the filters that were applied above
-                    parent_id = self.request.query_params.get("parent")
-                    if parent_id is not None:
-                        if parent_id == "null":
-                            queryset = base_qs.filter(parent__isnull=True).order_by("order", "name")
-                        elif parent_id == "uncategorized":
-                            queryset = base_qs.none()
-                        else:
-                            try:
-                                int(parent_id)
-                                queryset = base_qs.filter(parent_id=parent_id).order_by("order", "name")
-                            except ValueError:
-                                queryset = base_qs.none()
-                    else:
-                        queryset = base_qs.order_by("order", "name")
-            elif include_archived == 'only':
-                # Show only archived records - need to start with with_archived() to bypass the default active-only filter
-                base_qs = Category.objects.with_archived()
-                # Re-apply parent filtering if applicable
-                parent_id = self.request.query_params.get("parent")
-                if parent_id is not None:
-                    if parent_id == "null":
-                        queryset = base_qs.filter(parent__isnull=True, is_active=False).order_by("order", "name")
-                    elif parent_id == "uncategorized":
-                        queryset = base_qs.none()
-                    else:
-                        try:
-                            int(parent_id)
-                            queryset = base_qs.filter(parent_id=parent_id, is_active=False).order_by("order", "name")
-                        except ValueError:
-                            queryset = base_qs.none()
-                else:
-                    queryset = base_qs.filter(is_active=False).order_by("order", "name")
-            # else: default behavior - show only active (already filtered by TenantSoftDeleteManager)
 
         return queryset
 
@@ -763,21 +654,4 @@ class ProductTypeViewSet(BaseViewSet):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]
-
-    def get_queryset(self):
-        # Get base queryset from parent (handles tenant context)
-        queryset = super().get_queryset()
-
-        # Apply archiving filter explicitly
-        include_archived = self.request.query_params.get('include_archived', '').lower()
-
-        if include_archived in ['true', '1', 'yes']:
-            # Include both active and archived - use with_archived() if available
-            if hasattr(ProductType.objects, 'with_archived'):
-                queryset = ProductType.objects.with_archived()
-        elif include_archived == 'only':
-            # Show only archived records - need to start with with_archived() to bypass the default active-only filter
-            queryset = ProductType.objects.with_archived().filter(is_active=False)
-        # else: default behavior - show only active (already filtered by TenantSoftDeleteManager)
-
-        return queryset
+    # Archiving handled automatically by ArchivingViewSetMixin via super()

@@ -40,18 +40,26 @@ class BaseViewSet(OptimizedQuerysetMixin, ArchivingViewSetMixin, viewsets.ModelV
 
         IMPORTANT: Re-evaluates queryset at request time to ensure tenant context is applied.
         The class-level queryset attribute is evaluated at import time (before tenant context exists),
-        so we must call Model.objects again here to get a fresh queryset with tenant filtering.
+        so we must call Model.objects again here to get a fresh queryset with tenant filtering,
+        THEN pass it through the mixin chain.
         """
-        # Get the base queryset - re-evaluate to pick up tenant context
+        # If we have a class-level queryset, replace it with a fresh tenant-scoped one
         if hasattr(self, 'queryset') and self.queryset is not None:
-            # Re-evaluate queryset at request time by calling the model's objects manager
-            queryset = self.queryset.model.objects.all()
-        else:
-            queryset = super().get_queryset()
+            model = self.queryset.model
+            # Temporarily replace queryset so mixins process the fresh tenant-scoped version
+            original_queryset = self.queryset
+            self.queryset = model.objects.all()
 
-        # Continue with optimizations and archiving from mixins
-        # The mixin chain will apply select_related, prefetch_related, archiving, etc.
-        return queryset
+            # Call super() to let mixins process the fresh queryset
+            # MRO: OptimizedQuerysetMixin → ArchivingViewSetMixin → ModelViewSet
+            result = super().get_queryset()
+
+            # Restore original to avoid side effects on other requests
+            self.queryset = original_queryset
+            return result
+        else:
+            # No class-level queryset, just let mixins handle it
+            return super().get_queryset()
 
 
 class ReadOnlyBaseViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
