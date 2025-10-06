@@ -65,3 +65,11 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
         return TerminalRegistration.all_objects.select_related('tenant', 'store_location', 'pairing_code')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ensure the current store_location is included in the queryset"""
+        if db_field.name == "store_location":
+            from settings.models import StoreLocation
+            # Use all_objects to show locations across all tenants in admin
+            kwargs["queryset"] = StoreLocation.all_objects.all()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)

@@ -100,10 +100,10 @@ export const createInventorySlice = (set, get) => ({
 		try {
 			console.log("🔄 [InventorySlice] fetchProducts called - fetching active products (non-paginated, cached)");
 			const response = await getAllActiveProducts();
-			// Backend returns non-paginated list of active products with caching
-			const activeProducts = response.data;
+			// Backend may return paginated data - extract results array
+			const activeProducts = Array.isArray(response.data) ? response.data : response.data.results || [];
 			console.log("📦 [InventorySlice] Received active products:", activeProducts.length, "items");
-			
+
 			// Debug: Show category breakdown
 			if (Array.isArray(activeProducts)) {
 				const desserts = activeProducts.filter(p => p.category?.name === 'Desserts');
@@ -111,7 +111,7 @@ export const createInventorySlice = (set, get) => ({
 				console.log("🍰 [InventorySlice] Found desserts:", desserts.length);
 				console.log("🥤 [InventorySlice] Found drinks:", drinks.length);
 			}
-			
+
 			set({ products: activeProducts });
 		} catch (error) {
 			console.error("Failed to fetch products:", error);

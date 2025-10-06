@@ -104,4 +104,5 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             'last_authenticated_at',
             'authentication_failures',
             'tenant',
+            'pairing_code',  # Pairing code should not be changed after initial pairing
         ]

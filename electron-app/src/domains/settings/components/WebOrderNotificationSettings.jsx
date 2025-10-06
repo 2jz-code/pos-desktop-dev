@@ -44,7 +44,7 @@ export function WebOrderNotificationSettings() {
 		queryKey: ["webOrderSettings"],
 		queryFn: async () => {
 			const terminalsRes = await apiClient.get(
-				"settings/terminal-registrations/"
+				"terminals/registrations/"
 			);
 			const webOrderSettingsRes = await apiClient.get(
 				"settings/web-order-settings/"

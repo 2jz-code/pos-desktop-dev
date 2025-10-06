@@ -94,9 +94,12 @@ apiClient.interceptors.response.use(
 
 		// Check if the error is 401 Unauthorized and if we haven't already retried
 		if (error.response?.status === 401 && !originalRequest._retry) {
-			if (originalRequest.url === "/users/token/refresh/") {
-				// If the refresh token request itself fails, just reject.
-				// No more hard redirects.
+			// Don't try to refresh on login or refresh endpoints - these are auth failures, not expired tokens
+			if (
+				originalRequest.url === "/users/token/refresh/" ||
+				originalRequest.url === "/users/login/pos/"
+			) {
+				// If the login or refresh request itself fails, just reject.
 				return Promise.reject(error);
 			}
 

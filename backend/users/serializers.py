@@ -71,7 +71,10 @@ class POSLoginSerializer(serializers.Serializer):
     pin = serializers.CharField(
         required=True, write_only=True, style={"input_type": "password"}
     )
-    tenant_id = serializers.CharField(required=False, help_text="Optional tenant ID from POS device configuration")
+    device_id = serializers.CharField(
+        required=True,
+        help_text="Device ID from terminal registration - validates terminal and enforces tenant isolation"
+    )
 
 
 class AdminLoginSerializer(serializers.Serializer):

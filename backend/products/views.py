@@ -306,10 +306,17 @@ class ProductViewSet(BaseViewSet):
     @property
     def paginator(self):
         """
-        Disable pagination for website requests
+        Disable pagination for website and POS requests.
+        POS needs all products at once for the product grid.
+        Website needs all products for the menu display.
         """
         is_for_website = self.request.query_params.get("for_website") == "true"
-        if is_for_website:
+        is_active_filter = self.request.query_params.get("is_active") == "true"
+
+        # Disable pagination if:
+        # 1. Explicitly for website (for_website=true)
+        # 2. Fetching only active products (is_active=true) - POS use case
+        if is_for_website or is_active_filter:
             return None
         return super().paginator
 

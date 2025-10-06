@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from core_backend.base.viewsets import BaseViewSet
 from .models import TerminalPairingCode, TerminalRegistration
 from .serializers import (
     DeviceAuthorizationSerializer,
@@ -157,7 +158,7 @@ class TerminalPairingViewSet(viewsets.ViewSet):
         }
         """
         # Check permissions
-        if request.user.role not in ['manager', 'admin', 'owner']:
+        if request.user.role not in ['MANAGER', 'ADMIN', 'OWNER']:
             return Response({
                 'error': 'Insufficient permissions'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -203,7 +204,7 @@ class TerminalPairingViewSet(viewsets.ViewSet):
     )
     def deny(self, request):
         """Admin denies pairing"""
-        if request.user.role not in ['manager', 'admin', 'owner']:
+        if request.user.role not in ['MANAGER', 'ADMIN', 'OWNER']:
             return Response({
                 'error': 'Insufficient permissions'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -242,17 +243,19 @@ class TerminalPairingViewSet(viewsets.ViewSet):
         })
 
 
-class TerminalRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
+class TerminalRegistrationViewSet(BaseViewSet):
     """
-    ViewSet for viewing terminal registrations.
-    Read-only for now - terminals are created via pairing flow.
+    ViewSet for managing terminal registrations.
+    Terminals are created via pairing flow, but can be updated with printer/location info.
     """
     queryset = TerminalRegistration.objects.select_related('tenant', 'store_location', 'pairing_code')
     serializer_class = TerminalRegistrationSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']  # Allow read and partial updates only
+    lookup_field = 'device_id'  # Use device_id instead of pk for lookups
+    ordering = ['-last_seen']  # Override BaseViewSet default ordering (model has no 'id' field)
 
-    def get_queryset(self):
-        """Filter by tenant from request"""
-        if hasattr(self.request, 'tenant'):
-            return self.queryset.filter(tenant=self.request.tenant)
-        return self.queryset.none()
+    def perform_update(self, serializer):
+        """Only allow updating specific fields - not core pairing info"""
+        # Prevent changes to device_id, tenant, pairing_code via this endpoint
+        serializer.save()

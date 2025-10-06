@@ -1,5 +1,6 @@
 import EventEmitter from "eventemitter3";
 import apiClient from "@/shared/lib/apiClient";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import {
 	printReceipt,
 	printKitchenTicket,
@@ -27,7 +28,14 @@ class GlobalNotificationService extends EventEmitter {
 		if (this.isInitialized) return;
 		console.log("GlobalNotificationService: Initializing...");
 		try {
-			this.deviceId = await window.electronAPI.getMachineId();
+			// Get device_id from terminal registration (from pairing flow)
+			const terminalConfig = terminalRegistrationService.getTerminalConfig();
+			if (!terminalConfig?.device_id) {
+				console.warn("GlobalNotificationService: Terminal not registered yet. Cannot connect to notifications.");
+				return;
+			}
+			this.deviceId = terminalConfig.device_id;
+			console.log(`GlobalNotificationService: Using device_id: ${this.deviceId}`);
 			this.isInitialized = true;
 			this.connect();
 		} catch (error) {

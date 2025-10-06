@@ -17,18 +17,25 @@ export function LoginPage() {
 	const [username, setUsername] = useState("");
 	const [pin, setPin] = useState("");
 	const [error, setError] = useState("");
-	const { login, loading } = useAuth();
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const { login } = useAuth();
 	const navigate = useNavigate();
 
 	const handleLogin = async (e) => {
 		e.preventDefault();
 		setError("");
+		setIsSubmitting(true);
+
 		try {
 			await login(username, pin);
 			navigate("/");
 			//eslint-disable-next-line
 		} catch (err) {
-			setError("Failed to log in. Please check your credentials.");
+			// Display the specific error message from the backend
+			const errorMessage = err.message || err.response?.data?.error || "Failed to log in. Please check your credentials.";
+			setError(errorMessage);
+		} finally {
+			setIsSubmitting(false);
 		}
 	};
 
@@ -57,7 +64,10 @@ export function LoginPage() {
 										id="username"
 										type="text"
 										value={username}
-										onChange={(e) => setUsername(e.target.value)}
+										onChange={(e) => {
+											setUsername(e.target.value);
+											if (error) setError(""); // Clear error on input change
+										}}
 										required
 										placeholder="Your username"
 									/>
@@ -68,18 +78,27 @@ export function LoginPage() {
 										id="pin"
 										type="password"
 										value={pin}
-										onChange={(e) => setPin(e.target.value)}
+										onChange={(e) => {
+											setPin(e.target.value);
+											if (error) setError(""); // Clear error on input change
+										}}
 										required
 										placeholder="Your PIN"
 									/>
 								</div>
-								{error && <p className="text-sm text-red-500">{error}</p>}
+								{error && (
+									<div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+										<p className="text-sm text-red-600 dark:text-red-400 font-medium">
+											{error}
+										</p>
+									</div>
+								)}
 								<Button
 									type="submit"
 									className="w-full"
-									disabled={loading}
+									disabled={isSubmitting}
 								>
-									{loading ? "Logging in..." : "Login"}
+									{isSubmitting ? "Logging in..." : "Login"}
 								</Button>
 							</div>
 						</form>

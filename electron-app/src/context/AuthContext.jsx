@@ -15,7 +15,9 @@ export const AuthProvider = ({ children }) => {
 		const verifyAuth = async () => {
 			try {
 				const response = await checkAuthStatus();
-				setUser(response.data);
+				// Extract user object from response (backend returns { user, tenant })
+				const userData = response.data.user || response.data;
+				setUser(userData);
 				// eslint-disable-next-line no-unused-vars
 			} catch (error) {
 				// This is expected if the user is not logged in
@@ -30,14 +32,21 @@ export const AuthProvider = ({ children }) => {
 	}, []);
 
 	const login = async (username, pin) => {
-		setLoading(true);
+		// Don't set loading here - it causes the whole page to unmount
+		// Let the LoginPage handle its own loading state
 		try {
 			const response = await loginWithPin(username, pin);
-			setUser(response.data.user);
-			setLoading(false);
-			return response.data.user;
+			// Backend now returns { user, tenant } for POS login
+			const userData = response.data.user || response.data;
+			setUser(userData);
+			return userData;
 		} catch (error) {
-			setLoading(false);
+			// Extract error message from backend response for ALL errors
+			if (error.response?.data?.error) {
+				error.message = error.response.data.error;
+			} else if (!error.message) {
+				error.message = "Failed to log in. Please check your credentials.";
+			}
 			throw error;
 		}
 	};

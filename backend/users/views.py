@@ -164,17 +164,100 @@ class POSLoginView(APIView):
     ]
 
     def post(self, request, *args, **kwargs):
+        from terminals.models import TerminalRegistration
+        from django.utils import timezone
+
         serializer = POSLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = UserService.authenticate_pos_user(**serializer.validated_data)
 
-        if not user:
+        device_id = serializer.validated_data['device_id']
+        username = serializer.validated_data['username']
+        pin = serializer.validated_data['pin']
+
+        # Step 1: Validate terminal exists and is active
+        try:
+            terminal = TerminalRegistration.all_objects.select_related('tenant', 'store_location').get(
+                device_id=device_id
+            )
+        except TerminalRegistration.DoesNotExist:
             return Response(
-                {"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED
+                {"error": "Terminal not registered. Please complete terminal pairing."},
+                status=status.HTTP_403_FORBIDDEN
             )
 
+        # Step 2: Check if terminal is locked
+        if terminal.is_locked:
+            return Response(
+                {"error": "This terminal has been locked. Please contact your administrator."},
+                status=status.HTTP_423_LOCKED
+            )
+
+        # Step 3: Check if terminal is active
+        if not terminal.is_active:
+            return Response(
+                {"error": "This terminal is inactive. Please contact your administrator."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Step 4: Authenticate user with tenant context
+        # Use all_objects to bypass tenant middleware, then validate manually
+        from users.models import User
+        try:
+            user = User.all_objects.select_related('tenant').get(
+                username__iexact=username,
+                role__in=['CASHIER', 'MANAGER', 'ADMIN', 'OWNER'],
+                is_active=True
+            )
+        except User.DoesNotExist:
+            user = None
+
+        # Step 5: Validate credentials
+        if not user or not user.check_pin(pin):
+            # Track authentication failure
+            terminal.authentication_failures += 1
+
+            # Auto-lock after 5 failed attempts
+            if terminal.authentication_failures >= 5:
+                terminal.is_locked = True
+
+            terminal.save(update_fields=['authentication_failures', 'is_locked'])
+
+            return Response(
+                {"error": "Invalid credentials"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Step 6: CRITICAL - Validate tenant isolation
+        if user.tenant_id != terminal.tenant_id:
+            # Log this as potential security issue
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Cross-tenant login attempt: User {user.username} (tenant={user.tenant.slug}) "
+                f"attempted login on terminal {terminal.device_id} (tenant={terminal.tenant.slug})"
+            )
+
+            return Response(
+                {"error": "This terminal is not registered to your organization. Please contact your administrator."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Step 7: Success - reset failure counter and update last_authenticated_at
+        terminal.authentication_failures = 0
+        terminal.last_authenticated_at = timezone.now()
+        terminal.last_seen = timezone.now()
+        terminal.save(update_fields=['authentication_failures', 'last_authenticated_at', 'last_seen'])
+
+        # Step 8: Generate tokens and return user data
         tokens = UserService.generate_tokens_for_user(user)
-        response = Response({"user": UserSerializer(user).data})
+        response = Response({
+            "user": UserSerializer(user).data,
+            "tenant": {
+                "id": str(user.tenant.id),
+                "name": user.tenant.name,
+                "slug": user.tenant.slug,
+            }
+        })
 
         # Use centralized cookie service for consistent cookie handling
         AuthCookieService.set_pos_auth_cookies(

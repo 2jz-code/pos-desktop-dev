@@ -64,23 +64,22 @@ export const deleteStoreLocation = async (locationId) => {
 
 export const getTerminalRegistration = async (machineId) => {
 	const response = await apiClient.get(
-		`/settings/terminal-registrations/${machineId}/`
+		`/terminals/registrations/${machineId}/`
 	);
 	return response.data;
 };
 
 export const upsertTerminalRegistration = async (data) => {
-	// The backend API expects `device_id`, but the hook sends `machineId`.
-	// This function acts as an adapter to map the keys correctly.
+	// Terminal already exists from pairing flow - we're updating it with printer info
 	const payload = {
 		nickname: data.nickname,
-		store_location_id: data.store_location,
+		store_location: data.store_location,
 		reader_id: data.reader_id,
-		device_id: data.machineId, // Map machineId to device_id
 	};
 
-	const response = await apiClient.post(
-		`/settings/terminal-registrations/`,
+	// Use PATCH to update the existing terminal registration
+	const response = await apiClient.patch(
+		`/terminals/registrations/${data.device_id}/`,
 		payload
 	);
 	return response.data;

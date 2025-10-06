@@ -49,7 +49,7 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
 
         # Validate device belongs to this tenant
         try:
-            from settings.models import TerminalRegistration
+            from terminals.models import TerminalRegistration
             terminal = await sync_to_async(TerminalRegistration.objects.get)(
                 device_id=device_id,
                 tenant=self.tenant

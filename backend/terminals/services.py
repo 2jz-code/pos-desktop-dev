@@ -92,15 +92,12 @@ class TerminalPairingService:
         if pairing.status == 'consumed':
             raise ValidationError("Code already used")
 
-        # Status = approved → Issue token
+        # Status = approved → Return terminal info (NO JWT tokens - those are for user login only)
         if pairing.status == 'approved':
             terminal = TerminalPairingService._get_or_create_terminal(pairing)
-            tokens = TerminalPairingService._generate_tokens(terminal)
             pairing.mark_consumed()
 
             return ('approved', {
-                'access_token': tokens['access'],
-                'refresh_token': tokens['refresh'],
                 'device_id': terminal.device_id,
                 'tenant_id': str(terminal.tenant.id),
                 'tenant_slug': terminal.tenant.slug,
@@ -126,7 +123,10 @@ class TerminalPairingService:
             existing.last_authenticated_at = timezone.now()
             existing.is_active = True
             existing.is_locked = False
-            existing.save()
+            existing.save(update_fields=[
+                'store_location', 'tenant', 'pairing_code', 'nickname',
+                'last_authenticated_at', 'is_active', 'is_locked'
+            ])
             return existing
         else:
             # New terminal
