@@ -31,8 +31,12 @@ class InventoryService:
         """
         Helper method to log stock operations to StockHistoryEntry.
         """
+        from tenant.managers import get_current_tenant
+
         try:
+            tenant = get_current_tenant()
             StockHistoryEntry.objects.create(
+                tenant=tenant,
                 product=product,
                 location=location,
                 user=user,
@@ -165,23 +169,26 @@ class InventoryService:
     @staticmethod
     @transaction.atomic
     def add_stock(
-        product: Product, 
-        location: Location, 
-        quantity, 
-        user=None, 
-        reason_config=None, 
+        product: Product,
+        location: Location,
+        quantity,
+        user=None,
+        reason_config=None,
         detailed_reason="",
         reason="",  # Legacy for backward compatibility
         legacy_reason="",  # Alternative legacy field name
-        reference_id="", 
+        reference_id="",
         skip_logging=False
     ):
         """
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
         """
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
         stock, created = InventoryStock.objects.get_or_create(
-            product=product, location=location, defaults={"quantity": Decimal("0.0")}
+            product=product, location=location, defaults={"tenant": tenant, "quantity": Decimal("0.0")}
         )
         
         # Track previous quantity for notification logic and history
@@ -291,16 +298,17 @@ class InventoryService:
     @staticmethod
     @transaction.atomic
     def transfer_stock(
-        product: Product, 
-        from_location: Location, 
-        to_location: Location, 
-        quantity, 
-        user=None, 
-        reason_config=None, 
+        product: Product,
+        from_location: Location,
+        to_location: Location,
+        quantity,
+        user=None,
+        reason_config=None,
         detailed_reason="",
         reason="",  # Legacy for backward compatibility
         legacy_reason="",  # Alternative legacy field name
-        notes=""
+        notes="",
+        reference_id=None  # Optional reference ID for bulk operations
     ):
         """
         Transfers a specified quantity of a product from one location to another.
@@ -309,9 +317,9 @@ class InventoryService:
             raise ValueError("Source and destination locations cannot be the same.")
 
         quantity_decimal = Decimal(str(quantity))
-        
-        # Generate a unique reference ID to link the two transfer operations
-        transfer_ref = f"transfer_{uuid.uuid4().hex[:12]}"
+
+        # Use provided reference_id or generate a unique one for linking operations
+        transfer_ref = reference_id if reference_id else f"transfer_{uuid.uuid4().hex[:12]}"
 
         # Get current stock levels for logging
         try:
@@ -537,7 +545,11 @@ class InventoryService:
                         logger.info(f"Used {used_from_stock} from stock, prepared {total_needed - used_from_stock} fresh")
                     except InventoryStock.DoesNotExist:
                         # No stock record - create one with 0 (all prepared fresh)
+                        from tenant.managers import get_current_tenant
+
+                        tenant = get_current_tenant()
                         InventoryStock.objects.create(
+                            tenant=tenant,
                             product=recipe_item.product,
                             location=location,
                             quantity=Decimal('0')
@@ -560,12 +572,13 @@ class InventoryService:
         
         default_location = app_settings.get_default_location()
         
-        # Get system reason for order deductions
+        # Get global system reason for order deductions (tenant=NULL)
         try:
             order_deduction_reason = StockActionReasonConfig.objects.get(
                 name="System Order Deduction",
                 is_system_reason=True,
-                is_active=True
+                is_active=True,
+                tenant__isnull=True
             )
         except StockActionReasonConfig.DoesNotExist:
             # Fallback to any system reason
@@ -1199,12 +1212,13 @@ class InventoryService:
         except User.DoesNotExist:
             raise ValueError(f"User with id {user_id} not found")
 
-        # Get or create system reason for bulk transfers
+        # Get global system reason for bulk transfers (tenant=NULL)
         try:
             bulk_transfer_reason = StockActionReasonConfig.objects.get(
-                name="System Bulk Transfer",
+                name="Bulk Transfer Operation",
                 is_system_reason=True,
-                is_active=True
+                is_active=True,
+                tenant__isnull=True
             )
         except StockActionReasonConfig.DoesNotExist:
             # Fallback to any bulk transfer reason
@@ -1230,19 +1244,23 @@ class InventoryService:
             item_reason_config = bulk_transfer_reason  # Default to bulk reason
             reason_id = item.get('reason_id')
             if reason_id:
-                try:
-                    item_reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
-                except StockActionReasonConfig.DoesNotExist:
-                    print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive, using bulk reason")
+                # Handle if reason_id is already a StockActionReasonConfig object or just an ID
+                if isinstance(reason_id, StockActionReasonConfig):
+                    item_reason_config = reason_id
+                else:
+                    try:
+                        item_reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+                    except StockActionReasonConfig.DoesNotExist:
+                        print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive, using bulk reason")
             
             item_detailed_reason = item.get('detailed_reason', notes)
 
             source_stock, destination_stock = InventoryService.transfer_stock(
-                product, 
-                from_location, 
-                to_location, 
-                quantity, 
-                user=user, 
+                product,
+                from_location,
+                to_location,
+                quantity,
+                user=user,
                 reason_config=item_reason_config,
                 detailed_reason=item_detailed_reason,
                 legacy_reason="Bulk transfer",

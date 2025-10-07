@@ -209,13 +209,33 @@ class NonPaginatedBaseViewSet(OptimizedQuerysetMixin, viewsets.ModelViewSet):
     pagination_class = None
     permission_classes = [permissions.IsAuthenticated]
     ordering = ['-id']
-    
+
     # Standard filter backends
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
+
+    def get_queryset(self):
+        """
+        Re-evaluate queryset at request time to ensure tenant context is applied.
+        Same pattern as BaseViewSet - gets fresh tenant-scoped queryset.
+        """
+        if hasattr(self, 'queryset') and self.queryset is not None:
+            model = self.queryset.model
+            # Get fresh tenant-scoped queryset
+            original_queryset = self.queryset
+            self.queryset = model.objects.all()
+
+            # Call super() to let mixins process it
+            result = super().get_queryset()
+
+            # Restore original
+            self.queryset = original_queryset
+            return result
+        else:
+            return super().get_queryset()
 
 
 # Admin API Views (authentication required)
@@ -226,16 +246,44 @@ class BusinessHoursProfileViewSet(NonPaginatedBaseViewSet):
     search_fields = ['name', 'timezone']
     filterset_fields = ['is_active', 'is_default']
     ordering_fields = ['name', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by active profiles unless specifically requested"""
         queryset = super().get_queryset()
         include_inactive = self.request.query_params.get('include_inactive', 'false').lower()
-        
+
         if include_inactive != 'true':
             queryset = queryset.filter(is_active=True)
-            
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        profile = serializer.save(tenant=tenant)
+
+        # Create RegularHours for each day of the week
+        # Use get_or_create to handle race conditions (e.g., double-click on create button)
+        days = [
+            (0, 'Monday'),
+            (1, 'Tuesday'),
+            (2, 'Wednesday'),
+            (3, 'Thursday'),
+            (4, 'Friday'),
+            (5, 'Saturday'),
+            (6, 'Sunday'),
+        ]
+        for day_num, day_name in days:
+            # Use all_objects to find existing records (even with NULL tenant)
+            rh, created = RegularHours.all_objects.get_or_create(
+                profile=profile,
+                day_of_week=day_num,
+                defaults={'is_closed': False, 'tenant': tenant}
+            )
+            # If it existed but had NULL tenant, update it
+            if not created and not rh.tenant:
+                rh.tenant = tenant
+                rh.save(update_fields=['tenant'])
 
 
 class RegularHoursViewSet(NonPaginatedBaseViewSet):
@@ -244,16 +292,21 @@ class RegularHoursViewSet(NonPaginatedBaseViewSet):
     serializer_class = RegularHoursAdminSerializer
     filterset_fields = ['profile', 'day_of_week', 'is_closed']
     ordering_fields = ['day_of_week', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by profile if specified"""
         queryset = super().get_queryset()
         profile_id = self.request.query_params.get('profile_id')
-        
+
         if profile_id:
             queryset = queryset.filter(profile_id=profile_id)
-            
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 
 class TimeSlotViewSet(NonPaginatedBaseViewSet):
@@ -262,19 +315,24 @@ class TimeSlotViewSet(NonPaginatedBaseViewSet):
     serializer_class = TimeSlotAdminSerializer
     filterset_fields = ['regular_hours', 'slot_type']
     ordering_fields = ['opening_time', 'closing_time', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by regular hours if specified"""
         queryset = super().get_queryset()
         regular_hours_id = self.request.query_params.get('regular_hours_id')
         profile_id = self.request.query_params.get('profile_id')
-        
+
         if regular_hours_id:
             queryset = queryset.filter(regular_hours_id=regular_hours_id)
         elif profile_id:
             queryset = queryset.filter(regular_hours__profile_id=profile_id)
-            
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 
 class SpecialHoursViewSet(NonPaginatedBaseViewSet):
@@ -284,32 +342,37 @@ class SpecialHoursViewSet(NonPaginatedBaseViewSet):
     search_fields = ['reason']
     filterset_fields = ['profile', 'is_closed', 'date']
     ordering_fields = ['date', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by profile and date range if specified"""
         queryset = super().get_queryset()
         profile_id = self.request.query_params.get('profile_id')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
-        
+
         if profile_id:
             queryset = queryset.filter(profile_id=profile_id)
-            
+
         if start_date:
             try:
                 start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
                 queryset = queryset.filter(date__gte=start_date_obj)
             except ValueError:
                 pass  # Invalid date format, ignore filter
-                
+
         if end_date:
             try:
                 end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
                 queryset = queryset.filter(date__lte=end_date_obj)
             except ValueError:
                 pass  # Invalid date format, ignore filter
-                
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 
 class SpecialHoursTimeSlotViewSet(NonPaginatedBaseViewSet):
@@ -318,16 +381,21 @@ class SpecialHoursTimeSlotViewSet(NonPaginatedBaseViewSet):
     serializer_class = SpecialHoursTimeSlotAdminSerializer
     filterset_fields = ['special_hours']
     ordering_fields = ['opening_time', 'closing_time', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by special hours if specified"""
         queryset = super().get_queryset()
         special_hours_id = self.request.query_params.get('special_hours_id')
-        
+
         if special_hours_id:
             queryset = queryset.filter(special_hours_id=special_hours_id)
-            
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 
 class HolidayViewSet(NonPaginatedBaseViewSet):
@@ -337,16 +405,21 @@ class HolidayViewSet(NonPaginatedBaseViewSet):
     search_fields = ['name']
     filterset_fields = ['profile', 'month', 'day', 'is_closed']
     ordering_fields = ['name', 'month', 'day', 'created_at', 'updated_at']
-    
+
     def get_queryset(self):
         """Filter by profile if specified"""
         queryset = super().get_queryset()
         profile_id = self.request.query_params.get('profile_id')
-        
+
         if profile_id:
             queryset = queryset.filter(profile_id=profile_id)
-            
+
         return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 
 # Utility Admin Views

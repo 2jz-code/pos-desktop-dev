@@ -92,6 +92,14 @@ def assign_existing_data_to_default_tenant(apps, schema_editor):
         ('settings', 'TerminalLocation'),
         ('settings', 'TerminalRegistration'),
         ('settings', 'StockActionReasonConfig'),
+
+        # business_hours app (6 models)
+        ('business_hours', 'BusinessHoursProfile'),
+        ('business_hours', 'RegularHours'),
+        ('business_hours', 'TimeSlot'),
+        ('business_hours', 'SpecialHours'),
+        ('business_hours', 'SpecialHoursTimeSlot'),
+        ('business_hours', 'Holiday'),
     ]
 
     # Process each model
@@ -228,6 +236,12 @@ def reverse_migration(apps, schema_editor):
         ('settings', 'TerminalLocation'),
         ('settings', 'TerminalRegistration'),
         ('settings', 'StockActionReasonConfig'),
+        ('business_hours', 'BusinessHoursProfile'),
+        ('business_hours', 'RegularHours'),
+        ('business_hours', 'TimeSlot'),
+        ('business_hours', 'SpecialHours'),
+        ('business_hours', 'SpecialHoursTimeSlot'),
+        ('business_hours', 'Holiday'),
     ]
 
     for app_label, model_name in models_to_update:

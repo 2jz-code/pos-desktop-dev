@@ -297,6 +297,11 @@ class StoreLocationViewSet(BaseViewSet):
     queryset = StoreLocation.objects.all()
     serializer_class = StoreLocationSerializer
 
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
+
     @action(detail=True, methods=["post"], url_path="set-default")
     def set_default(self, request, pk=None):
         """
@@ -390,16 +395,24 @@ class StockActionReasonConfigViewSet(BaseViewSet):
         return StockActionReasonConfigSerializer
     
     def get_queryset(self):
-        """Filter queryset based on action and parameters"""
-        queryset = super().get_queryset()
-        
+        """Return global system reasons + tenant-specific custom reasons"""
+        from tenant.managers import get_current_tenant
+        from django.db.models import Q
+
+        tenant = get_current_tenant()
+
+        # Get both global (tenant=NULL) and tenant-specific reasons
+        queryset = StockActionReasonConfig.objects.filter(
+            Q(tenant__isnull=True) | Q(tenant=tenant)
+        )
+
         # For list and active_reasons actions, optionally filter to only active reasons
         if self.action in ['list', 'active_reasons']:
             # Check if we should only show active reasons
             active_only = self.request.query_params.get('active_only', 'false').lower() == 'true'
             if active_only:
                 queryset = queryset.filter(is_active=True)
-        
+
         return queryset
     
     @action(detail=False, methods=['get'])
@@ -432,8 +445,11 @@ class StockActionReasonConfigViewSet(BaseViewSet):
     
     def perform_create(self, serializer):
         """Override to ensure new reasons are marked as custom (non-system)"""
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
         # Ensure new reasons are never marked as system reasons
-        serializer.save(is_system_reason=False)
+        serializer.save(tenant=tenant, is_system_reason=False)
     
     def destroy(self, request, *args, **kwargs):
         """Override destroy to prevent deletion of system reasons"""

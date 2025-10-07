@@ -584,8 +584,10 @@ class SavedReportViewSet(BaseViewSet):
         return SavedReportSerializer
 
     def perform_create(self, serializer):
-        """Set user on creation"""
-        serializer.save(user=self.request.user)
+        """Set user and tenant on creation"""
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant, user=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="run")
     def run(self, request, pk=None):
@@ -663,8 +665,10 @@ class ReportTemplateViewSet(BaseViewSet):
     ordering = ["name"]
 
     def perform_create(self, serializer):
-        """Set created_by on creation"""
-        serializer.save(created_by=self.request.user)
+        """Set created_by and tenant on creation"""
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant, created_by=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="create-report")
     def create_report(self, request, pk=None):

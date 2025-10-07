@@ -53,6 +53,12 @@ def fix_null_tenants(apps, schema_editor):
         ('settings', 'TerminalLocation'),
         ('settings', 'TerminalRegistration'),
         ('settings', 'StockActionReasonConfig'),
+        ('business_hours', 'BusinessHoursProfile'),
+        ('business_hours', 'RegularHours'),
+        ('business_hours', 'TimeSlot'),
+        ('business_hours', 'SpecialHours'),
+        ('business_hours', 'SpecialHoursTimeSlot'),
+        ('business_hours', 'Holiday'),
     ]
 
     total_fixed = 0

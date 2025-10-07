@@ -2,11 +2,12 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 import pytz
+from tenant.managers import TenantManager
 
 
 class BusinessHoursProfile(models.Model):
     """Main profile for business hours configuration"""
-    
+
     TIMEZONE_CHOICES = [
         ('America/New_York', 'Eastern Time'),
         ('America/Chicago', 'Central Time'),
@@ -16,7 +17,14 @@ class BusinessHoursProfile(models.Model):
         ('Pacific/Honolulu', 'Hawaii Time'),
         ('America/Anchorage', 'Alaska Time'),
     ]
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='business_hours_profiles',
+        null=True,
+        blank=True
+    )
     name = models.CharField(
         max_length=100, 
         default='Main Store',
@@ -38,7 +46,10 @@ class BusinessHoursProfile(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Business Hours Profile'
         verbose_name_plural = 'Business Hours Profiles'
@@ -48,15 +59,15 @@ class BusinessHoursProfile(models.Model):
         return f"{self.name} {'(Default)' if self.is_default else ''}"
     
     def save(self, *args, **kwargs):
-        # Ensure only one default profile exists
+        # Ensure only one default profile exists per tenant
         if self.is_default:
-            BusinessHoursProfile.objects.exclude(pk=self.pk).update(is_default=False)
+            BusinessHoursProfile.objects.filter(tenant=self.tenant).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
 
 class RegularHours(models.Model):
     """Regular weekly schedule for a specific day"""
-    
+
     DAYS_OF_WEEK = [
         (0, 'Monday'),
         (1, 'Tuesday'),
@@ -66,7 +77,14 @@ class RegularHours(models.Model):
         (5, 'Saturday'),
         (6, 'Sunday'),
     ]
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='regular_hours',
+        null=True,
+        blank=True
+    )
     profile = models.ForeignKey(
         BusinessHoursProfile,
         on_delete=models.CASCADE,
@@ -82,7 +100,10 @@ class RegularHours(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Regular Hours'
         verbose_name_plural = 'Regular Hours'
@@ -130,14 +151,21 @@ class RegularHours(models.Model):
 
 class TimeSlot(models.Model):
     """Individual time slot within a day"""
-    
+
     SLOT_TYPES = [
         ('regular', 'Regular Hours'),
         ('lunch', 'Lunch Hours'),
         ('happy_hour', 'Happy Hour'),
         ('special', 'Special Hours'),
     ]
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='time_slots',
+        null=True,
+        blank=True
+    )
     regular_hours = models.ForeignKey(
         RegularHours,
         on_delete=models.CASCADE,
@@ -157,7 +185,10 @@ class TimeSlot(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Time Slot'
         verbose_name_plural = 'Time Slots'
@@ -173,7 +204,14 @@ class TimeSlot(models.Model):
 
 class SpecialHours(models.Model):
     """Override hours for specific dates"""
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='special_hours',
+        null=True,
+        blank=True
+    )
     profile = models.ForeignKey(
         BusinessHoursProfile,
         on_delete=models.CASCADE,
@@ -193,7 +231,10 @@ class SpecialHours(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Special Hours'
         verbose_name_plural = 'Special Hours'
@@ -234,7 +275,14 @@ class SpecialHours(models.Model):
 
 class SpecialHoursTimeSlot(models.Model):
     """Time slots for special hours"""
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='special_hours_time_slots',
+        null=True,
+        blank=True
+    )
     special_hours = models.ForeignKey(
         SpecialHours,
         on_delete=models.CASCADE,
@@ -248,7 +296,10 @@ class SpecialHoursTimeSlot(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Special Hours Time Slot'
         verbose_name_plural = 'Special Hours Time Slots'
@@ -260,7 +311,14 @@ class SpecialHoursTimeSlot(models.Model):
 
 class Holiday(models.Model):
     """Recurring holidays"""
-    
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='holidays',
+        null=True,
+        blank=True
+    )
     profile = models.ForeignKey(
         BusinessHoursProfile,
         on_delete=models.CASCADE,
@@ -284,7 +342,10 @@ class Holiday(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = 'Holiday'
         verbose_name_plural = 'Holidays'

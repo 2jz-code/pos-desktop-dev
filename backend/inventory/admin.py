@@ -50,6 +50,10 @@ class RecipeItemInline(admin.TabularInline):
     autocomplete_fields = ("product",)
     extra = 1  # Show one extra blank ingredient line by default
 
+    def get_queryset(self, request):
+        """Use all_objects to show items across all tenants in admin"""
+        return RecipeItem.all_objects.select_related("product")
+
 
 @admin.register(Recipe)
 class RecipeAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
@@ -219,8 +223,8 @@ class StockHistoryEntryAdmin(TenantAdminMixin, admin.ModelAdmin):
     def related_operations_link(self, obj):
         """Display link to view all related operations by reference_id."""
         if obj.reference_id:
-            # Count related operations
-            related_count = StockHistoryEntry.objects.filter(
+            # Count related operations (use all_objects for admin visibility)
+            related_count = StockHistoryEntry.all_objects.filter(
                 reference_id=obj.reference_id
             ).count()
             

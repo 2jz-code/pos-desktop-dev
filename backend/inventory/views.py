@@ -35,16 +35,43 @@ class LocationViewSet(BaseViewSet):
     serializer_class = LocationSerializer
     permission_classes = [IsAdminOrHigher]
 
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
+
 
 class RecipeViewSet(BaseViewSet):
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
     permission_classes = [IsAdminOrHigher]
 
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        # Note: RecipeSerializer.create() already handles tenant assignment
+        # No need to pass it here as it would be redundant
+        serializer.save()
+
 
 class InventoryStockViewSet(BaseViewSet):
     queryset = InventoryStock.objects.all()
     permission_classes = [IsAdminOrHigher]
+
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
     def get_serializer_class(self):
         """Use optimized serializer for list view to reduce N+1 queries"""

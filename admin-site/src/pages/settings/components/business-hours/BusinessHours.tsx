@@ -20,11 +20,20 @@ export function BusinessHours() {
 
   // Auto-select first/default profile
   React.useEffect(() => {
-    if (!selectedProfileId && profiles?.length > 0) {
+    if (profiles?.length > 0) {
       const defaultProfile = profiles.find((p: any) => p.is_default) || profiles[0];
-      setSelectedProfileId(defaultProfile.id);
+      // Check if current selected profile exists in the new profiles list
+      const currentProfileExists = selectedProfileId && profiles.some((p: any) => p.id === selectedProfileId);
+
+      // If no profile is selected OR the selected profile doesn't exist in current tenant, select default
+      if (!selectedProfileId || !currentProfileExists) {
+        setSelectedProfileId(defaultProfile.id);
+      }
+    } else {
+      // No profiles available, reset selection
+      setSelectedProfileId(null);
     }
-  }, [profiles, selectedProfileId]);
+  }, [profiles]);
 
   if (isLoading) {
     return (

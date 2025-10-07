@@ -173,24 +173,9 @@ class BusinessHoursProfileAdminSerializer(BaseModelSerializer):
     
     def get_holidays_count(self, obj):
         return obj.holidays.count()
-    
-    def create(self, validated_data):
-        """Override create to set up default regular hours"""
-        profile = super().create(validated_data)
-        
-        # Create regular hours for each day
-        days = [
-            (0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'),
-            (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')
-        ]
-        for day_num, day_name in days:
-            RegularHours.objects.create(
-                profile=profile,
-                day_of_week=day_num,
-                is_closed=True  # Start with all days closed
-            )
-        
-        return profile
+
+    # Note: RegularHours creation is handled in BusinessHoursProfileViewSet.perform_create()
+    # to ensure tenant is properly set
 
 
 # Service-driven serializers for complex operations

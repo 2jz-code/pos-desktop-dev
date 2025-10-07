@@ -124,6 +124,10 @@ class TerminalLocationInline(admin.StackedInline):
     # Here, you could add custom form logic to fetch locations from the Stripe API
     # and populate a dropdown for the `stripe_id` field.
 
+    def get_queryset(self, request):
+        """Use all_objects to show items across all tenants in admin"""
+        return TerminalLocation.all_objects.select_related("store_location")
+
 
 @admin.register(StoreLocation)
 class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):

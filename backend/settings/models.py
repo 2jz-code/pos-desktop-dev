@@ -453,7 +453,10 @@ class StockActionReasonConfig(SoftDeleteMixin):
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
-        related_name='stock_action_reason_configs'
+        related_name='stock_action_reason_configs',
+        null=True,
+        blank=True,
+        help_text="Tenant this reason belongs to. NULL for global system reasons shared across all tenants."
     )
     name = models.CharField(
         max_length=100,
@@ -480,8 +483,17 @@ class StockActionReasonConfig(SoftDeleteMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    objects = TenantSoftDeleteManager()
+    # Custom manager that returns both global (tenant=NULL) and tenant-specific reasons
+    objects = models.Manager()
     all_objects = models.Manager()
+
+    @classmethod
+    def get_available_for_tenant(cls, tenant):
+        """Get all reasons available for a specific tenant (global + tenant-specific)"""
+        from django.db.models import Q
+        return cls.objects.filter(
+            Q(tenant__isnull=True) | Q(tenant=tenant)
+        )
 
     class Meta:
         verbose_name = "Stock Action Reason"
@@ -503,15 +515,33 @@ class StockActionReasonConfig(SoftDeleteMixin):
         if self.is_system_reason and not self.is_active:
             raise ValidationError("System reasons cannot be deactivated")
 
-        # Ensure name is unique within active reasons per tenant
-        existing = StockActionReasonConfig.objects.filter(
-            tenant=self.tenant,
-            name=self.name,
-            is_active=True
-        ).exclude(pk=self.pk)
+        # System reasons must be global (tenant=NULL)
+        if self.is_system_reason and self.tenant is not None:
+            raise ValidationError("System reasons must be global (tenant should be NULL)")
+
+        # Custom reasons must have a tenant
+        if not self.is_system_reason and self.tenant is None:
+            raise ValidationError("Custom reasons must belong to a specific tenant")
+
+        # Ensure name is unique within active reasons
+        # For system reasons: unique globally
+        # For custom reasons: unique per tenant
+        if self.is_system_reason:
+            existing = StockActionReasonConfig.objects.filter(
+                name=self.name,
+                is_active=True,
+                is_system_reason=True
+            ).exclude(pk=self.pk)
+        else:
+            existing = StockActionReasonConfig.objects.filter(
+                tenant=self.tenant,
+                name=self.name,
+                is_active=True
+            ).exclude(pk=self.pk)
 
         if existing.exists():
-            raise ValidationError(f"An active reason with the name '{self.name}' already exists for this tenant")
+            scope = "globally" if self.is_system_reason else "for this tenant"
+            raise ValidationError(f"An active reason with the name '{self.name}' already exists {scope}")
     
     def save(self, *args, **kwargs):
         self.clean()
