@@ -6,34 +6,35 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
 from django.core.validators import EmailValidator
 from core_backend.utils.pii import PIIProtection
+from tenant.managers import TenantManager
 import uuid
 import secrets
 from datetime import timedelta
 
 
-class CustomerManager(models.Manager):
-    """Custom manager for Customer model"""
-    
+class CustomerManager(TenantManager):
+    """Custom manager for Customer model with tenant filtering"""
+
     def create_customer(self, email, password=None, **extra_fields):
         """Create and return a customer with email and password"""
         if not email:
             raise ValueError('Email is required')
-        
+
         email = self.normalize_email(email)
         customer = self.model(email=email, **extra_fields)
         if password:
             customer.set_password(password)
         customer.save(using=self._db)
         return customer
-    
+
     def normalize_email(self, email):
         """Normalize email address"""
         if email:
             email = email.strip().lower()
         return email
-    
+
     def get_by_email(self, email):
-        """Get customer by email address"""
+        """Get customer by email address (tenant-scoped)"""
         normalized_email = self.normalize_email(email)
         return self.get(email=normalized_email)
 
@@ -44,19 +45,27 @@ class Customer(models.Model):
     Separate from staff users with customer-specific features.
     No AbstractUser inheritance to avoid Django auth complexity.
     """
-    
+
     class ContactPreference(models.TextChoices):
         EMAIL = 'email', 'Email'
         SMS = 'sms', 'SMS'
         PHONE = 'phone', 'Phone Call'
         NONE = 'none', 'No Contact'
-    
+
     # Primary fields
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Multi-tenancy: Each customer belongs to a tenant
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='customers',
+        help_text="The tenant this customer belongs to"
+    )
+
     email = models.EmailField(
-        unique=True, 
         validators=[EmailValidator()],
-        help_text="Customer's primary email address"
+        help_text="Customer's primary email address (unique per tenant)"
     )
     password = models.CharField(
         max_length=128,
@@ -135,13 +144,24 @@ class Customer(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     objects = CustomerManager()
-    
+    all_objects = models.Manager()  # Bypass tenant filter (admin only)
+
     class Meta:
         db_table = 'customers_customer'
         verbose_name = 'Customer'
         verbose_name_plural = 'Customers'
+        constraints = [
+            # Email must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'email'],
+                name='unique_customer_email_per_tenant'
+            ),
+        ]
         indexes = [
-            models.Index(fields=['email']),
+            models.Index(fields=['tenant', 'email']),  # Primary lookup pattern
+            models.Index(fields=['tenant', 'is_active']),
+            models.Index(fields=['tenant', 'phone_number']),
+            models.Index(fields=['tenant', 'date_joined']),
             models.Index(fields=['phone_number']),
             models.Index(fields=['is_active']),
             models.Index(fields=['date_joined']),
@@ -187,16 +207,16 @@ class Customer(models.Model):
     # Analytics properties (calculated on demand, not stored)
     @property
     def total_orders(self):
-        """Calculate total number of orders"""
+        """Calculate total number of orders (tenant-scoped)"""
         from orders.models import Order
-        return Order.objects.filter(customer=self).count()
-    
+        return Order.objects.filter(customer=self, tenant=self.tenant).count()
+
     @property
     def total_spent(self):
-        """Calculate total amount spent"""
+        """Calculate total amount spent (tenant-scoped)"""
         from orders.models import Order
         from django.db.models import Sum
-        result = Order.objects.filter(customer=self).aggregate(
+        result = Order.objects.filter(customer=self, tenant=self.tenant).aggregate(
             total=Sum('grand_total')
         )
         return result['total'] or 0
@@ -211,9 +231,9 @@ class Customer(models.Model):
     
     @property
     def last_order_date(self):
-        """Get date of most recent order"""
+        """Get date of most recent order (tenant-scoped)"""
         from orders.models import Order
-        last_order = Order.objects.filter(customer=self).order_by('-created_at').first()
+        last_order = Order.objects.filter(customer=self, tenant=self.tenant).order_by('-created_at').first()
         return last_order.created_at if last_order else None
     
     @property
@@ -239,16 +259,25 @@ class Customer(models.Model):
 
 class CustomerAddress(models.Model):
     """Customer shipping/billing addresses"""
-    
+
     class AddressType(models.TextChoices):
         SHIPPING = 'shipping', 'Shipping'
         BILLING = 'billing', 'Billing'
         BOTH = 'both', 'Shipping & Billing'
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Multi-tenancy: Inherited from customer's tenant
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='customer_addresses',
+        help_text="The tenant this address belongs to (inherited from customer)"
+    )
+
     customer = models.ForeignKey(
-        Customer, 
-        on_delete=models.CASCADE, 
+        Customer,
+        on_delete=models.CASCADE,
         related_name='addresses'
     )
     
@@ -274,12 +303,25 @@ class CustomerAddress(models.Model):
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()  # Bypass tenant filter (admin only)
+
     class Meta:
         db_table = 'customers_customer_address'
         verbose_name = 'Customer Address'
         verbose_name_plural = 'Customer Addresses'
-        unique_together = ['customer', 'address_type', 'is_default']
+        constraints = [
+            # One default address per type per customer (tenant-scoped)
+            models.UniqueConstraint(
+                fields=['tenant', 'customer', 'address_type', 'is_default'],
+                name='unique_customer_address_default_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'customer']),
+            models.Index(fields=['tenant', 'is_default']),
+        ]
     
     def __str__(self):
         """PII-safe string representation"""
@@ -292,25 +334,45 @@ class CustomerPasswordResetToken(models.Model):
     Secure password reset tokens for customers.
     Single-use tokens with 24-hour expiry.
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Multi-tenancy: Inherited from customer's tenant
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='customer_password_reset_tokens',
+        help_text="The tenant this token belongs to (inherited from customer)"
+    )
+
     customer = models.ForeignKey(
-        Customer, 
-        on_delete=models.CASCADE, 
+        Customer,
+        on_delete=models.CASCADE,
         related_name='password_reset_tokens'
     )
-    token = models.CharField(max_length=40, unique=True, db_index=True)
+    token = models.CharField(max_length=40, db_index=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()  # Bypass tenant filter (admin only)
+
     class Meta:
         db_table = 'customers_password_reset_token'
         verbose_name = 'Password Reset Token'
         verbose_name_plural = 'Password Reset Tokens'
+        constraints = [
+            # Token must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'token'],
+                name='unique_password_reset_token_per_tenant'
+            ),
+        ]
         indexes = [
-            models.Index(fields=['token']),
-            models.Index(fields=['expires_at']),
+            models.Index(fields=['tenant', 'token']),
+            models.Index(fields=['tenant', 'customer']),
+            models.Index(fields=['tenant', 'expires_at']),
             models.Index(fields=['customer', 'used_at']),
         ]
     
@@ -354,25 +416,45 @@ class CustomerEmailVerificationToken(models.Model):
     Email verification tokens for customers.
     Single-use tokens with 24-hour expiry.
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Multi-tenancy: Inherited from customer's tenant
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='customer_email_verification_tokens',
+        help_text="The tenant this token belongs to (inherited from customer)"
+    )
+
     customer = models.ForeignKey(
-        Customer, 
-        on_delete=models.CASCADE, 
+        Customer,
+        on_delete=models.CASCADE,
         related_name='email_verification_tokens'
     )
-    token = models.CharField(max_length=40, unique=True, db_index=True)
+    token = models.CharField(max_length=40, db_index=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
+    objects = TenantManager()
+    all_objects = models.Manager()  # Bypass tenant filter (admin only)
+
     class Meta:
         db_table = 'customers_email_verification_token'
         verbose_name = 'Email Verification Token'
         verbose_name_plural = 'Email Verification Tokens'
+        constraints = [
+            # Token must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'token'],
+                name='unique_email_verification_token_per_tenant'
+            ),
+        ]
         indexes = [
-            models.Index(fields=['token']),
-            models.Index(fields=['expires_at']),
+            models.Index(fields=['tenant', 'token']),
+            models.Index(fields=['tenant', 'customer']),
+            models.Index(fields=['tenant', 'expires_at']),
             models.Index(fields=['customer', 'used_at']),
         ]
     

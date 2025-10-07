@@ -39,36 +39,44 @@ class CustomerRegisterView(APIView):
 
     def post(self, request):
         serializer = CustomerRegistrationSerializer(data=request.data)
-        
+
         if serializer.is_valid():
             try:
-                user = serializer.save()
-                
-                # Generate tokens for immediate login
+                # Set tenant from request (middleware extracts from subdomain)
+                if not hasattr(request, 'tenant') or not request.tenant:
+                    return Response(
+                        {"error": "Unable to determine restaurant. Please access via your restaurant's website."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Save customer with tenant
+                user = serializer.save(tenant=request.tenant)
+
+                # Generate tokens for immediate login (includes tenant claims)
                 tokens = CustomerAuthService.generate_customer_tokens(user)
-                
+
                 # Prepare response data
                 response_data = {
                     "message": "Account created successfully",
                     "customer": CustomerAuthService.get_customer_profile(user),
                 }
-                
+
                 response = Response(response_data, status=status.HTTP_201_CREATED)
-                
+
                 # Set authentication cookies using centralized service
                 AuthCookieService.set_customer_auth_cookies(
                     response, tokens["access"], tokens["refresh"]
                 )
-                
+
                 return response
-                
+
             except ValueError as e:
                 # Handle service-level validation errors
                 return Response(
-                    {"error": str(e)}, 
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

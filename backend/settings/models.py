@@ -65,6 +65,29 @@ class StoreLocation(SoftDeleteMixin):
         default=False, help_text="Is this the default location for inventory deduction?"
     )
 
+    # === GOOGLE INTEGRATIONS ===
+    google_place_id = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Google Place ID for this location (reviews, maps, directions). Set by POS company staff only.",
+    )
+
+    # === COORDINATES (Optional - for distance calculation) ===
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Latitude coordinate for distance calculation and map display",
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Longitude coordinate for distance calculation and map display",
+    )
+
     objects = TenantSoftDeleteManager()
     all_objects = models.Manager()
 

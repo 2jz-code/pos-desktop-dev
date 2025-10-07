@@ -134,23 +134,27 @@ class CustomerAuthService:
     def generate_customer_tokens(customer):
         """
         Generate JWT tokens for customer authentication.
-        Creates custom tokens with customer-specific claims.
+        Creates custom tokens with customer-specific claims including tenant.
         """
         if not isinstance(customer, Customer):
             raise ValueError("Invalid customer object")
 
         # Create custom refresh token manually
         refresh = RefreshToken()
-        
+
         # Add customer-specific claims
         refresh['user_type'] = 'customer'
         refresh['customer_id'] = str(customer.id)
         refresh['email'] = customer.email
         refresh['is_active'] = customer.is_active
-        
+
+        # CRITICAL: Add tenant claims for multi-tenancy
+        refresh['tenant_id'] = str(customer.tenant.id)
+        refresh['tenant_slug'] = customer.tenant.slug
+
         # Generate access token from refresh
         access = refresh.access_token
-        
+
         return {
             "refresh": str(refresh),
             "access": str(access),
@@ -328,9 +332,12 @@ class CustomerAuthService:
                 used_at__isnull=True,
                 expires_at__gt=timezone.now()
             ).update(used_at=timezone.now())
-            
-            # Create new token
-            token = CustomerPasswordResetToken.objects.create(customer=customer)
+
+            # Create new token (tenant inherited from customer)
+            token = CustomerPasswordResetToken.objects.create(
+                customer=customer,
+                tenant=customer.tenant
+            )
             
             # Send password reset email
             email_service = EmailService()
@@ -429,9 +436,12 @@ class CustomerAuthService:
             used_at__isnull=True,
             expires_at__gt=timezone.now()
         ).update(used_at=timezone.now())
-        
-        # Create new token
-        token = CustomerEmailVerificationToken.objects.create(customer=customer)
+
+        # Create new token (tenant inherited from customer)
+        token = CustomerEmailVerificationToken.objects.create(
+            customer=customer,
+            tenant=customer.tenant
+        )
         
         # Send verification email
         email_service = EmailService()

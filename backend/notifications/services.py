@@ -63,26 +63,8 @@ class EmailService:
             except pytz.UnknownTimeZoneError:
                 local_pickup_time = utc_pickup_time  # Fallback to UTC
 
-            # Get store info from settings
-            try:
-                store_settings = GlobalSettings.objects.first()
-                if store_settings:
-                    store_info = {
-                        "address": store_settings.store_address
-                        or "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
-                        "phone_display": store_settings.store_phone_display
-                        or "(651) 412-5336",
-                        "phone": store_settings.store_phone or "6514125336",
-                    }
-                else:
-                    # Raise an exception to be caught by the except block
-                    raise GlobalSettings.DoesNotExist
-            except (GlobalSettings.DoesNotExist, Exception):
-                store_info = {
-                    "address": "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
-                    "phone_display": "(651) 412-5336",
-                    "phone": "6514125336",
-                }
+            # Get store info from order's tenant settings
+            store_info = self._get_store_info(order.tenant)
 
             # Determine which template to use and prepare context
             if order.customer:
@@ -225,7 +207,7 @@ class EmailService:
                     "location": location.name,
                     "threshold": float(threshold) if threshold is not None else 0,
                 },
-                "store_info": self._get_store_info(),
+                "store_info": self._get_store_info(product.tenant),
             }
 
             subject = f"Low Stock Alert: {product.name}"
@@ -246,21 +228,26 @@ class EmailService:
             logger.error(f"Failed to send low stock alert for product_id {product.id}: {type(e).__name__}")
             return False
 
-    def _get_store_info(self):
-        """Get store information from settings with fallback defaults."""
+    def _get_store_info(self, tenant):
+        """
+        Get store information from settings with fallback defaults.
+
+        Args:
+            tenant: Tenant instance to get settings for
+        """
         try:
-            store_settings = GlobalSettings.objects.first()
-            if store_settings:
-                return {
-                    "address": store_settings.store_address
-                    or "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
-                    "phone_display": store_settings.store_phone_display
-                    or "(651) 412-5336",
-                    "phone": store_settings.store_phone or "6514125336",
-                }
+            store_settings = GlobalSettings.objects.get(tenant=tenant)
+            return {
+                "address": store_settings.store_address
+                or "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
+                "phone_display": store_settings.store_phone_display
+                or "(651) 412-5336",
+                "phone": store_settings.store_phone or "6514125336",
+            }
         except (GlobalSettings.DoesNotExist, Exception):
             pass
 
+        # Fallback to default values if no settings found
         return {
             "address": "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
             "phone_display": "(651) 412-5336",
@@ -276,8 +263,15 @@ class EmailService:
             low_stock_items: List of InventoryStock instances below threshold
         """
         try:
+            if not low_stock_items:
+                logger.warning("No low stock items provided to send_daily_low_stock_summary")
+                return False
+
             template_name = "emails/daily_low_stock_summary.html"
-            
+
+            # Get tenant from first item (all items should be from same tenant)
+            tenant = low_stock_items[0].tenant
+
             # Prepare item data for template
             # FIX: N+1 queries are already prevented since low_stock_items should be pre-fetched
             # with select_related('product', 'location') in the calling code
@@ -290,16 +284,16 @@ class EmailService:
                     "threshold": float(item.effective_low_stock_threshold),
                     "shortage": float(item.effective_low_stock_threshold - item.quantity),
                 })
-            
+
             context = {
                 "items": items_data,
                 "total_items": len(items_data),
-                "store_info": self._get_store_info(),
+                "store_info": self._get_store_info(tenant),
                 "report_date": timezone.now().strftime("%B %d, %Y"),
             }
 
             subject = f"Daily Low Stock Report - {len(items_data)} Items Need Attention"
-            
+
             self.send_email(
                 recipient_list=[recipient_email],
                 subject=subject,
