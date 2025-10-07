@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from users.models import User
 
 
 class SettingsReadOnlyOrOwnerAdmin(permissions.BasePermission):
@@ -18,7 +19,7 @@ class SettingsReadOnlyOrOwnerAdmin(permissions.BasePermission):
             return False
 
         # Only owners and admins can write
-        return request.user.role in ["owner", "admin"] or request.user.is_superuser
+        return request.user.role in [User.Role.OWNER, User.Role.ADMIN] or request.user.is_superuser
 
 
 class FinancialSettingsReadAccess(permissions.BasePermission):
@@ -36,4 +37,4 @@ class FinancialSettingsReadAccess(permissions.BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        return request.user.role in ["owner", "admin"] or request.user.is_superuser
+        return request.user.role in [User.Role.OWNER, User.Role.ADMIN] or request.user.is_superuser

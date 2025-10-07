@@ -460,16 +460,17 @@ class PrinterConfigurationService:
             ValidationError: If validation fails
         """
         instance = PrinterConfigurationService.get_printer_configuration()
-        
+
         with transaction.atomic():
-            # Apply updates to instance
+            # Apply updates to instance (exclude tenant field - it's managed by tenant context)
             for field, value in update_data.items():
-                if hasattr(instance, field):
+                if hasattr(instance, field) and field != 'tenant':
                     setattr(instance, field, value)
-                    
+
             # Save with validation
+            update_fields = [k for k in update_data.keys() if k != 'tenant']
             instance.full_clean()
-            instance.save(update_fields=list(update_data.keys()) if partial else None)
+            instance.save(update_fields=update_fields if partial else None)
             
         return instance
 

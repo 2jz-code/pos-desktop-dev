@@ -42,6 +42,7 @@ class PrinterConfigurationSerializer(BaseModelSerializer):
     class Meta:
         model = PrinterConfiguration
         fields = "__all__"
+        read_only_fields = ['tenant']
         select_related_fields = []
         prefetch_related_fields = []
 
