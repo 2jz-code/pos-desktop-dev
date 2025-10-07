@@ -61,7 +61,7 @@ export default function AddEditDiscountDialog({
 
 	const { data: products, isLoading: isLoadingProducts } = useQuery({
 		queryKey: ["products"],
-		queryFn: () => productService.getProducts(),
+		queryFn: () => productService.getAllProducts(),
 		enabled: isOpen,
 	});
 
