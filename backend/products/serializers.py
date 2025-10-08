@@ -750,6 +750,7 @@ class ProductCreateSerializer(BaseModelSerializer):
     class Meta:
         model = Product
         fields = [
+            "id",
             "name",
             "description",
             "price",
@@ -764,6 +765,7 @@ class ProductCreateSerializer(BaseModelSerializer):
             "location_id",
             "image",
         ]
+        read_only_fields = ["id"]
 
     def validate_barcode(self, value):
         """
