@@ -57,35 +57,25 @@ class InventoryService:
             logger.error(f"Failed to log stock operation for {product.name} at {location.name}: {e}")
     
     @staticmethod
-    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
-    # @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
+    @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
     def get_stock_levels_by_location(location_id):
-        """Cache stock levels for POS availability checks
-
-        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
-        causing all tenants to share the same cached results.
-        """
+        """Cache stock levels for POS availability checks (tenant-scoped via TenantManager)"""
         return dict(InventoryStock.objects.filter(
             location_id=location_id
         ).values_list('product_id', 'quantity'))
     
     @staticmethod
-    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
-    # @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
+    @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
     def get_recipe_ingredients_map():
-        """Cache recipe-to-ingredients mapping for menu items
-
-        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
-        causing all tenants to share the same cached results.
-        """
+        """Cache recipe-to-ingredients mapping for menu items (tenant-scoped via TenantManager)"""
         recipes = {}
-        # FIX: Add select_related to prevent N+1 queries when accessing product.name and product.product_type.name
+        # FIX: Use menu_item field (Recipe model uses menu_item, not product)
         for recipe in Recipe.objects.prefetch_related(
             'recipeitem_set__product__product_type'
-        ).select_related('product'):
-            recipes[recipe.product_id] = [
+        ).select_related('menu_item'):
+            recipes[recipe.menu_item_id] = [
                 {
-                    'product_id': item.product_id, 
+                    'product_id': item.product_id,
                     'quantity': float(item.quantity),
                     'product_name': item.product.name,
                     'product_type': item.product.product_type.name if item.product.product_type else 'unknown'
@@ -95,14 +85,9 @@ class InventoryService:
         return recipes
     
     @staticmethod
-    # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
-    # @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
+    @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
     def get_inventory_availability_status(location_id=None):
-        """Cache product availability status for POS display
-
-        NOTE: Caching disabled until Phase 2 - cache keys don't include tenant,
-        causing all tenants to share the same cached results.
-        """
+        """Cache product availability status for POS display (tenant-scoped via TenantManager)"""
         from settings.config import app_settings
         
         if not location_id:

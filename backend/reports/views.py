@@ -867,9 +867,11 @@ class BulkExportViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="status/(?P<operation_id>[^/.]+)")
     def get_export_status(self, request, operation_id=None):
-        """Get the status of a bulk export operation"""
+        """Get the status of a bulk export operation with tenant isolation"""
         try:
-            status_data = AdvancedExportService.get_export_status(operation_id)
+            # Pass tenant_id for proper cache isolation
+            tenant_id = str(request.user.tenant.id) if hasattr(request.user, 'tenant') else None
+            status_data = AdvancedExportService.get_export_status(operation_id, tenant_id)
             serializer = BulkExportStatusSerializer(data=status_data)
 
             if serializer.is_valid():
@@ -889,14 +891,16 @@ class BulkExportViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="queue-status")
     def get_queue_status(self, request):
-        """Get the current status of the export queue (admin only)"""
+        """Get the current status of the export queue (admin only) with tenant isolation"""
         if not request.user.is_staff:
             return Response(
                 {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
             )
 
         try:
-            queue_status = ExportQueue.get_queue_status()
+            # Pass tenant_id for proper queue isolation
+            tenant_id = str(request.user.tenant.id) if hasattr(request.user, 'tenant') else None
+            queue_status = ExportQueue.get_queue_status(tenant_id)
             serializer = ExportQueueStatusSerializer(data=queue_status)
 
             if serializer.is_valid():

@@ -11,12 +11,12 @@ from .cache import AdvancedCacheManager, advanced_cache, CacheWarmingManager, Ca
 logger = logging.getLogger(__name__)
 
 def simple_cache(timeout=300, key_prefix='', log_performance=True, cache_name='static_data'):
-    """Enhanced simple caching decorator with advanced backend support"""
+    """Enhanced simple caching decorator with advanced backend support and tenant isolation"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             start_time = time.time()
-            
+
             # Use advanced cache manager for better reliability
             cache_instance = AdvancedCacheManager.get_cache(cache_name)
             if not cache_instance:
@@ -26,10 +26,16 @@ def simple_cache(timeout=300, key_prefix='', log_performance=True, cache_name='s
                 if log_performance:
                     CacheMonitor.log_cache_performance(f"unavailable_{func.__name__}", hit=False, execution_time=execution_time, cache_name="unavailable")
                 return result
-            
-            # Generate cache key with versioning
+
+            # Get current tenant for cache key isolation
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+            tenant_id = str(tenant.id) if tenant else 'none'
+
+            # Generate cache key with versioning AND tenant isolation
             cache_key = AdvancedCacheManager.cache_key(
                 'simple_cache', func.__name__, key_prefix,
+                tenant_id=tenant_id,  # CRITICAL: Include tenant in cache key
                 args_hash=hashlib.md5(str(args).encode()).hexdigest()[:8],
                 kwargs_hash=hashlib.md5(str(sorted(kwargs.items())).encode()).hexdigest()[:8]
             )
@@ -65,17 +71,33 @@ def simple_cache(timeout=300, key_prefix='', log_performance=True, cache_name='s
         return wrapper
     return decorator
 
-def invalidate_cache_pattern(pattern, cache_name='static_data'):
-    """Enhanced pattern invalidation using advanced cache manager"""
+def invalidate_cache_pattern(pattern, cache_name='static_data', tenant=None):
+    """
+    Enhanced pattern invalidation using advanced cache manager with tenant isolation.
+
+    Args:
+        pattern: Cache key pattern to invalidate (e.g., '*get_cached_products*')
+        cache_name: Name of cache to invalidate
+        tenant: Specific tenant to invalidate cache for (if None, uses current tenant context)
+    """
+    # Get tenant for scoped invalidation
+    if tenant is None:
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+
+    # Build tenant-scoped pattern
+    tenant_id = str(tenant.id) if tenant else 'none'
+    tenant_scoped_pattern = f"*tenant_id={tenant_id}*{pattern}"
+
     # Use advanced cache manager for better error handling
-    result_static = AdvancedCacheManager.invalidate_pattern(pattern, 'static_data')
-    result_default = AdvancedCacheManager.invalidate_pattern(pattern, 'default')
-    
+    result_static = AdvancedCacheManager.invalidate_pattern(tenant_scoped_pattern, 'static_data')
+    result_default = AdvancedCacheManager.invalidate_pattern(tenant_scoped_pattern, 'default')
+
     if result_static or result_default:
-        logger.info(f"Successfully invalidated pattern '{pattern}' across caches")
+        logger.info(f"Successfully invalidated pattern '{tenant_scoped_pattern}' across caches for tenant {tenant_id}")
     else:
-        logger.warning(f"Failed to invalidate pattern '{pattern}'")
-    
+        logger.warning(f"Failed to invalidate pattern '{tenant_scoped_pattern}' for tenant {tenant_id}")
+
     return result_static or result_default
 
 # Convenience functions for common cache operations

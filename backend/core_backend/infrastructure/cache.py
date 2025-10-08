@@ -498,7 +498,8 @@ class CacheMonitor:
                 elif execution_time > 500:  # Over 500ms
                     logger.info(f"⏰ CACHE {status} [{cache_source}]: {cache_key[:50]}... took {execution_time:.1f}ms")
                 else:
-                    logger.debug(f"⚡ CACHE {status} [{cache_source}]: {cache_key[:50]}... took {execution_time:.1f}ms")
+                    # Changed to INFO so cache hits are visible in production logs
+                    logger.info(f"⚡ CACHE {status} [{cache_source}]: {cache_key[:50]}... took {execution_time:.1f}ms")
                     
                 # Track cache performance metrics (could be sent to monitoring service)
                 cls._track_cache_metrics(cache_key, hit, execution_time, cache_name)

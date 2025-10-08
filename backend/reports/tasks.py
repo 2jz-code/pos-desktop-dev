@@ -542,8 +542,9 @@ def create_bulk_export_async(
             priority=priority,
         )
 
-        # Add to processing queue
-        ExportQueue.add_to_queue(operation_id, priority)
+        # Add to processing queue with tenant isolation
+        tenant_id = str(user.tenant.id)
+        ExportQueue.add_to_queue(operation_id, tenant_id, priority)
 
         # Queue the processing task based on priority
         if priority >= AdvancedExportService.PRIORITY_HIGH:
@@ -570,27 +571,35 @@ def create_bulk_export_async(
 @shared_task
 def process_export_queue():
     """
-    Process the export queue in priority order.
+    Process the export queue in priority order for all tenants.
     This task runs periodically to handle queued exports.
     """
+    from tenant.models import Tenant
+
     try:
         processed_count = 0
-        max_concurrent_exports = 3  # Limit concurrent exports
+        max_concurrent_exports = 3  # Limit concurrent exports per tenant
 
-        while processed_count < max_concurrent_exports:
-            # Get next operation from queue
-            operation_id = ExportQueue.get_next_operation()
+        # Process exports for all active tenants
+        for tenant in Tenant.objects.filter(is_active=True):
+            tenant_id = str(tenant.id)
+            tenant_processed = 0
 
-            if not operation_id:
-                break  # No more operations in queue
+            while tenant_processed < max_concurrent_exports:
+                # Get next operation from this tenant's queue
+                operation_id = ExportQueue.get_next_operation(tenant_id)
 
-            # Process the export
-            process_bulk_export_async.delay(operation_id)
-            processed_count += 1
+                if not operation_id:
+                    break  # No more operations in this tenant's queue
 
-            logger.info(f"Queued export for processing: {operation_id}")
+                # Process the export
+                process_bulk_export_async.delay(operation_id)
+                processed_count += 1
+                tenant_processed += 1
 
-        logger.info(f"Processed {processed_count} exports from queue")
+                logger.info(f"Queued export for processing (tenant {tenant.slug}): {operation_id}")
+
+        logger.info(f"Processed {processed_count} exports from all tenant queues")
 
         return {"status": "completed", "exports_processed": processed_count}
 

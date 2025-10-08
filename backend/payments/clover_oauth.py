@@ -12,28 +12,40 @@ logger = logging.getLogger(__name__)
 class CloverOAuthService:
     """
     Service for handling Clover OAuth authentication and token management.
+
+    IMPORTANT: This service is tenant-aware. OAuth tokens are cached per tenant
+    to prevent cross-tenant token leakage.
     """
-    
+
     # Clover API URLs
     SANDBOX_BASE_URL = "https://apisandbox.dev.clover.com"
     PRODUCTION_BASE_URL = "https://api.clover.com"
-    
+
     # OAuth endpoints
     OAUTH_AUTHORIZE_URL = "https://sandbox.dev.clover.com/oauth/authorize"
     OAUTH_TOKEN_URL = "https://sandbox.dev.clover.com/oauth/token"
-    
+
     # Production URLs (uncomment when ready for production)
     # OAUTH_AUTHORIZE_URL = "https://clover.com/oauth/authorize"
     # OAUTH_TOKEN_URL = "https://clover.com/oauth/token"
-    
-    def __init__(self, merchant_id: str = None):
+
+    def __init__(self, merchant_id: str = None, tenant=None):
         self.app_id = getattr(settings, 'CLOVER_APP_ID', None)
         self.app_secret = getattr(settings, 'CLOVER_APP_SECRET', None)
         self.merchant_id = merchant_id
         self.base_url = self.SANDBOX_BASE_URL  # Use sandbox by default
-        
+
+        # Tenant context for cache isolation
+        if tenant is None:
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+        self.tenant = tenant
+
         if not self.app_id or not self.app_secret:
             raise ValueError("Clover APP_ID and APP_SECRET must be configured in settings")
+
+        if not self.tenant:
+            logger.warning("CloverOAuthService initialized without tenant context - cache isolation may not work correctly")
     
     def get_authorization_url(self, redirect_uri: str, state: str = None) -> str:
         """
@@ -104,37 +116,47 @@ class CloverOAuthService:
     
     def get_cached_token(self, merchant_id: str) -> Optional[str]:
         """
-        Retrieve cached access token for a merchant.
-        
+        Retrieve cached access token for a merchant (tenant-scoped).
+
         Args:
             merchant_id: Clover merchant ID
-            
+
         Returns:
             Access token string or None if not cached/expired
         """
-        cache_key = f"clover_token_{merchant_id}"
+        if not self.tenant:
+            logger.warning(f"get_cached_token called without tenant context for merchant {merchant_id}")
+            return None
+
+        # Tenant-scoped cache key to prevent cross-tenant token leakage
+        cache_key = f"clover_token_{self.tenant.id}_{merchant_id}"
         token_data = cache.get(cache_key)
-        
+
         if token_data and isinstance(token_data, dict):
             return token_data.get('access_token')
-        
+
         return None
     
     def _cache_token(self, merchant_id: str, token_data: Dict[str, Any]):
         """
-        Cache the access token with appropriate expiration.
-        
+        Cache the access token with appropriate expiration (tenant-scoped).
+
         Args:
             merchant_id: Clover merchant ID
             token_data: Token response from Clover
         """
-        cache_key = f"clover_token_{merchant_id}"
-        
+        if not self.tenant:
+            logger.warning(f"_cache_token called without tenant context for merchant {merchant_id} - skipping cache")
+            return
+
+        # Tenant-scoped cache key to prevent cross-tenant token leakage
+        cache_key = f"clover_token_{self.tenant.id}_{merchant_id}"
+
         # Clover tokens typically don't expire, but cache for 30 days as a safety measure
         cache_timeout = 30 * 24 * 60 * 60  # 30 days in seconds
-        
+
         cache.set(cache_key, token_data, cache_timeout)
-        logger.debug(f"Cached token for merchant {merchant_id}")
+        logger.debug(f"Cached token for tenant {self.tenant.id}, merchant {merchant_id}")
     
     def _extract_merchant_id_from_token(self, token_data: Dict[str, Any]) -> Optional[str]:
         """

@@ -357,26 +357,22 @@ class ProductViewSet(BaseViewSet):
         return queryset
 
     def list(self, request, *args, **kwargs):
-        # TODO Phase 2: Re-enable caching with tenant-scoped cache keys
-        # Cache is currently disabled because cache keys don't include tenant
-        # This causes all tenants to share the same cached (empty) results
+        # Cache for common POS queries (tenant-scoped via TenantManager)
+        query_params = dict(request.GET.items())
 
-        # # Cache for common POS queries
-        # query_params = dict(request.GET.items())
-        #
-        # # Cache unfiltered requests
-        # if not query_params:
-        #     products = ProductService.get_cached_products_list()
-        #     serializer = self.get_serializer(products, many=True)
-        #     return Response(serializer.data)
-        #
-        # # Cache the most common POS query: ?is_active=true
-        # if query_params == {"is_active": "true"}:
-        #     products = ProductService.get_cached_active_products_list()
-        #     serializer = self.get_serializer(products, many=True)
-        #     return Response(serializer.data)
+        # Cache unfiltered requests
+        if not query_params:
+            products = ProductService.get_cached_products_list()
+            serializer = self.get_serializer(products, many=True)
+            return Response(serializer.data)
 
-        # Fall back to optimized queryset (no caching for now)
+        # Cache the most common POS query: ?is_active=true
+        if query_params == {"is_active": "true"}:
+            products = ProductService.get_cached_active_products_list()
+            serializer = self.get_serializer(products, many=True)
+            return Response(serializer.data)
+
+        # Fall back to optimized queryset for filtered requests
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
@@ -607,16 +603,17 @@ class CategoryViewSet(BaseViewSet):
         # For now, disable caching to ensure proper ordering is applied
         # TODO: Update cache to respect hierarchical ordering
         # Use cache for simple requests without complex filtering
-        # if (
-        #     not request.query_params.get("parent")
-        #     and not request.query_params.get("modified_since")
-        #     and not request.query_params.get("include_archived")
-        # ):
-        #     categories = ProductService.get_cached_category_tree()
-        #     serializer = self.get_serializer(categories, many=True)
-        #     return Response(serializer.data)
+        # Cache unfiltered category tree requests (tenant-scoped via TenantManager)
+        if (
+            not request.query_params.get("parent")
+            and not request.query_params.get("modified_since")
+            and not request.query_params.get("include_archived")
+        ):
+            categories = ProductService.get_cached_category_tree()
+            serializer = self.get_serializer(categories, many=True)
+            return Response(serializer.data)
 
-        # Use queryset ordering for all requests
+        # Use queryset ordering for filtered requests
         return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["patch"], url_path="bulk-update")
