@@ -128,7 +128,6 @@ class PaymentService:
             defaults={
                 "total_amount_due": order.grand_total,
                 "status": Payment.PaymentStatus.UNPAID,
-                "tenant": order.tenant,
             },
         )
 
@@ -367,7 +366,6 @@ class PaymentService:
             order=order,
             defaults={
                 "total_amount_due": order.grand_total,
-                "tenant": order.tenant
             }
         )
         # If the order total has changed since the payment was initiated, update it.
@@ -470,7 +468,6 @@ class PaymentService:
             amount=amount,
             method=method,
             surcharge=surcharge,
-            tenant=payment.tenant,
         )
 
         strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
@@ -685,7 +682,6 @@ class PaymentService:
             # No transaction_id or provider_response as it's internal
             refund_reason=f"Internal refund of {amount_to_refund}",
             refunded_amount=amount_to_refund,  # Mark this new transaction as refunded this amount
-            tenant=self.payment.tenant,
         )
 
         PaymentService._recalculate_payment_amounts(self.payment)
@@ -801,7 +797,6 @@ class PaymentService:
             method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
             status=PaymentTransaction.TransactionStatus.PENDING,
             transaction_id=intent.id,
-            tenant=payment.tenant,
         )
 
         # Return the necessary details to the view
@@ -859,7 +854,6 @@ class PaymentService:
                 "total_amount_due": order.grand_total,
                 "amount_paid": order.grand_total,
                 "status": Payment.PaymentStatus.PAID,
-                "tenant": order.tenant,
             },
         )
 
@@ -883,7 +877,6 @@ class PaymentService:
                 "platform": platform_id,
                 "timestamp": payment.created_at.isoformat()
             },
-            tenant=payment.tenant,
         )
 
         # Update order status
