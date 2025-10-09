@@ -55,22 +55,37 @@ def handle_order_completion_inventory(sender, instance, created, **kwargs):
     """
     Handles inventory deduction when any order is completed.
     This receiver listens for Order model post_save signals.
+
+    PERFORMANCE FIX: Inventory processing is now async via Celery to prevent
+    blocking payment transactions.
     """
     if instance.status == Order.OrderStatus.COMPLETED and not created:
         # Skip inventory processing for test orders
         if instance.order_number and instance.order_number.startswith('TEST-'):
             logger.info(f"Skipping inventory processing for test order {instance.order_number}")
             return
-            
-        from inventory.services import InventoryService
 
+        # CRITICAL FIX: Process inventory asynchronously to avoid blocking payment transactions
+        # This prevents payment settlement from taking 1+ seconds due to inventory loops
         try:
-            InventoryService.process_order_completion(instance)
+            from inventory.tasks import process_order_completion_inventory
+
+            # Queue the inventory processing task
+            process_order_completion_inventory.delay(str(instance.id))
+
             logger.info(
-                f"Inventory processed for completed order {instance.order_number}"
+                f"Queued async inventory processing for completed order {instance.order_number}"
             )
         except Exception as e:
-            logger.error(f"Failed to process inventory for order {instance.id}: {e}")
+            logger.error(f"Failed to queue inventory task for order {instance.id}: {e}")
+            # Fallback to synchronous processing if Celery is unavailable
+            logger.warning(f"Falling back to synchronous inventory processing for order {instance.id}")
+            try:
+                from inventory.services import InventoryService
+                InventoryService.process_order_completion(instance)
+                logger.info(f"Synchronous inventory processing completed for order {instance.order_number}")
+            except Exception as sync_error:
+                logger.error(f"Synchronous inventory processing also failed for order {instance.id}: {sync_error}")
 
 
 @receiver(post_save, sender=Order)
