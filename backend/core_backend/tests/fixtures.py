@@ -66,7 +66,8 @@ def admin_user_tenant_a(tenant_a):
         username='admin_pizza',
         password='password123',
         tenant=tenant_a,
-        role='owner'
+        role=User.Role.OWNER,
+        is_pos_staff=True
     )
 
 
@@ -78,7 +79,8 @@ def admin_user_tenant_b(tenant_b):
         username='admin_burger',
         password='password123',
         tenant=tenant_b,
-        role='owner'
+        role=User.Role.OWNER,
+        is_pos_staff=True
     )
 
 
@@ -90,7 +92,8 @@ def manager_user_tenant_a(tenant_a):
         username='manager_pizza',
         password='password123',
         tenant=tenant_a,
-        role='manager'
+        role=User.Role.MANAGER,
+        is_pos_staff=True
     )
 
 
@@ -102,7 +105,8 @@ def cashier_user_tenant_a(tenant_a):
         username='cashier_pizza',
         password='password123',
         tenant=tenant_a,
-        role='cashier'
+        role=User.Role.CASHIER,
+        is_pos_staff=True
     )
 
 
@@ -171,7 +175,7 @@ def product_tenant_a(tenant_a, category_tenant_a, product_type_tenant_a):
     """Create sample product for tenant A (Pepperoni Pizza)"""
     return Product.objects.create(
         name='Pepperoni Pizza',
-        price=Decimal('15.99'),
+        price=Decimal('10.00'),
         tenant=tenant_a,
         category=category_tenant_a,
         product_type=product_type_tenant_a,
@@ -207,7 +211,7 @@ def modifier_option_tenant_a(tenant_a, modifier_set_tenant_a):
     return ModifierOption.objects.create(
         modifier_set=modifier_set_tenant_a,
         name='Large',
-        price_adjustment=Decimal('3.00'),
+        price_delta=Decimal('3.00'),
         tenant=tenant_a
     )
 
@@ -233,12 +237,12 @@ def order_tenant_a(tenant_a, customer_tenant_a):
     """Create sample order for tenant A"""
     return Order.objects.create(
         tenant=tenant_a,
-        order_type='dine_in',
-        status='pending',
+        order_type=Order.OrderType.POS,
+        status=Order.OrderStatus.PENDING,
         customer=customer_tenant_a,
-        subtotal=Decimal('15.99'),
-        tax_total=Decimal('1.60'),
-        grand_total=Decimal('17.59')
+        subtotal=Decimal('0.00'),
+        tax_total=Decimal('0.00'),
+        grand_total=Decimal('0.00')
     )
 
 
@@ -292,7 +296,7 @@ def gift_card_tenant_a(tenant_a):
         code='GIFT-A-12345',
         original_balance=Decimal('50.00'),
         current_balance=Decimal('50.00'),
-        status='active'
+        status=GiftCard.GiftCardStatus.ACTIVE
     )
 
 

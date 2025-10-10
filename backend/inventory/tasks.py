@@ -7,59 +7,59 @@ from .services import InventoryService
 logger = logging.getLogger(__name__)
 
 
-  @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-  def process_order_completion_inventory(self, order_id):
-      """
-      Async task to process inventory deductions for a completed order.
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_order_completion_inventory(self, order_id):
+    """
+    Async task to process inventory deductions for a completed order.
 
-      This task is triggered after payment completes to avoid blocking
-      the payment transaction with inventory operations.
+    This task is triggered after payment completes to avoid blocking
+    the payment transaction with inventory operations.
 
-      Args:
-          order_id: UUID of the order to process
+    Args:
+        order_id: UUID of the order to process
 
-      Returns:
-          dict: Status and details of inventory processing
-      """
-      try:
-          from orders.models import Order
+    Returns:
+        dict: Status and details of inventory processing
+    """
+    try:
+        from orders.models import Order
 
-          logger.info(f"Processing inventory for order {order_id}")
+        logger.info(f"Processing inventory for order {order_id}")
 
-          # Fetch the order
-          order = Order.objects.get(id=order_id)
+        # Fetch the order
+        order = Order.objects.get(id=order_id)
 
-          # Skip test orders
-          if order.order_number and order.order_number.startswith('TEST-'):
-              logger.info(f"Skipping inventory processing for test order {order.order_number}")
-              return {
-                  "status": "skipped",
-                  "reason": "test_order",
-                  "order_number": order.order_number
-              }
+        # Skip test orders
+        if order.order_number and order.order_number.startswith('TEST-'):
+            logger.info(f"Skipping inventory processing for test order {order.order_number}")
+            return {
+                "status": "skipped",
+                "reason": "test_order",
+                "order_number": order.order_number
+            }
 
-          # Process inventory deduction
-          InventoryService.process_order_completion(order)
+        # Process inventory deduction
+        InventoryService.process_order_completion(order)
 
-          logger.info(f"Inventory processed successfully for order {order.order_number}")
+        logger.info(f"Inventory processed successfully for order {order.order_number}")
 
-          return {
-              "status": "completed",
-              "order_id": str(order_id),
-              "order_number": order.order_number
-          }
+        return {
+            "status": "completed",
+            "order_id": str(order_id),
+            "order_number": order.order_number
+        }
 
-      except Order.DoesNotExist:
-          logger.error(f"Order {order_id} not found for inventory processing")
-          return {
-              "status": "failed",
-              "error": "Order not found",
-              "order_id": str(order_id)
-          }
-      except Exception as exc:
-          logger.error(f"Error processing inventory for order {order_id}: {exc}")
-          # Retry on failure
-          raise self.retry(exc=exc)
+    except Order.DoesNotExist:
+        logger.error(f"Order {order_id} not found for inventory processing")
+        return {
+            "status": "failed",
+            "error": "Order not found",
+            "order_id": str(order_id)
+        }
+    except Exception as exc:
+        logger.error(f"Error processing inventory for order {order_id}: {exc}")
+        # Retry on failure
+        raise self.retry(exc=exc)
           
 @shared_task
 def daily_low_stock_sweep():

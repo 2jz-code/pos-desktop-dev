@@ -465,11 +465,17 @@ class PaymentService:
             surcharge = amount * app_settings.surcharge_percentage
             surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+        # Extract tip from kwargs if provided
+        tip = kwargs.get('tip', Decimal("0.00"))
+        if tip and not isinstance(tip, Decimal):
+            tip = Decimal(str(tip))
+
         transaction = PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
             method=method,
             surcharge=surcharge,
+            tip=tip,
             tenant=payment.tenant,
         )
 
@@ -688,7 +694,8 @@ class PaymentService:
             tenant=self.payment.tenant,
         )
 
-        PaymentService._recalculate_payment_amounts(self.payment)
+        # Update payment status to reflect refund (uses legacy method for backward compatibility)
+        PaymentService._update_payment_status(self.payment)
         return self.payment
 
     @transaction.atomic
