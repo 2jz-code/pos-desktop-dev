@@ -246,6 +246,7 @@ class BusinessHoursProfileViewSet(NonPaginatedBaseViewSet):
     search_fields = ['name', 'timezone']
     filterset_fields = ['is_active', 'is_default']
     ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['-is_default', 'name']  # Default ordering: default profiles first, then alphabetically
 
     def get_queryset(self):
         """Filter by active profiles unless specifically requested"""

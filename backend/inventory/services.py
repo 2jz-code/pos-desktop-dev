@@ -179,16 +179,29 @@ class InventoryService:
         # Track previous quantity for notification logic and history
         previous_quantity = stock.quantity
         quantity_decimal = Decimal(str(quantity))
-        stock.quantity += quantity_decimal
-        
+
+        # CRITICAL FIX: Use atomic F() expression to prevent race condition
+        # This prevents lost updates when multiple workers add stock simultaneously
+        from django.db.models import F
+
         # Check if stock crossed back above threshold (reset notification flag)
         threshold = stock.effective_low_stock_threshold
-        if (previous_quantity <= threshold and 
-            stock.quantity > threshold and 
+        if (previous_quantity <= threshold and
+            (previous_quantity + quantity_decimal) > threshold and
             stock.low_stock_notified):
-            stock.low_stock_notified = False
-        
-        stock.save()
+            # Update quantity atomically AND reset notification flag
+            InventoryStock.objects.filter(id=stock.id).update(
+                quantity=F('quantity') + quantity_decimal,
+                low_stock_notified=False
+            )
+        else:
+            # Just update quantity atomically
+            InventoryStock.objects.filter(id=stock.id).update(
+                quantity=F('quantity') + quantity_decimal
+            )
+
+        # Refresh to get the new quantity value
+        stock.refresh_from_db()
         
         # Log the stock operation (unless skipped for transfers)
         if not skip_logging:

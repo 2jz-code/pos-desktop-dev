@@ -114,11 +114,11 @@ class SpecialHoursTimeSlotAdminSerializer(BaseModelSerializer):
 class SpecialHoursAdminSerializer(BaseModelSerializer):
     """Admin serializer for special hours"""
     special_time_slots = SpecialHoursTimeSlotAdminSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = SpecialHours
         fields = [
-            'id', 'date', 'is_closed', 'reason', 
+            'id', 'profile', 'date', 'is_closed', 'reason',
             'special_time_slots', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -129,11 +129,11 @@ class SpecialHoursAdminSerializer(BaseModelSerializer):
 class HolidayAdminSerializer(BaseModelSerializer):
     """Admin serializer for holidays"""
     date_display = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Holiday
         fields = [
-            'id', 'name', 'month', 'day', 'date_display', 
+            'id', 'profile', 'name', 'month', 'day', 'date_display',
             'is_closed', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'date_display', 'created_at', 'updated_at']

@@ -32,6 +32,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core_backend.settings')
 django.setup()
 
 from django.contrib.auth import get_user_model
+from tenant.models import Tenant
 User = get_user_model()
 
 username = os.environ.get('DJANGO_SUPERUSER_USERNAME')
@@ -40,8 +41,21 @@ password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
 
 if username and email and password:
     if not User.objects.filter(username=username).exists():
-        User.objects.create_superuser(username=username, email=email, password=password)
-        print(f'Superuser {username} created successfully')
+        # Get the system/default tenant
+        try:
+            tenant = Tenant.objects.filter(is_active=True).first()
+            if not tenant:
+                print('No active tenant found, cannot create superuser')
+            else:
+                User.objects.create_superuser(
+                    username=username,
+                    email=email,
+                    password=password,
+                    tenant=tenant
+                )
+                print(f'Superuser {username} created successfully for tenant {tenant.slug}')
+        except Exception as e:
+            print(f'Error creating superuser: {e}')
     else:
         print(f'Superuser {username} already exists')
 else:

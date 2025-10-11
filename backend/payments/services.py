@@ -455,6 +455,18 @@ class PaymentService:
         # Lock the payment row for the duration of this transaction
         payment = Payment.objects.select_for_update().get(id=payment.id)
 
+        # CRITICAL FIX: Prevent duplicate payment processing (race condition protection)
+        # If payment is already PAID, reject duplicate attempts (e.g., double-click on pay button)
+        if payment.status == Payment.PaymentStatus.PAID and payment.amount_paid >= payment.total_amount_due:
+            logger.warning(
+                f"Payment {payment.id} is already PAID (${payment.amount_paid}). "
+                f"Rejecting duplicate payment attempt for ${amount}."
+            )
+            raise ValueError(
+                f"Payment for order {order.order_number} is already completed. "
+                f"Cannot process duplicate payment."
+            )
+
         surcharge = Decimal("0.00")
         if method in [
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,

@@ -54,58 +54,61 @@ class SavedReportService(BaseReportService):
             )
             
             # Generate report based on type
+            # FIX: Pass tenant to report generation services
             report_data = cls._generate_report_by_type(
                 saved_report.report_type,
+                saved_report.tenant,  # Pass tenant for proper data scoping
                 start_date,
                 end_date,
                 parameters
             )
-            
+
             # Update last run time
             saved_report.last_run = timezone.now()
             saved_report.save(update_fields=['last_run'])
-            
+
             # Track execution
-            cls._track_execution(saved_report, user, success=True)
+            cls._track_execution(saved_report, success=True)
             
             return report_data
             
         except Exception as e:
             # Track failed execution
-            cls._track_execution(saved_report, user, success=False, error=str(e))
+            cls._track_execution(saved_report, success=False, error=str(e))
             raise
     
     @classmethod
     def _generate_report_by_type(
         cls,
         report_type: str,
+        tenant,
         start_date: datetime,
         end_date: datetime,
         parameters: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Generate report based on type."""
+        """Generate report based on type with tenant context."""
         if report_type == "summary":
             return SummaryReportService.generate_summary_report(
-                start_date, end_date
+                tenant, start_date, end_date
             )
         elif report_type == "sales":
             return SalesReportService.generate_sales_report(
-                start_date, end_date
+                tenant, start_date, end_date
             )
         elif report_type == "products":
             category_id = parameters.get("category_id")
             limit = parameters.get("limit", 10)
             trend_period = parameters.get("trend_period", "daily")
             return ProductsReportService.generate_products_report(
-                start_date, end_date, category_id, limit, trend_period
+                tenant, start_date, end_date, category_id, limit, trend_period
             )
         elif report_type == "payments":
             return PaymentsReportService.generate_payments_report(
-                start_date, end_date
+                tenant, start_date, end_date
             )
         elif report_type == "operations":
             return OperationsReportService.generate_operations_report(
-                start_date, end_date
+                tenant, start_date, end_date
             )
         else:
             raise ValueError(f"Unknown report type: {report_type}")
@@ -138,6 +141,7 @@ class SavedReportService(BaseReportService):
         
         # Create a copy
         duplicated_report = SavedReport.objects.create(
+            tenant=saved_report.tenant,  # FIX: Add tenant to avoid IntegrityError
             user=user,
             name=new_name or f"{saved_report.name} (Copy)",
             report_type=saved_report.report_type,
@@ -177,13 +181,16 @@ class SavedReportService(BaseReportService):
         if parameters:
             final_parameters.update(parameters)
         
+        # FIX: ReportTemplate doesn't have default_schedule or default_format fields
+        # Use sensible defaults instead
         saved_report = SavedReport.objects.create(
+            tenant=template.tenant,  # FIX: Add tenant to avoid IntegrityError
             user=user,
             name=report_name,
             report_type=template.report_type,
             parameters=final_parameters,
-            schedule=template.default_schedule,
-            format=template.default_format,
+            schedule='manual',  # Default to manual schedule
+            format='PDF',  # Default to PDF format
             status="active",
         )
         
@@ -195,26 +202,25 @@ class SavedReportService(BaseReportService):
     def _track_execution(
         cls,
         saved_report: SavedReport,
-        user,
         success: bool = True,
         error: Optional[str] = None
     ) -> Optional[ReportExecution]:
         """
         Track the execution of a saved report.
-        
+
         Args:
             saved_report: The SavedReport that was run
-            user: The user who ran the report
             success: Whether the execution was successful
             error: Error message if execution failed
-            
+
         Returns:
             The ReportExecution instance if tracking is enabled
         """
         try:
             execution = ReportExecution.objects.create(
+                tenant=saved_report.tenant,
                 saved_report=saved_report,
-                user=user,
+                user=saved_report.user,
                 started_at=timezone.now(),
                 completed_at=timezone.now() if success else None,
                 status="completed" if success else "failed",

@@ -278,6 +278,79 @@ def django_db_setup():
     pass  # Django test runner handles this
 
 
+@pytest.fixture(scope='session', autouse=False)
+def _django_db_enable_cascade_truncate():
+    """
+    Session-scoped fixture that enables CASCADE truncation for PostgreSQL.
+
+    This fixture monkey-patches the PostgreSQL database backend to use
+    TRUNCATE ... CASCADE instead of regular TRUNCATE, which allows proper
+    cleanup of tables with foreign key constraints during test teardown.
+
+    This is particularly important for concurrent/transactional tests that
+    create data with complex foreign key relationships.
+    """
+    from django.db.backends.postgresql.operations import DatabaseOperations
+
+    # Store original method
+    original_execute_sql_flush = DatabaseOperations.execute_sql_flush
+
+    def execute_sql_flush_with_cascade(self, sql_list):
+        """Modified flush that uses CASCADE for TRUNCATE statements"""
+        cursor = self.connection.cursor()
+
+        # Get all table names from the database
+        with self.connection.cursor() as table_cursor:
+            table_cursor.execute("""
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                AND tablename NOT LIKE 'pg_%'
+            """)
+            tables = [row[0] for row in table_cursor.fetchall()]
+
+        # Disable foreign key checks temporarily
+        try:
+            cursor.execute('SET CONSTRAINTS ALL DEFERRED')
+        except Exception:
+            pass  # Ignore if constraints don't exist
+
+        # Truncate all tables with CASCADE
+        if tables:
+            try:
+                cursor.execute(
+                    'TRUNCATE TABLE {} RESTART IDENTITY CASCADE'.format(
+                        ', '.join('"{}"'.format(t) for t in tables)
+                    )
+                )
+            except Exception as e:
+                # If CASCADE truncate fails, fall back to original method
+                return original_execute_sql_flush(self, sql_list)
+
+    # Monkey-patch the method for the entire session
+    DatabaseOperations.execute_sql_flush = execute_sql_flush_with_cascade
+
+    yield  # Run all tests
+
+    # Restore original method after all tests complete
+    DatabaseOperations.execute_sql_flush = original_execute_sql_flush
+
+
+@pytest.fixture
+def django_db_with_cascade(django_db_blocker, _django_db_enable_cascade_truncate):
+    """
+    Fixture for concurrent tests that need proper database cleanup with CASCADE.
+
+    This fixture depends on the session-scoped CASCADE truncate fixture.
+
+    Usage:
+        def test_concurrent_operations(django_db_with_cascade):
+            # Test concurrent operations that create data with FK constraints
+            pass
+    """
+    yield
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

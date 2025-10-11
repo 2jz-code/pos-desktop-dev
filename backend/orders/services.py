@@ -292,9 +292,14 @@ class OrderService:
             ).first()
             
             if existing_item:
-                # Update existing item quantity
-                existing_item.quantity += quantity
-                existing_item.save()
+                # CRITICAL FIX: Use atomic F() expression to prevent race condition
+                # This prevents lost updates when multiple requests try to add items simultaneously
+                from django.db.models import F
+
+                OrderItem.objects.filter(id=existing_item.id).update(
+                    quantity=F('quantity') + quantity
+                )
+                existing_item.refresh_from_db()
                 order_item = existing_item
             else:
                 # Create new item without modifiers
