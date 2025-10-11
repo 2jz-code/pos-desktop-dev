@@ -267,7 +267,7 @@ class TenantMiddleware:
         Get fallback tenant slug for development hosts only.
 
         Handles:
-        - localhost/127.0.0.1/192.168.x.x → DEFAULT_TENANT_SLUG (local dev)
+        - localhost/127.0.0.1/192.168.x.x/testserver → DEFAULT_TENANT_SLUG (local dev)
 
         Note: System hosts (manage.ajeen.com) are handled explicitly in step 4.
               Admin subdomain (admin.ajeen.com) requires path parameter.
@@ -275,8 +275,8 @@ class TenantMiddleware:
         Returns:
             str: Tenant slug to use, or None to fail closed
         """
-        # Development hosts (localhost, IPs)
-        if host in ['localhost', '127.0.0.1'] or host.startswith('192.168'):
+        # Development hosts (localhost, IPs, testserver for Django test client)
+        if host in ['localhost', '127.0.0.1', 'testserver'] or host.startswith('192.168'):
             return getattr(settings, 'DEFAULT_TENANT_SLUG', None)
 
         # No fallback for production - let it fail closed

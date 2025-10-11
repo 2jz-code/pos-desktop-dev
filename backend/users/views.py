@@ -105,6 +105,13 @@ class UserViewSet(BaseViewSet):
             return UserRegistrationSerializer
         return self.serializer_class
 
+    def perform_create(self, serializer):
+        """
+        Inject tenant when creating a user.
+        Tenant comes from request.tenant (set by TenantMiddleware).
+        """
+        serializer.save(tenant=self.request.tenant)
+
     @action(
         detail=True,
         methods=["post"],

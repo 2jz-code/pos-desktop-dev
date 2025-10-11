@@ -25,6 +25,35 @@ settings.ENABLE_DOUBLE_SUBMIT_CSRF = False
 # AUTO-USE FIXTURES (Run automatically for every test)
 # ============================================================================
 
+@pytest.fixture(scope='session', autouse=True)
+def default_tenant(django_db_setup, django_db_blocker):
+    """
+    Create default tenant for development/test fallback.
+
+    The TenantMiddleware uses DEFAULT_TENANT_SLUG for localhost/testserver requests.
+    This fixture ensures that tenant exists for all tests.
+    """
+    with django_db_blocker.unblock():
+        from tenant.models import Tenant
+        from django.conf import settings
+
+        default_slug = getattr(settings, 'DEFAULT_TENANT_SLUG', 'myrestaurant')
+
+        # Create default tenant if it doesn't exist
+        tenant, created = Tenant.objects.get_or_create(
+            slug=default_slug,
+            defaults={
+                'name': 'Test Restaurant',
+                'is_active': True
+            }
+        )
+
+        if created:
+            print(f"Created default tenant: {default_slug}")
+
+        return tenant
+
+
 @pytest.fixture(autouse=True)
 def reset_tenant_context():
     """

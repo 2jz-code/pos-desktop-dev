@@ -2,6 +2,27 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1"
+		/>
+		<meta
+			name="theme-color"
+			content="#000000"
+		/>
+
+		<!-- 🔍 SEO Essentials -->
+		<title>Ajeen - Authentic Middle Eastern Cuisine | Eagan, MN</title>
+		<meta
+			name="description"
+			content="Ajeen is a Levantine bakery in Eagan, Minnesota serving authentic Middle Eastern mana’eesh, hummus, and pastries made fresh daily with family recipes and traditional ingredients."
+		/>
+		<link
+			rel="canonical"
+			href="https://bakeajeen.com/"
+		/>
+
+		<!-- 📱 Favicons -->
 		<link
 			rel="icon"
 			href="/favicon.png"
@@ -29,36 +50,121 @@
 			sizes="512x512"
 			href="/logo512.png"
 		/>
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1"
-		/>
-		<meta
-			name="theme-color"
-			content="#000000"
-		/>
-		<meta
-			name="description"
-			content="Ajeen - Authentic Middle Eastern cuisine featuring traditional recipes from the Levant. Experience the flavors of our family's heritage with fresh ingredients and time-honored cooking techniques."
-		/>
 		<link
 			rel="apple-touch-icon"
 			href="/logo192.png"
 		/>
+
+		<!-- 📄 Manifest (PWA support) -->
 		<link
 			rel="manifest"
 			href="/manifest.json"
 		/>
-		<title>Ajeen - Authentic Middle Eastern Cuisine</title>
+
+		<!-- 🪄 Open Graph / Facebook -->
+		<meta
+			property="og:type"
+			content="restaurant"
+		/>
+		<meta
+			property="og:title"
+			content="Ajeen - Authentic Middle Eastern Cuisine"
+		/>
+		<meta
+			property="og:description"
+			content="Discover the taste of authentic mana’eesh, zaatar, and hummus at Ajeen — your Levantine bakery in Eagan, Minnesota."
+		/>
+		<meta
+			property="og:url"
+			content="https://bakeajeen.com/"
+		/>
+		<meta
+			property="og:image"
+			content="https://bakeajeen.com/logo512.png"
+		/>
+		<meta
+			property="og:locale"
+			content="en_US"
+		/>
+
+		<!-- 🐦 Twitter Card -->
+		<meta
+			name="twitter:card"
+			content="summary_large_image"
+		/>
+		<meta
+			name="twitter:title"
+			content="Ajeen - Authentic Middle Eastern Cuisine"
+		/>
+		<meta
+			name="twitter:description"
+			content="Authentic Levantine bakery in Eagan, MN — try our fresh mana’eesh, hummus, and pastries made with family recipes."
+		/>
+		<meta
+			name="twitter:image"
+			content="https://bakeajeen.com/logo512.png"
+		/>
+
+		<!-- 🧠 Structured Data (LocalBusiness Schema) -->
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "Bakery",
+				"name": "Ajeen",
+				"image": "https://bakeajeen.com/logo512.png",
+				"url": "https://bakeajeen.com",
+				"telephone": "(651) 412-5336",
+				"servesCuisine": ["Middle Eastern", "Levantine"],
+				"priceRange": "$$",
+				"hasTakeout": true,
+				"hasDelivery": true,
+				"hasDineIn": false,
+				"acceptsReservations": false,
+				"address": {
+					"@type": "PostalAddress",
+					"streetAddress": "2105 Cliff Rd, Suite 300",
+					"addressLocality": "Eagan",
+					"addressRegion": "MN",
+					"postalCode": "55122"
+				},
+				"geo": {
+					"@type": "GeoCoordinates",
+					"latitude": 44.827,
+					"longitude": -93.162
+				},
+				"openingHoursSpecification": [
+					{
+						"@type": "OpeningHoursSpecification",
+						"dayOfWeek": [
+							"Sunday",
+							"Monday",
+							"Tuesday",
+							"Wednesday",
+							"Thursday"
+						],
+						"opens": "11:00",
+						"closes": "20:00"
+					},
+					{
+						"@type": "OpeningHoursSpecification",
+						"dayOfWeek": ["Friday", "Saturday"],
+						"opens": "11:00",
+						"closes": "21:00"
+					}
+				]
+			}
+		</script>
+
+		<!-- ⚙️ Google Tag Manager / Analytics -->
 		<script
 			async
 			src="https://www.googletagmanager.com/gtag/js?id=AW-17220968984"
 		></script>
 		<script>
+			window.dataLayer = window.dataLayer || [];
 			function gtag() {
 				dataLayer.push(arguments);
 			}
-			window.dataLayer = window.dataLayer || [];
 			gtag("js", new Date());
 			gtag("config", "AW-17220968984");
 		</script>
@@ -73,6 +179,8 @@
 					g.parentNode.insertBefore(m, g);
 			})(window, document, "script", "dataLayer");
 		</script>
+
+		<!-- 💅 Fonts & Styles -->
 		<link
 			rel="preconnect"
 			href="https://fonts.googleapis.com"
@@ -86,6 +194,24 @@
 			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 			rel="stylesheet"
 		/>
+		<link
+			rel="stylesheet"
+			crossorigin
+			href="/assets/index-lqh-LawP.css"
+		/>
+		<link
+			rel="sitemap"
+			type="application/xml"
+			title="Sitemap"
+			href="/sitemap.xml"
+		/>
+
+		<!-- 🚀 React Bundle -->
+		<script
+			type="module"
+			crossorigin
+			src="/assets/index-DS8T_Zlv.js"
+		></script>
 	</head>
 	<body>
 		<noscript

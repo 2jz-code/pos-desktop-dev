@@ -32,7 +32,8 @@ class UserRegistrationSerializer(BaseModelSerializer):
 
     class Meta:
         model = User
-        fields = ("email", "username", "password", "first_name", "last_name", "role")
+        fields = ("id", "email", "username", "password", "first_name", "last_name", "role")
+        read_only_fields = ("id",)
         # User model typically has no FK relationships to optimize
         select_related_fields = []
         prefetch_related_fields = []

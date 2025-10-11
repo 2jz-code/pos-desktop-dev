@@ -383,6 +383,31 @@ def inventory_stock_tenant_a(tenant_a, product_tenant_a, location_tenant_a):
     )
 
 
+@pytest.fixture
+def inventory_stock_tenant_b(tenant_b, product_tenant_b, location_tenant_b):
+    """Create inventory stock for tenant B"""
+    return InventoryStock.objects.create(
+        tenant=tenant_b,
+        product=product_tenant_b,
+        location=location_tenant_b,
+        quantity=50
+    )
+
+
+@pytest.fixture
+def stock_action_reason(db):
+    """Create a global system stock action reason for testing"""
+    from settings.models import StockActionReasonConfig
+    return StockActionReasonConfig.objects.create(
+        name='Test Stock Adjustment',
+        category='MANUAL',
+        description='Stock adjustment for testing purposes',
+        is_active=True,
+        is_system_reason=True,  # Must be True for tenant=None
+        tenant=None  # Global reason
+    )
+
+
 # ============================================================================
 # SETTINGS FIXTURES
 # ============================================================================
@@ -426,3 +451,132 @@ def store_location_tenant_a(tenant_a):
         email='info@pizza.com',
         is_default=True
     )
+
+
+@pytest.fixture
+def store_location_tenant_b(tenant_b):
+    """Create store location for tenant B"""
+    return StoreLocation.objects.create(
+        tenant=tenant_b,
+        name='Main Location',
+        address='456 Burger Ave, Los Angeles, CA 90001',
+        phone='555-0200',
+        email='info@burger.com',
+        is_default=True
+    )
+
+
+# ============================================================================
+# API CLIENT FIXTURES (for API Integration Tests)
+# ============================================================================
+
+@pytest.fixture
+def api_client_factory():
+    """
+    Factory fixture for creating authenticated API clients.
+
+    Handles:
+    - JWT token generation and cookie setting
+    - CSRF double-submit protection (cookie + header)
+    - Tenant context from JWT claims
+    - Session tenant_id for customer endpoints
+
+    Usage:
+        def test_create_order(api_client_factory, admin_user_tenant_a):
+            client = api_client_factory(admin_user_tenant_a)
+            response = client.post('/api/orders/', {'order_type': 'dine_in'})
+
+        def test_customer_register(api_client_factory, tenant_a):
+            client = api_client_factory(user=None, tenant=tenant_a)
+            response = client.post('/api/customers/register/', {...})
+    """
+    import secrets
+    from rest_framework.test import APIClient
+    from users.services import UserService
+
+    def _create_client(user=None, set_csrf=True, tenant=None):
+        """
+        Create an API client with authentication and CSRF protection.
+
+        Args:
+            user: User instance to authenticate as (None for guest client)
+            set_csrf: Whether to set CSRF token (default True)
+            tenant: Tenant instance to set in session (for customer endpoints)
+
+        Returns:
+            APIClient configured with authentication cookies and headers
+        """
+        client = APIClient()
+
+        if user:
+            # Generate JWT tokens (includes tenant_id and tenant_slug claims)
+            tokens = UserService.generate_tokens_for_user(user)
+
+            # Set JWT in cookies (matches production behavior)
+            client.cookies['access_token'] = tokens['access']
+            client.cookies['refresh_token'] = tokens['refresh']
+
+        if set_csrf:
+            # Generate CSRF token for double-submit protection
+            csrf_token = secrets.token_urlsafe(32)
+
+            # Set CSRF cookie (for double-submit CSRF check)
+            client.cookies['csrf_token'] = csrf_token
+            client.cookies['csrftoken'] = csrf_token  # Django's default cookie name
+
+            # Set CSRF header (RequiresAntiCSRFHeader expects X-CSRF-Token)
+            client.credentials(HTTP_X_CSRF_TOKEN=csrf_token)
+
+        if tenant:
+            # Set tenant in session for customer endpoints (TenantMiddleware resolution)
+            # Force session creation by accessing it
+            session = client.session
+            session['tenant_id'] = str(tenant.id)
+            session.save()
+
+        return client
+
+    return _create_client
+
+
+@pytest.fixture
+def authenticated_client(api_client_factory):
+    """
+    Convenience fixture that returns a factory for authenticated clients.
+
+    This is an alias for api_client_factory for backwards compatibility
+    and clearer test code.
+
+    Usage:
+        def test_example(authenticated_client, admin_user_tenant_a):
+            client = authenticated_client(admin_user_tenant_a)
+            response = client.get('/api/orders/')
+    """
+    return api_client_factory
+
+
+@pytest.fixture
+def guest_client(api_client_factory):
+    """
+    Create a guest API client (unauthenticated but with CSRF).
+
+    Usage:
+        def test_guest_order(guest_client):
+            response = guest_client.post('/api/orders/', {...})
+    """
+    return api_client_factory(user=None, set_csrf=True)
+
+
+@pytest.fixture
+def csrf_exempt_client():
+    """
+    Create an API client without CSRF protection.
+
+    Useful for testing endpoints that are CSRF-exempt (like login).
+
+    Usage:
+        def test_login(csrf_exempt_client):
+            response = csrf_exempt_client.post('/api/auth/login/', {...})
+    """
+    from rest_framework.test import APIClient
+    return APIClient()
