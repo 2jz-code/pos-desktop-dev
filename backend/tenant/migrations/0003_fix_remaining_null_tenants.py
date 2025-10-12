@@ -2,6 +2,7 @@
 
 from django.db import migrations
 from django.conf import settings
+from django.core.exceptions import FieldError
 
 
 def fix_null_tenants(apps, schema_editor):
@@ -59,6 +60,10 @@ def fix_null_tenants(apps, schema_editor):
         ('business_hours', 'SpecialHours'),
         ('business_hours', 'SpecialHoursTimeSlot'),
         ('business_hours', 'Holiday'),
+        ('customers', 'Customer'),
+        ('customers', 'CustomerAddress'),
+        ('customers', 'CustomerPasswordResetToken'),
+        ('customers', 'CustomerEmailVerificationToken'),
     ]
 
     total_fixed = 0
@@ -66,7 +71,13 @@ def fix_null_tenants(apps, schema_editor):
     for app_label, model_name in models_to_check:
         try:
             Model = apps.get_model(app_label, model_name)
-            null_count = Model.objects.filter(tenant__isnull=True).count()
+
+            try:
+                null_count = Model.objects.filter(tenant__isnull=True).count()
+            except FieldError:
+                # Model doesn't have tenant field yet (will be added in later migrations)
+                print(f"   ⚠ {app_label}.{model_name}: No tenant field yet (skipping)")
+                continue
 
             if null_count > 0:
                 # Force assign to default tenant (ignoring duplicates)

@@ -1,6 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction, models
 from django.db.models import Sum
+from django.utils import timezone
 from .models import (
     Payment,
     PaymentTransaction,
@@ -450,7 +451,14 @@ class PaymentService:
         The main entry point for processing a payment. It creates a transaction,
         selects a strategy, executes it, and updates the overall payment status.
         The full, updated Payment object is returned.
+
+        Uses savepoints to preserve FAILED transaction records for audit trail
+        while rolling back any partial changes from failed payment strategies.
         """
+        # CRITICAL: Validate order has items before processing payment
+        if not order.items.exists():
+            raise ValueError("Cannot process payment for an empty order with no items")
+
         payment = PaymentService.get_or_create_payment(order)
         # Lock the payment row for the duration of this transaction
         payment = Payment.objects.select_for_update().get(id=payment.id)
@@ -474,7 +482,9 @@ class PaymentService:
         ]:
             from settings.config import app_settings
 
-            surcharge = amount * app_settings.surcharge_percentage
+            # Ensure both operands are Decimal to avoid float/Decimal TypeError
+            amount_decimal = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+            surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
             surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         # Extract tip from kwargs if provided
@@ -482,7 +492,7 @@ class PaymentService:
         if tip and not isinstance(tip, Decimal):
             tip = Decimal(str(tip))
 
-        transaction = PaymentTransaction.objects.create(
+        payment_transaction = PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
             method=method,
@@ -491,14 +501,45 @@ class PaymentService:
             tenant=payment.tenant,
         )
 
-        strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
-        strategy.process(transaction, **kwargs)
+        # AUDIT TRAIL FIX: Use savepoint to preserve failed transaction records
+        # Savepoint allows partial rollback while keeping the transaction record for audit
+        sid = transaction.savepoint()
+        try:
+            strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
+            strategy.process(payment_transaction, **kwargs)
 
-        # After the strategy runs, we need to update the parent payment's status.
-        # This will recalculate totals and set the correct status (e.g., PARTIALLY_PAID)
-        updated_payment = PaymentService._update_payment_status(payment)
+            # Strategy succeeded - commit the savepoint and update payment status
+            transaction.savepoint_commit(sid)
+            updated_payment = PaymentService._update_payment_status(payment)
+            return updated_payment
 
-        return updated_payment
+        except Exception as e:
+            # Payment strategy failed - rollback any changes made by the strategy
+            transaction.savepoint_rollback(sid)
+
+            # Now mark the transaction as FAILED (this will be committed with the outer transaction)
+            payment_transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            payment_transaction.provider_response = {
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'timestamp': timezone.now().isoformat(),
+                'method': method,
+                'provider': provider
+            }
+            payment_transaction.save(update_fields=['status', 'provider_response'])
+
+            logger.error(
+                f"Payment transaction {payment_transaction.id} FAILED for order {order.order_number}. "
+                f"Method: {method}, Error: {str(e)}"
+            )
+
+            # Update payment status (will go back to UNPAID if no successful transactions exist)
+            updated_payment = PaymentService._update_payment_status(payment)
+
+            # DON'T re-raise - return payment with UNPAID status and FAILED transaction for audit
+            # Caller should check payment.status to see if payment succeeded
+            # This preserves the audit trail while allowing normal control flow
+            return updated_payment
 
     @staticmethod
     def _get_active_terminal_strategy() -> TerminalPaymentStrategy:
@@ -840,7 +881,9 @@ class PaymentService:
         """
         from settings.config import app_settings
 
-        surcharge = amount * app_settings.surcharge_percentage
+        # Ensure both operands are Decimal to avoid float/Decimal TypeError
+        amount_decimal = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+        surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
         return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @staticmethod

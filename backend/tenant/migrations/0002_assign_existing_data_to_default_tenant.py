@@ -2,6 +2,7 @@
 
 from django.db import migrations, transaction
 from django.conf import settings
+from django.core.exceptions import FieldError
 
 
 def assign_existing_data_to_default_tenant(apps, schema_editor):
@@ -100,6 +101,12 @@ def assign_existing_data_to_default_tenant(apps, schema_editor):
         ('business_hours', 'SpecialHours'),
         ('business_hours', 'SpecialHoursTimeSlot'),
         ('business_hours', 'Holiday'),
+
+        # customers app (4 models)
+        ('customers', 'Customer'),
+        ('customers', 'CustomerAddress'),
+        ('customers', 'CustomerPasswordResetToken'),
+        ('customers', 'CustomerEmailVerificationToken'),
     ]
 
     # Process each model
@@ -142,11 +149,21 @@ def assign_existing_data_to_default_tenant(apps, schema_editor):
                         updates_by_model[f"{app_label}.{model_name}"] = updated_count
                         total_updated += updated_count
                         print(f"   ✓ {app_label}.{model_name}: {updated_count} records")
+                except FieldError:
+                    # Model doesn't have tenant field yet (will be added in later migrations)
+                    print(f"   ⚠ {app_label}.{model_name}: No tenant field yet (skipping - will backfill later)")
+                    continue
                 except Exception as e:
                     # If bulk update fails (e.g., duplicate constraints), process one by one
                     print(f"   ⚠ {app_label}.{model_name}: Bulk update failed, trying one-by-one...")
 
-                    records_without_tenant = Model.objects.filter(tenant__isnull=True)
+                    try:
+                        records_without_tenant = Model.objects.filter(tenant__isnull=True)
+                    except FieldError:
+                        # Model doesn't have tenant field yet
+                        print(f"      Model doesn't have tenant field yet (skipping)")
+                        continue
+
                     updated_count = 0
                     skipped_count = 0
 
@@ -242,6 +259,10 @@ def reverse_migration(apps, schema_editor):
         ('business_hours', 'SpecialHours'),
         ('business_hours', 'SpecialHoursTimeSlot'),
         ('business_hours', 'Holiday'),
+        ('customers', 'Customer'),
+        ('customers', 'CustomerAddress'),
+        ('customers', 'CustomerPasswordResetToken'),
+        ('customers', 'CustomerEmailVerificationToken'),
     ]
 
     for app_label, model_name in models_to_update:
@@ -274,6 +295,7 @@ class Migration(migrations.Migration):
         ('payments', '0014_remove_giftcard_payments_gi_code_4a7e40_idx_and_more'),
         ('reports', '0004_remove_reportcache_reports_rep_report__ad8f34_idx_and_more'),
         ('settings', '0016_remove_stockactionreasonconfig_settings_st_is_acti_9dc4a5_idx_and_more'),
+        ('customers', '0003_add_tenant_nullable'),  # Adds nullable tenant FK
     ]
 
     operations = [

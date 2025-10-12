@@ -149,6 +149,7 @@ WSGI_APPLICATION = "core_backend.wsgi.application"
 
 # Database configuration
 import dj_database_url
+import sys
 
 DATABASES = {
     "default": dj_database_url.config(
@@ -157,6 +158,20 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+
+# ==============================================================================
+# TEST DATABASE PROTECTION
+# ==============================================================================
+# Use a separate test database to protect dev data from being deleted during tests
+# This prevents pytest from dropping/recreating your dev database
+if 'test' in sys.argv or 'pytest' in sys.modules:
+    # Override database name for tests
+    db_name = DATABASES['default'].get('NAME', '')
+    if db_name and db_name != ':memory:':
+        # Append '_tests' suffix to database name to create separate test database
+        # E.g., 'test_ajeen_db' becomes 'test_ajeen_db_tests'
+        DATABASES['default']['NAME'] = f"{db_name}_tests"
+        logger.info(f"Test mode detected - using test database: {DATABASES['default']['NAME']}")
 
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
