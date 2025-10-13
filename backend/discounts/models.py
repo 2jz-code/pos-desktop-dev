@@ -1,6 +1,7 @@
 # In desktop-combined/backend/discounts/models.py
 
 from django.db import models
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.utils import timezone
 from products.models import Product, Category
@@ -83,6 +84,26 @@ class Discount(SoftDeleteMixin):
         if self.end_date and now > self.end_date:
             return False
         return True
+
+    def clean(self):
+        """Validate discount value based on type."""
+        super().clean()
+
+        # Skip validation for Buy X Get Y discounts (value not used)
+        if self.type == self.DiscountType.BUY_X_GET_Y:
+            return
+
+        # Validate value is positive (not zero or negative)
+        if self.value <= 0:
+            raise ValidationError({
+                'value': 'Discount value must be greater than zero.'
+            })
+
+        # Validate percentage discounts don't exceed 100%
+        if self.type == self.DiscountType.PERCENTAGE and self.value > 100:
+            raise ValidationError({
+                'value': 'Percentage discount cannot exceed 100%.'
+            })
 
     # Managers - use combined manager for tenant + soft delete
     objects = TenantSoftDeleteManager()

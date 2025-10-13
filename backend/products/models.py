@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.contrib.auth import get_user_model
@@ -333,6 +334,10 @@ class Product(SoftDeleteMixin):
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
+        validators=[
+            MinValueValidator(0, message="Price cannot be negative."),
+            MaxValueValidator(1000000, message="Price cannot exceed $1,000,000."),
+        ],
         help_text=_("The selling price of the product."),
     )
     category = models.ForeignKey(

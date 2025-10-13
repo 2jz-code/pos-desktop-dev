@@ -169,13 +169,22 @@ class InventoryService:
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
         """
+        # Validate quantity is positive
+        try:
+            quantity_value = float(quantity)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid quantity format: {quantity}")
+
+        if quantity_value < 0:
+            raise ValueError("Cannot add negative stock quantity. Use decrement_stock() instead.")
+
         from tenant.managers import get_current_tenant
 
         tenant = get_current_tenant()
         stock, created = InventoryStock.objects.get_or_create(
             product=product, location=location, defaults={"tenant": tenant, "quantity": Decimal("0.0")}
         )
-        
+
         # Track previous quantity for notification logic and history
         previous_quantity = stock.quantity
         quantity_decimal = Decimal(str(quantity))
