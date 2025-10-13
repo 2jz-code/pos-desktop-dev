@@ -61,7 +61,8 @@ class BusinessHoursProfile(models.Model):
     def save(self, *args, **kwargs):
         # Ensure only one default profile exists per tenant
         if self.is_default:
-            BusinessHoursProfile.objects.filter(tenant=self.tenant).exclude(pk=self.pk).update(is_default=False)
+            # Use all_objects to bypass tenant filtering (we're explicitly filtering by tenant)
+            BusinessHoursProfile.all_objects.filter(tenant=self.tenant).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
 

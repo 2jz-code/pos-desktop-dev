@@ -253,7 +253,7 @@ class TerminalRegistrationViewSet(BaseViewSet):
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'patch', 'head', 'options']  # Allow read and partial updates only
     lookup_field = 'device_id'  # Use device_id instead of pk for lookups
-    ordering = ['-last_seen']  # Override BaseViewSet default ordering (model has no 'id' field)
+    ordering = ['-last_seen']
 
     def perform_update(self, serializer):
         """Only allow updating specific fields - not core pairing info"""

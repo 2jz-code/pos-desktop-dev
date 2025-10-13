@@ -117,7 +117,8 @@ class TenantMiddleware:
             if len(path_parts) >= 1 and path_parts[0]:
                 tenant_slug = path_parts[0]
                 try:
-                    tenant = Tenant.objects.get(slug=tenant_slug, is_active=True)
+                    # Don't filter by is_active - let line 60 check handle it
+                    tenant = Tenant.objects.get(slug=tenant_slug)
                     # Store in session for subsequent requests
                     request.session['tenant_id'] = str(tenant.id)
                     return tenant
@@ -135,7 +136,8 @@ class TenantMiddleware:
         # Used by SaaS owner for managing all customers
         if subdomain == 'manage':
             try:
-                return Tenant.objects.get(slug=settings.SYSTEM_TENANT_SLUG, is_active=True)
+                # Don't filter by is_active - let line 60 check handle it
+                return Tenant.objects.get(slug=settings.SYSTEM_TENANT_SLUG)
             except Tenant.DoesNotExist:
                 raise TenantNotFoundError(
                     f"System tenant '{settings.SYSTEM_TENANT_SLUG}' not found. "
@@ -146,7 +148,8 @@ class TenantMiddleware:
         # Extract tenant from subdomain for customer-facing sites
         if subdomain and subdomain not in ['www', 'api']:
             try:
-                tenant = Tenant.objects.get(slug=subdomain, is_active=True)
+                # Don't filter by is_active - let line 60 check handle it
+                tenant = Tenant.objects.get(slug=subdomain)
                 # Store in session for subsequent guest requests
                 request.session['tenant_id'] = str(tenant.id)
                 return tenant
@@ -160,7 +163,8 @@ class TenantMiddleware:
         tenant_id = request.session.get('tenant_id')
         if tenant_id:
             try:
-                return Tenant.objects.get(id=tenant_id, is_active=True)
+                # Don't filter by is_active - let line 60 check handle it
+                return Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
                 pass
 
@@ -169,7 +173,8 @@ class TenantMiddleware:
         tenant_slug = self.get_fallback_tenant_slug(host, subdomain)
         if tenant_slug:
             try:
-                return Tenant.objects.get(slug=tenant_slug, is_active=True)
+                # Don't filter by is_active - let line 60 check handle it
+                return Tenant.objects.get(slug=tenant_slug)
             except Tenant.DoesNotExist:
                 # Fallback tenant doesn't exist yet - common during initial setup
                 raise TenantNotFoundError(
@@ -255,7 +260,9 @@ class TenantMiddleware:
                 return None
 
             # Look up tenant by ID from JWT claims
-            return Tenant.objects.get(id=tenant_id, is_active=True)
+            # NOTE: Don't filter by is_active here - let the middleware check on line 60 handle it
+            # This ensures inactive tenants get proper 403 error instead of falling back
+            return Tenant.objects.get(id=tenant_id)
 
         except (InvalidTokenError, Tenant.DoesNotExist, KeyError, ValueError):
             # Invalid JWT format, tenant not found, or other decode errors

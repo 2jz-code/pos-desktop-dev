@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from tenant.managers import TenantManager
+import uuid
 
 
 class TerminalPairingCode(models.Model):
@@ -132,12 +133,13 @@ class TerminalRegistration(models.Model):
     This is the standard for device management.
     """
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='terminal_registrations'
     )
-    device_id = models.CharField(max_length=255, primary_key=True)
+    device_id = models.CharField(max_length=255)
     nickname = models.CharField(
         max_length=100,
         blank=True,
