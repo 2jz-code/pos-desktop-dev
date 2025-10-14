@@ -235,10 +235,16 @@ class AppSettings:
             # Import here to avoid circular imports
             from inventory.models import Location
             from .models import GlobalSettings
+            from tenant.managers import get_current_tenant
+
+            tenant = get_current_tenant()
+            if not tenant:
+                raise ImproperlyConfigured("No tenant context available for creating default location")
 
             # Create a default location if none exists (tenant-scoped)
             default_location, created = Location.objects.get_or_create(
                 name="Main Store",
+                tenant=tenant,
                 defaults={"description": "Default main store location"},
             )
 

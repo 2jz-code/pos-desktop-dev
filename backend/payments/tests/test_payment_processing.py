@@ -25,9 +25,10 @@ from tenant.managers import set_current_tenant
 class TestPaymentProcessing:
     """Test payment processing functionality"""
 
-    def test_process_cash_payment(self, tenant_a, order_tenant_a):
+    def test_process_cash_payment(self, tenant_a, order_with_items_tenant_a):
         """Test processing a simple cash payment"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Create payment
         payment = PaymentService.initiate_payment_attempt(
@@ -61,9 +62,10 @@ class TestPaymentProcessing:
         assert order_tenant_a.status == Order.OrderStatus.COMPLETED
 
     @patch('payments.strategies.StripeOnlineStrategy.process')
-    def test_process_card_payment_success(self, mock_stripe, tenant_a, order_tenant_a):
+    def test_process_card_payment_success(self, mock_stripe, tenant_a, order_with_items_tenant_a):
         """Test successful card payment with Stripe"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Mock Stripe success response - the strategy's process method doesn't return anything
         # It updates the transaction object directly
@@ -95,9 +97,10 @@ class TestPaymentProcessing:
         mock_stripe.assert_called_once()
 
     @patch('payments.strategies.StripeOnlineStrategy.process')
-    def test_process_card_payment_failure(self, mock_stripe, tenant_a, order_tenant_a):
+    def test_process_card_payment_failure(self, mock_stripe, tenant_a, order_with_items_tenant_a):
         """Test failed card payment with Stripe"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have proper total for test
         order_tenant_a.grand_total = Decimal("50.00")
@@ -136,9 +139,10 @@ class TestPaymentProcessing:
         order_tenant_a.refresh_from_db()
         assert order_tenant_a.payment_status != 'paid'
 
-    def test_partial_payment_allowed(self, tenant_a, order_tenant_a):
+    def test_partial_payment_allowed(self, tenant_a, order_with_items_tenant_a):
         """Test partial payment - pay in two installments"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have larger total for clearer test
         order_tenant_a.grand_total = Decimal("100.00")
@@ -171,9 +175,10 @@ class TestPaymentProcessing:
         # Verify both transactions exist
         assert payment.transactions.count() == 2
 
-    def test_overpayment_rejected(self, tenant_a, order_tenant_a):
+    def test_overpayment_rejected(self, tenant_a, order_with_items_tenant_a):
         """Test that overpayment is rejected"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # The PaymentService.process_transaction doesn't validate overpayment,
         # but the strategy layer should. For cash, we need to test at the strategy level.
@@ -196,9 +201,10 @@ class TestPaymentProcessing:
         assert payment.status == Payment.PaymentStatus.PAID
         assert payment.amount_paid == overpayment_amount
 
-    def test_refund_payment_full(self, tenant_a, order_tenant_a):
+    def test_refund_payment_full(self, tenant_a, order_with_items_tenant_a):
         """Test full refund of a completed payment"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have proper total for test
         order_tenant_a.grand_total = Decimal("50.00")
@@ -231,9 +237,10 @@ class TestPaymentProcessing:
         refund_transaction = refund_transactions.first()
         assert refund_transaction.amount == -order_tenant_a.grand_total
 
-    def test_refund_payment_partial(self, tenant_a, order_tenant_a):
+    def test_refund_payment_partial(self, tenant_a, order_with_items_tenant_a):
         """Test partial refund - refund $30 of $100 payment"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have larger total
         order_tenant_a.grand_total = Decimal("100.00")
@@ -271,9 +278,10 @@ class TestPaymentProcessing:
         net_amount = payment.transactions.aggregate(total=Sum('amount'))["total"] or Decimal("0.00")
         assert net_amount == Decimal("70.00")
 
-    def test_gift_card_payment(self, tenant_a, order_tenant_a, gift_card_tenant_a):
+    def test_gift_card_payment(self, tenant_a, order_with_items_tenant_a, gift_card_tenant_a):
         """Test gift card payment with balance verification"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have smaller total than gift card balance
         order_tenant_a.grand_total = Decimal("30.00")
@@ -305,9 +313,10 @@ class TestPaymentProcessing:
         assert gift_card_tenant_a.current_balance == Decimal("20.00")
         assert gift_card_tenant_a.status == GiftCard.GiftCardStatus.ACTIVE
 
-    def test_split_payment_cash_and_card(self, tenant_a, order_tenant_a):
+    def test_split_payment_cash_and_card(self, tenant_a, order_with_items_tenant_a):
         """Test split payment - $40 cash + $60 card"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order to have $100 total
         order_tenant_a.grand_total = Decimal("100.00")
@@ -356,9 +365,10 @@ class TestPaymentProcessing:
         assert PaymentTransaction.PaymentMethod.CASH in methods
         assert PaymentTransaction.PaymentMethod.CARD_TERMINAL in methods
 
-    def test_payment_with_tip(self, tenant_a, order_tenant_a):
+    def test_payment_with_tip(self, tenant_a, order_with_items_tenant_a):
         """Test payment with tip - $50 order + $10 tip"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order total
         order_tenant_a.grand_total = Decimal("50.00")
@@ -392,9 +402,10 @@ class TestPaymentProcessing:
         # Verify payment tracking includes tip
         assert payment.total_tips == Decimal("10.00")
 
-    def test_payment_with_surcharge(self, tenant_a, order_tenant_a):
+    def test_payment_with_surcharge(self, tenant_a, order_with_items_tenant_a):
         """Test card payment with surcharge (calculated automatically)"""
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Update order total
         order_tenant_a.grand_total = Decimal("100.00")
@@ -428,10 +439,11 @@ class TestPaymentProcessing:
         assert payment.status == Payment.PaymentStatus.PAID
         assert payment.amount_paid == Decimal("100.00")
 
-    def test_clover_terminal_payment_tenant_isolated(self, tenant_a, tenant_b, order_tenant_a, order_tenant_b):
+    def test_clover_terminal_payment_tenant_isolated(self, tenant_a, tenant_b, order_with_items_tenant_a, order_with_items_tenant_b):
         """Test that Clover terminal payments are tenant-isolated with different merchant IDs"""
         # Test tenant A payment
         set_current_tenant(tenant_a)
+        order_tenant_a = order_with_items_tenant_a
 
         # Mock Clover terminal payment for tenant A
         with patch('payments.strategies.CloverTerminalStrategy.process') as mock_clover_a:
@@ -459,6 +471,7 @@ class TestPaymentProcessing:
 
         # Test tenant B payment
         set_current_tenant(tenant_b)
+        order_tenant_b = order_with_items_tenant_b
 
         # Mock Clover terminal payment for tenant B (different merchant ID)
         with patch('payments.strategies.CloverTerminalStrategy.process') as mock_clover_b:

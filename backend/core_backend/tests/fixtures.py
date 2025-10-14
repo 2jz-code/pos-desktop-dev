@@ -234,7 +234,7 @@ def customer_tenant_a(tenant_a):
 
 @pytest.fixture
 def order_tenant_a(tenant_a, customer_tenant_a):
-    """Create sample order for tenant A"""
+    """Create sample order for tenant A (empty order with no items)"""
     return Order.objects.create(
         tenant=tenant_a,
         order_type=Order.OrderType.POS,
@@ -244,6 +244,36 @@ def order_tenant_a(tenant_a, customer_tenant_a):
         tax_total=Decimal('0.00'),
         grand_total=Decimal('0.00')
     )
+
+
+@pytest.fixture
+def order_with_items_tenant_a(tenant_a, customer_tenant_a, product_tenant_a, tax_rate_tenant_a):
+    """Create sample order for tenant A WITH ITEMS (for payment tests)"""
+    from orders.services import OrderService
+    from tenant.managers import set_current_tenant
+
+    set_current_tenant(tenant_a)
+
+    # Add tax to product
+    product_tenant_a.taxes.add(tax_rate_tenant_a)
+
+    # Create order using service to ensure proper setup
+    order = OrderService.create_order(
+        tenant=tenant_a,
+        order_type='COUNTER',
+        cashier=None,
+        customer=customer_tenant_a
+    )
+
+    # Add item to order
+    OrderService.add_item_to_order(
+        order=order,
+        product=product_tenant_a,
+        quantity=2  # 2 x $10.00 = $20.00 subtotal
+    )
+
+    order.refresh_from_db()
+    return order
 
 
 @pytest.fixture
@@ -260,16 +290,46 @@ def customer_tenant_b(tenant_b):
 
 @pytest.fixture
 def order_tenant_b(tenant_b, customer_tenant_b):
-    """Create sample order for tenant B"""
+    """Create sample order for tenant B (empty order with no items)"""
     return Order.objects.create(
         tenant=tenant_b,
         order_type='takeout',
         status='pending',
         customer=customer_tenant_b,
-        subtotal=Decimal('8.99'),
-        tax_total=Decimal('0.72'),
-        grand_total=Decimal('9.71')
+        subtotal=Decimal('0.00'),
+        tax_total=Decimal('0.00'),
+        grand_total=Decimal('0.00')
     )
+
+
+@pytest.fixture
+def order_with_items_tenant_b(tenant_b, customer_tenant_b, product_tenant_b, tax_rate_tenant_b):
+    """Create sample order for tenant B WITH ITEMS (for payment tests)"""
+    from orders.services import OrderService
+    from tenant.managers import set_current_tenant
+
+    set_current_tenant(tenant_b)
+
+    # Add tax to product
+    product_tenant_b.taxes.add(tax_rate_tenant_b)
+
+    # Create order using service
+    order = OrderService.create_order(
+        tenant=tenant_b,
+        order_type='takeout',
+        cashier=None,
+        customer=customer_tenant_b
+    )
+
+    # Add item to order
+    OrderService.add_item_to_order(
+        order=order,
+        product=product_tenant_b,
+        quantity=1  # 1 x $8.99 = $8.99 subtotal
+    )
+
+    order.refresh_from_db()
+    return order
 
 
 # ============================================================================

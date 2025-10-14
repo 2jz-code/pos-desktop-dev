@@ -221,7 +221,7 @@ def export_report_async(saved_report_id: int, format: str):
             raise ValueError(f"Unsupported export format: {format}")
 
         # Save the file
-        saved_report.file.save(file_name, ContentFile(file_content), save=True)
+        saved_report.last_generated_file.save(file_name, ContentFile(file_content), save=True)
 
         logger.info(f"Successfully exported saved report {saved_report_id} to {format}")
 

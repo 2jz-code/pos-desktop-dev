@@ -106,6 +106,15 @@ class SavedReport(SoftDeleteMixin):
     last_generated_file = models.FileField(upload_to="reports/", null=True, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
 
+    # Execution tracking
+    last_execution = models.ForeignKey(
+        'ReportExecution',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+'  # No reverse relation needed
+    )
+
     # Status tracking
     status = models.CharField(
         max_length=20, choices=ReportStatus.choices, default=ReportStatus.ACTIVE
@@ -227,8 +236,19 @@ class ReportExecution(models.Model):
         related_name='report_executions'
     )
     saved_report = models.ForeignKey(
-        SavedReport, on_delete=models.CASCADE, related_name="executions"
+        SavedReport, on_delete=models.CASCADE, related_name="executions",
+        null=True, blank=True  # Allow ad-hoc reports without saved_report
     )
+
+    # Task tracking
+    task_id = models.CharField(max_length=255, null=True, blank=True, help_text="Celery task ID")
+
+    # Report details (for ad-hoc reports not linked to SavedReport)
+    report_type = models.CharField(max_length=50, choices=ReportType.choices, null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    parameters = models.JSONField(null=True, blank=True)
+
+    # Execution tracking
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
@@ -246,6 +266,9 @@ class ReportExecution(models.Model):
     row_count = models.IntegerField(null=True, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
 
+    # Report data
+    result_data = models.JSONField(null=True, blank=True, help_text="Generated report data")
+
     objects = TenantManager()
     all_objects = models.Manager()
 
@@ -260,9 +283,10 @@ class ReportExecution(models.Model):
         ]
 
     def __str__(self):
-        return (
-            f"{self.saved_report.name} - {self.started_at.strftime('%Y-%m-%d %H:%M')}"
-        )
+        if self.saved_report:
+            return f"{self.saved_report.name} - {self.started_at.strftime('%Y-%m-%d %H:%M')}"
+        else:
+            return f"{self.report_type or 'Ad-hoc'} Report - {self.started_at.strftime('%Y-%m-%d %H:%M')}"
 
     def mark_completed(self, row_count=None, file_size=None):
         """Mark execution as completed"""

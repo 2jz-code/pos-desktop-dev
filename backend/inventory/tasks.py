@@ -23,11 +23,15 @@ def process_order_completion_inventory(self, order_id):
     """
     try:
         from orders.models import Order
+        from tenant.managers import set_current_tenant
 
         logger.info(f"Processing inventory for order {order_id}")
 
         # Fetch the order
         order = Order.objects.get(id=order_id)
+
+        # Set tenant context for this task execution
+        set_current_tenant(order.tenant)
 
         # Skip test orders
         if order.order_number and order.order_number.startswith('TEST-'):
@@ -60,6 +64,10 @@ def process_order_completion_inventory(self, order_id):
         logger.error(f"Error processing inventory for order {order_id}: {exc}")
         # Retry on failure
         raise self.retry(exc=exc)
+    finally:
+        # Clean up tenant context
+        from tenant.managers import set_current_tenant
+        set_current_tenant(None)
           
 @shared_task
 def daily_low_stock_sweep():

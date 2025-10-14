@@ -240,22 +240,50 @@ class TestConcurrentPaymentProcessing:
             role='ADMIN'
         )
 
-        # Create order with correct field names
-        order = Order.objects.create(
+        # Create tax rate
+        tax_rate = Tax.objects.create(
+            tenant=tenant,
+            name='Sales Tax',
+            rate=Decimal('0.10')  # 10% tax
+        )
+
+        # Create product with product_type
+        from products.models import ProductType
+        category = Category.objects.create(tenant=tenant, name="Test Category")
+        product_type = ProductType.objects.create(tenant=tenant, name="Test Type")
+        product = Product.objects.create(
+            tenant=tenant,
+            name="Test Product",
+            price=Decimal('50.00'),
+            category=category,
+            product_type=product_type
+        )
+        product.taxes.add(tax_rate)
+
+        # Create order using OrderService with items
+        order = OrderService.create_order(
             tenant=tenant,
             order_type='dine_in',
-            subtotal=Decimal('50.00'),
-            tax_total=Decimal('5.00'),  # Correct field name
-            grand_total=Decimal('55.00'),  # Correct field name
-            status='PENDING'  # Use uppercase constant
+            cashier=None,
+            customer=None
         )
+
+        # Add item to order
+        OrderService.add_item_to_order(
+            order=order,
+            product=product,
+            quantity=1  # 1 x $50.00 = $50.00 subtotal, $55.00 with 10% tax
+        )
+
+        order.refresh_from_db()
+        expected_total = order.grand_total  # Should be $55.00 ($50 + 10% tax)
 
         # Create payment (Payment requires tenant and order)
         payment = Payment.objects.create(
             tenant=tenant,
             order=order,
-            total_amount_due=order.grand_total,  # Correct field name
-            status='PENDING'  # Use the correct status constant
+            total_amount_due=order.grand_total,
+            status='PENDING'
         )
 
         results = []
@@ -274,9 +302,9 @@ class TestConcurrentPaymentProcessing:
 
                 # Both threads try to process the same payment
                 result = PaymentService.process_transaction(
-                    order=order,  # process_transaction takes order, not payment
-                    method='CASH',  # Use uppercase constant
-                    amount=Decimal('55.00')
+                    order=order,
+                    method='CASH',
+                    amount=expected_total  # Use actual order total
                 )
                 results.append((thread_id, result))
             except Exception as e:
@@ -297,11 +325,11 @@ class TestConcurrentPaymentProcessing:
         # Assertions
         # At least one payment should succeed
         assert len(results) >= 1, f"At least one payment should succeed. Results: {results}, Errors: {errors}"
-        assert payment.status == 'PAID', f"Payment should be PAID, got {payment.status}"  # Correct status constant
+        assert payment.status == 'PAID', f"Payment should be PAID, got {payment.status}"
 
         # Verify payment was processed exactly once (amount shouldn't exceed total)
-        assert payment.amount_paid <= Decimal('55.00'), \
-            f"Payment amount shouldn't exceed $55, got ${payment.amount_paid}"
+        assert payment.amount_paid <= expected_total, \
+            f"Payment amount shouldn't exceed ${expected_total}, got ${payment.amount_paid}"
 
         # Check transaction count - should be 1 or 2 (if both succeeded but one was ignored)
         transaction_count = payment.transactions.count()
