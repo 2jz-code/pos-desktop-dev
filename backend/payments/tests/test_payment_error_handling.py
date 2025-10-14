@@ -319,6 +319,7 @@ class TestPartialPaymentValidation:
             category=category,
             product_type=product_type
         )
+        product.taxes.add(tax)
 
         # Create order - should have $50 product + 8% tax = $54
         order = OrderService.create_order(

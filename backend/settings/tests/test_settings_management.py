@@ -211,6 +211,9 @@ class TestWebOrderSettings:
         """Test creating web order settings"""
         set_current_tenant(tenant_a)
 
+        # Clean up any existing singleton instance from previous tests (use all_objects to bypass tenant filter)
+        WebOrderSettings.all_objects.all().delete()
+
         settings = WebOrderSettings.objects.create(
             tenant=tenant_a,
             enable_notifications=True,
@@ -231,6 +234,9 @@ class TestWebOrderSettings:
     def test_web_order_settings_singleton_per_tenant(self, tenant_a):
         """Test singleton behavior for web order settings"""
         set_current_tenant(tenant_a)
+
+        # Clean up any existing singleton instance from previous tests (use all_objects to bypass tenant filter)
+        WebOrderSettings.all_objects.all().delete()
 
         # Create first settings
         settings1 = WebOrderSettings.objects.create(

@@ -8,17 +8,17 @@ logger = logging.getLogger(__name__)
 
 class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
-        return obj == request.user and request.user.role == User.Role.OWNER
+        return request.user.is_authenticated and obj == request.user and request.user.role == User.Role.OWNER
 
 
 class IsAdminOrHigher(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.role in [User.Role.OWNER, User.Role.ADMIN]
+        return request.user.is_authenticated and request.user.role in [User.Role.OWNER, User.Role.ADMIN]
 
 
 class IsManagerOrHigher(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.role in [
+        return request.user.is_authenticated and request.user.role in [
             User.Role.OWNER,
             User.Role.ADMIN,
             User.Role.MANAGER,
@@ -32,6 +32,10 @@ class CanEditUserDetails(permissions.BasePermission):
     """
 
     def has_object_permission(self, request, view, obj):
+        # Check authentication first
+        if not request.user.is_authenticated:
+            return False
+
         # Users can always edit themselves, unless they are a customer.
         if request.user == obj and obj.role != User.Role.CUSTOMER:
             return True
@@ -65,9 +69,9 @@ class ReadOnlyForCashiers(permissions.BasePermission):
         # All authenticated users can read
         if request.method in permissions.SAFE_METHODS:
             return request.user.is_authenticated and request.user.is_pos_staff
-        
+
         # Only managers and above can create/update/delete
-        return request.user.role in [
+        return request.user.is_authenticated and request.user.role in [
             User.Role.OWNER,
             User.Role.ADMIN,
             User.Role.MANAGER,

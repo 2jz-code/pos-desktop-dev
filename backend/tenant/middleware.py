@@ -257,15 +257,26 @@ class TenantMiddleware:
 
             tenant_id = payload.get('tenant_id')
             if not tenant_id:
-                return None
+                # JWT exists but missing tenant_id claim - this is invalid for multi-tenant system
+                # Do not fall back (fail explicitly to prevent security issues)
+                raise TenantNotFoundError(
+                    "JWT missing tenant_id claim. Token format is invalid."
+                )
 
             # Look up tenant by ID from JWT claims
             # NOTE: Don't filter by is_active here - let the middleware check on line 60 handle it
             # This ensures inactive tenants get proper 403 error instead of falling back
-            return Tenant.objects.get(id=tenant_id)
+            try:
+                return Tenant.objects.get(id=tenant_id)
+            except Tenant.DoesNotExist:
+                # JWT has tenant claim but tenant doesn't exist - this is a critical error
+                # Do not fall back to other methods (fail explicitly)
+                raise TenantNotFoundError(
+                    f"JWT tenant_id '{tenant_id}' not found. Token may be stale."
+                )
 
-        except (InvalidTokenError, Tenant.DoesNotExist, KeyError, ValueError):
-            # Invalid JWT format, tenant not found, or other decode errors
+        except (InvalidTokenError, KeyError, ValueError):
+            # Invalid JWT format or other decode errors
             # Fall through to other tenant resolution methods
             return None
 

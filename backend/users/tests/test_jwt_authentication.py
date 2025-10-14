@@ -147,8 +147,8 @@ class TestJWTAuthentication:
         # Set JWT as cookie
         set_jwt_cookie(client, invalid_token)
 
-        # Try to use token with invalid tenant
-        response = client.get('/api/products/')
+        # Try to use token with invalid tenant (use protected endpoint)
+        response = client.get('/api/users/')
 
         # Verify rejection (should be 400 Bad Request or 403 Forbidden)
         assert response.status_code in [400, 403], \
@@ -332,8 +332,8 @@ class TestJWTAuthenticationEdgeCases:
         # Set JWT as cookie
         set_jwt_cookie(client, old_style_token)
 
-        # Try to use token without tenant claims
-        response = client.get('/api/products/')
+        # Try to use token without tenant claims (use protected endpoint)
+        response = client.get('/api/users/')
 
         # Should be rejected (400 Bad Request - middleware can't resolve tenant)
         assert response.status_code in [400, 401], \

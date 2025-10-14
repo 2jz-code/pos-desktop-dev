@@ -57,6 +57,14 @@ class TestOrderSignals:
 
         set_current_tenant(tenant)
 
+        # Create GlobalSettings with 8% tax
+        from settings.models import GlobalSettings
+        GlobalSettings.objects.all().delete()  # Clean up singleton
+        GlobalSettings.objects.create(
+            tenant=tenant,
+            tax_rate=Decimal("0.08")
+        )
+
         # Create product
         product_type = ProductType.objects.create(
             tenant=tenant,
@@ -73,7 +81,7 @@ class TestOrderSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('100.00'),
             tax_total=Decimal('0.00'),
             grand_total=Decimal('100.00'),
@@ -143,7 +151,7 @@ class TestOrderSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('100.00'),
             tax_total=Decimal('8.00'),
             grand_total=Decimal('108.00'),
@@ -206,7 +214,7 @@ class TestOrderSignals:
         # Create order (not completed yet)
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('10.00'),
             tax_total=Decimal('0.80'),
             grand_total=Decimal('10.80'),
@@ -263,7 +271,7 @@ class TestPaymentSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('100.00'),
             tax_total=Decimal('8.00'),
             grand_total=Decimal('108.00'),
@@ -330,6 +338,14 @@ class TestDiscountSignals:
 
         set_current_tenant(tenant)
 
+        # Create GlobalSettings with 8% tax
+        from settings.models import GlobalSettings
+        GlobalSettings.objects.all().delete()  # Clean up singleton
+        GlobalSettings.objects.create(
+            tenant=tenant,
+            tax_rate=Decimal("0.08")
+        )
+
         # Create product
         product_type = ProductType.objects.create(
             tenant=tenant,
@@ -346,7 +362,7 @@ class TestDiscountSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('50.00'),
             tax_total=Decimal('0.00'),
             grand_total=Decimal('50.00'),
@@ -417,7 +433,7 @@ class TestCacheInvalidationSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('100.00'),
             tax_total=Decimal('8.00'),
             grand_total=Decimal('108.00'),
@@ -469,7 +485,7 @@ class TestCacheInvalidationSignals:
         # Create order
         order = Order.objects.create(
             tenant=tenant,
-            order_type='pos',
+            order_type='POS',
             subtotal=Decimal('0.00'),
             tax_total=Decimal('0.00'),
             grand_total=Decimal('0.00'),

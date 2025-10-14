@@ -424,7 +424,8 @@ class TestUnauthenticatedAccess:
         Note: Returns 400 (TENANT_NOT_FOUND) instead of 401 because TenantMiddleware
         runs before authentication and requires tenant context from JWT
         """
-        response = api_client.get('/api/products/')
+        # Use a protected endpoint (users requires auth, unlike products which is public)
+        response = api_client.get('/api/users/')
 
         # Should be denied (400 for missing tenant or 401 for missing auth)
         assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_401_UNAUTHORIZED]

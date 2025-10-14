@@ -145,13 +145,18 @@ class TestSettingsCacheIsolation:
 class TestOAuthTokenCacheIsolation:
     """Test OAuth token caching tenant isolation (CRITICAL SECURITY)"""
 
-    def test_oauth_token_cache_isolated_by_tenant(self, tenant_a, tenant_b, enable_cache):
+    def test_oauth_token_cache_isolated_by_tenant(self, tenant_a, tenant_b, enable_cache, monkeypatch):
         """
         CRITICAL: Verify Clover OAuth tokens are cached separately per tenant
 
         Security Impact: Cross-tenant OAuth token leakage allows unauthorized payments
         """
         from payments.clover_oauth import CloverOAuthService
+        from django.conf import settings
+
+        # Mock Clover credentials for testing
+        monkeypatch.setattr(settings, 'CLOVER_APP_ID', 'test_app_id')
+        monkeypatch.setattr(settings, 'CLOVER_APP_SECRET', 'test_app_secret')
 
         # Manually cache tokens for both tenants
         set_current_tenant(tenant_a)
