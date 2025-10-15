@@ -61,27 +61,31 @@ def warm_caches(request):
 @api_view(['POST'])
 @permission_classes([IsAdminOrHigher])
 def invalidate_cache(request):
-    """API endpoint to invalidate cache patterns"""
+    """API endpoint to invalidate cache patterns with proper tenant scoping"""
     pattern = request.data.get('pattern')
-    cache_name = request.data.get('cache_name', 'default')
-    
+    cache_name = request.data.get('cache_name', 'static_data')
+
     if not pattern:
         return Response({
             'error': 'Pattern is required'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     try:
-        result = AdvancedCacheManager.invalidate_pattern(pattern, cache_name)
-        
+        # Use centralized function with tenant scoping for proper multi-tenant cache invalidation
+        from .infrastructure.cache_utils import invalidate_cache_pattern
+        result = invalidate_cache_pattern(pattern, cache_name=cache_name, tenant=request.tenant)
+
+        tenant_name = request.tenant.name if hasattr(request, 'tenant') and request.tenant else 'None'
+
         if result:
             return Response({
                 'status': 'success',
-                'message': f'Cache pattern "{pattern}" invalidated in {cache_name}'
+                'message': f'Cache pattern "{pattern}" invalidated in {cache_name} for tenant {tenant_name}'
             })
         else:
             return Response({
                 'status': 'failed',
-                'message': f'Failed to invalidate pattern "{pattern}" in {cache_name}'
+                'message': f'Failed to invalidate pattern "{pattern}" in {cache_name} for tenant {tenant_name}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
         logger.error(f"Cache invalidation failed: {e}")

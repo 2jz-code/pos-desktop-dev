@@ -364,10 +364,16 @@ class ProductService:
             return ProductService.get_cached_active_products_list()
     
     @staticmethod
-    def invalidate_product_cache(product_id):
-        """Invalidate product-related caches when products change"""
+    def invalidate_product_cache(product_id, tenant=None):
+        """
+        Invalidate product-related caches when products change
+
+        Args:
+            product_id: ID of the product that changed
+            tenant: Tenant instance for proper cache scoping (if None, uses current tenant context)
+        """
         from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
-        
+
         cache_patterns = [
             f'*product_{product_id}*',
             '*get_cached_products_list*',
@@ -377,9 +383,10 @@ class ProductService:
             '*get_pos_menu_layout*',
             '*get_cached_category_tree*'
         ]
-        
+
+        # CRITICAL: Pass tenant to ensure proper tenant-scoped cache invalidation
         for pattern in cache_patterns:
-            invalidate_cache_pattern(pattern)
+            invalidate_cache_pattern(pattern, tenant=tenant)
     
     @staticmethod
     def get_structured_modifier_groups_for_product(product, context=None):
@@ -598,10 +605,12 @@ class ProductService:
                     'error': 'No products found with the provided IDs'
                 }
 
-            # Invalidate caches in bulk (using pattern matching)
-            from core_backend.infrastructure.cache import AdvancedCacheManager
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
+            # Invalidate caches in bulk (using centralized function with tenant scoping)
+            from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+            invalidate_cache_pattern('*get_cached_products_list*', tenant=tenant)
+            invalidate_cache_pattern('*get_cached_active_products_list*', tenant=tenant)
 
             return {
                 'success': True,

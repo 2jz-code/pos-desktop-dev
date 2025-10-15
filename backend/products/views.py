@@ -460,13 +460,13 @@ class ProductViewSet(BaseViewSet):
 
         # If successful, invalidate product caches
         if response.status_code == status.HTTP_200_OK:
-            # Invalidate caches in bulk (using pattern matching)
-            from core_backend.infrastructure.cache import AdvancedCacheManager
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+            # Invalidate caches in bulk (using centralized function with tenant scoping)
+            from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+            invalidate_cache_pattern('*get_cached_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_active_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_by_category*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_with_inventory_status*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_pos_menu_layout*', tenant=request.tenant)
 
         return response
 
@@ -482,13 +482,13 @@ class ProductViewSet(BaseViewSet):
 
         # If successful, invalidate product caches
         if response.status_code == status.HTTP_200_OK:
-            # Invalidate caches in bulk (using pattern matching)
-            from core_backend.infrastructure.cache import AdvancedCacheManager
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+            # Invalidate caches in bulk (using centralized function with tenant scoping)
+            from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+            invalidate_cache_pattern('*get_cached_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_active_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_by_category*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_with_inventory_status*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_pos_menu_layout*', tenant=request.tenant)
 
         return response
 

@@ -98,18 +98,21 @@ class AdvancedCacheManager:
         """Pattern-based cache invalidation with error handling"""
         cache = cls.get_cache(cache_name)
         if not cache:
+            logger.warning(f"❌ Cache '{cache_name}' not available for pattern invalidation")
             return False
-        
+
         try:
             if hasattr(cache, 'delete_pattern'):
+                logger.info(f"🗑️  Attempting to delete pattern '{pattern}' from cache '{cache_name}'")
                 deleted_count = cache.delete_pattern(pattern)
-                logger.info(f"Invalidated {deleted_count} keys matching '{pattern}' in {cache_name}")
+                logger.info(f"✅ Deleted {deleted_count} cache keys matching '{pattern}' in '{cache_name}'")
                 return True
             else:
-                logger.warning(f"Pattern deletion not supported for cache: {cache_name}")
+                logger.warning(f"⚠️ Pattern deletion NOT SUPPORTED for cache backend: {cache_name} (type: {type(cache).__name__})")
+                logger.warning(f"💡 Consider using django-redis or memcached for pattern-based cache invalidation")
                 return False
         except Exception as e:
-            logger.error(f"Cache invalidation failed for pattern '{pattern}': {e}")
+            logger.error(f"❌ Cache invalidation FAILED for pattern '{pattern}' in '{cache_name}': {e}")
             return False
     
     @classmethod
@@ -583,8 +586,17 @@ def cache_get_or_set(key, callable_func, timeout=300, cache_name='default'):
         logger.error(f"Cache get_or_set failed for {key}: {e}")
         return callable_func()
 
-def invalidate_cache_groups(*groups):
-    """Invalidate multiple cache groups"""
+def invalidate_cache_groups(*groups, tenant=None):
+    """
+    Invalidate multiple cache groups with proper tenant scoping.
+
+    Args:
+        *groups: Cache group names to invalidate
+        tenant: Tenant instance for proper cache scoping (if None, uses current tenant context)
+    """
+    from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+
     for group in groups:
-        for cache_name in ['default', 'static_data']:
-            AdvancedCacheManager.invalidate_pattern(f"*{group}*", cache_name)
+        # Use centralized function with tenant scoping for proper multi-tenant cache invalidation
+        invalidate_cache_pattern(f"*{group}*", cache_name='static_data', tenant=tenant)
+        invalidate_cache_pattern(f"*{group}*", cache_name='default', tenant=tenant)

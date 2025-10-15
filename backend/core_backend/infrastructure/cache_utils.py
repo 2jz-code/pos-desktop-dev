@@ -86,17 +86,22 @@ def invalidate_cache_pattern(pattern, cache_name='static_data', tenant=None):
         tenant = get_current_tenant()
 
     # Build tenant-scoped pattern
+    # CRITICAL: tenant_id is at the END of cache keys, not the beginning
+    # Actual key format: v1:simple_cache:get_cached_products_list:static:args_hash=xxx:kwargs_hash=yyy:tenant_id=b4c861f4...
     tenant_id = str(tenant.id) if tenant else 'none'
-    tenant_scoped_pattern = f"*tenant_id={tenant_id}*{pattern}"
+    tenant_name = tenant.name if tenant else 'None'
+    tenant_scoped_pattern = f"*{pattern}*tenant_id={tenant_id}*"
+
+    logger.info(f"🔍 Invalidating cache pattern='{pattern}' for tenant '{tenant_name}' (ID={tenant_id}), full_pattern='{tenant_scoped_pattern}'")
 
     # Use advanced cache manager for better error handling
     result_static = AdvancedCacheManager.invalidate_pattern(tenant_scoped_pattern, 'static_data')
     result_default = AdvancedCacheManager.invalidate_pattern(tenant_scoped_pattern, 'default')
 
     if result_static or result_default:
-        logger.info(f"Successfully invalidated pattern '{tenant_scoped_pattern}' across caches for tenant {tenant_id}")
+        logger.info(f"✅ Successfully invalidated pattern '{tenant_scoped_pattern}' across caches for tenant '{tenant_name}'")
     else:
-        logger.warning(f"Failed to invalidate pattern '{tenant_scoped_pattern}' for tenant {tenant_id}")
+        logger.warning(f"⚠️ Failed to invalidate pattern '{tenant_scoped_pattern}' for tenant '{tenant_name}' - cache backend may not support pattern deletion")
 
     return result_static or result_default
 

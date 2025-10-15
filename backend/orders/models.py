@@ -366,14 +366,22 @@ class Order(models.Model):
 
     def _generate_sequential_order_number(self):
         """
-        Generates the next sequential order number.
-        Looks for the highest existing numeric suffix and increments it.
-        Formats as 'ORD-XXXXX' with leading zeros.
+        Generates the next sequential order number PER TENANT.
+        Each tenant has independent numbering starting from 1.
+
+        CRITICAL FIX: Added tenant filter to prevent cross-tenant number sharing.
+
+        Example:
+            Tenant A: ORD-00001, ORD-00002, ORD-00003
+            Tenant B: ORD-00001, ORD-00002  (independent sequence)
         """
         prefix = "ORD-"
-        # Get the highest existing order number that matches our pattern
+        # Get the highest existing order number for THIS TENANT
         last_order = (
-            Order.objects.filter(order_number__startswith=prefix)
+            Order.objects.filter(
+                tenant=self.tenant,  # ← CRITICAL FIX: Tenant isolation
+                order_number__startswith=prefix
+            )
             .order_by("-order_number")
             .first()
         )

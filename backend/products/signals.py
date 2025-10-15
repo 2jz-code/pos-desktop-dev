@@ -125,11 +125,12 @@ def process_product_image(sender, instance, created, **kwargs):
     # Also broadcast the change for real-time updates
     action = "created" if created else "updated"
     broadcast_entity_change("products", instance.id, action)
-    
+
     # Use centralized cache invalidation from ProductService
+    # CRITICAL: Pass tenant from instance to ensure proper tenant-scoped invalidation
     from .services import ProductService
-    ProductService.invalidate_product_cache(instance.id)
-    
+    ProductService.invalidate_product_cache(instance.id, tenant=instance.tenant)
+
     # Proactively warm product caches in background
     try:
         from celery import current_app
@@ -146,10 +147,11 @@ def handle_product_delete(sender, instance, **kwargs):
     # Delete all image files when the product is deleted
     ImageService.delete_product_images(instance)
     broadcast_entity_change("products", instance.id, "deleted")
-    
+
     # Use centralized cache invalidation from ProductService
+    # CRITICAL: Pass tenant from instance to ensure proper tenant-scoped invalidation
     from .services import ProductService
-    ProductService.invalidate_product_cache(instance.id)
+    ProductService.invalidate_product_cache(instance.id, tenant=instance.tenant)
     
     # Proactively warm product caches in background
     try:
@@ -171,13 +173,14 @@ def handle_category_change(sender, instance, created, **kwargs):
     """Handle category create/update events"""
     action = "created" if created else "updated"
     broadcast_entity_change("categories", instance.id, action)
-    
+
     # Invalidate category and product caches using broader patterns
-    invalidate_cache_pattern('*get_cached_category_tree*')
-    invalidate_cache_pattern('*get_cached_products_list*')
-    invalidate_cache_pattern('*get_cached_active_products_list*')
-    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
-    
+    # CRITICAL: Pass tenant from instance to ensure proper tenant-scoped invalidation
+    invalidate_cache_pattern('*get_cached_category_tree*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_cached_products_list*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_cached_active_products_list*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_pos_menu_layout*', tenant=instance.tenant)  # Also invalidate menu layout cache
+
     # Proactively warm product caches in background
     try:
         from celery import current_app
@@ -190,13 +193,14 @@ def handle_category_change(sender, instance, created, **kwargs):
 def handle_category_delete(sender, instance, **kwargs):
     """Handle category delete events"""
     broadcast_entity_change("categories", instance.id, "deleted")
-    
+
     # Invalidate category and product caches using broader patterns
-    invalidate_cache_pattern('*get_cached_category_tree*')
-    invalidate_cache_pattern('*get_cached_products_list*')
-    invalidate_cache_pattern('*get_cached_active_products_list*')
-    invalidate_cache_pattern('*get_pos_menu_layout*')  # Also invalidate menu layout cache
-    
+    # CRITICAL: Pass tenant from instance to ensure proper tenant-scoped invalidation
+    invalidate_cache_pattern('*get_cached_category_tree*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_cached_products_list*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_cached_active_products_list*', tenant=instance.tenant)
+    invalidate_cache_pattern('*get_pos_menu_layout*', tenant=instance.tenant)  # Also invalidate menu layout cache
+
     # Proactively warm product caches in background
     try:
         from celery import current_app

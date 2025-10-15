@@ -499,3 +499,259 @@ class TestGuestOrders:
         # Verify conversion
         assert guest_order.customer == customer_tenant_a, "Order should now be linked to customer"
         assert guest_order.guest_id is None, "guest_id should be cleared after conversion"
+
+
+@pytest.mark.django_db
+class TestOrderNumberGeneration:
+    """
+    CRITICAL: Test order number generation with proper tenant scoping
+
+    These tests verify the bug fix for cross-tenant order number sharing.
+    Bug: Order numbers were not tenant-scoped, causing Tenant B's first order
+    to be ORD-00004 if Tenant A already had 3 orders.
+
+    Fix: Added tenant filter to _generate_sequential_order_number() query.
+
+    Status: CRITICAL BUG FIX - Priority 0
+    """
+
+    def test_tenant_isolation_in_order_numbers(
+        self, tenant_a, tenant_b, admin_user_tenant_a, admin_user_tenant_b
+    ):
+        """
+        CRITICAL TEST: Different tenants should have independent order numbering.
+        Both should start from ORD-00001.
+
+        This test verifies the bug fix for the cross-tenant number sharing issue.
+
+        Business Impact: Tenant isolation is fundamental to multi-tenancy
+        Security Impact: Order numbers must not leak information between tenants
+        """
+        set_current_tenant(tenant_a)
+
+        # Tenant A creates 3 orders
+        for i in range(1, 4):
+            order = OrderService.create_order(
+                order_type=Order.OrderType.POS,
+                cashier=admin_user_tenant_a,
+                tenant=tenant_a
+            )
+            expected = f'ORD-{i:05d}'
+            assert order.order_number == expected, \
+                f"Tenant A's order {i} should be {expected}, got {order.order_number}"
+
+        # Switch to Tenant B
+        set_current_tenant(tenant_b)
+
+        # Tenant B creates their FIRST order
+        # This should be ORD-00001, NOT ORD-00004!
+        order_b1 = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_b,
+            tenant=tenant_b
+        )
+        assert order_b1.order_number == 'ORD-00001', \
+            f"Tenant B's first order should be ORD-00001 (independent from Tenant A), got {order_b1.order_number}"
+
+        # Tenant B creates second order
+        order_b2 = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_b,
+            tenant=tenant_b
+        )
+        assert order_b2.order_number == 'ORD-00002', \
+            f"Tenant B's second order should be ORD-00002, got {order_b2.order_number}"
+
+        # Switch back to Tenant A - verify their sequence continues independently
+        set_current_tenant(tenant_a)
+        order_a4 = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            tenant=tenant_a
+        )
+        assert order_a4.order_number == 'ORD-00004', \
+            f"Tenant A's fourth order should be ORD-00004, got {order_a4.order_number}"
+
+    def test_unique_constraint_allows_same_numbers_different_tenants(
+        self, tenant_a, tenant_b, admin_user_tenant_a, admin_user_tenant_b
+    ):
+        """
+        Test that unique constraint allows ORD-00001 for multiple tenants
+
+        Business Impact: Each tenant needs independent numbering starting from 1
+        """
+        set_current_tenant(tenant_a)
+
+        # Tenant A's first order
+        order_a = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            tenant=tenant_a
+        )
+
+        set_current_tenant(tenant_b)
+
+        # Tenant B's first order - should also be ORD-00001
+        order_b = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_b,
+            tenant=tenant_b
+        )
+
+        # Both should have ORD-00001
+        assert order_a.order_number == 'ORD-00001'
+        assert order_b.order_number == 'ORD-00001'
+
+        # But they are different orders
+        assert order_a.pk != order_b.pk
+        assert order_a.tenant != order_b.tenant
+
+    def test_unique_constraint_prevents_duplicates_same_tenant(
+        self, tenant_a, admin_user_tenant_a
+    ):
+        """
+        Test that unique constraint prevents duplicate numbers within a tenant
+
+        Security Impact: Prevents data corruption and duplicate order numbers
+        """
+        set_current_tenant(tenant_a)
+
+        order_1 = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            tenant=tenant_a
+        )
+
+        # Manually try to create another order with same number (bypass service)
+        order_2 = Order(
+            tenant=tenant_a,
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            order_number='ORD-00001'  # Same as order_1
+        )
+
+        # Should raise integrity error
+        with pytest.raises(Exception):
+            order_2.save()
+
+    def test_sequential_numbering_within_tenant(
+        self, tenant_a, admin_user_tenant_a
+    ):
+        """
+        Test that numbers are sequential within a tenant (1, 2, 3, ...)
+
+        Business Impact: Sequential numbering makes order tracking easier
+        """
+        set_current_tenant(tenant_a)
+
+        order_numbers = []
+        for _ in range(10):
+            order = OrderService.create_order(
+                order_type=Order.OrderType.POS,
+                cashier=admin_user_tenant_a,
+                tenant=tenant_a
+            )
+            # Extract numeric part
+            number = int(order.order_number.split('-')[1])
+            order_numbers.append(number)
+
+        # Should be 1, 2, 3, ..., 10
+        assert order_numbers == list(range(1, 11)), \
+            f"Numbers should be sequential 1-10, got {order_numbers}"
+
+    def test_order_number_format(
+        self, tenant_a, admin_user_tenant_a
+    ):
+        """
+        Test that order numbers follow ORD-XXXXX format with leading zeros
+
+        Business Impact: Consistent formatting improves readability
+        """
+        set_current_tenant(tenant_a)
+
+        test_cases = [
+            (1, 'ORD-00001'),
+            (10, 'ORD-00010'),
+            (100, 'ORD-00100'),
+            (1000, 'ORD-01000'),
+        ]
+
+        for expected_num, expected_format in test_cases:
+            # Create expected_num - 1 orders first (if needed)
+            current_count = Order.objects.filter(tenant=tenant_a).count()
+            for _ in range(expected_num - current_count - 1):
+                OrderService.create_order(
+                    order_type=Order.OrderType.POS,
+                    cashier=admin_user_tenant_a,
+                    tenant=tenant_a
+                )
+
+            # Create the target order
+            order = OrderService.create_order(
+                order_type=Order.OrderType.POS,
+                cashier=admin_user_tenant_a,
+                tenant=tenant_a
+            )
+
+            assert order.order_number == expected_format, \
+                f"Order {expected_num} should be formatted as {expected_format}, got {order.order_number}"
+
+    def test_order_number_persists_on_update(
+        self, tenant_a, admin_user_tenant_a
+    ):
+        """
+        Test that order numbers don't change when order is updated
+
+        Business Impact: Order numbers must be stable identifiers
+        """
+        set_current_tenant(tenant_a)
+
+        order = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            tenant=tenant_a
+        )
+
+        original_number = order.order_number
+        assert original_number == 'ORD-00001'
+
+        # Update order status
+        order.status = Order.OrderStatus.COMPLETED
+        order.save()
+
+        order.refresh_from_db()
+
+        # Order number should not change
+        assert order.order_number == original_number, \
+            "Order number should not change on update"
+
+    def test_manual_order_number_override(
+        self, tenant_a, admin_user_tenant_a
+    ):
+        """
+        Test that manually set order numbers are not overwritten
+
+        Business Impact: Allows manual override for legacy data migration
+        """
+        set_current_tenant(tenant_a)
+
+        # Create order with manual number (bypassing service)
+        order = Order(
+            tenant=tenant_a,
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            order_number='CUSTOM-12345'  # Manual override
+        )
+        order.save()
+
+        assert order.order_number == 'CUSTOM-12345', \
+            "Manually set order number should not be overwritten"
+
+        # Next auto-generated order should still work
+        order_2 = OrderService.create_order(
+            order_type=Order.OrderType.POS,
+            cashier=admin_user_tenant_a,
+            tenant=tenant_a
+        )
+        assert order_2.order_number == 'ORD-00001', \
+            "Auto-generated numbers should work alongside manual numbers"
