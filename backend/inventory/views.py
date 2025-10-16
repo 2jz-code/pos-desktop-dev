@@ -353,21 +353,38 @@ class QuickStockAdjustmentView(APIView):
 
 class InventoryDefaultsView(APIView):
     """
-    Get the global inventory default settings.
+    DEPRECATED: Global inventory defaults have been moved to StoreLocation model.
+    This view now returns defaults from the default store location.
+    TODO: Update frontend to fetch defaults from store location directly.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         try:
-            return Response(
-                {
-                    "default_low_stock_threshold": float(
-                        app_settings.default_low_stock_threshold
-                    ),
-                    "default_expiration_threshold": app_settings.default_expiration_threshold,
-                }
-            )
+            from settings.models import StoreLocation
+
+            # Try to get the default store location
+            default_store = app_settings.default_store_location
+            if not default_store:
+                # Fallback to first available store location
+                default_store = StoreLocation.objects.first()
+
+            if default_store:
+                return Response(
+                    {
+                        "default_low_stock_threshold": default_store.low_stock_threshold,
+                        "default_expiration_threshold": default_store.expiration_threshold,
+                    }
+                )
+            else:
+                # No store locations configured - return hardcoded defaults
+                return Response(
+                    {
+                        "default_low_stock_threshold": 10,
+                        "default_expiration_threshold": 7,
+                    }
+                )
         except Exception as e:
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR

@@ -49,25 +49,61 @@ class BusinessHoursMiddleware(MiddlewareMixin):
         if not self._should_restrict_request(request):
             return None
 
-        # Check if business is currently open using new BusinessHoursService
+        # Extract store_location from request (from query params, body, or header)
+        store_location = self._get_store_location_from_request(request)
+        if not store_location:
+            # If no location specified, allow access (will be caught by validation later)
+            logger.warning("No store location in request - skipping business hours check")
+            return None
+
+        # Check if business is currently open using BusinessHoursService for this location
         try:
-            service = BusinessHoursService.get_default_service()
-            if not service.is_open():
-                return self._business_closed_response(service)
-        except BusinessHoursProfile.DoesNotExist:
-            # If no business hours profile exists, fall back to old GlobalSettings
-            try:
-                settings = GlobalSettings.objects.get(pk=1)
-                if not settings.is_business_open():
-                    return self._business_closed_response_legacy(settings)
-            except GlobalSettings.DoesNotExist:
-                # If neither exist, allow access (setup mode)
-                logger.warning("No business hours configuration found - allowing access")
+            # Get the business hours service for this specific location
+            business_hours_profile = store_location.business_hours_profile
+            if not business_hours_profile:
+                # No business hours configured for this location, allow access
+                logger.warning(f"No business hours profile for location {store_location.name} - allowing access")
                 return None
+
+            service = BusinessHoursService(business_hours_profile)
+            if not service.is_open():
+                return self._business_closed_response(service, store_location)
         except Exception as e:
             # If check fails, log error but allow access
-            logger.error(f"Business hours check failed: {e}")
+            logger.error(f"Business hours check failed for location {store_location.id}: {e}")
             return None
+
+        return None
+
+    def _get_store_location_from_request(self, request):
+        """Extract store location from request query params, body, or headers."""
+        from settings.models import StoreLocation
+
+        store_location_id = None
+
+        # Try query params first
+        store_location_id = request.GET.get('store_location') or request.GET.get('store_location_id')
+
+        # Try request body for POST requests
+        if not store_location_id and request.method == 'POST':
+            try:
+                import json
+                body = json.loads(request.body.decode('utf-8'))
+                store_location_id = body.get('store_location') or body.get('store_location_id')
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+        # Try custom header
+        if not store_location_id:
+            store_location_id = request.META.get('HTTP_X_STORE_LOCATION')
+
+        # Try to get the StoreLocation object
+        if store_location_id:
+            try:
+                return StoreLocation.objects.get(id=store_location_id)
+            except (StoreLocation.DoesNotExist, ValueError):
+                logger.warning(f"Invalid store_location_id in request: {store_location_id}")
+                return None
 
         return None
 
@@ -117,45 +153,37 @@ class BusinessHoursMiddleware(MiddlewareMixin):
 
         return False
 
-    def _business_closed_response(self, service):
+    def _business_closed_response(self, service, store_location):
         """Return an enhanced JSON response indicating business is closed using BusinessHoursService."""
         try:
             # Get comprehensive status summary
             summary = service.get_status_summary()
-            
-            # Get store name from GlobalSettings if available
-            store_name = "Store"
-            try:
-                settings = GlobalSettings.objects.get(pk=1)
-                store_name = settings.store_name
-            except GlobalSettings.DoesNotExist:
-                pass
-            
+
             # Get today's hours for additional context
             today_hours = summary.get('today_hours', {})
-            
+
             response_data = {
                 "error": "BUSINESS_CLOSED",
                 "message": "The business is currently closed.",
                 "current_time": summary.get('current_time'),
                 "timezone": summary.get('timezone'),
-                "store_name": store_name,
+                "location_name": store_location.name,
                 "today_hours": today_hours,
             }
-            
+
             # Add next opening time if available
             next_opening = summary.get('next_opening')
             if next_opening:
                 response_data["next_opening"] = next_opening
                 response_data["message"] = f"The business is currently closed. We'll be open next at {next_opening}."
-            
+
             # Add reason if it's a special closure
             if today_hours.get('reason'):
                 response_data["closure_reason"] = today_hours['reason']
                 response_data["message"] = f"The business is currently closed due to {today_hours['reason']}."
-            
+
             return JsonResponse(response_data, status=503)  # Service Unavailable
-            
+
         except Exception as e:
             logger.error(f"Error generating enhanced business closed response: {e}")
             # Fallback to simple response
@@ -166,27 +194,3 @@ class BusinessHoursMiddleware(MiddlewareMixin):
                 },
                 status=503,
             )
-    
-    def _business_closed_response_legacy(self, settings):
-        """Legacy fallback response using GlobalSettings (for backward compatibility)."""
-        return JsonResponse(
-            {
-                "error": "BUSINESS_CLOSED",
-                "message": "The business is currently closed.",
-                "business_hours": {
-                    "opening_time": (
-                        settings.opening_time.strftime("%H:%M")
-                        if settings.opening_time
-                        else None
-                    ),
-                    "closing_time": (
-                        settings.closing_time.strftime("%H:%M")
-                        if settings.closing_time
-                        else None
-                    ),
-                    "timezone": settings.timezone,
-                },
-                "store_name": settings.store_name,
-            },
-            status=503,
-        )  # Service Unavailable

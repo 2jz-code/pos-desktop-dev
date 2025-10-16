@@ -11,12 +11,22 @@ class Location(SoftDeleteMixin):
     """
     Represents a physical location where inventory is stored.
     e.g., 'Back Storeroom', 'Front Customer Cooler', 'Main Walk-in Freezer'.
+
+    Phase 5: Each storage location now belongs to a specific StoreLocation.
     """
 
     tenant = models.ForeignKey(
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='inventory_locations'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='inventory_locations',
+        null=True,  # Temporarily null for migration - will be required after data migration
+        blank=True,
+        help_text=_("The store this storage location belongs to.")
     )
     name = models.CharField(
         max_length=100, help_text=_("Name of the inventory location.")
@@ -58,23 +68,37 @@ class Location(SoftDeleteMixin):
 
     @property
     def effective_low_stock_threshold(self):
-        """Returns the effective low stock threshold (location-specific or global default)."""
+        """
+        Returns the effective low stock threshold using 2-tier hierarchy:
+        1. Storage location-specific override
+        2. Store location default (or hardcoded fallback if no store location)
+        """
         if self.low_stock_threshold is not None:
             return self.low_stock_threshold
-        
-        # Import here to avoid circular imports
-        from settings.config import app_settings
-        return app_settings.default_low_stock_threshold
+
+        # Fall back to store location default
+        if self.store_location:
+            return self.store_location.low_stock_threshold
+
+        # Hardcoded fallback for legacy data without store_location
+        return 10
 
     @property
     def effective_expiration_threshold(self):
-        """Returns the effective expiration threshold (location-specific or global default)."""
+        """
+        Returns the effective expiration threshold using 2-tier hierarchy:
+        1. Storage location-specific override
+        2. Store location default (or hardcoded fallback if no store location)
+        """
         if self.expiration_threshold is not None:
             return self.expiration_threshold
-        
-        # Import here to avoid circular imports
-        from settings.config import app_settings
-        return app_settings.default_expiration_threshold
+
+        # Fall back to store location default
+        if self.store_location:
+            return self.store_location.expiration_threshold
+
+        # Hardcoded fallback for legacy data without store_location
+        return 7
 
 
 class InventoryStock(SoftDeleteMixin):
@@ -126,40 +150,30 @@ class InventoryStock(SoftDeleteMixin):
         """
         Returns the effective low stock threshold using 3-tier hierarchy:
         1. Individual stock override
-        2. Location-specific default
-        3. Global default
+        2. Storage location default
+        3. Store location default
         """
         # First check for item-specific override
         if self.low_stock_threshold is not None:
             return self.low_stock_threshold
-        
-        # Then check for location-specific default
-        if self.location.low_stock_threshold is not None:
-            return self.location.low_stock_threshold
-        
-        # Finally fall back to global default
-        from settings.config import app_settings
-        return app_settings.default_low_stock_threshold
+
+        # Then fall back to location's effective threshold (which uses store location)
+        return self.location.effective_low_stock_threshold
 
     @property
     def effective_expiration_threshold(self):
         """
         Returns the effective expiration threshold using 3-tier hierarchy:
         1. Individual stock override
-        2. Location-specific default
-        3. Global default
+        2. Storage location default
+        3. Store location default
         """
         # First check for item-specific override
         if self.expiration_threshold is not None:
             return self.expiration_threshold
-        
-        # Then check for location-specific default
-        if self.location.expiration_threshold is not None:
-            return self.location.expiration_threshold
-        
-        # Finally fall back to global default
-        from settings.config import app_settings
-        return app_settings.default_expiration_threshold
+
+        # Then fall back to location's effective threshold (which uses store location)
+        return self.location.effective_expiration_threshold
 
     @property
     def is_low_stock(self):

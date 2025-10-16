@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.contrib import messages
+from django import forms
 from .models import (
     GlobalSettings,
     StoreLocation,
@@ -13,6 +14,42 @@ from .models import (
 from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin
 
 
+# === CUSTOM FORMS ===
+
+
+class TerminalLocationInlineForm(forms.ModelForm):
+    """
+    Custom form for TerminalLocation inline that makes stripe_id optional
+    when the entire inline is empty (allows saving StoreLocation without Stripe config).
+    """
+
+    class Meta:
+        model = TerminalLocation
+        fields = ('stripe_id',)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make stripe_id not required in the form
+        self.fields['stripe_id'].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        stripe_id = cleaned_data.get('stripe_id')
+
+        # If DELETE is checked or no stripe_id is provided, allow it
+        # Only validate if user is actually providing data
+        if self.cleaned_data.get('DELETE') or not stripe_id:
+            # If no stripe_id and not marked for deletion, skip saving this inline
+            if not stripe_id and not self.instance.pk:
+                # This is a new unsaved inline with no data - don't create it
+                return cleaned_data
+
+        return cleaned_data
+
+
+# === ADMIN CLASSES ===
+
+
 @admin.register(GlobalSettings)
 class GlobalSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
@@ -22,36 +59,27 @@ class GlobalSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
 
     fieldsets = (
         (
-            "Store Information",
-            {"fields": ("store_name", "store_address", "store_phone", "store_email")},
+            "Brand Identity",
+            {
+                "fields": ("brand_name", "brand_logo", "brand_primary_color", "brand_secondary_color"),
+                "description": "Your brand identity used across all locations."
+            },
         ),
         (
-            "Financial Settings",
-            {"fields": ("tax_rate", "surcharge_percentage", "currency")},
+            "Financial Rules",
+            {
+                "fields": ("currency", "surcharge_percentage", "allow_discount_stacking"),
+                "description": "Tenant-wide financial rules that apply to all locations."
+            },
         ),
-        ("Receipt Configuration", {"fields": ("receipt_header", "receipt_footer")}),
+        (
+            "Receipt Templates",
+            {
+                "fields": ("brand_receipt_header", "brand_receipt_footer"),
+                "description": "Default receipt templates. Locations can override these."
+            }
+        ),
         ("Payment Processing", {"fields": ("active_terminal_provider",)}),
-        (
-            "Defaults",
-            {
-                "fields": ("default_store_location", "default_inventory_location"),
-                "description": "Set default locations for various operations.",
-            },
-        ),
-        (
-            "Inventory Defaults",
-            {
-                "fields": ("default_low_stock_threshold", "default_expiration_threshold"),
-                "description": "Global default thresholds for inventory warnings. These can be overridden per product.",
-            },
-        ),
-        (
-            "Business Hours & Timezone",
-            {
-                "fields": ("timezone", "opening_time", "closing_time"),
-                "description": "Configure your business timezone and operating hours. This affects report date ranges and business logic.",
-            },
-        ),
     )
 
     actions = ['clear_report_cache']
@@ -114,19 +142,31 @@ class TerminalLocationInline(admin.StackedInline):
     """
     Inline admin for the Stripe-specific TerminalLocation model.
     This allows managing the Stripe location link directly from the StoreLocation page.
+
+    Phase 5 Fix: Uses custom form to make stripe_id optional, preventing validation errors
+    when saving StoreLocation without Stripe configuration.
     """
 
     model = TerminalLocation
-    can_delete = False
-    verbose_name_plural = "Stripe Location Link"
-    extra = 1
+    form = TerminalLocationInlineForm  # Use custom form with optional stripe_id
+    can_delete = True  # Allow deletion of Stripe config if not needed
+    verbose_name_plural = "Stripe Location Link (Optional)"
+    extra = 0  # Don't show empty form by default - add only when needed
     max_num = 1
-    # Here, you could add custom form logic to fetch locations from the Stripe API
-    # and populate a dropdown for the `stripe_id` field.
+    fields = ('stripe_id',)  # Only show stripe_id field, tenant and store_location are auto-set
+
+    # Helpful text for users
+    help_text = "Link this store location to a Stripe Terminal location (optional). Leave empty if not using Stripe Terminal."
 
     def get_queryset(self, request):
         """Use all_objects to show items across all tenants in admin"""
         return TerminalLocation.all_objects.select_related("store_location")
+
+    def has_add_permission(self, request, obj=None):
+        """Only allow adding if no TerminalLocation exists for this StoreLocation yet"""
+        if obj and hasattr(obj, 'terminallocation'):
+            return False  # Already has a TerminalLocation
+        return super().has_add_permission(request, obj)
 
 
 @admin.register(StoreLocation)
@@ -134,12 +174,91 @@ class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin
     """
     Admin view for the primary StoreLocation model.
     Includes an inline for the Stripe configuration.
+
+    Phase 5 Enhancement: Now includes location-specific settings.
     """
 
-    list_display = ("name", "address", "is_default")
-    list_filter = ("is_default",)
-    search_fields = ("name",)
+    list_display = ("name", "city", "state", "accepts_web_orders", "timezone", "phone")
+    list_filter = ("accepts_web_orders", "timezone", "country")
+    search_fields = ("name", "city", "state", "slug", "address_line1")
     inlines = [TerminalLocationInline]
+
+    readonly_fields = ('slug',)  # Auto-generated from name
+
+    fieldsets = (
+        (
+            "Basic Information",
+            {
+                "fields": ("name", "slug", "phone", "email")
+            }
+        ),
+        (
+            "Structured Address",
+            {
+                "fields": (
+                    "address_line1",
+                    "address_line2",
+                    "city",
+                    "state",
+                    "postal_code",
+                    "country"
+                ),
+                "description": "Use structured address fields for better data quality. Legacy 'address' field below is deprecated."
+            }
+        ),
+        (
+            "Legacy Address (Deprecated)",
+            {
+                "fields": ("address",),
+                "classes": ("collapse",),
+                "description": "Deprecated: Use structured address fields above instead."
+            }
+        ),
+        (
+            "Location Settings",
+            {
+                "fields": ("timezone", "tax_rate"),
+                "description": "Location-specific operational settings."
+            }
+        ),
+        (
+            "Web Order Configuration",
+            {
+                "fields": ("accepts_web_orders", "web_order_lead_time_minutes"),
+            }
+        ),
+        (
+            "Web Order Notification Overrides (Optional)",
+            {
+                "fields": (
+                    "enable_web_notifications",
+                    "play_web_notification_sound",
+                    "auto_print_web_receipt",
+                    "auto_print_web_kitchen",
+                    "web_notification_terminals",
+                ),
+                "classes": ("collapse",),
+                "description": "Override tenant-wide web order notification defaults for this location. Leave blank to use tenant defaults. Select terminals at this location for notifications."
+            }
+        ),
+        (
+            "Receipt Customization",
+            {
+                "fields": ("receipt_header", "receipt_footer"),
+                "classes": ("collapse",),
+                "description": "Custom receipt text for this location. If empty, brand templates will be used."
+            }
+        ),
+        (
+            "Integrations",
+            {
+                "fields": ("google_place_id", "latitude", "longitude"),
+                "classes": ("collapse",),
+            }
+        ),
+    )
+
+    filter_horizontal = ("web_notification_terminals",)
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
@@ -150,7 +269,8 @@ class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin
 class WebOrderSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the singleton WebOrderSettings model.
-    Manages terminal selection for web order notifications.
+    Manages tenant-wide web order notification defaults.
+    Terminal selection is managed per-location on StoreLocation model.
     """
 
     list_display = (
@@ -160,7 +280,21 @@ class WebOrderSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
         "auto_print_receipt",
         "auto_print_kitchen",
     )
-    filter_horizontal = ("web_receipt_terminals",)
+
+    fieldsets = (
+        (
+            "Tenant-Wide Notification Defaults",
+            {
+                "fields": (
+                    "enable_notifications",
+                    "play_notification_sound",
+                    "auto_print_receipt",
+                    "auto_print_kitchen",
+                ),
+                "description": "These settings apply to all locations unless overridden at the location level. Terminal selection is configured per-location."
+            }
+        ),
+    )
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""

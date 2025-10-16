@@ -55,14 +55,17 @@ class RegularHoursInline(admin.TabularInline):
 
 @admin.register(BusinessHoursProfile)
 class BusinessHoursProfileAdmin(admin.ModelAdmin):
-    """Admin for business hours profiles"""
-    list_display = ['name', 'timezone', 'is_active', 'is_default', 'tenant', 'created_at']
-    list_filter = ['is_active', 'is_default', 'timezone', 'tenant']
-    search_fields = ['name']
+    """
+    Admin for business hours profiles.
+    Phase 5: Now includes store_location link.
+    """
+    list_display = ['name', 'store_location', 'timezone', 'is_active', 'is_default', 'tenant', 'created_at']
+    list_filter = ['is_active', 'is_default', 'timezone', 'tenant', 'store_location']
+    search_fields = ['name', 'store_location__name']
     inlines = [RegularHoursInline]
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'timezone', 'tenant')
+            'fields': ('name', 'store_location', 'timezone', 'tenant')
         }),
         ('Status', {
             'fields': ('is_active', 'is_default')
@@ -77,7 +80,29 @@ class BusinessHoursProfileAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Use all_objects to show all tenants in Django admin"""
         return BusinessHoursProfile.all_objects.all()
-    
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Filter store_location dropdown by profile's tenant"""
+        if db_field.name == "store_location":
+            from settings.models import StoreLocation
+            from tenant.managers import get_current_tenant
+
+            # Get the profile being edited (if editing existing)
+            profile_id = request.resolver_match.kwargs.get('object_id')
+            if profile_id:
+                try:
+                    profile = BusinessHoursProfile.all_objects.get(pk=profile_id)
+                    # Filter locations by the profile's tenant
+                    kwargs["queryset"] = StoreLocation.all_objects.filter(tenant=profile.tenant)
+                except BusinessHoursProfile.DoesNotExist:
+                    # Profile not found, fall back to current tenant
+                    kwargs["queryset"] = StoreLocation.objects.all()
+            else:
+                # Creating new profile, use current tenant's locations
+                kwargs["queryset"] = StoreLocation.objects.all()
+
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
         """Override to create default regular hours for new profiles"""
         from tenant.managers import get_current_tenant

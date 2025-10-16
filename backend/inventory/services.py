@@ -760,22 +760,30 @@ class InventoryService:
             )
         
         # Low stock filtering with effective thresholds
+        # Uses 3-tier hierarchy: InventoryStock → inventory.Location → StoreLocation (fallback: 10)
         is_low_stock = filters.get("is_low_stock")
         if is_low_stock and is_low_stock.lower() == "true":
             from django.db import models
             queryset = queryset.filter(
                 quantity__lte=Case(
+                    # Tier 1: Individual stock threshold
                     When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
-                    default=Value(app_settings.default_low_stock_threshold, output_field=models.DecimalField()),
+                    # Tier 2: Storage location threshold
+                    When(location__low_stock_threshold__isnull=False, then=F("location__low_stock_threshold")),
+                    # Tier 3: Store location threshold (via storage location)
+                    When(location__store_location__low_stock_threshold__isnull=False,
+                         then=F("location__store_location__low_stock_threshold")),
+                    # Fallback: Hardcoded default
+                    default=Value(10, output_field=models.IntegerField()),
                 )
             )
         
         # Expiring soon filtering - simplified since SerializerOptimizedMixin handles relationships
+        # Uses 3-tier hierarchy: InventoryStock → inventory.Location → StoreLocation (handled by model property)
         is_expiring_soon = filters.get("is_expiring_soon")
         if is_expiring_soon and is_expiring_soon.lower() == "true":
             today = timezone.now().date()
-            default_threshold = app_settings.default_expiration_threshold
-            
+
             # For simplicity and database portability, use a conservative approach
             # Filter broadly first, then let the serializer's is_expiring_soon property handle exact logic
             max_possible_threshold = 90  # Conservative maximum threshold
@@ -783,9 +791,9 @@ class InventoryService:
                 expiration_date__isnull=False,
                 expiration_date__lte=today + timedelta(days=max_possible_threshold)
             )
-            
+
             # The exact expiring logic will be handled by the model's is_expiring_soon property
-            # which uses the optimized relationships loaded by SerializerOptimizedMixin
+            # which uses the 3-tier hierarchy via effective_expiration_threshold
         
         return queryset
     

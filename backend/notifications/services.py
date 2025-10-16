@@ -63,8 +63,8 @@ class EmailService:
             except pytz.UnknownTimeZoneError:
                 local_pickup_time = utc_pickup_time  # Fallback to UTC
 
-            # Get store info from order's tenant settings
-            store_info = self._get_store_info(order.tenant)
+            # Get store info from order's store location (with tenant context)
+            store_info = self._get_store_info(order.tenant, order.store_location)
 
             # Determine which template to use and prepare context
             if order.customer:
@@ -228,30 +228,47 @@ class EmailService:
             logger.error(f"Failed to send low stock alert for product_id {product.id}: {type(e).__name__}")
             return False
 
-    def _get_store_info(self, tenant):
+    def _get_store_info(self, tenant, store_location=None):
         """
-        Get store information from settings with fallback defaults.
+        Get store information from store location.
 
         Args:
-            tenant: Tenant instance to get settings for
-        """
-        try:
-            store_settings = GlobalSettings.objects.get(tenant=tenant)
-            return {
-                "address": store_settings.store_address
-                or "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
-                "phone_display": store_settings.store_phone_display
-                or "(651) 412-5336",
-                "phone": store_settings.store_phone or "6514125336",
-            }
-        except (GlobalSettings.DoesNotExist, Exception):
-            pass
+            tenant: Tenant instance for isolation boundary
+            store_location: StoreLocation instance (optional, will use first location if not provided)
 
-        # Fallback to default values if no settings found
+        Returns:
+            dict: Store information including address, phone, email
+        """
+        from settings.models import StoreLocation
+
+        # If no store_location provided, try to get the first active location for this tenant
+        if not store_location:
+            try:
+                store_location = StoreLocation.objects.filter(
+                    tenant=tenant,
+                    is_active=True
+                ).first()
+            except Exception as e:
+                logger.warning(f"Could not get store location for tenant {tenant.id}: {e}")
+
+        # Use store location info if available
+        if store_location:
+            return {
+                "name": store_location.name,
+                "address": store_location.formatted_address,
+                "phone_display": store_location.phone or "",
+                "phone": store_location.phone.replace("-", "").replace("(", "").replace(")", "").replace(" ", "") if store_location.phone else "",
+                "email": store_location.email or "",
+            }
+
+        # Fallback to minimal info if no location found
+        logger.warning(f"No store location found for tenant {tenant.id}, using fallback")
         return {
-            "address": "2105 Cliff Rd Suite 300, Eagan, MN, 55124",
-            "phone_display": "(651) 412-5336",
-            "phone": "6514125336",
+            "name": "Store",
+            "address": "",
+            "phone_display": "",
+            "phone": "",
+            "email": "",
         }
 
     def send_daily_low_stock_summary(self, recipient_email, low_stock_items):

@@ -486,13 +486,14 @@ class WebOrderSettingsService:
     @staticmethod
     def get_web_order_settings() -> WebOrderSettings:
         """
-        Get the tenant-scoped WebOrderSettings instance with optimized query.
+        Get the tenant-scoped WebOrderSettings instance.
         Creates one if it doesn't exist for the current tenant.
 
         TenantManager automatically filters by current tenant context.
         OneToOneField ensures only one instance per tenant.
 
-        Extracted from WebOrderSettingsViewSet.get_object() with prefetch optimization.
+        Extracted from WebOrderSettingsViewSet.get_object().
+        Terminal selection is now managed per-location on StoreLocation model.
 
         Returns:
             WebOrderSettings: The tenant's web order settings instance
@@ -505,9 +506,7 @@ class WebOrderSettingsService:
 
         # Try to get existing settings for this tenant
         try:
-            obj = WebOrderSettings.objects.prefetch_related(
-                'web_receipt_terminals__store_location'
-            ).get(tenant=tenant)
+            obj = WebOrderSettings.objects.get(tenant=tenant)
         except WebOrderSettings.DoesNotExist:
             # Create new settings - avoid get_or_create due to id sequence conflicts
             obj = WebOrderSettings(tenant=tenant)

@@ -50,3 +50,12 @@ export const getTerminalDetails = async (deviceId: string) => {
 	const response = await apiClient.get(`terminals/registrations/${deviceId}/`);
 	return response.data;
 };
+
+export const getTerminalRegistrationsByLocation = async (
+	locationId: number
+) => {
+	const response = await apiClient.get("terminals/registrations/", {
+		params: { store_location: locationId },
+	});
+	return response.data.results || response.data;
+};

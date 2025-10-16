@@ -5,13 +5,31 @@ export interface Category {
 	children: Category[];
 }
 
+export interface WebOrderDefaults {
+	enable_notifications: boolean;
+	play_notification_sound: boolean;
+	auto_print_receipt: boolean;
+	auto_print_kitchen: boolean;
+}
+
 export interface GlobalSettings {
 	id: number;
-	tax_rate: number;
+	// Brand Identity
+	brand_name: string;
+	brand_logo?: string;
+	brand_primary_color?: string;
+	brand_secondary_color?: string;
+	// Financial Rules
 	surcharge_percentage?: number;
 	currency: string;
 	allow_discount_stacking?: boolean;
-	// Add other settings fields as needed
+	// Payment Processing
+	active_terminal_provider?: string;
+	// Receipt Templates
+	brand_receipt_header?: string;
+	brand_receipt_footer?: string;
+	// Web Order Notification Defaults (tenant-wide)
+	web_order_defaults: WebOrderDefaults;
 }
 
 export interface Printer {

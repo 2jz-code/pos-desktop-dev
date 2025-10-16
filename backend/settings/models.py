@@ -48,8 +48,19 @@ class TerminalProvider(models.TextChoices):
 
 class StoreLocation(SoftDeleteMixin):
     """
-    Represents a primary physical store location, independent of any payment provider.
-    This is the definitive source of truth for business locations.
+    PRIMARY source of truth for all location-specific operations and settings.
+
+    This model is the central hub for:
+    - Contact information (address, phone, email)
+    - Operational settings (timezone, tax rate)
+    - Business hours (via BusinessHoursProfile relationship)
+    - Web order configuration
+    - Receipt customization
+    - Inventory defaults
+
+    Location context is REQUIRED for all operational data (orders, payments, inventory).
+
+    Architecture: Tenant (Isolation) → StoreLocation (Operations) → Data
     """
 
     tenant = models.ForeignKey(
@@ -57,12 +68,130 @@ class StoreLocation(SoftDeleteMixin):
         on_delete=models.CASCADE,
         related_name='store_locations'
     )
-    name = models.CharField(max_length=100)
-    address = models.TextField(blank=True)
+    name = models.CharField(
+        max_length=100,
+        help_text="Location name (e.g., 'Downtown NYC', 'LAX Airport')"
+    )
+
+    # === STRUCTURED ADDRESS (Phase 5) ===
+    address_line1 = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Street address (e.g., '123 Main St')"
+    )
+    address_line2 = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Apartment, suite, unit, building, floor, etc."
+    )
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="State, province, or region"
+    )
+    postal_code = models.CharField(max_length=20, blank=True)
+    country = models.CharField(
+        max_length=2,
+        default='US',
+        help_text="Two-letter country code (ISO 3166-1 alpha-2)"
+    )
+
+    # === LEGACY ADDRESS (Deprecated - use structured fields) ===
+    address = models.TextField(
+        blank=True,
+        help_text="DEPRECATED: Use structured address fields instead. Kept for backwards compatibility."
+    )
+
+    # === CONTACT INFORMATION ===
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
-    is_default = models.BooleanField(
-        default=False, help_text="Is this the default location for inventory deduction?"
+
+    # === LOCATION-SPECIFIC SETTINGS ===
+    slug = models.SlugField(
+        max_length=100,
+        blank=True,
+        help_text="URL-friendly identifier for this location (e.g., 'downtown', 'airport')"
+    )
+    timezone = models.CharField(
+        max_length=50,
+        choices=TimezoneChoices.choices,
+        default=TimezoneChoices.US_CENTRAL,
+        help_text="This location's timezone. Used for business hours, reports, and timestamps."
+    )
+    tax_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="This location's tax rate (e.g., 0.08 for 8% sales tax). REQUIRED for operations."
+    )
+
+    # === WEB ORDER CONFIGURATION (Phase 5) ===
+    accepts_web_orders = models.BooleanField(
+        default=True,
+        help_text="Whether this location accepts online orders for pickup/delivery"
+    )
+    web_order_lead_time_minutes = models.PositiveIntegerField(
+        default=30,
+        help_text="Minimum lead time for web orders in minutes"
+    )
+
+    # === WEB ORDER NOTIFICATION OVERRIDES (Phase 5) ===
+    # These override tenant-wide defaults from WebOrderSettings
+    enable_web_notifications = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Location-specific override for web order notifications. If null, uses tenant default."
+    )
+    play_web_notification_sound = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Location-specific override for notification sound. If null, uses tenant default."
+    )
+    auto_print_web_receipt = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Location-specific override for auto-printing receipts. If null, uses tenant default."
+    )
+    auto_print_web_kitchen = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Location-specific override for auto-printing kitchen tickets. If null, uses tenant default."
+    )
+    web_notification_terminals = models.ManyToManyField(
+        'terminals.TerminalRegistration',
+        blank=True,
+        related_name='web_notification_locations',
+        help_text="Terminals at this location that receive web order notifications and auto-print."
+    )
+
+    # === RECEIPT CUSTOMIZATION (Phase 5) ===
+    receipt_header = models.TextField(
+        blank=True,
+        help_text="Custom receipt header for this location. If blank, uses brand template."
+    )
+    receipt_footer = models.TextField(
+        blank=True,
+        help_text="Custom receipt footer for this location. If blank, uses brand template."
+    )
+
+    # === INVENTORY DEFAULTS (Phase 5) ===
+    low_stock_threshold = models.PositiveIntegerField(
+        default=10,
+        help_text="Default low stock threshold for this location's inventory. Used when storage location or individual stock doesn't specify."
+    )
+    expiration_threshold = models.PositiveIntegerField(
+        default=7,
+        help_text="Default days before expiration to warn for this location's inventory. Used when storage location or individual stock doesn't specify."
+    )
+    default_inventory_location = models.ForeignKey(
+        "inventory.Location",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_store_location",
+        help_text="Default inventory location for stock operations at this store."
     )
 
     # === GOOGLE INTEGRATIONS ===
@@ -94,19 +223,142 @@ class StoreLocation(SoftDeleteMixin):
     class Meta:
         indexes = [
             models.Index(fields=['tenant', 'name']),
-            models.Index(fields=['tenant', 'is_default']),
+            models.Index(fields=['tenant', 'slug']),  # For URL lookups
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'slug'],
+                condition=models.Q(slug__isnull=False) & ~models.Q(slug=''),
+                name='unique_slug_per_tenant'
+            )
         ]
 
     def __str__(self):
         return self.name
 
     def save(self, *args, **kwargs):
-        if self.is_default:
-            # ensure only one default location exists per tenant
-            StoreLocation.objects.filter(tenant=self.tenant, is_default=True).exclude(pk=self.pk).update(
-                is_default=False
-            )
+        """Auto-generate slug from name if not provided"""
+        if not self.slug and self.name:
+            from django.utils.text import slugify
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+
+            # Ensure slug is unique within tenant
+            while StoreLocation.objects.filter(tenant=self.tenant, slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            self.slug = slug
+
         super().save(*args, **kwargs)
+
+    @property
+    def formatted_address(self):
+        """Return formatted address using structured fields, fallback to legacy field"""
+        if self.address_line1:
+            parts = [self.address_line1]
+            if self.address_line2:
+                parts.append(self.address_line2)
+            if self.city:
+                city_state = self.city
+                if self.state:
+                    city_state += f", {self.state}"
+                if self.postal_code:
+                    city_state += f" {self.postal_code}"
+                parts.append(city_state)
+            if self.country and self.country != 'US':
+                parts.append(self.country)
+            return "\n".join(parts)
+        return self.address  # Fallback to legacy field
+
+    def get_effective_tax_rate(self):
+        """
+        Get tax rate for this location.
+
+        Returns:
+            Decimal: This location's tax rate, or 0.00 if not set
+
+        Note: Each location must have its own tax rate.
+        """
+        return self.tax_rate if self.tax_rate is not None else Decimal('0.00')
+
+    def get_effective_receipt_header(self):
+        """
+        Get receipt header for this location.
+
+        Returns:
+            str: Location-specific header or brand template as fallback
+        """
+        if self.receipt_header:
+            return self.receipt_header
+        # Fallback to brand template
+        try:
+            return self.tenant.global_settings.brand_receipt_header
+        except AttributeError:
+            return ""
+
+    def get_effective_receipt_footer(self):
+        """
+        Get receipt footer for this location.
+
+        Returns:
+            str: Location-specific footer or brand template as fallback
+        """
+        if self.receipt_footer:
+            return self.receipt_footer
+        # Fallback to brand template
+        try:
+            return self.tenant.global_settings.brand_receipt_footer
+        except AttributeError:
+            return "Thank you for your business!"
+
+    def get_effective_web_order_settings(self):
+        """
+        Get effective web order notification settings for this location.
+
+        Location-specific overrides take precedence over tenant-wide defaults.
+
+        Returns:
+            dict: Effective web order settings with keys:
+                - enable_notifications (bool)
+                - play_notification_sound (bool)
+                - auto_print_receipt (bool)
+                - auto_print_kitchen (bool)
+                - terminals (QuerySet): Terminal registrations for this location
+        """
+        try:
+            tenant_defaults = self.tenant.web_order_settings
+        except AttributeError:
+            # Fallback if WebOrderSettings doesn't exist
+            tenant_defaults = None
+
+        return {
+            'enable_notifications': (
+                self.enable_web_notifications
+                if self.enable_web_notifications is not None
+                else (tenant_defaults.enable_notifications if tenant_defaults else True)
+            ),
+            'play_notification_sound': (
+                self.play_web_notification_sound
+                if self.play_web_notification_sound is not None
+                else (tenant_defaults.play_notification_sound if tenant_defaults else True)
+            ),
+            'auto_print_receipt': (
+                self.auto_print_web_receipt
+                if self.auto_print_web_receipt is not None
+                else (tenant_defaults.auto_print_receipt if tenant_defaults else True)
+            ),
+            'auto_print_kitchen': (
+                self.auto_print_web_kitchen
+                if self.auto_print_web_kitchen is not None
+                else (tenant_defaults.auto_print_kitchen if tenant_defaults else True)
+            ),
+            'terminals': self.web_notification_terminals.filter(
+                tenant=self.tenant,
+                store_location=self
+            )
+        }
 
 
 # === SINGLETON CONFIGURATION MODELS ===
@@ -114,9 +366,16 @@ class StoreLocation(SoftDeleteMixin):
 
 class GlobalSettings(models.Model):
     """
-    A singleton model to store globally accessible settings for the application.
-    These settings affect ALL terminals and should be managed centrally.
-    Now tenant-scoped: one instance per tenant.
+    Tenant-wide settings that apply across ALL locations within a tenant.
+
+    This model contains ONLY:
+    - Brand identity (logo, colors, name)
+    - Business rules (discount stacking, payment provider)
+    - Currency and financial rules
+    - Receipt templates (used as fallbacks for locations)
+
+    Location-specific settings (address, phone, tax rate, timezone, hours)
+    are stored on StoreLocation model.
     """
 
     tenant = models.OneToOneField(
@@ -125,95 +384,62 @@ class GlobalSettings(models.Model):
         related_name='global_settings'
     )
 
-    # === TAX & FINANCIAL SETTINGS ===
-    tax_rate = models.DecimalField(
-        max_digits=5,
-        decimal_places=4,
-        default=0.08,
-        help_text="The sales tax rate as a decimal (e.g., 0.08 for 8%).",
+    # === BRAND IDENTITY (Same across all locations) ===
+    brand_name = models.CharField(
+        max_length=100,
+        default="Ajeen POS",
+        help_text="The tenant's brand name (e.g., 'Pizza Palace Inc'). Used for branding, not store names."
+    )
+    brand_logo = models.ImageField(
+        upload_to='brand_logos/',
+        null=True,
+        blank=True,
+        help_text="Brand logo used across all locations"
+    )
+    brand_primary_color = models.CharField(
+        max_length=7,
+        default="#000000",
+        help_text="Primary brand color in hex format (e.g., #FF5733)"
+    )
+    brand_secondary_color = models.CharField(
+        max_length=7,
+        default="#FFFFFF",
+        help_text="Secondary brand color in hex format (e.g., #FFFFFF)"
+    )
+
+    # === FINANCIAL RULES (Same across all locations) ===
+    currency = models.CharField(
+        max_length=3,
+        default="USD",
+        help_text="Three-letter currency code (ISO 4217). Same for all locations within tenant."
     )
     surcharge_percentage = models.DecimalField(
         max_digits=8,
         decimal_places=6,
         default=Decimal("0.00"),
-        help_text="A percentage-based surcharge applied to the subtotal (e.g., 0.02 for 2%).",
-    )
-    currency = models.CharField(
-        max_length=3, default="USD", help_text="Three-letter currency code (ISO 4217)."
+        help_text="Tenant-wide surcharge percentage applied to subtotal (e.g., 0.02 for 2%).",
     )
     allow_discount_stacking = models.BooleanField(
         default=False,
-        help_text="If true, multiple discounts can be applied to a single order. If false, only one discount is allowed.",
+        help_text="If true, multiple discounts can be applied to a single order. Same rule for all locations.",
     )
 
-    # === STORE INFORMATION ===
-    store_name = models.CharField(max_length=100, default="Ajeen POS")
-    store_address = models.TextField(
-        blank=True, help_text="Full business address for receipts."
-    )
-    store_phone = models.CharField(
-        max_length=20, blank=True, help_text="Business phone number."
-    )
-    store_email = models.EmailField(blank=True, help_text="Business email address.")
-
-    # === RECEIPT CONFIGURATION ===
-    receipt_header = models.TextField(
-        blank=True, help_text="Custom text to appear at the top of receipts."
-    )
-    receipt_footer = models.TextField(
-        default="Thank you for your business!",
-        help_text="The footer text that appears on printed receipts.",
-    )
-
-    # === PAYMENT PROCESSING ===
+    # === PAYMENT PROCESSING (Same across all locations) ===
     active_terminal_provider = models.CharField(
         max_length=50,
         choices=TerminalProvider.choices,
         default=TerminalProvider.STRIPE_TERMINAL,
-        help_text="The currently active payment terminal provider.",
+        help_text="The currently active payment terminal provider for all locations.",
     )
 
-    # === BUSINESS HOURS ===
-    opening_time = models.TimeField(
-        null=True, blank=True, help_text="Business opening time (used for reporting)."
-    )
-    closing_time = models.TimeField(
-        null=True, blank=True, help_text="Business closing time (used for reporting)."
-    )
-    timezone = models.CharField(
-        max_length=50,
-        choices=TimezoneChoices.choices,
-        default=TimezoneChoices.UTC,
-        help_text="Business timezone for reports and business hours. This affects how dates are displayed and interpreted in reports.",
-    )
-
-    # === INVENTORY & LOCATION DEFAULTS ===
-    default_inventory_location = models.ForeignKey(
-        "inventory.Location",
-        on_delete=models.SET_NULL,
-        null=True,
+    # === RECEIPT TEMPLATES (Used as fallback by locations) ===
+    brand_receipt_header = models.TextField(
         blank=True,
-        help_text="Default location for inventory operations and sales.",
-        related_name="default_for_settings",
+        help_text="Default receipt header template for all locations. Locations can override."
     )
-    default_store_location = models.ForeignKey(
-        "StoreLocation",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Default store location for web orders and single-location setups.",
-    )
-    
-    # === INVENTORY THRESHOLD DEFAULTS ===
-    default_low_stock_threshold = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=10.00,
-        help_text="Default threshold below which stock is considered low. Can be overridden per product.",
-    )
-    default_expiration_threshold = models.PositiveIntegerField(
-        default=7,
-        help_text="Default number of days before expiration to warn about expiring stock. Can be overridden per product.",
+    brand_receipt_footer = models.TextField(
+        default="Thank you for your business!",
+        help_text="Default receipt footer template for all locations. Locations can override.",
     )
 
     objects = TenantManager()
@@ -227,71 +453,13 @@ class GlobalSettings(models.Model):
         if self.tenant and GlobalSettings.objects.filter(tenant=self.tenant).exclude(pk=self.pk).exists():
             raise ValidationError(f"There can only be one GlobalSettings instance per tenant.")
 
-        # Validate timezone
-        if self.timezone:
-            try:
-                zoneinfo.ZoneInfo(self.timezone)
-            except (zoneinfo.ZoneInfoNotFoundError, ValueError):
-                raise ValidationError(f"'{self.timezone}' is not a valid timezone.")
-
     def save(self, *args, **kwargs):
         self.clean()
-        
-        # Check if timezone changed to clear cache
-        timezone_changed = False
-        if self.pk:
-            try:
-                old_instance = GlobalSettings.objects.get(pk=self.pk)
-                timezone_changed = old_instance.timezone != self.timezone
-            except GlobalSettings.DoesNotExist:
-                pass
-        
         super().save(*args, **kwargs)
-        
-        # Clear report cache if timezone changed
-        if timezone_changed:
-            from reports.services_new.base import BaseReportService
-            # Clear all report cache entries since timezone affects all reports
-            BaseReportService.cleanup_expired_cache()
-            # Also invalidate cache for all report types
-            for report_type in ['summary', 'sales', 'products', 'payments', 'operations']:
-                BaseReportService.invalidate_cache_for_report_type(report_type)
 
     def __str__(self):
         tenant_name = self.tenant.name if self.tenant else "System"
         return f"Global Settings ({tenant_name})"
-
-    def is_business_open(self) -> bool:
-        """
-        Check if the business is currently open based on opening/closing times and timezone.
-        Returns True if business hours are not set (always open).
-        """
-        if not self.opening_time or not self.closing_time:
-            return True  # Always open if hours not configured
-
-        try:
-            import pytz
-            from datetime import datetime
-
-            # Get current time in business timezone
-            tz = pytz.timezone(self.timezone)
-            current_time = datetime.now(tz).time()
-
-            # Handle same-day hours (e.g., 9:00 AM - 10:00 PM)
-            if self.opening_time <= self.closing_time:
-                return self.opening_time <= current_time <= self.closing_time
-
-            # Handle overnight hours (e.g., 10:00 PM - 6:00 AM)
-            else:
-                return (
-                    current_time >= self.opening_time
-                    or current_time <= self.closing_time
-                )
-
-        except Exception as e:
-            # If timezone calculation fails, default to open
-            logger.error(f"Business hours check failed: {e}")
-            return True
 
 
 class PrinterConfiguration(models.Model):
@@ -367,8 +535,9 @@ class SingletonModel(models.Model):
 
 class WebOrderSettings(SingletonModel):
     """
-    Singleton model for web order specific settings.
-    Now tenant-scoped: one instance per tenant.
+    Tenant-wide web order notification defaults.
+    These settings apply to all locations unless overridden.
+    Terminal selection is managed per-location on StoreLocation model.
     """
 
     tenant = models.OneToOneField(
@@ -378,23 +547,20 @@ class WebOrderSettings(SingletonModel):
     )
 
     enable_notifications = models.BooleanField(
-        default=True, help_text="Enable all notifications for new web orders."
+        default=True,
+        help_text="Tenant-wide default: Enable all notifications for new web orders."
     )
     play_notification_sound = models.BooleanField(
-        default=True, help_text="Play a sound for new web orders."
+        default=True,
+        help_text="Tenant-wide default: Play a sound for new web orders."
     )
     auto_print_receipt = models.BooleanField(
-        default=True, help_text="Automatically print a receipt for new web orders."
+        default=True,
+        help_text="Tenant-wide default: Automatically print a receipt for new web orders."
     )
     auto_print_kitchen = models.BooleanField(
         default=True,
-        help_text="Automatically print kitchen tickets for new web orders.",
-    )
-    web_receipt_terminals = models.ManyToManyField(
-        "terminals.TerminalRegistration",
-        blank=True,
-        help_text="Select terminals that should receive and print web order notifications/receipts.",
-        related_name="web_order_notifications",
+        help_text="Tenant-wide default: Automatically print kitchen tickets for new web orders.",
     )
 
     objects = TenantManager()

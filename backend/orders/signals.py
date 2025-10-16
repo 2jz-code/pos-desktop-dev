@@ -124,6 +124,7 @@ def handle_web_order_notifications(sender, instance, created, **kwargs):
         order_id=instance.id,
         order_number=instance.order_number,
         order_data=serialized_data,  # Pass the serialized data
+        store_location=instance.store_location,  # Pass location for location-specific settings
     )
 
     logger.info(

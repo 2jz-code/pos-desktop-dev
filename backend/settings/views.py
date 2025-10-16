@@ -292,35 +292,26 @@ class WebOrderSettingsViewSet(BaseViewSet):
 class StoreLocationViewSet(BaseViewSet):
     """
     API endpoint for managing primary Store Locations.
+
+    Phase 5 Enhancement: Uses lightweight serializer for list actions
+    and detailed serializer for individual location operations.
+    All locations are explicit - no default location concept.
     """
 
     queryset = StoreLocation.objects.all()
     serializer_class = StoreLocationSerializer
 
+    def get_serializer_class(self):
+        """Use lightweight serializer for list action, detailed for others"""
+        if self.action == 'list':
+            from .serializers import StoreLocationListSerializer
+            return StoreLocationListSerializer
+        return StoreLocationSerializer
+
     def perform_create(self, serializer):
         from tenant.managers import get_current_tenant
         tenant = get_current_tenant()
         serializer.save(tenant=tenant)
-
-    @action(detail=True, methods=["post"], url_path="set-default")
-    def set_default(self, request, pk=None):
-        """
-        Sets this location as the default store location.
-        Business logic extracted to TerminalService.
-        """
-        try:
-            location = TerminalService.set_default_store_location(pk)
-            return Response(
-                {
-                    "status": "success",
-                    "message": f"'{location.name}' is now the default store location.",
-                }
-            )
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 class TerminalLocationViewSet(ReadOnlyBaseViewSet):
     """

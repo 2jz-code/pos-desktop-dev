@@ -38,15 +38,6 @@ import {
 } from "@/components/ui/select";
 
 const formSchema = z.object({
-	default_low_stock_threshold: z.coerce
-		.number()
-		.min(0, "Low stock threshold cannot be negative.")
-		.max(1000000, "Low stock threshold is too large."),
-	default_expiration_threshold: z.coerce
-		.number()
-		.int()
-		.min(1, "Expiration threshold must be at least 1 day.")
-		.max(365, "Expiration threshold cannot exceed 365 days."),
 	default_inventory_location: z.string().optional(),
 });
 
@@ -89,8 +80,6 @@ export function InventorySettings() {
 	const form = useForm({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			default_low_stock_threshold: 10.0,
-			default_expiration_threshold: 7,
 			default_inventory_location: "none",
 		},
 	});
@@ -98,13 +87,11 @@ export function InventorySettings() {
 	// Update form when settings data is loaded
 	React.useEffect(() => {
 		if (settings && locations && locations.length > 0) {
-			const locationValue = settings.default_inventory_location 
-				? settings.default_inventory_location.toString() 
+			const locationValue = settings.default_inventory_location
+				? settings.default_inventory_location.toString()
 				: "none";
-			
+
 			form.reset({
-				default_low_stock_threshold: parseFloat(settings.default_low_stock_threshold || 10.0),
-				default_expiration_threshold: parseInt(settings.default_expiration_threshold || 7),
 				default_inventory_location: locationValue,
 			});
 		}
@@ -161,7 +148,7 @@ export function InventorySettings() {
 					Inventory Defaults
 				</CardTitle>
 				<CardDescription>
-					Set global default thresholds for inventory warnings. These can be overridden for individual products.
+					Configure default inventory location for stock operations. Stock thresholds are now configured per store location.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>

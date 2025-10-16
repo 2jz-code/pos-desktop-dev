@@ -244,17 +244,22 @@ class BusinessHoursProfileViewSet(NonPaginatedBaseViewSet):
     queryset = BusinessHoursProfile.objects.all().order_by('-is_default', 'name')
     serializer_class = BusinessHoursProfileAdminSerializer
     search_fields = ['name', 'timezone']
-    filterset_fields = ['is_active', 'is_default']
+    filterset_fields = ['is_active', 'is_default', 'store_location']
     ordering_fields = ['name', 'created_at', 'updated_at']
     ordering = ['-is_default', 'name']  # Default ordering: default profiles first, then alphabetically
 
     def get_queryset(self):
-        """Filter by active profiles unless specifically requested"""
+        """Filter by active profiles and store_location unless specifically requested"""
         queryset = super().get_queryset()
         include_inactive = self.request.query_params.get('include_inactive', 'false').lower()
+        store_location = self.request.query_params.get('store_location')
 
         if include_inactive != 'true':
             queryset = queryset.filter(is_active=True)
+
+        # Filter by store_location if provided
+        if store_location:
+            queryset = queryset.filter(store_location_id=store_location)
 
         return queryset
 

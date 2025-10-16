@@ -6,7 +6,10 @@ from tenant.managers import TenantManager
 
 
 class BusinessHoursProfile(models.Model):
-    """Main profile for business hours configuration"""
+    """
+    Main profile for business hours configuration.
+    Phase 5: Now linked to StoreLocation for multi-location support.
+    """
 
     TIMEZONE_CHOICES = [
         ('America/New_York', 'Eastern Time'),
@@ -25,8 +28,16 @@ class BusinessHoursProfile(models.Model):
         null=True,
         blank=True
     )
+    store_location = models.OneToOneField(
+        'settings.StoreLocation',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='business_hours',
+        help_text='Store location this business hours profile belongs to. Leave blank for legacy global profiles.'
+    )
     name = models.CharField(
-        max_length=100, 
+        max_length=100,
         default='Main Store',
         help_text='Name to identify this business hours profile'
     )
@@ -42,7 +53,7 @@ class BusinessHoursProfile(models.Model):
     )
     is_default = models.BooleanField(
         default=False,
-        help_text='Default profile used when no specific profile is specified'
+        help_text='Default profile used when no specific profile is specified (legacy - for profiles not linked to locations)'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -54,15 +65,20 @@ class BusinessHoursProfile(models.Model):
         verbose_name = 'Business Hours Profile'
         verbose_name_plural = 'Business Hours Profiles'
         ordering = ['-is_default', 'name']
-    
+
     def __str__(self):
+        if self.store_location:
+            return f"{self.store_location.name} - Business Hours"
         return f"{self.name} {'(Default)' if self.is_default else ''}"
-    
+
     def save(self, *args, **kwargs):
-        # Ensure only one default profile exists per tenant
-        if self.is_default:
+        # Ensure only one default profile exists per tenant (for legacy profiles without location)
+        if self.is_default and not self.store_location:
             # Use all_objects to bypass tenant filtering (we're explicitly filtering by tenant)
-            BusinessHoursProfile.all_objects.filter(tenant=self.tenant).exclude(pk=self.pk).update(is_default=False)
+            BusinessHoursProfile.all_objects.filter(
+                tenant=self.tenant,
+                store_location__isnull=True
+            ).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
 

@@ -84,10 +84,13 @@ def handle_web_order_notification(sender, **kwargs):
     Signal handler for web order notifications.
     Triggers when the orders app broadcasts web_order_ready_for_notification.
     This keeps the notifications app decoupled from order business logic.
+
+    Uses location-specific web order settings with fallback to tenant defaults.
     """
     order_data = kwargs.get("order_data")
     order_id = kwargs.get("order_id")
     order_number = kwargs.get("order_number")
+    store_location = kwargs.get("store_location")
 
     if not order_data:
         logger.error(
@@ -95,38 +98,47 @@ def handle_web_order_notification(sender, **kwargs):
         )
         return
 
-    logger.info(f"Processing web order notification for order {order_number}")
+    if not store_location:
+        logger.error(
+            f"No store_location received in web_order_ready_for_notification signal for order {order_number}"
+        )
+        return
+
+    logger.info(f"Processing web order notification for order {order_number} at location {store_location.name}")
 
     try:
+        # Get effective web order settings for this location
+        # (location overrides take precedence over tenant defaults)
+        effective_settings = store_location.get_effective_web_order_settings()
+
         # Check if web order notifications are enabled
-        web_order_settings = WebOrderSettings.load()
-        if not web_order_settings.enable_notifications:
-            logger.info("Web order notifications are disabled, skipping notification")
+        if not effective_settings['enable_notifications']:
+            logger.info(f"Web order notifications are disabled for location {store_location.name}, skipping notification")
             return
 
-        # Get terminals that should receive notifications
-        selected_terminals = web_order_settings.web_receipt_terminals.all()
+        # Get terminals that should receive notifications for this location
+        selected_terminals = effective_settings['terminals']
 
         if not selected_terminals.exists():
-            logger.info("No terminals selected for web order notifications")
+            logger.info(f"No terminals selected for web order notifications at location {store_location.name}")
             return
 
-        # Create notification payload
+        # Create notification payload with location-specific settings
         notification_payload = {
             "type": "web_order_notification",
             "order": order_data,
             "timestamp": datetime.now().isoformat(),
             "settings": {
-                "play_notification_sound": web_order_settings.play_notification_sound,
-                "auto_print_receipt": web_order_settings.auto_print_receipt,
-                "auto_print_kitchen": web_order_settings.auto_print_kitchen,
+                "play_notification_sound": effective_settings['play_notification_sound'],
+                "auto_print_receipt": effective_settings['auto_print_receipt'],
+                "auto_print_kitchen": effective_settings['auto_print_kitchen'],
             },
         }
 
         # Ensure the entire payload is serializable before sending to channels
         serializable_payload = convert_payload_to_str(notification_payload)
 
-        # Send WebSocket notifications to selected terminals
+        # Send WebSocket notifications to selected terminals at this location
         for terminal in selected_terminals:
             # Use tenant-scoped channel group
             terminal_group = f"tenant_{terminal.tenant.id}_terminal_{terminal.device_id}"
@@ -136,13 +148,13 @@ def handle_web_order_notification(sender, **kwargs):
                     terminal_group,
                     {"type": "web_order_notification", "data": serializable_payload},
                 )
-                logger.info(f"Notification sent to terminal {terminal.device_id} (tenant: {terminal.tenant.slug})")
+                logger.info(f"Notification sent to terminal {terminal.device_id} at location {store_location.name} (tenant: {terminal.tenant.slug})")
             except Exception as e:
                 logger.error(
                     f"Failed to send notification to terminal {terminal.device_id}: {e}"
                 )
 
-        logger.info(f"Web order notifications processed for order {order_number}")
+        logger.info(f"Web order notifications processed for order {order_number} at location {store_location.name}")
 
     except Exception as e:
         logger.error(
