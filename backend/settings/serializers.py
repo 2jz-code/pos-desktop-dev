@@ -93,6 +93,7 @@ class TerminalLocationSerializer(BaseModelSerializer):
     Serializer for the Stripe-specific location link.
     Phase 5: Removed default location concept and redundant nesting.
     """
+    store_location_details = serializers.SerializerMethodField()
 
     class Meta:
         model = TerminalLocation
@@ -100,9 +101,20 @@ class TerminalLocationSerializer(BaseModelSerializer):
             "id",
             "stripe_id",
             "store_location",
+            "store_location_details",
         )
         select_related_fields = ["store_location"]
         prefetch_related_fields = []
+
+    def get_store_location_details(self, obj):
+        """Return nested store location details for frontend"""
+        if obj.store_location:
+            return {
+                "id": obj.store_location.id,
+                "name": obj.store_location.name,
+                "slug": obj.store_location.slug,
+            }
+        return None
 
 
 class StoreLocationListSerializer(BaseModelSerializer):

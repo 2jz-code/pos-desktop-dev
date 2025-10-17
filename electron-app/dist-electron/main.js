@@ -7,6 +7,8 @@ import nodeMachineId from "node-machine-id";
 import usb from "usb";
 import require$$0 from "child_process";
 import require$$1 from "util";
+import crypto from "crypto";
+import os from "os";
 const require$1 = createRequire(import.meta.url);
 const thermalPrinter = require$1("node-thermal-printer");
 const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
@@ -411,6 +413,68 @@ function requireMain() {
 }
 var mainExports = requireMain();
 const sound = /* @__PURE__ */ getDefaultExportFromCjs(mainExports);
+const { machineIdSync: machineIdSync$1 } = nodeMachineId;
+class DeviceFingerprintService {
+  constructor() {
+    this._cachedFingerprint = null;
+  }
+  /**
+   * Get hardware-based device fingerprint
+   *
+   * This fingerprint is stable across:
+   * - App reinstalls ✅
+   * - App updates ✅
+   * - OS updates ✅
+   *
+   * Changes only when:
+   * - Different physical machine (correct behavior)
+   * - Major hardware replacement (motherboard, etc.)
+   *
+   * @returns {string} UUID-format fingerprint (e.g., "f47ac10b-58cc-4372-a567-0e02b2c3d479")
+   */
+  getDeviceFingerprint() {
+    if (this._cachedFingerprint) {
+      return this._cachedFingerprint;
+    }
+    try {
+      const machineId = machineIdSync$1();
+      const hostname = os.hostname();
+      const combined = `${machineId}-${hostname}`;
+      const hash = crypto.createHash("sha256").update(combined).digest("hex");
+      const fingerprint = [
+        hash.substr(0, 8),
+        hash.substr(8, 4),
+        hash.substr(12, 4),
+        hash.substr(16, 4),
+        hash.substr(20, 12)
+      ].join("-");
+      this._cachedFingerprint = fingerprint;
+      console.log("🔐 Hardware fingerprint generated:", fingerprint);
+      console.log("📌 Machine ID:", machineId.substring(0, 8) + "...");
+      console.log("🖥️  Hostname:", hostname);
+      return fingerprint;
+    } catch (error) {
+      console.error("❌ Failed to generate hardware fingerprint:", error);
+      throw new Error("Unable to generate device fingerprint");
+    }
+  }
+  /**
+   * Get hardware info for debugging/support
+   *
+   * @returns {Object} Hardware and system information
+   */
+  getHardwareInfo() {
+    return {
+      platform: os.platform(),
+      arch: os.arch(),
+      hostname: os.hostname(),
+      release: os.release(),
+      cpus: os.cpus().length,
+      totalMemory: Math.round(os.totalmem() / 1024 / 1024 / 1024) + " GB"
+    };
+  }
+}
+const deviceFingerprintService = new DeviceFingerprintService();
 const { machineIdSync } = nodeMachineId;
 const require2 = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -792,6 +856,9 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
 });
 ipcMain.handle("get-machine-id", () => {
   return machineIdSync({ original: true });
+});
+ipcMain.handle("get-device-fingerprint", () => {
+  return deviceFingerprintService.getDeviceFingerprint();
 });
 ipcMain.on("shutdown-app", () => {
   app.quit();

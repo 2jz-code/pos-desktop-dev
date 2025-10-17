@@ -130,6 +130,7 @@ class PaymentService:
                 "total_amount_due": order.grand_total,
                 "status": Payment.PaymentStatus.UNPAID,
                 "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
             },
         )
 
@@ -368,7 +369,8 @@ class PaymentService:
             order=order,
             defaults={
                 "total_amount_due": order.grand_total,
-                "tenant": order.tenant
+                "tenant": order.tenant,
+                "store_location": order.store_location  # Denormalize from order for fast location queries
             }
         )
         # If the order total has changed since the payment was initiated, update it.
@@ -922,6 +924,7 @@ class PaymentService:
                 "amount_paid": order.grand_total,
                 "status": Payment.PaymentStatus.PAID,
                 "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
             },
         )
 

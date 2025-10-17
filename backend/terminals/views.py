@@ -259,3 +259,52 @@ class TerminalRegistrationViewSet(BaseViewSet):
         """Only allow updating specific fields - not core pairing info"""
         # Prevent changes to device_id, tenant, pairing_code via this endpoint
         serializer.save()
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='by-fingerprint/(?P<fingerprint>[^/.]+)',
+        permission_classes=[AllowAny]  # Allow unauthenticated lookup for reinstall recovery
+    )
+    def by_fingerprint(self, request, fingerprint=None):
+        """
+        Lookup terminal registration by device fingerprint.
+
+        Used for:
+        - Terminal identity restoration after reinstall
+        - Location context retrieval for X-Store-Location header
+
+        Security: This is safe because:
+        - Fingerprint is not sensitive data (hardware-based UUID)
+        - Returns only terminal config, not auth tokens
+        - Enables terminals to restore identity without re-pairing
+
+        Example: GET /api/terminals/registrations/by-fingerprint/f47ac10b-58cc-4372-a567-0e02b2c3d479/
+        """
+        try:
+            terminal = TerminalRegistration.objects.select_related(
+                'tenant', 'store_location'
+            ).get(
+                device_fingerprint=fingerprint,
+                is_active=True
+            )
+
+            # Return terminal configuration including location
+            return Response({
+                'device_id': terminal.device_id,
+                'tenant_id': str(terminal.tenant.id),
+                'tenant_slug': terminal.tenant.slug,
+                'store_location': {
+                    'id': terminal.store_location.id if terminal.store_location else None,
+                    'name': terminal.store_location.name if terminal.store_location else None
+                },
+                'nickname': terminal.nickname,
+                'reader_id': terminal.reader_id,
+                'last_seen': terminal.last_seen
+            })
+
+        except TerminalRegistration.DoesNotExist:
+            return Response(
+                {'error': 'Terminal not registered with this hardware fingerprint'},
+                status=status.HTTP_404_NOT_FOUND
+            )

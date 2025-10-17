@@ -2,6 +2,7 @@
 import * as orderService from "@/domains/orders/services/orderService";
 import { toast } from "@/shared/components/ui/use-toast";
 import { cartSocket } from "@/shared/lib/cartSocket";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 // A helper function to safely parse numbers, defaulting to 0
 const safeParseFloat = (value) => {
@@ -129,6 +130,7 @@ export const createCartSlice = (set, get) => {
 					const orderData = {
 						order_type: "POS",
 						dining_preference: get().diningPreference,
+						store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
 					};
 
 					// Include customer name if provided
@@ -215,14 +217,15 @@ export const createCartSlice = (set, get) => {
 					const orderData = {
 						order_type: "POS",
 						dining_preference: get().diningPreference,
+						store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
 					};
-					
+
 					// Include customer name if provided
 					const { customerFirstName } = get();
 					if (customerFirstName) {
 						orderData.guest_first_name = customerFirstName;
 					}
-					
+
 					const orderRes = await orderService.createOrder(orderData);
 					orderId = orderRes.data.id;
 					set({
@@ -335,14 +338,15 @@ export const createCartSlice = (set, get) => {
 					const orderData = {
 						order_type: "POS",
 						dining_preference: get().diningPreference,
+						store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
 					};
-					
+
 					// Include customer name if provided
 					const { customerFirstName } = get();
 					if (customerFirstName) {
 						orderData.guest_first_name = customerFirstName;
 					}
-					
+
 					const orderRes = await orderService.createOrder(orderData);
 					orderId = orderRes.data.id;
 					set({

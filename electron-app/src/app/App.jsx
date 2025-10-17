@@ -50,6 +50,10 @@ function AppContent() {
 function App() {
 	useEffect(() => {
 		console.log("App mounted. Running initialization logic...");
+
+		// Initialize terminal registration (must be first - sets location context)
+		terminalRegistrationService.initialize();
+
 		// Call these once when the app mounts
 		useSettingsStore.getState().fetchSettings();
 		useSettingsStore.getState().discoverAndSetPrinters();

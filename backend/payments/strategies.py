@@ -144,7 +144,10 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                     if store_location_to_link:
                         location, created = TerminalLocation.objects.update_or_create(
                             stripe_id=loc.id,
-                            defaults={"store_location": store_location_to_link},
+                            defaults={
+                                "store_location": store_location_to_link,
+                                "tenant": store_location_to_link.tenant  # Add tenant for NOT NULL constraint
+                            },
                         )
                         if created:
                             created_count += 1

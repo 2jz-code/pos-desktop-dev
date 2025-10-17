@@ -453,6 +453,7 @@ class CreatePaymentView(BasePaymentView):
                 "total_amount_due": order.grand_total,
                 "status": Payment.PaymentStatus.PENDING,
                 "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
             },
         )
 

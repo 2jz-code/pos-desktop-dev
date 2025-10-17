@@ -99,6 +99,7 @@ class CreateGuestPaymentIntentView(
                     "total_amount_due": amount_decimal,
                     "guest_session_key": request.session.session_key,
                     "tenant": order.tenant,
+                    "store_location": order.store_location,  # Denormalize from order for fast location queries
                 },
             )
 

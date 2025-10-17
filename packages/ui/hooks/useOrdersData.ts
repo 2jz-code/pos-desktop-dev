@@ -5,7 +5,7 @@
  * Handles state management for orders list, filters, pagination, and loading states.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 interface OrdersFilters {
 	order_type: string;
@@ -74,13 +74,26 @@ export function useOrdersData({
 		...initialFilters
 	});
 
+	// Use refs for stable references to prevent infinite loops
+	const serviceRef = useRef(getAllOrdersService);
+	const additionalFiltersRef = useRef(additionalFilters);
+
+	// Update refs when props change
+	useEffect(() => {
+		serviceRef.current = getAllOrdersService;
+	}, [getAllOrdersService]);
+
+	useEffect(() => {
+		additionalFiltersRef.current = additionalFilters;
+	}, [additionalFilters]);
+
 	const fetchOrders = useCallback(
 		async (url: string | null = null) => {
 			try {
 				setLoading(true);
-				// Merge additionalFilters with the main filters
-				const mergedFilters = { ...filters, ...additionalFilters };
-				const response = await getAllOrdersService(mergedFilters, url);
+				// Merge additionalFilters with the main filters (use ref for stable reference)
+				const mergedFilters = { ...filters, ...additionalFiltersRef.current };
+				const response = await serviceRef.current(mergedFilters, url);
 				setOrders(response.results || []);
 				setNextUrl(response.next);
 				setPrevUrl(response.previous);
@@ -103,7 +116,7 @@ export function useOrdersData({
 				setLoading(false);
 			}
 		},
-		[filters, additionalFilters, getAllOrdersService]
+		[filters] // Only depend on filters, not additionalFilters or service
 	);
 
 	useEffect(() => {

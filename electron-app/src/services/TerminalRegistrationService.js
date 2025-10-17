@@ -1,29 +1,31 @@
-import apiClient from "@/shared/lib/apiClient";
-import { v4 as uuidv4 } from "uuid";
+import apiClient, { setLocationId } from "@/shared/lib/apiClient";
 
 const STORAGE_KEY = "terminal_config";
-const FINGERPRINT_KEY = "device_fingerprint";
 
 /**
  * TerminalRegistrationService
  * Handles RFC 8628 device authorization grant flow for terminal pairing
+ * Uses hardware-based fingerprint for persistent device identity
  */
 class TerminalRegistrationService {
-	/**
-	 * Get or generate hardware UUID (device fingerprint)
-	 * Stored in localStorage for persistence across app restarts
-	 */
-	getDeviceFingerprint() {
-		let fingerprint = localStorage.getItem(FINGERPRINT_KEY);
+	constructor() {
+		this._terminalConfig = null;
+	}
 
-		if (!fingerprint) {
-			// Generate new UUID
-			fingerprint = uuidv4();
-			localStorage.setItem(FINGERPRINT_KEY, fingerprint);
-			console.log("Generated new device fingerprint:", fingerprint);
+	/**
+	 * Get hardware-based device fingerprint from Electron main process
+	 * This persists across app reinstalls (tied to machine hardware)
+	 * @returns {Promise<string>} Hardware fingerprint UUID
+	 */
+	async getDeviceFingerprint() {
+		// Get from Electron main process (hardware-based)
+		if (window.electronAPI?.getDeviceFingerprint) {
+			return await window.electronAPI.getDeviceFingerprint();
 		}
 
-		return fingerprint;
+		// Fallback for development/testing
+		console.warn('⚠️ Electron bridge not available, using fallback fingerprint');
+		return 'dev-fallback-fingerprint';
 	}
 
 	/**
@@ -70,7 +72,7 @@ class TerminalRegistrationService {
 	 * Step 1 of RFC 8628 flow
 	 */
 	async requestPairingCodes() {
-		const fingerprint = this.getDeviceFingerprint();
+		const fingerprint = await this.getDeviceFingerprint();
 
 		const response = await apiClient.post("/terminals/pairing/device-authorization/", {
 			client_id: "terminal-client",
@@ -101,6 +103,9 @@ class TerminalRegistrationService {
 	async startPairing(onStatusUpdate) {
 		console.log("Starting terminal pairing flow...");
 
+		// Get fingerprint first
+		const fingerprint = await this.getDeviceFingerprint();
+
 		// Step 1: Request pairing codes
 		const pairingData = await this.requestPairingCodes();
 		console.log("Pairing codes received:", {
@@ -128,6 +133,12 @@ class TerminalRegistrationService {
 
 		// Step 3: Save configuration
 		this.saveTerminalConfig(tokens);
+		this._terminalConfig = tokens;
+
+		// Set location ID for axios interceptor
+		if (tokens.location_id) {
+			setLocationId(tokens.location_id);
+		}
 
 		if (onStatusUpdate) {
 			onStatusUpdate({
@@ -198,18 +209,109 @@ class TerminalRegistrationService {
 	}
 
 	/**
+	 * Initialize terminal on app startup
+	 * 3-step fallback: Server lookup → localStorage cache → Pairing screen
+	 *
+	 * @returns {Promise<Object|null>} Terminal config or null if not registered
+	 */
+	async initialize() {
+		console.log('🚀 Initializing terminal registration...');
+
+		// Step 1: Get hardware fingerprint
+		const fingerprint = await this.getDeviceFingerprint();
+		console.log('🔐 Device fingerprint:', fingerprint);
+
+		// Step 2: Try to fetch config from server (source of truth)
+		try {
+			const config = await this.fetchConfigByFingerprint(fingerprint);
+			if (config) {
+				console.log('✅ Terminal config restored from server');
+				console.log('📍 Location:', config.location_name);
+				this._terminalConfig = config;
+				this.saveTerminalConfig(config); // Update cache
+
+				// Set location ID for axios interceptor
+				if (config.location_id) {
+					setLocationId(config.location_id);
+				}
+
+				return config;
+			}
+		} catch (error) {
+			if (error.response?.status === 404) {
+				console.log('ℹ️  Terminal not registered on server');
+			} else {
+				console.error('⚠️  Server lookup failed:', error.message);
+			}
+		}
+
+		// Step 3: Try localStorage cache (performance optimization)
+		const cachedConfig = this.getTerminalConfig();
+		if (cachedConfig) {
+			console.log('⚠️  Using cached config (server unavailable)');
+			this._terminalConfig = cachedConfig;
+
+			// Set location ID for axios interceptor
+			if (cachedConfig.location_id) {
+				setLocationId(cachedConfig.location_id);
+			}
+
+			return cachedConfig;
+		}
+
+		// Step 4: Not registered - show pairing screen
+		console.log('❌ Terminal not registered - pairing required');
+		return null;
+	}
+
+	/**
+	 * Fetch terminal config from server by fingerprint
+	 *
+	 * @param {string} fingerprint - Hardware fingerprint
+	 * @returns {Promise<Object>} Terminal configuration
+	 * @private
+	 */
+	async fetchConfigByFingerprint(fingerprint) {
+		const response = await apiClient.get(
+			`/terminals/registrations/by-fingerprint/${fingerprint}/`
+		);
+
+		return {
+			device_id: response.data.device_id,
+			tenant_id: response.data.tenant_id,
+			tenant_slug: response.data.tenant_slug,
+			location_id: response.data.store_location?.id,
+			location_name: response.data.store_location?.name,
+			nickname: response.data.nickname,
+			reader_id: response.data.reader_id
+		};
+	}
+
+	/**
 	 * Get terminal identity for API calls
 	 * Returns headers to be added to API requests
 	 */
 	getTerminalHeaders() {
-		const config = this.getTerminalConfig();
+		const config = this._terminalConfig || this.getTerminalConfig();
 		if (!config) {
 			return {};
 		}
 
 		return {
 			"X-Device-ID": config.device_id,
+			// Location header will be added by axios interceptor
 		};
+	}
+
+	/**
+	 * Get current terminal's store location ID
+	 * Used by axios interceptor for X-Store-Location header
+	 *
+	 * @returns {number|null} Location ID
+	 */
+	getLocationId() {
+		const config = this._terminalConfig || this.getTerminalConfig();
+		return config?.location_id || null;
 	}
 }
 

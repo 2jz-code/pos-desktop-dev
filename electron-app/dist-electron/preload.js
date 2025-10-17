@@ -11,6 +11,8 @@ const validInvokeChannels = [
   "open-cash-drawer",
   "get-session-cookies",
   "get-machine-id",
+  "get-device-fingerprint",
+  // Hardware-based terminal identity
   "print-kitchen-ticket",
   "test-network-printer"
 ];
@@ -22,6 +24,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * @returns {Promise<string>} The unique machine ID.
    */
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
+  /**
+   * Gets the hardware-based device fingerprint (stable across reinstalls).
+   * Used for terminal registration and location context.
+   * @returns {Promise<string>} The hardware fingerprint (UUID format).
+   */
+  getDeviceFingerprint: () => ipcRenderer.invoke("get-device-fingerprint"),
   /**
    * Gets a list of connected printers from the main process.
    * @returns {Promise<Array>} A list of printer objects.
