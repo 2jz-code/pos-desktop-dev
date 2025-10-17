@@ -1,9 +1,54 @@
 import axios from "axios";
 import { authAPI } from "./auth";
 
-// Base API URL - make sure this matches your Django backend
-const API_BASE_URL =
-	import.meta.env.VITE_API_URL || "http://localhost:8001/api";
+/**
+ * Extract tenant slug from current domain
+ * Examples:
+ *   jimmys-pizza.localhost → "jimmys-pizza"
+ *   jimmys-pizza.mydomain.com → "jimmys-pizza"
+ *   www.mydomain.com → null (no tenant)
+ */
+const getTenantSlug = () => {
+	const hostname = window.location.hostname;
+	const parts = hostname.split(".");
+
+	// Handle .localhost (dev)
+	if (parts.length === 2 && parts[1] === "localhost") {
+		return parts[0];
+	}
+
+	// Handle production domains (tenant.mydomain.com)
+	if (parts.length >= 3 && parts[0] !== "www") {
+		return parts[0];
+	}
+
+	return null;
+};
+
+/**
+ * Determine API base URL
+ * Dev: Single shared API (localhost:8001) + X-Tenant header
+ * Prod: Single shared API (api.mydomain.com) + X-Tenant header
+ */
+const getApiBaseUrl = () => {
+	const isDev = window.location.hostname.includes("localhost");
+
+	if (isDev) {
+		// Dev: Single API endpoint (no subdomain matching)
+		// Tenant resolution via X-Tenant header
+		return "https://localhost:8001/api";
+	}
+
+	// Prod: Use env var or default shared API
+	// Tenant resolution via X-Tenant header
+	return import.meta.env.VITE_API_URL || "https://api.mydomain.com/api";
+};
+
+// Base API URL
+const API_BASE_URL = getApiBaseUrl();
+
+console.log("🌐 API Base URL:", API_BASE_URL);
+console.log("🏢 Tenant Slug:", getTenantSlug());
 
 // Create axios instance with default configuration
 const apiClient = axios.create({
@@ -17,33 +62,43 @@ const apiClient = axios.create({
 
 // Bare client without interceptors for CSRF token fetch
 const baseClient = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  timeout: 10000,
+	baseURL: API_BASE_URL,
+	withCredentials: true,
+	timeout: 10000,
 });
 
 let csrfToken = null;
 let csrfPromise = null;
 
 async function ensureCsrfToken() {
-  if (csrfToken) return csrfToken;
-  if (!csrfPromise) {
-    csrfPromise = baseClient
-      .get("/security/csrf/")
-      .then((res) => {
-        csrfToken = res?.data?.csrfToken || null;
-        return csrfToken;
-      })
-      .finally(() => {
-        csrfPromise = null;
-      });
-  }
-  return csrfPromise;
+	if (csrfToken) return csrfToken;
+	if (!csrfPromise) {
+		csrfPromise = baseClient
+			.get("/security/csrf/")
+			.then((res) => {
+				csrfToken = res?.data?.csrfToken || null;
+				return csrfToken;
+			})
+			.finally(() => {
+				csrfPromise = null;
+			});
+	}
+	return csrfPromise;
 }
 
 // Request interceptor to add authentication if needed
 apiClient.interceptors.request.use(
 	async (config) => {
+		config.headers = config.headers || {};
+
+		// Add X-Tenant header for tenant isolation
+		// In dev: Subdomain extraction also works, but header doesn't hurt
+		// In prod: Required when using shared API domain (api.mydomain.com)
+		const tenantSlug = getTenantSlug();
+		if (tenantSlug) {
+			config.headers["X-Tenant"] = tenantSlug;
+		}
+
 		// Add any auth tokens here if you're using token-based auth
 		// const token = localStorage.getItem('token');
 		// if (token) {
@@ -51,14 +106,13 @@ apiClient.interceptors.request.use(
 		// }
 
 		// CSRF: Add required headers on unsafe methods
-		const method = (config.method || 'get').toLowerCase();
-		if (!['get','head','options'].includes(method)) {
-			config.headers = config.headers || {};
-			config.headers['X-Requested-With'] = 'XMLHttpRequest';
+		const method = (config.method || "get").toLowerCase();
+		if (!["get", "head", "options"].includes(method)) {
+			config.headers["X-Requested-With"] = "XMLHttpRequest";
 			try {
 				const token = await ensureCsrfToken();
 				if (token) {
-					config.headers['X-CSRF-Token'] = token;
+					config.headers["X-CSRF-Token"] = token;
 				}
 			} catch (_) {}
 		}
@@ -88,20 +142,20 @@ apiClient.interceptors.response.use(
 			const originalRequest = error.config;
 
 			// CSRF 403 auto-refresh + one-time retry for unsafe methods
-			const method = (originalRequest?.method || 'get').toLowerCase();
+			const method = (originalRequest?.method || "get").toLowerCase();
 			if (
 				status === 403 &&
 				!originalRequest?._csrfRetry &&
-				!['get','head','options'].includes(method)
+				!["get", "head", "options"].includes(method)
 			) {
 				originalRequest._csrfRetry = true;
 				try {
-					const res = await baseClient.get('/security/csrf/');
+					const res = await baseClient.get("/security/csrf/");
 					const fresh = res?.data?.csrfToken || null;
 					if (fresh) {
 						csrfToken = fresh;
 						originalRequest.headers = originalRequest.headers || {};
-						originalRequest.headers['X-CSRF-Token'] = fresh;
+						originalRequest.headers["X-CSRF-Token"] = fresh;
 					}
 					return apiClient(originalRequest);
 				} catch (_) {

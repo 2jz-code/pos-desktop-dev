@@ -88,6 +88,7 @@ class TenantMiddleware:
         """
         host = request.get_host().split(':')[0]  # Remove port if present
         subdomain = self.extract_subdomain(host)
+        print(f"🌐 [TenantMiddleware] host='{host}', subdomain='{subdomain}'")
 
         # 1. Superuser override (?tenant=slug) - Admin/debugging only
         if request.user.is_authenticated and request.user.is_superuser:
@@ -144,16 +145,38 @@ class TenantMiddleware:
                     f"Run: python manage.py ensure_system_tenant"
                 )
 
+        # 4.5. X-Tenant header (for customer sites using shared API domain)
+        # Used when customer sites (jimmys-pizza.mydomain.com) call shared API (api.mydomain.com)
+        tenant_header = request.META.get('HTTP_X_TENANT')
+        if tenant_header:
+            print(f"🔍 [TenantMiddleware] X-Tenant header found: '{tenant_header}'")
+            try:
+                tenant = Tenant.objects.get(slug=tenant_header)
+                print(f"✅ [TenantMiddleware] Found tenant from header: {tenant.name} (id={tenant.id})")
+                # Store in session for subsequent requests
+                request.session['tenant_id'] = str(tenant.id)
+                return tenant
+            except Tenant.DoesNotExist:
+                print(f"❌ [TenantMiddleware] Tenant '{tenant_header}' not found in database")
+                print(f"   Available tenants: {list(Tenant.objects.values_list('slug', flat=True))}")
+                raise TenantNotFoundError(
+                    f"Tenant '{tenant_header}' not found. Check X-Tenant header value."
+                )
+
         # 5. Customer subdomain (joespizza.ajeen.com) - Public ordering
         # Extract tenant from subdomain for customer-facing sites
         if subdomain and subdomain not in ['www', 'api']:
+            print(f"🔍 [TenantMiddleware] Attempting customer subdomain lookup: '{subdomain}'")
             try:
                 # Don't filter by is_active - let line 60 check handle it
                 tenant = Tenant.objects.get(slug=subdomain)
+                print(f"✅ [TenantMiddleware] Found tenant: {tenant.name} (id={tenant.id})")
                 # Store in session for subsequent guest requests
                 request.session['tenant_id'] = str(tenant.id)
                 return tenant
             except Tenant.DoesNotExist:
+                print(f"❌ [TenantMiddleware] Tenant '{subdomain}' not found in database")
+                print(f"   Available tenants: {list(Tenant.objects.values_list('slug', flat=True))}")
                 raise TenantNotFoundError(
                     f"Tenant '{subdomain}' not found. "
                     f"Check subdomain spelling or contact support."
@@ -198,14 +221,20 @@ class TenantMiddleware:
             www.ajeen.com → www
             ajeen.com → None
             localhost → None
+            jimmys-pizza.localhost → jimmys-pizza (dev only)
+            marias-cafe.local → marias-cafe (dev only)
         """
-        # Handle localhost and IP addresses
+        # Handle plain localhost and IP addresses (no subdomain)
         if host in ['localhost', '127.0.0.1'] or host.startswith('192.168'):
             return None
 
         parts = host.split('.')
 
-        # Need at least subdomain.domain.tld (3 parts)
+        # Handle .localhost and .local domains for development (e.g., jimmys-pizza.localhost)
+        if len(parts) == 2 and parts[1] in ['localhost', 'local']:
+            return parts[0]
+
+        # Production: Need at least subdomain.domain.tld (3 parts)
         if len(parts) >= 3:
             return parts[0]
 

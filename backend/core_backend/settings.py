@@ -323,6 +323,21 @@ CORS_ALLOWED_ORIGINS = (
 )
 
 # Allow custom headers for Electron POS app
+# CORS regex patterns for dynamic subdomains (DEV ONLY - for *.localhost testing)
+# IMPORTANT: Remove or disable in production!
+# Allows: jimmys-pizza.localhost:5174, marias-cafe.localhost:5174, etc.
+CORS_ALLOWED_ORIGIN_REGEXES = []
+if DEBUG:  # Only enable in development
+    CORS_ALLOWED_ORIGIN_REGEXES = (
+        [
+            regex.strip()
+            for regex in os.getenv("CORS_ALLOWED_ORIGIN_REGEXES", "").split(",")
+            if regex.strip()
+        ]
+        if os.getenv("CORS_ALLOWED_ORIGIN_REGEXES")
+        else []
+    )
+
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -337,6 +352,7 @@ CORS_ALLOW_HEADERS = [
     "x-client-type",
     "x-client-version",
     "x-store-location",  # Store location header from admin site
+    "x-tenant",  # Tenant slug header from customer site
 ]
 
 # CSRF Trusted Origins - dynamically load from environment
