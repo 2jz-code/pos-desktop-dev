@@ -71,10 +71,12 @@ async function refreshToken(): Promise<void> {
   return refreshPromise;
 }
 
-// Request interceptor: add CSRF headers for unsafe methods
+// Request interceptor: add CSRF headers for unsafe methods and store location header
 apiClient.interceptors.request.use(
   async (config) => {
     const method = (config.method || "get").toLowerCase();
+
+    // Add CSRF headers for unsafe methods
     if (!["get", "head", "options"].includes(method)) {
       config.headers = config.headers || {};
       (config.headers as any)["X-Requested-With"] = "XMLHttpRequest";
@@ -87,6 +89,19 @@ apiClient.interceptors.request.use(
         // proceed; server may 403 and we will retry once in response interceptor
       }
     }
+
+    // Add store location header from localStorage if available
+    // This is set by the LocationContext when user selects a location
+    try {
+      const selectedLocationId = localStorage.getItem('selected-location-id');
+      if (selectedLocationId && selectedLocationId !== 'null') {
+        config.headers = config.headers || {};
+        (config.headers as any)["X-Store-Location"] = selectedLocationId;
+      }
+    } catch (_) {
+      // If localStorage is not available or fails, proceed without the header
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

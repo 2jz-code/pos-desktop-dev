@@ -61,6 +61,7 @@ class Location(SoftDeleteMixin):
         ]
         indexes = [
             models.Index(fields=['tenant', 'name']),
+            models.Index(fields=['tenant', 'store_location'], name='inventory_loc_tenant_store_idx'),
         ]
 
     def __str__(self):
@@ -110,6 +111,14 @@ class InventoryStock(SoftDeleteMixin):
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='inventory_stocks'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='inventory_stocks',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text=_('Denormalized from location.store_location for fast queries')
     )
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="stock_levels"
@@ -201,6 +210,8 @@ class InventoryStock(SoftDeleteMixin):
             models.Index(fields=['tenant', 'product', 'location'], name='inventory_tenant_prod_loc_idx'),
             models.Index(fields=['tenant', 'quantity'], name='inventory_tenant_qty_idx'),
             models.Index(fields=['tenant', 'expiration_date'], name='inventory_tenant_exp_idx'),
+            models.Index(fields=['tenant', 'store_location'], name='invstock_ten_store_idx'),
+            models.Index(fields=['tenant', 'store_location', 'product'], name='invstock_ten_store_prod_idx'),
         ]
 
     def __str__(self):
@@ -310,6 +321,14 @@ class StockHistoryEntry(models.Model):
         on_delete=models.CASCADE,
         related_name='stock_history_entries'
     )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='stock_history_entries',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text=_('Denormalized from location.store_location for fast audit queries')
+    )
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
@@ -317,8 +336,8 @@ class StockHistoryEntry(models.Model):
         help_text=_("Product involved in the stock operation")
     )
     location = models.ForeignKey(
-        Location, 
-        on_delete=models.PROTECT, 
+        Location,
+        on_delete=models.PROTECT,
         related_name="stock_history",
         help_text=_("Location where the stock operation occurred")
     )
@@ -411,6 +430,8 @@ class StockHistoryEntry(models.Model):
             models.Index(fields=['tenant', 'operation_type'], name='stock_hist_ten_operation_idx'),
             models.Index(fields=['tenant', 'timestamp'], name='stock_hist_ten_timestamp_idx'),
             models.Index(fields=['tenant', 'reference_id'], name='stock_hist_ten_reference_idx'),
+            models.Index(fields=['tenant', 'store_location', 'timestamp'], name='stock_hist_ten_store_time_idx'),
+            models.Index(fields=['tenant', 'store_location', 'operation_type'], name='stock_hist_ten_store_op_idx'),
         ]
 
     def __str__(self):

@@ -2,6 +2,18 @@
 
 # docker-entrypoint.sh
 
+# Start Redis in background BEFORE anything else that might need it
+echo "Starting Redis server..."
+/usr/bin/redis-server /etc/redis/redis.conf --daemonize yes --supervised no --loglevel notice
+sleep 2  # Give Redis a moment to start
+
+# Verify Redis is running
+if /usr/bin/redis-cli ping > /dev/null 2>&1; then
+  echo "✓ Redis is running"
+else
+  echo "⚠ Warning: Redis failed to start, continuing anyway..."
+fi
+
 echo "Waiting for database..."
 python ${APP_HOME}/wait_for_db.py
 echo "Database is ready!"

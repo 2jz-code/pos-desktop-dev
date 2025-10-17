@@ -170,10 +170,12 @@ class SimpleOrderSerializer(BaseModelSerializer):
             "status",
             "order_type",
             "payment_status",
+            "store_location",
             "grand_total",
             "created_at",
             "updated_at",
         ]
+        select_related_fields = ["store_location"]
 
 
 class OrderSerializer(BaseModelSerializer):
@@ -293,6 +295,7 @@ class OptimizedOrderSerializer(BaseModelSerializer):
             "status",
             "order_type",
             "payment_status",
+            "store_location",
             "total_with_tip",
             "total_collected",
             "item_count",
@@ -302,7 +305,7 @@ class OptimizedOrderSerializer(BaseModelSerializer):
             "updated_at",
             "payment_in_progress",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details"]
+        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
         prefetch_related_fields = ["items"]  # Fix: prefetch items for item_count
 
 
@@ -344,12 +347,32 @@ class OrderCreateSerializer(BaseModelSerializer):
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically set store_location field with tenant-filtered queryset
+        from settings.models import StoreLocation
+        request = self.context.get('request')
+
+        # IMPORTANT: Tenant context is required - no fallback to all locations
+        if request and hasattr(request, 'tenant'):
+            queryset = StoreLocation.objects.filter(tenant=request.tenant)
+        else:
+            # If no tenant context, use empty queryset to prevent cross-tenant access
+            queryset = StoreLocation.objects.none()
+
+        self.fields['store_location'] = serializers.PrimaryKeyRelatedField(
+            queryset=queryset,
+            required=True,
+            help_text="Store location where this order is placed (REQUIRED)"
+        )
+
     class Meta:
         model = Order
         fields = [
             "order_type",
             "dining_preference",
             "customer",
+            "store_location",
             "guest_first_name",
             "guest_last_name",
             "guest_email",

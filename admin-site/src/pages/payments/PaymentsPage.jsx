@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import { getPayments } from "@/services/api/paymentService";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
@@ -42,11 +43,20 @@ const PaymentsPage = () => {
 	const navigate = useNavigate();
 	const { tenant } = useAuth();
 	const tenantSlug = tenant?.slug || '';
+	const { selectedLocationId, locations } = useStoreLocation();
+
+	// Helper to get location name by ID
+	const getLocationName = (locationId) => {
+		if (!locationId) return "N/A";
+		const location = locations.find(loc => loc.id === locationId);
+		return location?.name || "Unknown";
+	};
 
 	const fetchPayments = useCallback(
 		async (url = null) => {
 			try {
 				setLoading(true);
+				// Store location is now handled by middleware via X-Store-Location header
 				const data = await getPayments(filters, url);
 				setPayments(data.results || []);
 				setNextUrl(data.next);
@@ -70,7 +80,7 @@ const PaymentsPage = () => {
 				setLoading(false);
 			}
 		},
-		[filters]
+		[filters, selectedLocationId]
 	);
 
 	useEffect(() => {
@@ -176,9 +186,11 @@ const PaymentsPage = () => {
 		return processedTransactions[0].method.replace("_", " ") || "N/A";
 	};
 
+	// Conditionally include location column when viewing all locations
 	const headers = [
 		{ label: "Payment", className: "pl-6 w-[200px]" },
 		{ label: "Order", className: "w-[140px]" },
+		...((!selectedLocationId && locations.length > 1) ? [{ label: "Location", className: "w-[140px]" }] : []),
 		{ label: "Method", className: "w-[140px]" },
 		{ label: "Status", className: "w-[140px]" },
 		{ label: "Amount", className: "text-right w-[120px]" },
@@ -209,6 +221,15 @@ const PaymentsPage = () => {
 						{payment.order ? `#${payment.order_number}` : "N/A"}
 					</span>
 				</TableCell>
+
+				{/* Location - Only show when viewing all locations */}
+				{!selectedLocationId && locations.length > 1 && (
+					<TableCell className="py-3">
+						<span className="text-sm text-foreground font-medium">
+							{getLocationName(payment.order?.store_location)}
+						</span>
+					</TableCell>
+				)}
 
 				{/* Payment Method with Icon */}
 				<TableCell className="py-3">
@@ -326,7 +347,7 @@ const PaymentsPage = () => {
 				emptyMessage="No payments found for the selected filters."
 				onRowClick={(payment) => navigate(`/${tenantSlug}/payments/${payment.id}`)}
 				renderRow={renderPaymentRow}
-				colSpan={6}
+				colSpan={headers.length}
 				className="border-0"
 			/>
 			<PaginationControls

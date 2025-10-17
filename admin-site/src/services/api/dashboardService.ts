@@ -40,6 +40,7 @@ export interface ActivityItem {
 class DashboardService {
 	/**
 	 * Get dashboard metrics for today
+	 * Store location is automatically extracted from X-Store-Location header by backend middleware
 	 */
 	async getDashboardMetrics(): Promise<DashboardMetrics> {
 		try {
@@ -106,7 +107,7 @@ class DashboardService {
 					: null;
 			console.log("Top product:", topProduct);
 
-			// Get low stock count
+			// Get low stock count (filtered by store location from middleware)
 			const lowStockItems = await inventoryService.getAllStock({
 				is_low_stock: true,
 			});

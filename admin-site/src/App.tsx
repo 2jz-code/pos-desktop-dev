@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { LocationProvider } from "@/contexts/LocationContext";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import OrdersPage from "@/pages/orders/OrdersPage";
@@ -334,10 +335,12 @@ const App = () => {
 	return (
 		<QueryClientProvider client={queryClient}>
 			<AuthProvider>
-				<Router>
-					<AppRoutes />
-					<Toaster />
-				</Router>
+				<LocationProvider>
+					<Router>
+						<AppRoutes />
+						<Toaster />
+					</Router>
+				</LocationProvider>
 			</AuthProvider>
 		</QueryClientProvider>
 	);

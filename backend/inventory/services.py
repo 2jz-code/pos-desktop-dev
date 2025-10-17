@@ -745,12 +745,17 @@ class InventoryService:
         from django.utils import timezone
         from datetime import timedelta
         from settings.config import app_settings
-        
-        # Location filtering
+
+        # Store location filtering (physical store)
+        store_location_id = filters.get("store_location")
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
+        # Location filtering (warehouse/storage location within a store)
         location_id = filters.get("location")
         if location_id:
             queryset = queryset.filter(location_id=location_id)
-        
+
         # Search filtering
         search_query = filters.get("search")
         if search_query:
@@ -764,17 +769,20 @@ class InventoryService:
         is_low_stock = filters.get("is_low_stock")
         if is_low_stock and is_low_stock.lower() == "true":
             from django.db import models
+            from django.db.models.functions import Cast
             queryset = queryset.filter(
                 quantity__lte=Case(
-                    # Tier 1: Individual stock threshold
+                    # Tier 1: Individual stock threshold (DecimalField)
                     When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
-                    # Tier 2: Storage location threshold
+                    # Tier 2: Storage location threshold (DecimalField)
                     When(location__low_stock_threshold__isnull=False, then=F("location__low_stock_threshold")),
-                    # Tier 3: Store location threshold (via storage location)
+                    # Tier 3: Store location threshold (PositiveIntegerField - must cast to DecimalField)
                     When(location__store_location__low_stock_threshold__isnull=False,
-                         then=F("location__store_location__low_stock_threshold")),
+                         then=Cast(F("location__store_location__low_stock_threshold"),
+                                   output_field=models.DecimalField(max_digits=10, decimal_places=2))),
                     # Fallback: Hardcoded default
-                    default=Value(10, output_field=models.IntegerField()),
+                    default=Value(10, output_field=models.DecimalField(max_digits=10, decimal_places=2)),
+                    output_field=models.DecimalField(max_digits=10, decimal_places=2)
                 )
             )
         
@@ -957,18 +965,25 @@ class InventoryService:
         }
     
     @staticmethod
-    def get_inventory_dashboard_data() -> dict:
-        """Extract dashboard aggregation logic from InventoryDashboardView"""
+    def get_inventory_dashboard_data(store_location=None) -> dict:
+        """
+        Extract dashboard aggregation logic from InventoryDashboardView.
+        Can be filtered by store_location to show data for a specific physical store.
+        """
         from django.db.models import Sum, F, Case, When, Value, Q
         from django.utils import timezone
         from datetime import timedelta
-        
+
         try:
-            # Get all stock records across all locations
+            # Get all stock records, optionally filtered by store_location
             # FIX: Add product__product_type to prevent N+1 queries in reporting
             all_stock_records = InventoryStock.objects.select_related(
                 "product", "location", "product__product_type"
             ).filter(archived_at__isnull=True)
+
+            # Apply store_location filter if provided
+            if store_location:
+                all_stock_records = all_stock_records.filter(store_location_id=store_location)
             
             # Aggregate total quantities per product across all locations
             product_totals = all_stock_records.values("product").annotate(

@@ -45,13 +45,14 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentFilter(django_filters.FilterSet):
-    """Custom filter for payments with support for filtering by payment method."""
+    """Custom filter for payments with support for filtering by payment method and store location."""
 
     method = django_filters.CharFilter(method="filter_by_method")
+    store_location = django_filters.NumberFilter(field_name="order__store_location")
 
     class Meta:
         model = Payment
-        fields = ["status", "method"]
+        fields = ["status", "method", "store_location"]
 
     def filter_by_method(self, queryset, name, value):
         """Filter payments by the method of their transactions."""
@@ -188,6 +189,11 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
             'transactions',
             'order__items__product'
         )
+
+        # Add store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(order__store_location_id=store_location_id)
 
         # Filter by user access
         user = self.request.user

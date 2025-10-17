@@ -19,9 +19,10 @@ import {
 	X,
 	RotateCw,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Select,
 	SelectContent,
@@ -49,6 +50,7 @@ interface Order {
 	status: string;
 	payment_status: string;
 	order_type: string;
+	store_location: number | null;
 	total_collected: number;
 	total_with_tip: number;
 	item_count: number;
@@ -61,6 +63,20 @@ export default function OrdersPage() {
 	const { user, tenant } = useAuth();
 	const tenantSlug = tenant?.slug || '';
 	const [isRefreshing, setIsRefreshing] = useState(false);
+	const { selectedLocationId, locations } = useStoreLocation();
+
+	// Helper to get location name by ID
+	const getLocationName = (locationId: number | null) => {
+		if (!locationId) return "N/A";
+		const location = locations.find(loc => loc.id === locationId);
+		return location?.name || "Unknown";
+	};
+
+	// Additional filters (store location is now handled by middleware via X-Store-Location header)
+	// Keep selectedLocationId in deps to trigger refetch when location changes
+	const additionalFilters = useMemo(() => {
+		return {};
+	}, [selectedLocationId]);
 
 	// Use shared orders data hook
 	const {
@@ -79,7 +95,8 @@ export default function OrdersPage() {
 		clearFilters,
 		refetch
 	} = useOrdersData({
-		getAllOrdersService: getAllOrders
+		getAllOrdersService: getAllOrders,
+		additionalFilters
 	});
 
 	// Use shared order actions hook
@@ -141,9 +158,11 @@ export default function OrdersPage() {
 		}
 	};
 
+	// Conditionally include location column when viewing all locations
 	const headers = [
 		{ label: "Order", className: "pl-6 w-[200px]" },
 		{ label: "Source", className: "w-[120px]" },
+		...((!selectedLocationId && locations.length > 1) ? [{ label: "Location", className: "w-[140px]" }] : []),
 		{ label: "Customer", className: "w-[160px]" },
 		{ label: "Status", className: "w-[160px]" },
 		{ label: "Amount", className: "text-right w-[120px]" },
@@ -174,6 +193,15 @@ export default function OrdersPage() {
 					{order.order_type}
 				</Badge>
 			</TableCell>
+
+			{/* Location - Only show when viewing all locations */}
+			{!selectedLocationId && locations.length > 1 && (
+				<TableCell className="py-3">
+					<span className="text-sm text-foreground font-medium">
+						{getLocationName(order.store_location)}
+					</span>
+				</TableCell>
+			)}
 
 			{/* Customer */}
 			<TableCell className="py-3">
@@ -371,7 +399,7 @@ export default function OrdersPage() {
 				emptyMessage="No orders found for the selected filters."
 				onRowClick={(order) => navigate(`/${tenantSlug}/orders/${order.id}`)}
 				renderRow={renderOrderRow}
-				colSpan={7}
+				colSpan={headers.length}
 				className="border-0"
 			/>
 

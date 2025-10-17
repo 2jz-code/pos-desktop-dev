@@ -82,6 +82,14 @@ class Order(models.Model):
         on_delete=models.CASCADE,
         related_name='orders'
     )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='orders',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text='Store location where this order was placed'
+    )
     status = models.CharField(
         max_length=10, choices=OrderStatus.choices, default=OrderStatus.PENDING
     )

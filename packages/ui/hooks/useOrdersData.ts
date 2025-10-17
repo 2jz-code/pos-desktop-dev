@@ -21,8 +21,9 @@ interface PaginationData {
 }
 
 interface UseOrdersDataProps {
-	getAllOrdersService: (filters: OrdersFilters, url?: string | null) => Promise<PaginationData>;
+	getAllOrdersService: (filters: OrdersFilters & Record<string, any>, url?: string | null) => Promise<PaginationData>;
 	initialFilters?: Partial<OrdersFilters>;
+	additionalFilters?: Record<string, any>;
 }
 
 interface UseOrdersDataReturn {
@@ -58,7 +59,8 @@ const defaultFilters: OrdersFilters = {
 
 export function useOrdersData({
 	getAllOrdersService,
-	initialFilters = {}
+	initialFilters = {},
+	additionalFilters = {}
 }: UseOrdersDataProps): UseOrdersDataReturn {
 	const [orders, setOrders] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -76,7 +78,9 @@ export function useOrdersData({
 		async (url: string | null = null) => {
 			try {
 				setLoading(true);
-				const response = await getAllOrdersService(filters, url);
+				// Merge additionalFilters with the main filters
+				const mergedFilters = { ...filters, ...additionalFilters };
+				const response = await getAllOrdersService(mergedFilters, url);
 				setOrders(response.results || []);
 				setNextUrl(response.next);
 				setPrevUrl(response.previous);
@@ -99,7 +103,7 @@ export function useOrdersData({
 				setLoading(false);
 			}
 		},
-		[filters, getAllOrdersService]
+		[filters, additionalFilters, getAllOrdersService]
 	);
 
 	useEffect(() => {

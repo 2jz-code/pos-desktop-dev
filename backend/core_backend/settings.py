@@ -93,6 +93,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "tenant.middleware.TenantMiddleware",  # Multi-tenancy: Resolve tenant from request
+    "core_backend.infrastructure.store_location_middleware.StoreLocationMiddleware",  # Extract store location from X-Store-Location header
     "django_ratelimit.middleware.RatelimitMiddleware",
     # "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement - TEMPORARILY DISABLED FOR TESTING
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
@@ -114,14 +115,14 @@ SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG", "system")
 
 INTERNAL_IPS = [
     "127.0.0.1",
+    "192.168.5.144",
+    "192.168.2.27",
 ]
 
 DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
     "IS_RUNNING_TESTS": False,  # Allow tests to run without debug toolbar
 }
-
-INTERNAL_IPS = ["192.168.5.144", "192.168.2.27"]
 
 ROOT_URLCONF = "core_backend.urls"
 
@@ -335,6 +336,7 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
     "x-client-type",
     "x-client-version",
+    "x-store-location",  # Store location header from admin site
 ]
 
 # CSRF Trusted Origins - dynamically load from environment

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import { useRolePermissions } from "@/hooks/useRolePermissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -255,6 +256,7 @@ const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
 
 export function DashboardPage() {
 	const { user: authUser, tenant, loading: authLoading } = useAuth();
+	const { selectedLocationId } = useStoreLocation();
 	const permissions = useRolePermissions();
 	const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 	const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -266,7 +268,7 @@ export function DashboardPage() {
 
 	useEffect(() => {
 		if (!authLoading && authUser) {
-			// Fetch dashboard metrics
+			// Fetch dashboard metrics (store location extracted from X-Store-Location header by middleware)
 			dashboardService
 				.getDashboardMetrics()
 				.then(setMetrics)
@@ -280,7 +282,7 @@ export function DashboardPage() {
 				.catch((err) => console.error("Error fetching activity:", err))
 				.finally(() => setActivitiesLoading(false));
 		}
-	}, [authLoading, authUser, tenantSlug]);
+	}, [authLoading, authUser, tenantSlug, selectedLocationId]);
 
 	if (authLoading) {
 		return (

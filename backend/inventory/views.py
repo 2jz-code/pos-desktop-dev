@@ -34,15 +34,32 @@ class LocationViewSet(BaseViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
     permission_classes = [IsAdminOrHigher]
+    filterset_fields = ["store_location"]
 
     def get_queryset(self):
         # Call super() to leverage tenant context from BaseViewSet
-        return super().get_queryset()
+        queryset = super().get_queryset()
+
+        # Add store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
+        return queryset
 
     def perform_create(self, serializer):
         from tenant.managers import get_current_tenant
+        from settings.models import StoreLocation
+
         tenant = get_current_tenant()
-        serializer.save(tenant=tenant)
+
+        # Get store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        store_location = None
+        if store_location_id:
+            store_location = StoreLocation.objects.get(id=store_location_id)
+
+        serializer.save(tenant=tenant, store_location=store_location)
 
 
 class RecipeViewSet(BaseViewSet):
@@ -63,6 +80,7 @@ class RecipeViewSet(BaseViewSet):
 class InventoryStockViewSet(BaseViewSet):
     queryset = InventoryStock.objects.all()
     permission_classes = [IsAdminOrHigher]
+    filterset_fields = ["store_location", "location", "product"]
 
     def get_queryset(self):
         # Call super() to leverage tenant context from BaseViewSet
@@ -70,8 +88,17 @@ class InventoryStockViewSet(BaseViewSet):
 
     def perform_create(self, serializer):
         from tenant.managers import get_current_tenant
+        from settings.models import StoreLocation
+
         tenant = get_current_tenant()
-        serializer.save(tenant=tenant)
+
+        # Get store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        store_location = None
+        if store_location_id:
+            store_location = StoreLocation.objects.get(id=store_location_id)
+
+        serializer.save(tenant=tenant, store_location=store_location)
 
     def get_serializer_class(self):
         """Use optimized serializer for list view to reduce N+1 queries"""
@@ -101,11 +128,15 @@ class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
         # Let the mixin apply optimizations to the fresh queryset
         queryset = super().get_queryset()
 
-        # Then apply filtering logic from service
-        # Convert QueryDict to plain dict, taking first value from lists
+        # Build filters from query params
         filters = {}
         for key, value in self.request.query_params.items():
             filters[key] = value
+
+        # Add store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            filters['store_location'] = store_location_id
 
         # Apply filters to the already-optimized queryset
         return InventoryService.apply_stock_filters(queryset, filters)
@@ -306,14 +337,16 @@ class BulkStockCheckView(APIView):
 class InventoryDashboardView(APIView):
     """
     Get inventory overview data for dashboard display.
-    Shows aggregated inventory data across ALL locations.
+    Store location is extracted from X-Store-Location header by StoreLocationMiddleware.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        result = InventoryService.get_inventory_dashboard_data()
-        
+        # Get store_location_id from middleware (set from X-Store-Location header)
+        store_location = getattr(request, 'store_location_id', None)
+        result = InventoryService.get_inventory_dashboard_data(store_location=store_location)
+
         if "error" in result:
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
@@ -353,9 +386,8 @@ class QuickStockAdjustmentView(APIView):
 
 class InventoryDefaultsView(APIView):
     """
-    DEPRECATED: Global inventory defaults have been moved to StoreLocation model.
-    This view now returns defaults from the default store location.
-    TODO: Update frontend to fetch defaults from store location directly.
+    Returns inventory defaults (thresholds) for a specific store location.
+    Store location is extracted from X-Store-Location header by StoreLocationMiddleware.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -364,26 +396,26 @@ class InventoryDefaultsView(APIView):
         try:
             from settings.models import StoreLocation
 
-            # Try to get the default store location
-            default_store = app_settings.default_store_location
-            if not default_store:
-                # Fallback to first available store location
-                default_store = StoreLocation.objects.first()
+            # Get store_location_id from middleware (set from X-Store-Location header)
+            store_location_id = getattr(request, 'store_location_id', None)
+            if not store_location_id:
+                return Response(
+                    {"error": "store_location header is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            if default_store:
+            try:
+                store = StoreLocation.objects.get(id=store_location_id)
                 return Response(
                     {
-                        "default_low_stock_threshold": default_store.low_stock_threshold,
-                        "default_expiration_threshold": default_store.expiration_threshold,
+                        "default_low_stock_threshold": store.low_stock_threshold,
+                        "default_expiration_threshold": store.expiration_threshold,
                     }
                 )
-            else:
-                # No store locations configured - return hardcoded defaults
+            except StoreLocation.DoesNotExist:
                 return Response(
-                    {
-                        "default_low_stock_threshold": 10,
-                        "default_expiration_threshold": 7,
-                    }
+                    {"error": "Store location not found"},
+                    status=status.HTTP_404_NOT_FOUND
                 )
         except Exception as e:
             return Response(
@@ -419,22 +451,26 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
 
         # Get the optimized queryset from SerializerOptimizedMixin
         queryset = super().get_queryset()
-        
-        # Apply manual filtering for query parameters that aren't handled by filter backends
+
+        # Apply store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
         location = self.request.query_params.get('location')
         if location:
             queryset = queryset.filter(location_id=location)
-        
+
         operation_type = self.request.query_params.get('operation_type')
         if operation_type:
             queryset = queryset.filter(operation_type=operation_type)
-        
+
         user = self.request.query_params.get('user')
         if user:
             queryset = queryset.filter(user_id=user)
-        
+
         # Note: reference_id filtering is now handled by the unified search field
-        
+
         # Apply custom date range filtering
         date_range = self.request.query_params.get('date_range')
         if date_range:
@@ -451,7 +487,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
             elif date_range == 'quarter':
                 start_date = now - timedelta(days=90)
                 queryset = queryset.filter(timestamp__gte=start_date)
-        
+
         # Filter by tab (operation type groups)
         tab = self.request.query_params.get('tab')
         if tab == 'adjustments':
@@ -462,7 +498,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
             queryset = queryset.filter(
                 operation_type__in=['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']
             )
-        
+
         return queryset
 
 

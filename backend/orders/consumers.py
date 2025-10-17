@@ -328,11 +328,13 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         if not force_update:
                             from django.conf import settings
                             from inventory.services import InventoryService
-                            from settings.config import app_settings
                             from django.db.models import Sum
                             from decimal import Decimal
 
-                            default_location = await sync_to_async(app_settings.get_default_location)()
+                            # Get inventory location from order's store location
+                            order_for_location = await sync_to_async(lambda: order)()
+                            store_location = await sync_to_async(lambda: order_for_location.store_location)()
+                            default_location = await sync_to_async(lambda: store_location.default_inventory_location)()
 
                             if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
                                 # Only enforce for inventory-tracked and BLOCK enforcement

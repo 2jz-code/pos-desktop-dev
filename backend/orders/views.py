@@ -88,10 +88,23 @@ class OrderViewSet(BaseViewSet):
     permission_classes = [IsAuthenticatedOrGuestOrder]
 
     # Custom filtering and search configuration (BaseViewSet provides the rest)
-    filterset_fields = ["status", "payment_status", "order_type"]
+    filterset_fields = ["status", "payment_status", "order_type", "store_location"]
     search_fields = ["id", "customer__email", "customer__first_name", "customer__last_name", "cashier__username"]
     ordering_fields = ["created_at", "grand_total", "order_number"]
     ordering = ["-created_at"]  # Override BaseViewSet default to show newest orders first
+
+    def get_queryset(self):
+        """
+        Apply tenant filtering via BaseViewSet and add store_location filtering from middleware.
+        """
+        queryset = super().get_queryset()
+
+        # Add store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
+        return queryset
 
     def get_serializer_class(self):
         """
@@ -110,33 +123,37 @@ class OrderViewSet(BaseViewSet):
         """Handle order creation for both authenticated users and guests."""
         user = self.request.user
         order_type = serializer.validated_data.get("order_type", "POS")
+        store_location = serializer.validated_data.get("store_location")
 
         # Differentiate logic based on order type and user authentication
         if user and user.is_authenticated:
             if order_type == Order.OrderType.POS:
                 # For POS orders, the authenticated user is the cashier
-                serializer.save(cashier=user, tenant=self.request.tenant)
+                serializer.save(cashier=user, tenant=self.request.tenant, store_location=store_location)
             else:  # For WEB, APP, etc.
-                # For authenticated customers, check for an existing pending order
+                # For authenticated customers, check for an existing pending order at this location
                 existing_order = (
                     Order.objects.filter(
-                        customer=user, status=Order.OrderStatus.PENDING
+                        customer=user,
+                        status=Order.OrderStatus.PENDING,
+                        store_location=store_location
                     )
                     .order_by("-created_at")
                     .first()
                 )
 
                 if existing_order:
-                    # If a pending order exists, use it instead of creating a new one
+                    # If a pending order exists for this location, use it instead of creating a new one
                     serializer.instance = existing_order
                 else:
                     # If no pending order, create a new one and set the customer
-                    serializer.save(customer=user, tenant=self.request.tenant)
+                    serializer.save(customer=user, tenant=self.request.tenant, store_location=store_location)
         else:
             # For guest users, the service layer handles getting or creating
             guest_order = GuestSessionService.create_guest_order(
                 self.request,
                 order_type=order_type,
+                store_location=store_location
             )
             # Return the existing guest order instead of creating a new one
             serializer.instance = guest_order
@@ -169,11 +186,28 @@ class OrderViewSet(BaseViewSet):
         """
         A dedicated endpoint to add an item to the current user's cart.
         Handles getting or creating the order and adding the item in one step.
+
+        Required POST data:
+            - store_location: ID of the store location (REQUIRED for creating new orders)
+            - product_id: ID of the product to add
+            - quantity: Quantity to add
+            - selected_modifiers (optional): List of modifier options
+            - notes (optional): Special instructions
         """
+        store_location_id = request.data.get('store_location')
+        if not store_location_id:
+            return Response(
+                {"error": "store_location is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # First, get or create the order instance.
         # We can reuse the logic from the main create method.
-        # We pass a dummy serializer to perform_create to get the instance.
-        create_serializer = OrderCreateSerializer(data={"order_type": "WEB"})
+        # We pass the store_location to the serializer
+        create_serializer = OrderCreateSerializer(
+            data={"order_type": "WEB", "store_location": store_location_id},
+            context={"request": request}
+        )
         create_serializer.is_valid(raise_exception=True)
         self.perform_create(create_serializer)
         order = create_serializer.instance
@@ -349,8 +383,31 @@ class OrderViewSet(BaseViewSet):
         """
         Initializes a guest session and creates a new order if one doesn't exist.
         This ensures guest users have an active order ID to work with from the start.
+
+        Required POST data:
+            - store_location: ID of the store location for the order
         """
-        guest_order = GuestSessionService.create_guest_order(request)
+        store_location_id = request.data.get('store_location')
+        if not store_location_id:
+            return Response(
+                {"error": "store_location is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the store location object
+        from settings.models import StoreLocation
+        try:
+            store_location = StoreLocation.objects.get(id=store_location_id, tenant=request.tenant)
+        except StoreLocation.DoesNotExist:
+            return Response(
+                {"error": "Invalid store_location"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        guest_order = GuestSessionService.create_guest_order(
+            request,
+            store_location=store_location
+        )
         serializer = self.get_serializer(guest_order)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigationRoutes } from "@/hooks/useNavigationRoutes";
 import { NavigationItem } from "@/components/navigation/NavigationItem";
+import { LocationSelector } from "@/components/layout/LocationSelector";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -245,6 +246,8 @@ export function Layout({ children }: LayoutProps) {
 
 					{/* Actions */}
 					<div className="flex items-center gap-2">
+						<LocationSelector />
+
 						<Button
 							variant="outline"
 							size="icon"

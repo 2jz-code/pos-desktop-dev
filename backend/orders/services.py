@@ -17,14 +17,20 @@ class OrderService:
     
     @staticmethod
     @cache_static_data(timeout=3600*4)  # 4 hours - tax calculations don't change often
-    def get_tax_calculation_matrix():
-        """Cache tax calculations for common price ranges"""
-        from settings.config import app_settings
-        
+    def get_tax_calculation_matrix(store_location):
+        """
+        Cache tax calculations for common price ranges for a specific store location.
+
+        Args:
+            store_location: StoreLocation instance to get tax rate from
+        """
+        if not store_location:
+            raise ValueError("store_location is required for tax calculations")
+
         # Pre-calculate tax amounts for common price ranges
-        tax_rate = app_settings.tax_rate
+        tax_rate = store_location.tax_rate
         price_ranges = [1, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
-        
+
         tax_matrix = {}
         for price in price_ranges:
             price_decimal = Decimal(str(price))
@@ -33,11 +39,12 @@ class OrderService:
                 'tax_amount': float(tax_amount.quantize(Decimal("0.01"))),
                 'total_with_tax': float((price_decimal + tax_amount).quantize(Decimal("0.01")))
             }
-        
+
         return {
             'tax_rate': float(tax_rate),
             'matrix': tax_matrix,
-            'last_updated': str(app_settings.tax_rate)  # Use as cache key
+            'last_updated': str(store_location.tax_rate),  # Use as cache key
+            'store_location_id': store_location.id  # Include location in cache key
         }
     
     @staticmethod
@@ -105,7 +112,7 @@ class OrderService:
     @staticmethod
     @transaction.atomic
     def create_new_order(
-        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS, tenant=None
+        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS, tenant=None, store_location=None
     ) -> Order:
         """
         Creates a new, empty order.
@@ -115,21 +122,25 @@ class OrderService:
             customer: Optional customer for the order
             order_type: Type of order (POS, WEB, etc.)
             tenant: Tenant for the order (REQUIRED for multi-tenancy)
+            store_location: StoreLocation for the order (REQUIRED for multi-location)
 
         Raises:
-            ValueError: If tenant is not provided
+            ValueError: If tenant or store_location is not provided
         """
         if tenant is None:
             raise ValueError("tenant parameter is required for creating orders")
 
+        if store_location is None:
+            raise ValueError("store_location parameter is required for creating orders")
+
         order = Order.objects.create(
-            order_type=order_type, cashier=cashier, customer=customer, tenant=tenant
+            order_type=order_type, cashier=cashier, customer=customer, tenant=tenant, store_location=store_location
         )
         return order
 
     @staticmethod
     @transaction.atomic
-    def create_order(order_type: str, cashier: User, customer: User = None, tenant=None) -> Order:
+    def create_order(order_type: str, cashier: User, customer: User = None, tenant=None, store_location=None) -> Order:
         """
         Creates a new, empty order.
         Compatibility method for existing tests and code.
@@ -139,8 +150,9 @@ class OrderService:
             cashier: The cashier creating the order
             customer: Optional customer for the order
             tenant: Tenant for the order (REQUIRED for multi-tenancy)
+            store_location: StoreLocation for the order (REQUIRED for multi-location)
         """
-        return OrderService.create_new_order(cashier, customer, order_type, tenant)
+        return OrderService.create_new_order(cashier, customer, order_type, tenant, store_location)
 
     @staticmethod
     @transaction.atomic
@@ -179,12 +191,15 @@ class OrderService:
             
             # Stock validation - check if product is available
             from inventory.services import InventoryService
-            from settings.config import app_settings
-            
+
             # Only validate stock for products that track inventory
             if product.track_inventory:
                 try:
-                    default_location = app_settings.get_default_location()
+                    # Get inventory location from order's store location
+                    inventory_location = order.store_location.default_inventory_location
+                    if not inventory_location:
+                        raise ValueError(f"No default inventory location configured for store location '{order.store_location.name}'")
+
                     from django.conf import settings as dj_settings
 
                     # When policy is enabled, use policy-aware stock checking with cumulative enforcement
@@ -207,7 +222,7 @@ class OrderService:
                             from django.db.models import Sum
                             # How many of this product are already reserved in this order?
                             reserved = OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0
-                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            stock_level = InventoryService.get_stock_level(product, inventory_location)
                             # Work with Decimal for consistency
                             available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
                             if Decimal(str(quantity)) > available_to_add:
@@ -217,9 +232,9 @@ class OrderService:
                                     raise ValueError(f"'{product.name}' has low stock. Only {available_to_add} items available, but {quantity} requested.")
                     else:
                         # Legacy: check only the requested chunk against stock
-                        is_available = InventoryService.check_stock_availability(product, default_location, quantity)
+                        is_available = InventoryService.check_stock_availability(product, inventory_location, quantity)
                         if not is_available:
-                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            stock_level = InventoryService.get_stock_level(product, inventory_location)
                             if stock_level <= 0:
                                 raise ValueError(f"'{product.name}' is out of stock. No items available.")
                             else:
@@ -229,8 +244,10 @@ class OrderService:
                     # If InventoryService methods don't exist, fall back to basic stock level check
                     from inventory.models import InventoryStock
                     try:
-                        default_location = app_settings.get_default_location()
-                        stock = InventoryStock.objects.get(product=product, location=default_location)
+                        inventory_location = order.store_location.default_inventory_location
+                        if not inventory_location:
+                            raise ValueError(f"No default inventory location configured for store location '{order.store_location.name}'")
+                        stock = InventoryStock.objects.get(product=product, location=inventory_location)
                         if stock.quantity < quantity:
                             if stock.quantity <= 0:
                                 raise ValueError(f"'{product.name}' is out of stock. No items available.")
@@ -553,7 +570,7 @@ class OrderService:
             customer=user,
             order_type=source_order.order_type,
             tenant=source_order.tenant,  # Use same tenant as source order
-            # Copy other relevant fields if necessary, e.g., location
+            store_location=source_order.store_location,  # Copy store location from source order
         )
 
         # Copy items from the source order to the new one
@@ -762,13 +779,13 @@ class OrderService:
                                         tax.rate / Decimal("100.0")
                                     )
                             else:
-                                tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
+                                tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
                         else:
-                            # Legacy: use global tax rate
-                            tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
+                            # Legacy: use store location tax rate
+                            tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
                 else:
-                    # Custom items use the default tax rate from settings
-                    tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
+                    # Custom items use the store location tax rate
+                    tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
 
         order.tax_total = tax_total.quantize(Decimal("0.01"))
 
@@ -834,10 +851,12 @@ class OrderService:
 
             try:
                 from inventory.services import InventoryService
-                from settings.config import app_settings
                 from django.conf import settings as dj_settings
 
-                default_location = app_settings.get_default_location()
+                # Get inventory location from order's store location
+                inventory_location = order_item.order.store_location.default_inventory_location
+                if not inventory_location:
+                    raise ValueError(f"No default inventory location configured for store location '{order_item.order.store_location.name}'")
 
                 # When policy is enabled, use policy-aware stock checking with cumulative enforcement
                 if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
@@ -863,7 +882,7 @@ class OrderService:
                             product=order_item.product
                         ).aggregate(total=Sum('quantity'))['total'] or 0
 
-                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        stock_level = InventoryService.get_stock_level(order_item.product, inventory_location)
                         # Work with Decimal for consistency
                         available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
 
@@ -875,10 +894,10 @@ class OrderService:
                 else:
                     # Legacy: check only the additional quantity against stock
                     is_available = InventoryService.check_stock_availability(
-                        order_item.product, default_location, additional_quantity
+                        order_item.product, inventory_location, additional_quantity
                     )
                     if not is_available:
-                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        stock_level = InventoryService.get_stock_level(order_item.product, inventory_location)
                         if stock_level <= 0:
                             raise ValueError(f"'{order_item.product.name}' is out of stock. No items available.")
                         else:
@@ -1012,10 +1031,15 @@ class GuestSessionService:
             return None
 
     @staticmethod
-    def create_guest_order(request, order_type="WEB"):
+    def create_guest_order(request, order_type="WEB", store_location=None):
         """
         Create a new guest order for the session, with improved duplicate prevention.
         Returns existing pending order if one exists for the session.
+
+        Args:
+            request: The HTTP request object
+            order_type: Type of order (default: "WEB")
+            store_location: StoreLocation for the order (REQUIRED for new orders)
         """
         from .models import Order
 
@@ -1072,11 +1096,15 @@ class GuestSessionService:
             return existing_by_guest_id
 
         # Create new order only if none exists
+        if store_location is None:
+            raise ValueError("store_location parameter is required for creating guest orders")
+
         order = Order.objects.create(
             guest_id=guest_id,
             order_type=order_type,
             status=Order.OrderStatus.PENDING,
-            tenant=request.tenant
+            tenant=request.tenant,
+            store_location=store_location
         )
 
         # Store order ID in session for quick access

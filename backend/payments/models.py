@@ -29,6 +29,14 @@ class Payment(models.Model):
         on_delete=models.CASCADE,
         related_name='payments'
     )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='payments',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text='Denormalized from Order for fast location-based queries'
+    )
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name="payment_details"
     )
@@ -106,6 +114,8 @@ class Payment(models.Model):
             models.Index(fields=["tenant", "order", "status"], name="payment_ten_order_status_idx"),
             models.Index(fields=["tenant", "created_at"], name="payment_tenant_created_idx"),
             models.Index(fields=["tenant", "payment_number"], name="payment_tenant_number_idx"),
+            models.Index(fields=["tenant", "store_location", "status"], name="payment_tenant_loc_status_idx"),
+            models.Index(fields=["tenant", "store_location", "created_at"], name="payment_tenant_loc_created_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
