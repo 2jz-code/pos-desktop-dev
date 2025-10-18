@@ -5,17 +5,22 @@ const ModifierDisplay = ({ modifiers, compact = false, showTotal = false }) => {
 		return null;
 	}
 
+	// Helper to get price from either cart modifier (price_delta) or order modifier (price_at_sale)
+	const getModifierPrice = (modifier) => {
+		return parseFloat(modifier.price_delta || modifier.price_at_sale || 0);
+	};
+
 	// Calculate total modifier price
 	const totalModifierPrice = modifiers.reduce(
-		(sum, modifier) => sum + (parseFloat(modifier.price_at_sale) * modifier.quantity),
+		(sum, modifier) => sum + (getModifierPrice(modifier) * modifier.quantity),
 		0
 	);
 
 	if (compact) {
 		// Compact display for cart sidebar - show as a summary line
 		const hasChargedModifiers = totalModifierPrice > 0;
-		const freeModifiers = modifiers.filter(m => parseFloat(m.price_at_sale) === 0);
-		const chargedModifiers = modifiers.filter(m => parseFloat(m.price_at_sale) > 0);
+		const freeModifiers = modifiers.filter(m => getModifierPrice(m) === 0);
+		const chargedModifiers = modifiers.filter(m => getModifierPrice(m) > 0);
 
 		return (
 			<div className="mt-1 space-y-0.5">
@@ -35,7 +40,7 @@ const ModifierDisplay = ({ modifiers, compact = false, showTotal = false }) => {
 							{modifier.quantity > 1 && ` (x${modifier.quantity})`}
 						</span>
 						<span className="text-primary-green font-medium">
-							+${(parseFloat(modifier.price_at_sale) * modifier.quantity).toFixed(2)}
+							+${(getModifierPrice(modifier) * modifier.quantity).toFixed(2)}
 						</span>
 					</div>
 				))}
@@ -56,9 +61,9 @@ const ModifierDisplay = ({ modifiers, compact = false, showTotal = false }) => {
 						{modifier.modifier_set_name}: {modifier.option_name}
 						{modifier.quantity > 1 && ` x${modifier.quantity}`}
 					</span>
-					{parseFloat(modifier.price_at_sale) > 0 && (
+					{getModifierPrice(modifier) > 0 && (
 						<span className="text-primary-green font-medium">
-							+${parseFloat(modifier.price_at_sale).toFixed(2)}
+							+${getModifierPrice(modifier).toFixed(2)}
 						</span>
 					)}
 				</div>

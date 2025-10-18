@@ -35,26 +35,23 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 		return isNaN(numericPrice) ? "0.00" : numericPrice.toFixed(2);
 	};
 
-	// Use backend-calculated values directly
-	const subtotal = cart.subtotal || 0;
-	const taxAmount = cart.tax_total || 0;
-	const surchargeAmount = cart.surcharges_total || 0;
-	const total = cart.grand_total || 0;
-	
+	// Use backend-calculated values directly from cart.totals - no frontend calculations
+	const subtotal = parseFloat(cart.totals?.subtotal || 0);
+	const taxAmount = parseFloat(cart.totals?.tax_total || 0);
+	const discountAmount = parseFloat(cart.totals?.discount_total || 0);
+	const total = parseFloat(cart.totals?.grand_total || 0);
+
 	// Calculate total with frontend tip
 	const totalWithTip = total + tip;
 
-	// Get display rates from backend settings or calculate from cart data as fallback
-	const taxRateDisplay = financialSettings?.tax_rate
-		? formatTaxRate(financialSettings.tax_rate)
-		: subtotal > 0 && taxAmount > 0
-		? `${((taxAmount / (subtotal + surchargeAmount)) * 100).toFixed(3)}%`
-		: "8.125%";
+	// Get tax rate for display (from cart's store_location_tax_rate)
+	const taxRateDisplay = cart.store_location_tax_rate != null
+		? formatTaxRate(cart.store_location_tax_rate)
+		: "0%";
 
+	// Get surcharge rate for display (from global settings)
 	const surchargeRateDisplay = financialSettings?.surcharge_percentage
 		? formatSurchargeRate(financialSettings.surcharge_percentage)
-		: subtotal > 0 && surchargeAmount > 0
-		? `${((surchargeAmount / subtotal) * 100).toFixed(1)}%`
 		: "3.5%";
 
 	return (
@@ -123,20 +120,17 @@ const OrderSummary = ({ cart, isLoading, surchargeDisplay, tip = 0 }) => {
 						</div>
 					)}
 
-					{/* Service Fee - use surchargeDisplay if available, otherwise cart data */}
-					{(() => {
-						const serviceFeeAmount = surchargeDisplay?.amount || surchargeAmount;
-						return serviceFeeAmount > 0 && (
-							<div className="flex justify-between">
-								<span className="text-accent-dark-brown/70">
-									Service Fee ({surchargeRateDisplay})
-								</span>
-								<span className="text-accent-dark-brown">
-									${formatPrice(serviceFeeAmount)}
-								</span>
-							</div>
-						);
-					})()}
+					{/* Service Fee - only shown if surchargeDisplay is available (calculated via payment API) */}
+					{surchargeDisplay?.amount > 0 && (
+						<div className="flex justify-between">
+							<span className="text-accent-dark-brown/70">
+								Service Fee ({surchargeRateDisplay})
+							</span>
+							<span className="text-accent-dark-brown">
+								${formatPrice(surchargeDisplay.amount)}
+							</span>
+						</div>
+					)}
 
 					{tip > 0 && (
 						<div className="flex justify-between">

@@ -49,6 +49,8 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     # Customer app (new)
     path("api/customers/", include("customers.urls")),
+    # Cart app (customer-facing shopping cart)
+    path("api/cart/", include("cart.urls")),
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***

@@ -5,11 +5,14 @@ import { useOrderConfirmation } from "@/hooks/useOrderConfirmation";
 import { useCart } from "@/hooks/useCart";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
 import { useCartStore } from "@/store/cartStore";
+import { useLocationSelector } from "@/hooks/useLocationSelector";
 import ProgressIndicator from "./ProgressIndicator";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PaymentForm from "./PaymentForm";
 import OrderConfirmation from "./OrderConfirmation";
+import LocationSelector from "./LocationSelector";
+import LocationHeader from "./LocationHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Clock, Store } from "lucide-react";
 
@@ -19,6 +22,7 @@ const CheckoutFlow = () => {
 	const { cart } = useCart();
 	const storeStatus = useStoreStatus();
 	const cartStore = useCartStore();
+	const { selectedLocationId } = useLocationSelector();
 	const {
 		currentStep,
 		formData,
@@ -31,6 +35,7 @@ const CheckoutFlow = () => {
 		surchargeDisplay,
 		updateFormData,
 		prevStep,
+		submitLocationSelection,
 		submitOrder,
 		clearError,
 		submitCustomerInfo,
@@ -104,8 +109,31 @@ const CheckoutFlow = () => {
 			return <OrderConfirmation orderData={confirmationOrderData} surchargeDisplay={surchargeDisplay} />;
 		}
 
-		// Normal checkout flow (only steps 1 and 2 now)
+		// Normal checkout flow (steps 0, 1, and 2)
 		switch (currentStep) {
+			case 0:
+				// Step 0: Location Selection
+				return (
+					<div>
+						<h2 className="text-xl font-semibold text-accent-dark-green mb-4">
+							Select Pickup Location
+						</h2>
+						<LocationSelector />
+						<div className="mt-6">
+							<button
+								onClick={() => submitLocationSelection(selectedLocationId)}
+								disabled={!selectedLocationId}
+								className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
+									selectedLocationId
+										? "bg-primary-green text-white hover:bg-accent-dark-green"
+										: "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed"
+								}`}
+							>
+								Continue to Customer Info
+							</button>
+						</div>
+					</div>
+				);
 			case 1:
 				return (
 					<CustomerInfo
@@ -175,6 +203,9 @@ const CheckoutFlow = () => {
 		<div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
 			{/* Main Checkout Flow */}
 			<div className="lg:col-span-3 space-y-6">
+				{/* Location Header - Always visible after step 0 */}
+				{currentStep > 0 && <LocationHeader />}
+
 				{/* Progress Indicator - Centered */}
 				<div className="flex justify-center">
 					<div className="w-full max-w-md">

@@ -154,70 +154,20 @@ export const ordersAPI = {
 	},
 };
 
-// Helper functions for cart management
-export const cartAPI = {
-	// Add item to current cart using the new single-action endpoint
-	// The backend will handle getting or creating the order.
-	addToCart: async (
-		productId,
-		quantity = 1,
-		notes = "",
-		selectedModifiers = []
-	) => {
-		const response = await apiClient.post("/customers/orders/add_item/", {
-			product_id: productId,
-			quantity,
-			notes,
-			selected_modifiers: selectedModifiers,
-		});
-		return response.data;
-	},
-
-	// Update cart item quantity
-	updateCartItem: async (orderId, itemId, quantity) => {
-		if (!orderId) throw new Error("Order ID is required to update an item.");
-		return await ordersAPI.updateOrderItem(orderId, itemId, quantity);
-	},
-
-	// Remove item from cart
-	removeFromCart: async (orderId, itemId) => {
-		if (!orderId) throw new Error("Order ID is required to remove an item.");
-		try {
-			const response = await apiClient.delete(
-				`/orders/${orderId}/items/${itemId}/`
-			);
-			return response.data;
-		} catch (error) {
-			console.error("Error removing item from cart:", error.response?.data);
-			throw error.response?.data || { error: "An unknown error occurred" };
-		}
-	},
-
-	// Clear all items from cart
-	clearCart: async (orderId) => {
-		if (!orderId) throw new Error("Order ID is required to clear the cart.");
-		return await ordersAPI.clearOrderItems(orderId);
-	},
-
-	// Get cart item count
-	getCartItemCount: async () => {
-		try {
-			// Use the new, safe getPendingOrder endpoint
-			const cart = await ordersAPI.getPendingOrder();
-			return (
-				cart?.items?.reduce((total, item) => total + item.quantity, 0) || 0
-			);
-		} catch (error) {
-			console.error("Error getting cart count:", error);
-			return 0;
-		}
-	},
-
-	// Reorder from a previous order
-	reorder: async (orderId) => {
-		const response = await apiClient.post(`/orders/${orderId}/reorder/`);
-		return response.data;
-	},
-};
+/**
+ * DEPRECATED: cartAPI has been moved to @/api/cart
+ *
+ * The old cart endpoints using orders are deprecated.
+ * Use the new cart API instead:
+ *
+ * import cartAPI from "@/api/cart";
+ *
+ * Migration guide:
+ * - cartAPI.addToCart() → cartAPI.addItem()
+ * - cartAPI.updateCartItem() → cartAPI.updateItem() (no orderId needed)
+ * - cartAPI.removeFromCart() → cartAPI.removeItem() (no orderId needed)
+ * - cartAPI.clearCart() → cartAPI.clearCart() (no orderId needed)
+ * - cartAPI.getCartItemCount() → cartAPI.getItemCount()
+ */
 
 export default ordersAPI;

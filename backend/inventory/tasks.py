@@ -27,8 +27,9 @@ def process_order_completion_inventory(self, order_id):
 
         logger.info(f"Processing inventory for order {order_id}")
 
-        # Fetch the order
-        order = Order.objects.get(id=order_id)
+        # Fetch the order using all_objects to bypass tenant filtering
+        # (Celery tasks don't have tenant context automatically set)
+        order = Order.all_objects.get(id=order_id)
 
         # Set tenant context for this task execution
         set_current_tenant(order.tenant)

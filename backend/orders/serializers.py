@@ -212,11 +212,13 @@ class OrderSerializer(BaseModelSerializer):
         ]
         select_related_fields = ["customer", "cashier", "payment_details"]
         prefetch_related_fields = [
-            Prefetch('items', queryset=OrderItem.objects.select_related(
-                'product__category', 'product__product_type'
-            ).prefetch_related('selected_modifiers_snapshot')),
-            Prefetch('applied_discounts', queryset=OrderDiscount.objects.select_related('discount')),
-            Prefetch('payment_details__transactions')
+            # Let Django use the default manager to respect tenant context at request time
+            # Don't use explicit querysets with TenantManager - they're evaluated at class definition time
+            'items__product__category',
+            'items__product__product_type',
+            'items__selected_modifiers_snapshot',
+            'applied_discounts__discount',
+            'payment_details__transactions'
         ]
 
     def get_payment_details(self, obj):

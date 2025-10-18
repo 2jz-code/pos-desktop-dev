@@ -456,7 +456,7 @@ const OrderDetailsPage = () => {
 																			key={idx}
 																			className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground border border-border/40"
 																		>
-																			{mod.name}
+																			{mod.modifier_set_name}: {mod.option_name}
 																		</span>
 																	))}
 																</div>

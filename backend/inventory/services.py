@@ -86,12 +86,15 @@ class InventoryService:
     
     @staticmethod
     @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
-    def get_inventory_availability_status(location_id=None):
-        """Cache product availability status for POS display (tenant-scoped via TenantManager)"""
-        from settings.config import app_settings
-        
+    def get_inventory_availability_status(location_id):
+        """
+        Cache product availability status for POS display (tenant-scoped via TenantManager).
+
+        Args:
+            location_id: Required - the inventory location ID to check stock for
+        """
         if not location_id:
-            location_id = app_settings.get_default_location().id
+            raise ValueError("location_id is required for inventory availability status")
         
         # Get current stock levels
         stock_levels = InventoryService.get_stock_levels_by_location(location_id)
@@ -574,10 +577,17 @@ class InventoryService:
         Process inventory deduction for a completed order.
         Handles both regular products and menu items with recipes.
         """
-        from settings.config import app_settings
         from settings.models import StockActionReasonConfig
-        
-        default_location = app_settings.get_default_location()
+
+        # Get the inventory location from the order's store location
+        if not order.store_location:
+            logger.error(f"Order {order.order_number} has no store_location set. Cannot process inventory.")
+            return
+
+        inventory_location = order.store_location.default_inventory_location
+        if not inventory_location:
+            logger.warning(f"Store location {order.store_location.name} has no default_inventory_location set. Skipping inventory processing for order {order.order_number}.")
+            return
         
         # Get global system reason for order deductions (tenant=NULL)
         try:
@@ -604,13 +614,13 @@ class InventoryService:
                 if hasattr(item.product, 'recipe') and item.product.recipe:
                     # Handle menu items with recipes
                     InventoryService.deduct_recipe_ingredients(
-                        item.product, item.quantity, default_location, order_deduction_reason, order.id
+                        item.product, item.quantity, inventory_location, order_deduction_reason, order.id
                     )
                 else:
                     # Handle regular products
                     InventoryService.decrement_stock(
-                        item.product, 
-                        default_location, 
+                        item.product,
+                        inventory_location,
                         item.quantity,
                         reason_config=order_deduction_reason,
                         detailed_reason=f"Order #{order.order_number or order.id} completed",
@@ -744,7 +754,7 @@ class InventoryService:
         from django.db.models import Q, F, Case, When, Value
         from django.utils import timezone
         from datetime import timedelta
-        from settings.config import app_settings
+        
 
         # Store location filtering (physical store)
         store_location_id = filters.get("store_location")
@@ -809,18 +819,24 @@ class InventoryService:
     def search_inventory_by_barcode(barcode: str, location_id: int = None) -> dict:
         """Extract barcode lookup logic from barcode_stock_lookup view"""
         from products.models import Product
-        from settings.config import app_settings
-        
+
+        # location_id is required - no global default location
+        if not location_id:
+            return {
+                "success": False,
+                "error": "location_id is required for inventory lookups"
+            }
+
         try:
             product = Product.objects.get(barcode=barcode, is_active=True)
-            
-            if location_id:
-                try:
-                    location = Location.objects.get(id=location_id)
-                except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
-            else:
-                location = app_settings.get_default_location()
+
+            try:
+                location = Location.objects.get(id=location_id)
+            except Location.DoesNotExist:
+                return {
+                    "success": False,
+                    "error": f"Location {location_id} not found"
+                }
             
             stock_level = InventoryService.get_stock_level(product, location)
             
@@ -853,7 +869,7 @@ class InventoryService:
     def perform_barcode_stock_adjustment(barcode: str, quantity: float, adjustment_type: str = "add", location_id: int = None, user=None, reason: str = "") -> dict:
         """Extract barcode stock adjustment logic from barcode_stock_adjustment view"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         # Validate inputs
         if not quantity:
@@ -878,9 +894,9 @@ class InventoryService:
                 try:
                     location = Location.objects.get(id=location_id)
                 except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
+                    raise ValueError("location_id is required - no default location available")
             else:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
             
             # Perform stock adjustment using existing service methods
             if quantity > 0:
@@ -919,7 +935,7 @@ class InventoryService:
     def check_bulk_stock_availability(product_ids: list, location_id: int = None) -> dict:
         """Extract bulk stock checking logic from BulkStockCheckView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         if not product_ids:
             return {"error": "product_ids required"}
@@ -928,9 +944,9 @@ class InventoryService:
             try:
                 location = Location.objects.get(id=location_id)
             except Location.DoesNotExist:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
         else:
-            location = app_settings.get_default_location()
+            raise ValueError("location_id is required - no default location available")
         
         results = []
         
@@ -1072,7 +1088,7 @@ class InventoryService:
     def perform_quick_stock_adjustment(product_id: int, quantity: float, reason: str = None, adjustment_type: str = "FOUND_STOCK", user_id: int = None) -> dict:
         """Extract quick stock adjustment logic from QuickStockAdjustmentView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         import logging
         
         logger = logging.getLogger(__name__)
@@ -1085,7 +1101,7 @@ class InventoryService:
         
         try:
             product = Product.objects.get(id=product_id)
-            location = app_settings.get_default_location()
+            raise ValueError("location_id is required - no default location available")
             
             # Add the found stock
             stock = InventoryService.add_stock(product, location, quantity)
@@ -1128,7 +1144,7 @@ class InventoryService:
     def get_product_stock_details(product_id: int, location_id: int = None) -> dict:
         """Extract product stock checking logic from ProductStockCheckView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         try:
             product = Product.objects.get(id=product_id)
@@ -1137,9 +1153,9 @@ class InventoryService:
                 try:
                     location = Location.objects.get(id=location_id)
                 except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
+                    raise ValueError("location_id is required - no default location available")
             else:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
             
             stock_level = InventoryService.get_stock_level(product, location)
             is_available = stock_level > 0

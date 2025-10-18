@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "business_hours",
     "products",
     "inventory",
+    "cart",  # Shopping cart (ephemeral, converts to orders)
     "orders",
     "payments",
     "discounts",

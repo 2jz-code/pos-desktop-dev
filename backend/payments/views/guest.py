@@ -8,6 +8,7 @@ These views use session-based validation and provide simplified payment flows.
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from decimal import Decimal
 import logging
 
@@ -55,44 +56,86 @@ class CreateGuestPaymentIntentView(
 
     This endpoint allows guest users to create payment intents for their orders
     without requiring user authentication. Uses session-based order validation.
+
+    Supports both POS flow (order_id) and web cart flow (cart_id):
+    - cart_id: Converts cart → order atomically during payment (web orders)
+    - order_id: Uses existing order (POS orders)
     """
 
     permission_classes = [AllowAny]
 
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
         order_id = request.data.get("order_id")
+        cart_id = request.data.get("cart_id")
         amount = request.data.get("amount")
         tip = request.data.get("tip", 0)
         currency = request.data.get("currency", "usd")
         customer_email = request.data.get("customer_email")
         customer_name = request.data.get("customer_name")
 
-        # Validate required fields
-        if not order_id:
-            return self.create_error_response("order_id is required")
+        logger.info(f"[CreateGuestPaymentIntent] Starting payment intent creation. cart_id={cart_id}, order_id={order_id}, amount={amount}")
+
+        # Validate required fields - either order_id OR cart_id must be provided
+        if not order_id and not cart_id:
+            logger.error("[CreateGuestPaymentIntent] Neither order_id nor cart_id provided")
+            return self.create_error_response("Either order_id or cart_id is required")
+
+        if order_id and cart_id:
+            logger.error("[CreateGuestPaymentIntent] Both order_id and cart_id provided")
+            return self.create_error_response("Provide either order_id or cart_id, not both")
 
         if not amount:
+            logger.error("[CreateGuestPaymentIntent] Amount not provided")
             return self.create_error_response("amount is required")
 
         try:
-            # Get the order (ensure it's a guest order or belongs to current session)
-            order = self.get_order_or_404(order_id)
+            # If cart_id provided (web orders), convert cart to order atomically
+            if cart_id:
+                from cart.models import Cart
+                from cart.services import CartService
 
-            # Validate order access using the mixin
-            self.validate_order_access(order, request)
+                logger.info(f"[CreateGuestPaymentIntent] Web order flow - fetching cart {cart_id}")
+                # Get the cart
+                cart = get_object_or_404(Cart, id=cart_id, tenant=request.tenant)
+                logger.info(f"[CreateGuestPaymentIntent] Cart found. Location: {cart.store_location}, Items: {cart.items.count()}, Session: {cart.session_id[:8] if cart.session_id else 'None'}...")
+
+                # Validate cart has location set
+                if not cart.store_location:
+                    logger.error(f"[CreateGuestPaymentIntent] Cart {cart_id} has no location set")
+                    return self.create_error_response(
+                        "Cart must have a location set before payment",
+                        status.HTTP_400_BAD_REQUEST
+                    )
+
+                logger.info(f"[CreateGuestPaymentIntent] Converting cart {cart_id} to order...")
+                # Convert cart to order atomically (within transaction)
+                # If payment creation fails later, this will rollback
+                order = CartService.convert_to_order(cart=cart, cashier=None)
+                logger.info(f"[CreateGuestPaymentIntent] Cart converted successfully. Order ID: {order.id}, Order Number: {order.order_number}")
+            else:
+                # POS flow: order already exists
+                logger.info(f"[CreateGuestPaymentIntent] POS order flow - fetching order {order_id}")
+                order = self.get_order_or_404(order_id)
+                # Validate order access using the mixin
+                self.validate_order_access(order, request)
+                logger.info(f"[CreateGuestPaymentIntent] Order found and validated: {order.id}")
 
             # Convert amount and tip to Decimal for consistency
             amount_decimal = self.validate_amount(amount)
             tip_decimal = self.validate_amount(tip) if tip else Decimal("0.00")
+            logger.info(f"[CreateGuestPaymentIntent] Amount validated: {amount_decimal}, Tip: {tip_decimal}")
 
             # Calculate surcharge for online card payments
             from ..services import PaymentService
             surcharge = PaymentService.calculate_surcharge(amount_decimal)
             total_amount_with_surcharge_and_tip = amount_decimal + tip_decimal + surcharge
+            logger.info(f"[CreateGuestPaymentIntent] Surcharge calculated: {surcharge}, Total with tip and surcharge: {total_amount_with_surcharge_and_tip}")
 
             # Create or get payment object
             # The total_amount_due should be the base amount (without surcharge)
             # Surcharges are tracked separately in the transaction
+            logger.info(f"[CreateGuestPaymentIntent] Creating/getting Payment object for order {order.id}")
             payment, created = Payment.objects.get_or_create(
                 order=order,
                 defaults={
@@ -102,11 +145,13 @@ class CreateGuestPaymentIntentView(
                     "store_location": order.store_location,  # Denormalize from order for fast location queries
                 },
             )
+            logger.info(f"[CreateGuestPaymentIntent] Payment {'created' if created else 'retrieved'}: {payment.id}")
 
             # If payment already exists, update the amount
             if not created:
                 payment.total_amount_due = amount_decimal
                 payment.save(update_fields=["total_amount_due"])
+                logger.info(f"[CreateGuestPaymentIntent] Payment amount updated to {amount_decimal}")
 
             # Create Stripe Payment Intent
             import stripe
@@ -134,14 +179,17 @@ class CreateGuestPaymentIntentView(
             if customer_name:
                 intent_data["description"] = f"Order payment for {customer_name}"
 
+            logger.info(f"[CreateGuestPaymentIntent] Creating Stripe PaymentIntent with amount {intent_data['amount']} cents")
             # Create the payment intent
             intent = stripe.PaymentIntent.create(**intent_data)
+            logger.info(f"[CreateGuestPaymentIntent] Stripe PaymentIntent created: {intent.id}")
 
             # Store the payment intent ID in the payment
             payment.guest_payment_intent_id = intent.id
             payment.save(update_fields=["guest_payment_intent_id"])
 
             # Create a pending transaction record
+            logger.info(f"[CreateGuestPaymentIntent] Creating pending transaction record")
             PaymentTransaction.objects.create(
                 payment=payment,
                 amount=amount_decimal,
@@ -152,7 +200,9 @@ class CreateGuestPaymentIntentView(
                 transaction_id=intent.id,
                 tenant=payment.tenant,
             )
+            logger.info(f"[CreateGuestPaymentIntent] Transaction record created successfully")
 
+            logger.info(f"[CreateGuestPaymentIntent] Payment intent creation completed successfully for order {order.id}")
             return self.create_success_response(
                 {
                     "client_secret": intent.client_secret,
@@ -166,9 +216,10 @@ class CreateGuestPaymentIntentView(
             )
 
         except ValueError as e:
+            logger.error(f"[CreateGuestPaymentIntent] ValueError: {e}", exc_info=True)
             return self.create_error_response(str(e))
         except Exception as e:
-            logger.error(f"Error creating guest payment intent: {e}")
+            logger.error(f"[CreateGuestPaymentIntent] Unexpected error: {e}", exc_info=True)
             return self.create_error_response(
                 str(e), status.HTTP_500_INTERNAL_SERVER_ERROR
             )

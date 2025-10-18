@@ -163,7 +163,6 @@ class SettingsService:
         """
         instance = SettingsService.get_global_settings()
         return {
-            "tax_rate": instance.tax_rate,
             "surcharge_percentage": instance.surcharge_percentage,
             "currency": instance.currency,
         }
@@ -184,7 +183,7 @@ class SettingsService:
         Raises:
             ValidationError: If validation fails
         """
-        allowed_fields = {"tax_rate", "surcharge_percentage", "currency"}
+        allowed_fields = {"surcharge_percentage", "currency"}
         
         # Filter to only allowed fields (business rule from original view)
         filtered_data = {

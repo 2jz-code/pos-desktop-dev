@@ -156,13 +156,13 @@ const CartSidebar = ({ isOpen, onClose }) => {
 														{item.product?.name || "Unknown Product"}
 													</h4>
 													<p className="text-sm text-accent-dark-brown">
-														${formatPrice(item.price_at_sale)} × {item.quantity}
+														${formatPrice(item.item_price)} × {item.quantity}
 													</p>
-													
+
 													{/* Display modifiers */}
-													<ModifierDisplay 
-														modifiers={item.selected_modifiers_snapshot} 
-														compact={true} 
+													<ModifierDisplay
+														modifiers={item.modifiers}
+														compact={true}
 													/>
 													
 													{item.notes && (
@@ -175,10 +175,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 												{/* Item Actions */}
 												<div className="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
 													<span className="text-sm font-medium text-accent-dark-green">
-														$
-														{formatPrice(
-															(item.price_at_sale || 0) * item.quantity
-														)}
+														${formatPrice(item.total_price)}
 													</span>
 													<button
 														onClick={() => handleRemoveItem(item.id)}
@@ -191,8 +188,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 											</div>
 
 											{/* Edit button - positioned in bottom right with proper spacing */}
-											{item.selected_modifiers_snapshot && 
-											 item.selected_modifiers_snapshot.length > 0 && (
+											{item.modifiers &&
+											 item.modifiers.length > 0 && (
 												<button
 													onClick={() => handleEditItem(item)}
 													className="absolute bottom-1 right-0 text-xs text-accent-dark-green hover:text-primary-green underline transition-colors focus:outline-none px-1 py-1"

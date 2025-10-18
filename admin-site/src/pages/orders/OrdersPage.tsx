@@ -73,9 +73,11 @@ export default function OrdersPage() {
 	};
 
 	// Additional filters (store location is now handled by middleware via X-Store-Location header)
-	// Keep selectedLocationId in deps to trigger refetch when location changes
+	// Include selectedLocationId to trigger refetch when location changes
+	// Note: This is not sent to the API - middleware handles it via X-Store-Location header
+	// But we need it in the object so useOrdersData can detect location changes
 	const additionalFilters = useMemo(() => {
-		return {};
+		return { _locationTrigger: selectedLocationId };
 	}, [selectedLocationId]);
 
 	// Use shared orders data hook

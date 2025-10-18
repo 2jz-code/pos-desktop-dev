@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from django.db import models
+from django.db import models, transaction
 from decimal import Decimal
 import logging
 import stripe
@@ -314,24 +314,66 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
 class CreateUserPaymentIntentView(
     BasePaymentView, PaymentValidationMixin, AuthenticatedOrderAccessMixin
 ):
-    """Creates a Stripe Payment Intent for authenticated users by calling the PaymentService."""
+    """
+    Creates a Stripe Payment Intent for authenticated users by calling the PaymentService.
+
+    Supports both POS flow (order_id) and web cart flow (cart_id):
+    - cart_id: Converts cart → order atomically during payment (web orders)
+    - order_id: Uses existing order (POS orders)
+    """
 
     authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
         """Handles the creation of a payment intent."""
         order_id = request.data.get("order_id")
+        cart_id = request.data.get("cart_id")
         amount = request.data.get("amount")
         tip = request.data.get("tip", 0)
         currency = request.data.get("currency", "usd")
 
-        if not all([order_id, amount]):
-            return self.create_error_response("order_id and amount are required")
+        # Validate required fields - either order_id OR cart_id must be provided
+        if not order_id and not cart_id:
+            return self.create_error_response("Either order_id or cart_id is required")
+
+        if order_id and cart_id:
+            return self.create_error_response("Provide either order_id or cart_id, not both")
+
+        if not amount:
+            return self.create_error_response("amount is required")
 
         try:
-            order = self.get_order_or_404(order_id)
-            self.validate_order_access(order, request)
+            # If cart_id provided (web orders), convert cart to order atomically
+            if cart_id:
+                from cart.models import Cart
+                from cart.services import CartService
+
+                # Get the cart
+                cart = get_object_or_404(Cart, id=cart_id, tenant=request.tenant)
+
+                # Validate cart belongs to authenticated user
+                if cart.customer != request.user:
+                    return self.create_error_response(
+                        "Cart does not belong to current user",
+                        status.HTTP_403_FORBIDDEN
+                    )
+
+                # Validate cart has location set
+                if not cart.store_location:
+                    return self.create_error_response(
+                        "Cart must have a location set before payment",
+                        status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Convert cart to order atomically (within transaction)
+                # If payment creation fails later, this will rollback
+                order = CartService.convert_to_order(cart=cart, cashier=None)
+            else:
+                # POS flow: order already exists
+                order = self.get_order_or_404(order_id)
+                self.validate_order_access(order, request)
             amount_decimal = self.validate_amount(amount)
             tip_decimal = self.validate_amount(tip) if tip else Decimal("0.00")
 

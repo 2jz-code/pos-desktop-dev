@@ -689,15 +689,12 @@ class OrderService:
     @transaction.atomic
     def recalculate_order_totals(order: Order):
         """
-        Recalculates all financial fields for an order, ensuring calculations
-        are performed in the correct sequence.
-        Surcharges are excluded from cart totals and only calculated during payment.
+        Recalculates all financial fields for an order using OrderCalculator (DRY).
+
+        Delegates to OrderCalculator for subtotal, tax, and grand_total calculations.
+        Discounts are handled separately using DiscountStrategyFactory.
         """
         start_time = time.monotonic()
-
-        # Import app_settings locally to ensure we always get the fresh configuration
-        # This avoids Python's module-level import caching that could cause stale config
-        from settings.config import app_settings
 
         # Re-fetch the full order context to ensure data is fresh
         # FIX: Add select_related for product to prevent N+1 queries when accessing item.product.price
@@ -708,16 +705,19 @@ class OrderService:
         setattr(original_order_reference, "_recalculated_order_instance", order)
 
         # Pre-fetch items with related data to prevent N+1 queries
-        # Note: Some items may not have products (custom items), so we use nullable relations
         items_queryset = order.items.select_related("product", "product__product_type").prefetch_related("product__taxes").all()
         items = list(items_queryset)
         item_count = len(items)
 
-        # 1. Calculate the pre-discount subtotal from all items
-        # FIX: Use pre-fetched items to prevent additional queries
-        order.subtotal = sum(item.total_price for item in items)
+        # Use OrderCalculator for DRY financial calculations
+        from .calculators import OrderCalculator
+        calculator = OrderCalculator(order)
 
-        # 2. Recalculate the value of all applied discounts based on the fresh subtotal
+        # 1. Calculate subtotal (delegated to calculator)
+        order.subtotal = calculator.calculate_subtotal()
+
+        # 2. Recalculate discounts using DiscountService (NOT in calculator yet)
+        # TODO: Move this logic to DiscountCalculator class
         total_discount_amount = Decimal("0.00")
         from discounts.factories import DiscountStrategyFactory
 
@@ -732,65 +732,17 @@ class OrderService:
                 total_discount_amount += calculated_amount
         order.total_discounts_amount = total_discount_amount
 
-        # 3. Determine the base for tax calculations (subtotal AFTER discounts)
+        # 3. Calculate post-discount subtotal
         post_discount_subtotal = order.subtotal - order.total_discounts_amount
 
         # 4. Surcharges are NOT calculated here - only during payment processing
-        # Keep surcharges_total at 0 for cart operations
         order.surcharges_total = Decimal("0.00")
 
-        # 5. Calculate tax based on the discounted price of each item (without surcharges)
-        tax_total = Decimal("0.00")
-        if order.subtotal > 0:
-            proportional_discount_rate = order.total_discounts_amount / order.subtotal
-            # FIX: Use pre-fetched items to prevent N+1 queries when accessing item.product.taxes
-            for item in items:
-                discounted_item_price = item.total_price * (
-                    Decimal("1.0") - proportional_discount_rate
-                )
+        # 5. Calculate tax (delegated to calculator with discount-aware logic)
+        order.tax_total = calculator.calculate_item_level_tax(post_discount_subtotal)
 
-                if item.product:
-                    # Check if product type has tax_inclusive flag set
-                    product_type = item.product.product_type
-                    if product_type and product_type.tax_inclusive:
-                        # Tax is already included in the product price, don't calculate additional tax
-                        continue
-
-                    # Access pre-fetched taxes to prevent additional queries
-                    product_taxes = item.product.taxes.all()
-                    if product_taxes:
-                        # Use product-specific taxes if defined
-                        for tax in product_taxes:
-                            tax_total += discounted_item_price * (
-                                tax.rate / Decimal("100.0")
-                            )
-                    else:
-                        # Feature-flagged: consider product type default taxes
-                        from django.conf import settings as dj_settings
-                        if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
-                            try:
-                                from products.policies import ProductTypePolicy
-                                type_taxes = list(ProductTypePolicy.get_applicable_taxes(item.product))
-                            except Exception:
-                                type_taxes = []
-                            if type_taxes:
-                                for tax in type_taxes:
-                                    tax_total += discounted_item_price * (
-                                        tax.rate / Decimal("100.0")
-                                    )
-                            else:
-                                tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
-                        else:
-                            # Legacy: use store location tax rate
-                            tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
-                else:
-                    # Custom items use the store location tax rate
-                    tax_total += discounted_item_price * Decimal(str(order.store_location.tax_rate))
-
-        order.tax_total = tax_total.quantize(Decimal("0.01"))
-
-        # 6. Calculate the final grand total (WITHOUT surcharges for cart view)
-        # Surcharges will be calculated separately during payment processing
+        # 6. Calculate grand total (delegated to calculator)
+        # Note: Calculator already applies discounts internally
         order.grand_total = post_discount_subtotal + order.tax_total
 
         order.save(
@@ -807,7 +759,7 @@ class OrderService:
         elapsed_ms = (time.monotonic() - start_time) * 1000
         discount_count = len(applied_discounts)
         logger.info(
-            "OrderService.recalculate_order_totals order_id=%s items=%d discounts=%d elapsed_ms=%.2f",
+            "OrderService.recalculate_order_totals order_id=%s items=%d discounts=%d elapsed_ms=%.2f (DRY via OrderCalculator)",
             order.id,
             item_count,
             discount_count,

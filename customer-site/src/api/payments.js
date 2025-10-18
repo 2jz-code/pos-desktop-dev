@@ -11,11 +11,26 @@ export const paymentsAPI = {
 	},
 
 
-	// Create payment intent for guest checkout
-	createGuestPaymentIntent: async (orderData) => {
+	/**
+	 * Create payment intent for guest checkout
+	 *
+	 * Supports both cart-based (web orders) and order-based (POS) flows:
+	 * - For web orders: Pass cart_id (cart → order conversion happens atomically)
+	 * - For POS orders: Pass order_id (order already exists)
+	 *
+	 * @param {object} paymentData - Payment data
+	 * @param {string} paymentData.cart_id - Cart ID (for web orders)
+	 * @param {string} paymentData.order_id - Order ID (for POS orders)
+	 * @param {string} paymentData.amount - Amount to charge
+	 * @param {string} paymentData.tip - Tip amount (optional)
+	 * @param {string} paymentData.currency - Currency code (default: "usd")
+	 * @param {string} paymentData.customer_email - Customer email (optional)
+	 * @param {string} paymentData.customer_name - Customer name (optional)
+	 */
+	createGuestPaymentIntent: async (paymentData) => {
 		const response = await apiClient.post(
 			"/payments/guest/create-payment-intent/",
-			orderData
+			paymentData
 		);
 		return response.data;
 	},
@@ -29,11 +44,24 @@ export const paymentsAPI = {
 		return response.data;
 	},
 
-	// Create payment intent for authenticated users
-	createAuthenticatedPaymentIntent: async (orderData) => {
+	/**
+	 * Create payment intent for authenticated users
+	 *
+	 * Supports both cart-based (web orders) and order-based (POS) flows:
+	 * - For web orders: Pass cart_id (cart → order conversion happens atomically)
+	 * - For POS orders: Pass order_id (order already exists)
+	 *
+	 * @param {object} paymentData - Payment data
+	 * @param {string} paymentData.cart_id - Cart ID (for web orders)
+	 * @param {string} paymentData.order_id - Order ID (for POS orders)
+	 * @param {string} paymentData.amount - Amount to charge
+	 * @param {string} paymentData.tip - Tip amount (optional)
+	 * @param {string} paymentData.currency - Currency code (default: "usd")
+	 */
+	createAuthenticatedPaymentIntent: async (paymentData) => {
 		const response = await apiClient.post(
 			"/payments/create-payment-intent/",
-			orderData
+			paymentData
 		);
 		return response.data;
 	},
@@ -102,11 +130,15 @@ export const paymentsAPI = {
 
 	// Guest-specific payment methods (using correct endpoints)
 	guest: {
-		// Create guest payment intent (alias for consistency)
-		createPayment: async (orderData) => {
+		/**
+		 * Create guest payment intent (alias for consistency)
+		 *
+		 * @param {object} paymentData - Payment data with cart_id or order_id
+		 */
+		createPayment: async (paymentData) => {
 			const response = await apiClient.post(
 				"/payments/guest/create-payment-intent/",
-				orderData
+				paymentData
 			);
 			return response.data;
 		},
@@ -123,11 +155,15 @@ export const paymentsAPI = {
 
 	// Authenticated user specific methods
 	authenticated: {
-		// Create payment intent for authenticated users
-		createPaymentIntent: async (orderData) => {
+		/**
+		 * Create payment intent for authenticated users
+		 *
+		 * @param {object} paymentData - Payment data with cart_id or order_id
+		 */
+		createPaymentIntent: async (paymentData) => {
 			const response = await apiClient.post(
 				"/payments/create-payment-intent/",
-				orderData
+				paymentData
 			);
 			return response.data;
 		},

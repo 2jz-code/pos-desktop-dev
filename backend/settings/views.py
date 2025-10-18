@@ -296,10 +296,24 @@ class StoreLocationViewSet(BaseViewSet):
     Phase 5 Enhancement: Uses lightweight serializer for list actions
     and detailed serializer for individual location operations.
     All locations are explicit - no default location concept.
+
+    Permissions: AllowAny for list/retrieve (guest checkout needs to select location)
+                 IsAuthenticated for create/update/delete (admin only)
     """
 
     queryset = StoreLocation.objects.all()
     serializer_class = StoreLocationSerializer
+
+    def get_permissions(self):
+        """
+        Allow anonymous access for list/retrieve (guest checkout).
+        Require authentication for mutations.
+        """
+        from rest_framework.permissions import IsAuthenticated, AllowAny
+
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         """Use lightweight serializer for list action, detailed for others"""
