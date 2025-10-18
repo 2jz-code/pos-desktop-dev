@@ -150,6 +150,9 @@ class BusinessHoursProfileAdminSerializer(BaseModelSerializer):
     """
     Admin serializer for business hours profiles.
     Phase 5: Now includes store_location link.
+
+    Note: Timezone is synced from StoreLocation automatically via signals.
+    It's read-only here - change it on the location instead.
     """
     regular_hours = RegularHoursAdminSerializer(many=True, read_only=True)
     special_hours_count = serializers.SerializerMethodField()
@@ -163,7 +166,10 @@ class BusinessHoursProfileAdminSerializer(BaseModelSerializer):
             'is_active', 'is_default', 'regular_hours', 'special_hours_count',
             'holidays_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'store_location_name', 'special_hours_count', 'holidays_count', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'timezone', 'store_location_name', 'special_hours_count',
+            'holidays_count', 'created_at', 'updated_at'
+        ]
         select_related_fields = ['store_location']
         prefetch_related_fields = [
             'regular_hours',

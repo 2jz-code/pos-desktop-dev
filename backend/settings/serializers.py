@@ -121,13 +121,15 @@ class StoreLocationListSerializer(BaseModelSerializer):
     """
     Lightweight serializer for listing store locations.
     Used in dropdowns and simple lists for better performance.
+
+    Returns effective web order settings (location overrides OR tenant defaults).
     """
 
     stripe_config = TerminalLocationSerializer(
         source="terminallocation", read_only=True
     )
     business_hours = NestedBusinessHoursSerializer(read_only=True)
-    web_notification_terminals = serializers.SerializerMethodField()
+    web_order_settings = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreLocation
@@ -150,12 +152,8 @@ class StoreLocationListSerializer(BaseModelSerializer):
             "tax_rate",
             "accepts_web_orders",
             "web_order_lead_time_minutes",
-            # Web order notification overrides (Phase 5)
-            "enable_web_notifications",
-            "play_web_notification_sound",
-            "auto_print_web_receipt",
-            "auto_print_web_kitchen",
-            "web_notification_terminals",
+            # Web order settings (effective values - location overrides OR tenant defaults)
+            "web_order_settings",
             # Inventory defaults (Phase 5)
             "low_stock_threshold",
             "expiration_threshold",
@@ -167,9 +165,22 @@ class StoreLocationListSerializer(BaseModelSerializer):
         select_related_fields = ["default_inventory_location"]
         prefetch_related_fields = ["terminallocation", "business_hours", "web_notification_terminals"]
 
-    def get_web_notification_terminals(self, obj):
-        """Return list of terminal device_ids for this location"""
-        return [terminal.device_id for terminal in obj.web_notification_terminals.all()]
+    def get_web_order_settings(self, obj):
+        """
+        Return effective web order settings for this location.
+        Location-specific overrides take precedence over tenant-wide defaults.
+        """
+        effective_settings = obj.get_effective_web_order_settings()
+        return {
+            'enable_notifications': effective_settings['enable_notifications'],
+            'play_notification_sound': effective_settings['play_notification_sound'],
+            'auto_print_receipt': effective_settings['auto_print_receipt'],
+            'auto_print_kitchen': effective_settings['auto_print_kitchen'],
+            'terminal_device_ids': [
+                terminal.device_id
+                for terminal in effective_settings['terminals']
+            ]
+        }
 
 
 class StoreLocationSerializer(BaseModelSerializer):
@@ -186,7 +197,7 @@ class StoreLocationSerializer(BaseModelSerializer):
         source="terminallocation", read_only=True
     )
     business_hours = NestedBusinessHoursSerializer(read_only=True)
-    web_notification_terminals = serializers.SerializerMethodField()
+    web_order_settings = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreLocation
@@ -210,12 +221,8 @@ class StoreLocationSerializer(BaseModelSerializer):
             # Web order configuration
             "accepts_web_orders",
             "web_order_lead_time_minutes",
-            # Web order notification overrides (Phase 5)
-            "enable_web_notifications",
-            "play_web_notification_sound",
-            "auto_print_web_receipt",
-            "auto_print_web_kitchen",
-            "web_notification_terminals",
+            # Web order settings (includes both effective values and raw overrides)
+            "web_order_settings",
             # Receipt customization
             "receipt_header",
             "receipt_footer",
@@ -235,23 +242,61 @@ class StoreLocationSerializer(BaseModelSerializer):
         select_related_fields = ["default_inventory_location"]
         prefetch_related_fields = ["terminallocation", "business_hours", "web_notification_terminals"]
 
-    def get_web_notification_terminals(self, obj):
-        """Return list of terminal device_ids for this location"""
-        return [terminal.device_id for terminal in obj.web_notification_terminals.all()]
+    def get_web_order_settings(self, obj):
+        """
+        Return web order settings for this location.
+        Includes both effective values (for display) and raw override values (for editing).
+        """
+        effective_settings = obj.get_effective_web_order_settings()
+        return {
+            # Effective values (location overrides OR tenant defaults)
+            'enable_notifications': effective_settings['enable_notifications'],
+            'play_notification_sound': effective_settings['play_notification_sound'],
+            'auto_print_receipt': effective_settings['auto_print_receipt'],
+            'auto_print_kitchen': effective_settings['auto_print_kitchen'],
+            'terminal_device_ids': [
+                terminal.device_id
+                for terminal in effective_settings['terminals']
+            ],
+            # Raw override values (null means use tenant default)
+            'overrides': {
+                'enable_web_notifications': obj.enable_web_notifications,
+                'play_web_notification_sound': obj.play_web_notification_sound,
+                'auto_print_web_receipt': obj.auto_print_web_receipt,
+                'auto_print_web_kitchen': obj.auto_print_web_kitchen,
+                'web_notification_terminals': [
+                    terminal.device_id
+                    for terminal in obj.web_notification_terminals.all()
+                ]
+            }
+        }
 
     def update(self, instance, validated_data):
-        # Handle web_notification_terminals update separately since it's a ManyToMany field
-        if "web_notification_terminals" in self.initial_data:
-            terminal_ids = self.initial_data.get("web_notification_terminals", [])
-            # Clear existing and set new terminals
-            instance.web_notification_terminals.clear()
-            if terminal_ids:
-                terminals = TerminalRegistration.objects.filter(
-                    device_id__in=terminal_ids,
-                    tenant=instance.tenant,
-                    store_location=instance  # Only terminals at this location
-                )
-                instance.web_notification_terminals.set(terminals)
+        # Handle web order settings updates from web_order_settings.overrides structure
+        if "web_order_settings" in self.initial_data and "overrides" in self.initial_data["web_order_settings"]:
+            overrides = self.initial_data["web_order_settings"]["overrides"]
+
+            # Update override fields
+            if "enable_web_notifications" in overrides:
+                instance.enable_web_notifications = overrides["enable_web_notifications"]
+            if "play_web_notification_sound" in overrides:
+                instance.play_web_notification_sound = overrides["play_web_notification_sound"]
+            if "auto_print_web_receipt" in overrides:
+                instance.auto_print_web_receipt = overrides["auto_print_web_receipt"]
+            if "auto_print_web_kitchen" in overrides:
+                instance.auto_print_web_kitchen = overrides["auto_print_web_kitchen"]
+
+            # Handle terminals
+            if "web_notification_terminals" in overrides:
+                terminal_ids = overrides["web_notification_terminals"]
+                instance.web_notification_terminals.clear()
+                if terminal_ids:
+                    terminals = TerminalRegistration.objects.filter(
+                        device_id__in=terminal_ids,
+                        tenant=instance.tenant,
+                        store_location=instance
+                    )
+                    instance.web_notification_terminals.set(terminals)
 
         return super().update(instance, validated_data)
 

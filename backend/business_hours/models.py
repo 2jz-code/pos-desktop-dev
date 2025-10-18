@@ -12,13 +12,59 @@ class BusinessHoursProfile(models.Model):
     """
 
     TIMEZONE_CHOICES = [
-        ('America/New_York', 'Eastern Time'),
-        ('America/Chicago', 'Central Time'),
-        ('America/Denver', 'Mountain Time'),
-        ('America/Los_Angeles', 'Pacific Time'),
-        ('America/Phoenix', 'Arizona Time'),
-        ('Pacific/Honolulu', 'Hawaii Time'),
-        ('America/Anchorage', 'Alaska Time'),
+        # UTC
+        ('UTC', 'UTC'),
+        # US Timezones
+        ('America/New_York', 'Eastern Time (US)'),
+        ('America/Chicago', 'Central Time (US)'),
+        ('America/Denver', 'Mountain Time (US)'),
+        ('America/Los_Angeles', 'Pacific Time (US)'),
+        ('America/Phoenix', 'Arizona Time (US)'),
+        ('Pacific/Honolulu', 'Hawaii Time (US)'),
+        ('America/Anchorage', 'Alaska Time (US)'),
+        # Canada
+        ('America/Toronto', 'Eastern Time (Canada)'),
+        ('America/Vancouver', 'Pacific Time (Canada)'),
+        ('America/Edmonton', 'Mountain Time (Canada)'),
+        ('America/Winnipeg', 'Central Time (Canada)'),
+        ('America/Halifax', 'Atlantic Time (Canada)'),
+        # Europe
+        ('Europe/London', 'London (GMT/BST)'),
+        ('Europe/Paris', 'Central European Time'),
+        ('Europe/Berlin', 'Central European Time'),
+        ('Europe/Rome', 'Central European Time'),
+        ('Europe/Madrid', 'Central European Time'),
+        ('Europe/Amsterdam', 'Central European Time'),
+        ('Europe/Brussels', 'Central European Time'),
+        ('Europe/Zurich', 'Central European Time'),
+        ('Europe/Vienna', 'Central European Time'),
+        ('Europe/Athens', 'Eastern European Time'),
+        ('Europe/Helsinki', 'Eastern European Time'),
+        ('Europe/Istanbul', 'Turkey Time'),
+        ('Europe/Moscow', 'Moscow Time'),
+        # Asia
+        ('Asia/Dubai', 'Gulf Standard Time'),
+        ('Asia/Karachi', 'Pakistan Standard Time'),
+        ('Asia/Kolkata', 'India Standard Time'),
+        ('Asia/Dhaka', 'Bangladesh Time'),
+        ('Asia/Bangkok', 'Indochina Time'),
+        ('Asia/Singapore', 'Singapore Time'),
+        ('Asia/Hong_Kong', 'Hong Kong Time'),
+        ('Asia/Shanghai', 'China Standard Time'),
+        ('Asia/Tokyo', 'Japan Standard Time'),
+        ('Asia/Seoul', 'Korea Standard Time'),
+        # Australia
+        ('Australia/Sydney', 'Australian Eastern Time'),
+        ('Australia/Melbourne', 'Australian Eastern Time'),
+        ('Australia/Brisbane', 'Australian Eastern Time'),
+        ('Australia/Perth', 'Australian Western Time'),
+        ('Australia/Adelaide', 'Australian Central Time'),
+        # Other
+        ('Pacific/Auckland', 'New Zealand Time'),
+        ('America/Sao_Paulo', 'Brasilia Time'),
+        ('America/Argentina/Buenos_Aires', 'Argentina Time'),
+        ('Africa/Johannesburg', 'South Africa Time'),
+        ('Africa/Cairo', 'Egypt Time'),
     ]
 
     tenant = models.ForeignKey(

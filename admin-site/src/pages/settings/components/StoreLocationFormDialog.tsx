@@ -9,7 +9,7 @@ import {
 } from "@/services/api/settingsService";
 import inventoryService from "@/services/api/inventoryService";
 import { getTerminalRegistrationsByLocation } from "@/services/api/terminalService";
-import { getGlobalSettings } from "@/services/api/settingsService";
+import { getGlobalSettings, getStoreLocation } from "@/services/api/settingsService";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -186,11 +186,21 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 		: terminalsResponse?.results || terminalsResponse?.data || [];
 
 	// Fetch global settings to show tenant defaults
-	const { data: globalSettings } = useQuery({
+	const { data: globalSettings, isLoading: isLoadingGlobalSettings } = useQuery({
 		queryKey: ["globalSettings"],
 		queryFn: getGlobalSettings,
 		enabled: isOpen,
 	});
+
+	// Fetch detailed location data when editing (to get raw override fields)
+	const { data: detailedLocationData } = useQuery({
+		queryKey: ["storeLocation", locationData?.id],
+		queryFn: () => getStoreLocation(locationData.id),
+		enabled: isOpen && isEditing && !!locationData?.id,
+	});
+
+	// Use detailed data if available, otherwise fall back to locationData
+	const formLocationData = detailedLocationData || locationData;
 
 	const form = useForm({
 		resolver: zodResolver(formSchema),
@@ -225,22 +235,30 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 	});
 
 	useEffect(() => {
-		if (locationData) {
+		if (formLocationData) {
 			// Convert numeric fields to strings for form display
+			const overrides = formLocationData.web_order_settings?.overrides || {};
+
 			const formattedData = {
-				...locationData,
-				tax_rate: locationData.tax_rate
-					? locationData.tax_rate.toString()
+				...formLocationData,
+				tax_rate: formLocationData.tax_rate
+					? formLocationData.tax_rate.toString()
 					: "",
-				latitude: locationData.latitude
-					? locationData.latitude.toString()
+				latitude: formLocationData.latitude
+					? formLocationData.latitude.toString()
 					: "",
-				longitude: locationData.longitude
-					? locationData.longitude.toString()
+				longitude: formLocationData.longitude
+					? formLocationData.longitude.toString()
 					: "",
-				default_inventory_location: locationData.default_inventory_location
-					? locationData.default_inventory_location.toString()
+				default_inventory_location: formLocationData.default_inventory_location
+					? formLocationData.default_inventory_location.toString()
 					: "none",
+				// Use override values from web_order_settings.overrides
+				enable_web_notifications: overrides.enable_web_notifications,
+				play_web_notification_sound: overrides.play_web_notification_sound,
+				auto_print_web_receipt: overrides.auto_print_web_receipt,
+				auto_print_web_kitchen: overrides.auto_print_web_kitchen,
+				web_notification_terminals: overrides.web_notification_terminals || [],
 			};
 			form.reset(formattedData);
 		} else {
@@ -273,7 +291,7 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 				web_notification_terminals: [],
 			});
 		}
-	}, [locationData, form]);
+	}, [formLocationData, form]);
 
 	const mutation = useMutation({
 		mutationFn: isEditing
@@ -306,7 +324,25 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 				values.default_inventory_location === "none"
 					? null
 					: values.default_inventory_location,
+			// Wrap web order override settings in the new structure
+			web_order_settings: {
+				overrides: {
+					enable_web_notifications: values.enable_web_notifications,
+					play_web_notification_sound: values.play_web_notification_sound,
+					auto_print_web_receipt: values.auto_print_web_receipt,
+					auto_print_web_kitchen: values.auto_print_web_kitchen,
+					web_notification_terminals: values.web_notification_terminals,
+				}
+			}
 		};
+
+		// Remove the top-level override fields since they're now nested
+		delete apiData.enable_web_notifications;
+		delete apiData.play_web_notification_sound;
+		delete apiData.auto_print_web_receipt;
+		delete apiData.auto_print_web_kitchen;
+		delete apiData.web_notification_terminals;
+
 		mutation.mutate(apiData);
 	};
 
@@ -662,8 +698,47 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 										<div className="border-t pt-4 mt-4">
 											<div className="flex items-center gap-2 mb-4">
 												<Bell className="h-4 w-4 text-muted-foreground" />
-												<h4 className="text-sm font-medium">Notification Overrides (Optional)</h4>
+												<h4 className="text-sm font-medium">Web Order Notifications</h4>
 											</div>
+
+											{/* Effective Settings Display (when editing) */}
+											{isEditing && formLocationData?.web_order_settings && (
+												<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+													<h5 className="text-sm font-medium mb-3 text-blue-900 dark:text-blue-100">
+														Effective Settings (Currently Active)
+													</h5>
+													<div className="grid grid-cols-2 gap-3 text-xs">
+														<div className="flex items-center justify-between">
+															<span className="text-muted-foreground">Enable Notifications:</span>
+															<span className={`font-medium ${formLocationData.web_order_settings.enable_notifications ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+																{formLocationData.web_order_settings.enable_notifications ? 'Enabled' : 'Disabled'}
+															</span>
+														</div>
+														<div className="flex items-center justify-between">
+															<span className="text-muted-foreground">Play Sound:</span>
+															<span className={`font-medium ${formLocationData.web_order_settings.play_notification_sound ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+																{formLocationData.web_order_settings.play_notification_sound ? 'Enabled' : 'Disabled'}
+															</span>
+														</div>
+														<div className="flex items-center justify-between">
+															<span className="text-muted-foreground">Auto-Print Receipt:</span>
+															<span className={`font-medium ${formLocationData.web_order_settings.auto_print_receipt ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+																{formLocationData.web_order_settings.auto_print_receipt ? 'Enabled' : 'Disabled'}
+															</span>
+														</div>
+														<div className="flex items-center justify-between">
+															<span className="text-muted-foreground">Auto-Print Kitchen:</span>
+															<span className={`font-medium ${formLocationData.web_order_settings.auto_print_kitchen ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+																{formLocationData.web_order_settings.auto_print_kitchen ? 'Enabled' : 'Disabled'}
+															</span>
+														</div>
+													</div>
+													<p className="text-xs text-muted-foreground mt-3">
+														These are the actual settings in effect (including overrides and tenant defaults).
+													</p>
+												</div>
+											)}
+
 											<div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground mb-4">
 												<p>Override tenant-wide notification defaults for this location. Select "Use Default" to inherit global settings from Brand Info, or choose "Enabled"/"Disabled" to set location-specific behavior.</p>
 											</div>
@@ -672,141 +747,190 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 												<FormField
 													control={form.control}
 													name="enable_web_notifications"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="text-sm">Enable Notifications</FormLabel>
-															<Select
-																value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
-																onValueChange={(value) => {
-																	if (value === "default") field.onChange(null);
-																	else if (value === "enabled") field.onChange(true);
-																	else field.onChange(false);
-																}}
-															>
-																<FormControl>
-																	<SelectTrigger>
-																		<SelectValue placeholder="Select option" />
-																	</SelectTrigger>
-																</FormControl>
-																<SelectContent>
-																	<SelectItem value="default">
-																		Use Default {globalSettings?.web_order_defaults?.enable_notifications ? "(Enabled)" : "(Disabled)"}
-																	</SelectItem>
-																	<SelectItem value="enabled">Enabled</SelectItem>
-																	<SelectItem value="disabled">Disabled</SelectItem>
-																</SelectContent>
-															</Select>
-															<FormDescription className="text-xs">
-																Show POS notifications for new web orders at this location
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
+													render={({ field }) => {
+														const tenantDefault = globalSettings?.web_order_defaults?.enable_notifications ?? true;
+														// Check for both null and undefined
+														const effectiveValue = (field.value != null) ? field.value : tenantDefault;
+
+														return (
+															<FormItem>
+																<FormLabel className="text-sm">
+																	Enable Notifications
+																	{field.value == null && (
+																		<span className="ml-2 text-xs text-muted-foreground">
+																			(Currently: {effectiveValue ? "Enabled" : "Disabled"})
+																		</span>
+																	)}
+																</FormLabel>
+																<Select
+																	value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
+																	onValueChange={(value) => {
+																		if (value === "default") field.onChange(null);
+																		else if (value === "enabled") field.onChange(true);
+																		else field.onChange(false);
+																	}}
+																>
+																	<FormControl>
+																		<SelectTrigger>
+																			<SelectValue placeholder="Select option" />
+																		</SelectTrigger>
+																	</FormControl>
+																	<SelectContent>
+																		<SelectItem value="default">
+																			Use Tenant Default ({tenantDefault ? "Enabled" : "Disabled"})
+																		</SelectItem>
+																		<SelectItem value="enabled">Enabled</SelectItem>
+																		<SelectItem value="disabled">Disabled</SelectItem>
+																	</SelectContent>
+																</Select>
+																<FormDescription className="text-xs">
+																	Show POS notifications for new web orders at this location
+																</FormDescription>
+																<FormMessage />
+															</FormItem>
+														);
+													}}
 												/>
 
 												<FormField
 													control={form.control}
 													name="play_web_notification_sound"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="text-sm">Play Notification Sound</FormLabel>
-															<Select
-																value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
-																onValueChange={(value) => {
-																	if (value === "default") field.onChange(null);
-																	else if (value === "enabled") field.onChange(true);
-																	else field.onChange(false);
-																}}
-															>
-																<FormControl>
-																	<SelectTrigger>
-																		<SelectValue placeholder="Select option" />
-																	</SelectTrigger>
-																</FormControl>
-																<SelectContent>
-																	<SelectItem value="default">
-																		Use Default {globalSettings?.web_order_defaults?.play_notification_sound ? "(Enabled)" : "(Disabled)"}
-																	</SelectItem>
-																	<SelectItem value="enabled">Enabled</SelectItem>
-																	<SelectItem value="disabled">Disabled</SelectItem>
-																</SelectContent>
-															</Select>
-															<FormDescription className="text-xs">
-																Play a sound when web orders arrive at this location
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
+													render={({ field }) => {
+														const tenantDefault = globalSettings?.web_order_defaults?.play_notification_sound ?? true;
+														// Check for both null and undefined
+														const effectiveValue = (field.value != null) ? field.value : tenantDefault;
+														return (
+															<FormItem>
+																<FormLabel className="text-sm">
+																	Play Notification Sound
+																	{field.value == null && (
+																		<span className="ml-2 text-xs text-muted-foreground">
+																			(Currently: {effectiveValue ? "Enabled" : "Disabled"})
+																		</span>
+																	)}
+																</FormLabel>
+																<Select
+																	value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
+																	onValueChange={(value) => {
+																		if (value === "default") field.onChange(null);
+																		else if (value === "enabled") field.onChange(true);
+																		else field.onChange(false);
+																	}}
+																>
+																	<FormControl>
+																		<SelectTrigger>
+																			<SelectValue placeholder="Select option" />
+																		</SelectTrigger>
+																	</FormControl>
+																	<SelectContent>
+																		<SelectItem value="default">
+																			Use Tenant Default ({tenantDefault ? "Enabled" : "Disabled"})
+																		</SelectItem>
+																		<SelectItem value="enabled">Enabled</SelectItem>
+																		<SelectItem value="disabled">Disabled</SelectItem>
+																	</SelectContent>
+																</Select>
+																<FormDescription className="text-xs">
+																	Play a sound when web orders arrive at this location
+																</FormDescription>
+																<FormMessage />
+															</FormItem>
+														);
+													}}
 												/>
 
 												<FormField
 													control={form.control}
 													name="auto_print_web_receipt"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="text-sm">Auto-Print Receipts</FormLabel>
-															<Select
-																value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
-																onValueChange={(value) => {
-																	if (value === "default") field.onChange(null);
-																	else if (value === "enabled") field.onChange(true);
-																	else field.onChange(false);
-																}}
-															>
-																<FormControl>
-																	<SelectTrigger>
-																		<SelectValue placeholder="Select option" />
-																	</SelectTrigger>
-																</FormControl>
-																<SelectContent>
-																	<SelectItem value="default">
-																		Use Default {globalSettings?.web_order_defaults?.auto_print_receipt ? "(Enabled)" : "(Disabled)"}
-																	</SelectItem>
-																	<SelectItem value="enabled">Enabled</SelectItem>
-																	<SelectItem value="disabled">Disabled</SelectItem>
-																</SelectContent>
-															</Select>
-															<FormDescription className="text-xs">
-																Automatically print customer receipts for web orders
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
+													render={({ field }) => {
+														const tenantDefault = globalSettings?.web_order_defaults?.auto_print_receipt ?? true;
+														// Check for both null and undefined
+														const effectiveValue = (field.value != null) ? field.value : tenantDefault;
+														return (
+															<FormItem>
+																<FormLabel className="text-sm">
+																	Auto-Print Receipts
+																	{field.value === null && (
+																		<span className="ml-2 text-xs text-muted-foreground">
+																			(Currently: {effectiveValue ? "Enabled" : "Disabled"})
+																		</span>
+																	)}
+																</FormLabel>
+																<Select
+																	value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
+																	onValueChange={(value) => {
+																		if (value === "default") field.onChange(null);
+																		else if (value === "enabled") field.onChange(true);
+																		else field.onChange(false);
+																	}}
+																>
+																	<FormControl>
+																		<SelectTrigger>
+																			<SelectValue placeholder="Select option" />
+																		</SelectTrigger>
+																	</FormControl>
+																	<SelectContent>
+																		<SelectItem value="default">
+																			Use Tenant Default ({tenantDefault ? "Enabled" : "Disabled"})
+																		</SelectItem>
+																		<SelectItem value="enabled">Enabled</SelectItem>
+																		<SelectItem value="disabled">Disabled</SelectItem>
+																	</SelectContent>
+																</Select>
+																<FormDescription className="text-xs">
+																	Automatically print customer receipts for web orders
+																</FormDescription>
+																<FormMessage />
+															</FormItem>
+														);
+													}}
 												/>
 
 												<FormField
 													control={form.control}
 													name="auto_print_web_kitchen"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="text-sm">Auto-Print Kitchen Tickets</FormLabel>
-															<Select
-																value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
-																onValueChange={(value) => {
-																	if (value === "default") field.onChange(null);
-																	else if (value === "enabled") field.onChange(true);
-																	else field.onChange(false);
-																}}
-															>
-																<FormControl>
-																	<SelectTrigger>
-																		<SelectValue placeholder="Select option" />
-																	</SelectTrigger>
-																</FormControl>
-																<SelectContent>
-																	<SelectItem value="default">
-																		Use Default {globalSettings?.web_order_defaults?.auto_print_kitchen ? "(Enabled)" : "(Disabled)"}
-																	</SelectItem>
-																	<SelectItem value="enabled">Enabled</SelectItem>
-																	<SelectItem value="disabled">Disabled</SelectItem>
-																</SelectContent>
-															</Select>
-															<FormDescription className="text-xs">
-																Automatically print kitchen tickets for web orders
-															</FormDescription>
-															<FormMessage />
-														</FormItem>
-													)}
+													render={({ field }) => {
+														const tenantDefault = globalSettings?.web_order_defaults?.auto_print_kitchen ?? true;
+														// Check for both null and undefined
+														const effectiveValue = (field.value != null) ? field.value : tenantDefault;
+														return (
+															<FormItem>
+																<FormLabel className="text-sm">
+																	Auto-Print Kitchen Tickets
+																	{field.value === null && (
+																		<span className="ml-2 text-xs text-muted-foreground">
+																			(Currently: {effectiveValue ? "Enabled" : "Disabled"})
+																		</span>
+																	)}
+																</FormLabel>
+																<Select
+																	value={field.value === null ? "default" : field.value ? "enabled" : "disabled"}
+																	onValueChange={(value) => {
+																		if (value === "default") field.onChange(null);
+																		else if (value === "enabled") field.onChange(true);
+																		else field.onChange(false);
+																	}}
+																>
+																	<FormControl>
+																		<SelectTrigger>
+																			<SelectValue placeholder="Select option" />
+																		</SelectTrigger>
+																	</FormControl>
+																	<SelectContent>
+																		<SelectItem value="default">
+																			Use Tenant Default ({tenantDefault ? "Enabled" : "Disabled"})
+																		</SelectItem>
+																		<SelectItem value="enabled">Enabled</SelectItem>
+																		<SelectItem value="disabled">Disabled</SelectItem>
+																	</SelectContent>
+																</Select>
+																<FormDescription className="text-xs">
+																	Automatically print kitchen tickets for web orders
+																</FormDescription>
+																<FormMessage />
+															</FormItem>
+														);
+													}}
 												/>
 											</div>
 										</div>

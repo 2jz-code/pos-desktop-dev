@@ -40,6 +40,11 @@ export const getStoreLocations = async () => {
 	return response.data.results;
 };
 
+export const getStoreLocation = async (locationId) => {
+	const response = await apiClient.get(`settings/store-locations/${locationId}/`);
+	return response.data;
+};
+
 export const createStoreLocation = async (locationData) => {
 	const response = await apiClient.post(
 		"settings/store-locations/",
