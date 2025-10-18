@@ -8,7 +8,6 @@ from .models import (
     StoreLocation,
     TerminalLocation,
     PrinterConfiguration,
-    WebOrderSettings,
     StockActionReasonConfig,
 )
 from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin
@@ -95,47 +94,53 @@ class GlobalSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
         messages.success(request, "Report cache has been cleared. Reports will regenerate with the new timezone settings.")
     clear_report_cache.short_description = "Clear report cache (use after changing timezone)"
 
+    list_display = ("id", "tenant", "brand_name", "currency", "active_terminal_provider")
+    list_filter = ("active_terminal_provider", "currency")
+    search_fields = ("brand_name", "tenant__name")
+
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
         return GlobalSettings.all_objects.select_related('tenant')
 
     def has_add_permission(self, request):
-        return self.model.all_objects.count() == 0
+        # Allow adding from the admin (will prompt for tenant selection)
+        return True
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-    def changelist_view(self, request, extra_context=None):
-        if self.model.all_objects.exists():
-            obj = self.model.all_objects.first()
-            return HttpResponseRedirect(
-                reverse("admin:settings_globalsettings_change", args=[obj.pk])
-            )
-        return super().changelist_view(request, extra_context)
 
 
 @admin.register(PrinterConfiguration)
 class PrinterConfigurationAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
-    Admin view for the singleton PrinterConfiguration model.
+    Admin view for the tenant-specific PrinterConfiguration model.
     """
+
+    list_display = ("id", "tenant", "receipt_printers_count", "kitchen_printers_count", "kitchen_zones_count")
+    search_fields = ("tenant__name",)
+
+    def receipt_printers_count(self, obj):
+        return len(obj.receipt_printers) if obj.receipt_printers else 0
+    receipt_printers_count.short_description = "Receipt Printers"
+
+    def kitchen_printers_count(self, obj):
+        return len(obj.kitchen_printers) if obj.kitchen_printers else 0
+    kitchen_printers_count.short_description = "Kitchen Printers"
+
+    def kitchen_zones_count(self, obj):
+        return len(obj.kitchen_zones) if obj.kitchen_zones else 0
+    kitchen_zones_count.short_description = "Kitchen Zones"
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
         return PrinterConfiguration.all_objects.select_related('tenant')
 
     def has_add_permission(self, request):
-        return self.model.all_objects.count() == 0
+        # Allow adding from the admin (will prompt for tenant selection)
+        return True
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-    def changelist_view(self, request, extra_context=None):
-        # Ensure the singleton object exists, then redirect to it.
-        obj, created = self.model.all_objects.get_or_create(pk=1)
-        return HttpResponseRedirect(
-            reverse("admin:settings_printerconfiguration_change", args=[obj.pk])
-        )
 
 
 class TerminalLocationInline(admin.StackedInline):
@@ -265,54 +270,7 @@ class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin
         return StoreLocation.all_objects.select_related('tenant')
 
 
-@admin.register(WebOrderSettings)
-class WebOrderSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
-    """
-    Admin view for the singleton WebOrderSettings model.
-    Manages tenant-wide web order notification defaults.
-    Terminal selection is managed per-location on StoreLocation model.
-    """
-
-    list_display = (
-        "id",
-        "enable_notifications",
-        "play_notification_sound",
-        "auto_print_receipt",
-        "auto_print_kitchen",
-    )
-
-    fieldsets = (
-        (
-            "Tenant-Wide Notification Defaults",
-            {
-                "fields": (
-                    "enable_notifications",
-                    "play_notification_sound",
-                    "auto_print_receipt",
-                    "auto_print_kitchen",
-                ),
-                "description": "These settings apply to all locations unless overridden at the location level. Terminal selection is configured per-location."
-            }
-        ),
-    )
-
-    def get_queryset(self, request):
-        """Show all tenants in Django admin"""
-        return WebOrderSettings.all_objects.select_related('tenant')
-
-    def has_add_permission(self, request):
-        # Prevent adding new instances from the admin
-        return not WebOrderSettings.all_objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    def changelist_view(self, request, extra_context=None):
-        # Ensure the singleton object exists, then redirect to it.
-        obj, created = self.model.all_objects.get_or_create(pk=1)
-        return HttpResponseRedirect(
-            reverse("admin:settings_webordersettings_change", args=[obj.pk])
-        )
+# WebOrderSettings admin REMOVED - settings now managed directly on StoreLocation
 
 
 @admin.register(StockActionReasonConfig)

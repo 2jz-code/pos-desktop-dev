@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
@@ -34,7 +34,11 @@ export function CategoryMultiSelect({
 		staleTime: 5 * 60 * 1000, // 5 minutes
 	});
 
-	const categories = categoriesResponse?.data?.results || [];
+	// Memoize categories to prevent infinite loops in useEffect
+	const categories = useMemo(
+		() => categoriesResponse?.data || [],
+		[categoriesResponse?.data]
+	);
 
 	// Convert value (array of IDs) to category objects on mount/value change
 	useEffect(() => {

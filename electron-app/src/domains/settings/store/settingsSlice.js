@@ -2,10 +2,11 @@ import * as settingsService from "@/domains/settings/services/settingsService";
 
 export const createSettingsSlice = (set, get) => ({
 	// State
-	globalSettings: null,
-	storeInfo: null,
-	financialSettings: null,
-	receiptConfig: null,
+	globalSettings: null, // READ-ONLY: Brand info only
+	storeLocation: null, // PRIMARY: Location-specific settings
+	storeInfo: null, // DEPRECATED
+	financialSettings: null, // DEPRECATED
+	receiptConfig: null, // DEPRECATED
 	businessHours: null,
 	settingsSummary: null,
 	posDevices: [],
@@ -13,9 +14,10 @@ export const createSettingsSlice = (set, get) => ({
 
 	// Loading states
 	isLoadingGlobal: false,
-	isLoadingStore: false,
-	isLoadingFinancial: false,
-	isLoadingReceipt: false,
+	isLoadingLocation: false,
+	isLoadingStore: false, // DEPRECATED
+	isLoadingFinancial: false, // DEPRECATED
+	isLoadingReceipt: false, // DEPRECATED
 	isLoadingHours: false,
 	isLoadingSummary: false,
 	isLoadingDevices: false,
@@ -23,15 +25,16 @@ export const createSettingsSlice = (set, get) => ({
 
 	// Error states
 	globalError: null,
-	storeError: null,
-	financialError: null,
-	receiptError: null,
+	locationError: null,
+	storeError: null, // DEPRECATED
+	financialError: null, // DEPRECATED
+	receiptError: null, // DEPRECATED
 	hoursError: null,
 	summaryError: null,
 	devicesError: null,
 	locationsError: null,
 
-	// Actions for Global Settings
+	// Actions for Global Settings (READ-ONLY: Brand info only)
 	fetchGlobalSettings: async () => {
 		set({ isLoadingGlobal: true, globalError: null });
 		try {
@@ -51,14 +54,12 @@ export const createSettingsSlice = (set, get) => ({
 		}
 	},
 
+	// DEPRECATED: Global settings should only be edited via admin site
 	updateGlobalSettings: async (settingsData) => {
+		console.warn("⚠️ updateGlobalSettings is deprecated. Use updateStoreLocation instead.");
 		try {
 			const data = await settingsService.updateGlobalSettings(settingsData);
 			set({ globalSettings: data });
-			// Also refresh other cached sections since they might be affected
-			get().fetchStoreInfo();
-			get().fetchFinancialSettings();
-			get().fetchReceiptConfig();
 			return data;
 		} catch (error) {
 			console.error(
@@ -69,8 +70,44 @@ export const createSettingsSlice = (set, get) => ({
 		}
 	},
 
+	// Actions for Store Location (PRIMARY)
+	fetchStoreLocation: async (locationId) => {
+		set({ isLoadingLocation: true, locationError: null });
+		try {
+			const data = await settingsService.getStoreLocation(locationId);
+			set({ storeLocation: data, isLoadingLocation: false });
+			return data;
+		} catch (error) {
+			console.error(
+				"❌ [SettingsSlice] Failed to fetch store location:",
+				error
+			);
+			set({
+				locationError: error.message || "Failed to load store location",
+				isLoadingLocation: false,
+			});
+			throw error;
+		}
+	},
+
+	updateStoreLocation: async (locationId, locationData) => {
+		try {
+			const data = await settingsService.updateStoreLocation(locationId, locationData);
+			set({ storeLocation: data });
+			return data;
+		} catch (error) {
+			console.error(
+				"❌ [SettingsSlice] Failed to update store location:",
+				error
+			);
+			throw error;
+		}
+	},
+
+	// DEPRECATED: Use fetchStoreLocation / updateStoreLocation instead
 	// Actions for Store Information
 	fetchStoreInfo: async () => {
+		console.warn("⚠️ fetchStoreInfo is deprecated. Use fetchStoreLocation instead.");
 		set({ isLoadingStore: true, storeError: null });
 		try {
 			const data = await settingsService.getStoreInfo();
@@ -87,6 +124,7 @@ export const createSettingsSlice = (set, get) => ({
 	},
 
 	updateStoreInfo: async (storeData) => {
+		console.warn("⚠️ updateStoreInfo is deprecated. Use updateStoreLocation instead.");
 		try {
 			const data = await settingsService.updateStoreInfo(storeData);
 			set({ storeInfo: data });
@@ -97,8 +135,10 @@ export const createSettingsSlice = (set, get) => ({
 		}
 	},
 
+	// DEPRECATED: Use fetchStoreLocation / updateStoreLocation instead
 	// Actions for Financial Settings
 	fetchFinancialSettings: async () => {
+		console.warn("⚠️ fetchFinancialSettings is deprecated. Use fetchStoreLocation instead.");
 		set({ isLoadingFinancial: true, financialError: null });
 		try {
 			const data = await settingsService.getFinancialSettings();
@@ -118,6 +158,7 @@ export const createSettingsSlice = (set, get) => ({
 	},
 
 	updateFinancialSettings: async (financialData) => {
+		console.warn("⚠️ updateFinancialSettings is deprecated. Use updateStoreLocation instead.");
 		try {
 			const data = await settingsService.updateFinancialSettings(financialData);
 			set({ financialSettings: data });
@@ -131,8 +172,10 @@ export const createSettingsSlice = (set, get) => ({
 		}
 	},
 
+	// DEPRECATED: Use fetchStoreLocation / updateStoreLocation instead
 	// Actions for Receipt Configuration
 	fetchReceiptConfig: async () => {
+		console.warn("⚠️ fetchReceiptConfig is deprecated. Use fetchStoreLocation instead.");
 		set({ isLoadingReceipt: true, receiptError: null });
 		try {
 			const data = await settingsService.getReceiptConfig();
@@ -152,6 +195,7 @@ export const createSettingsSlice = (set, get) => ({
 	},
 
 	updateReceiptConfig: async (receiptData) => {
+		console.warn("⚠️ updateReceiptConfig is deprecated. Use updateStoreLocation instead.");
 		try {
 			const data = await settingsService.updateReceiptConfig(receiptData);
 			set({ receiptConfig: data });

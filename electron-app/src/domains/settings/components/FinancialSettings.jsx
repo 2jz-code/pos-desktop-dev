@@ -2,9 +2,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import {
 	getGlobalSettings,
-	updateGlobalSettings,
+	getStoreLocation,
+	updateStoreLocation,
 } from "../services/settingsService";
 
 import { Button } from "@/shared/components/ui/button";
@@ -27,37 +29,41 @@ import {
 	CardTitle,
 } from "@/shared/components/ui/card";
 import { toast } from "sonner";
-import { DollarSign } from "lucide-react";
+import { DollarSign, Lock } from "lucide-react";
 
 const formSchema = z.object({
 	tax_rate: z.coerce
 		.number()
 		.min(0, "Tax rate cannot be negative.")
 		.max(1, "Tax rate must be less than 1 (e.g., 0.08 for 8%)."),
-	surcharge_percentage: z.coerce
-		.number()
-		.min(0, "Surcharge cannot be negative.")
-		.optional(),
-	currency: z
-		.string()
-		.length(3, "Currency must be a 3-letter code (e.g., USD).")
-		.toUpperCase(),
-	allow_discount_stacking: z.boolean().optional(),
 });
 
 export function FinancialSettings() {
 	const queryClient = useQueryClient();
 
-	const { data: settings, isLoading } = useQuery({
+	// Get location ID from terminal config
+	const locationId = terminalRegistrationService.getLocationId();
+
+	// Fetch global settings for read-only fields (currency, surcharge, discount stacking)
+	const { data: globalSettings, isLoading: isLoadingGlobal } = useQuery({
 		queryKey: ["globalSettings"],
 		queryFn: getGlobalSettings,
 	});
 
+	// Fetch store location for editable tax_rate
+	const { data: storeLocation, isLoading: isLoadingLocation } = useQuery({
+		queryKey: ["storeLocation", locationId],
+		queryFn: () => getStoreLocation(locationId),
+		enabled: !!locationId,
+	});
+
+	const isLoading = isLoadingGlobal || isLoadingLocation;
+
 	const mutation = useMutation({
-		mutationFn: updateGlobalSettings,
+		mutationFn: (data) => updateStoreLocation(locationId, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
-			toast.success("Financial settings updated successfully!");
+			queryClient.invalidateQueries({ queryKey: ["storeLocation", locationId] });
+			toast.success("Tax rate updated successfully!");
 		},
 		onError: (error) => {
 			toast.error("Failed to update settings:", error.message);
@@ -67,10 +73,7 @@ export function FinancialSettings() {
 	const form = useForm({
 		resolver: zodResolver(formSchema),
 		values: {
-			tax_rate: settings?.tax_rate || 0,
-			surcharge_percentage: settings?.surcharge_percentage || 0,
-			currency: settings?.currency || "USD",
-			allow_discount_stacking: settings?.allow_discount_stacking || false,
+			tax_rate: storeLocation?.tax_rate || 0,
 		},
 		disabled: isLoading || mutation.isPending,
 	});
@@ -110,7 +113,7 @@ export function FinancialSettings() {
 					Financial Settings
 				</CardTitle>
 				<CardDescription>
-					Configure tax rates, surcharges, and discount policies for your business
+					Configure tax rate for this location. Global financial rules are managed in the admin site.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -119,91 +122,75 @@ export function FinancialSettings() {
 						onSubmit={form.handleSubmit(onSubmit)}
 						className="space-y-6"
 					>
-				<FormField
-					control={form.control}
-					name="tax_rate"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>Default Tax Rate</FormLabel>
-							<FormControl>
-								<Input
-									type="number"
-									step="0.001"
-									placeholder="0.08"
-									{...field}
-								/>
-							</FormControl>
-							<FormDescription>
-								The sales tax rate as a decimal (e.g., 0.08 for 8%).
-							</FormDescription>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-				<FormField
-					control={form.control}
-					name="surcharge_percentage"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>Surcharge Percentage (Optional)</FormLabel>
-							<FormControl>
-								<Input
-									type="number"
-									step="0.001"
-									placeholder="0.02"
-									{...field}
-								/>
-							</FormControl>
-							<FormDescription>
-								A percentage-based surcharge applied to the subtotal (e.g., 0.02
-								for 2%).
-							</FormDescription>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-				<FormField
-					control={form.control}
-					name="currency"
-					render={({ field }) => (
-						<FormItem>
-							<FormLabel>Currency Code</FormLabel>
-							<FormControl>
-								<Input
-									placeholder="USD"
-									{...field}
-								/>
-							</FormControl>
-							<FormDescription>
-								The 3-letter ISO 4217 currency code.
-							</FormDescription>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-				<FormField
-					control={form.control}
-					name="allow_discount_stacking"
-					render={({ field }) => (
-						<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-							<div className="space-y-0.5">
-								<FormLabel className="text-base">
-									Allow Discount Stacking
-								</FormLabel>
-								<FormDescription>
-									If enabled, multiple discounts can be applied to a single
-									order. If disabled, only one discount is allowed at a time.
+						{/* Location-specific: Editable Tax Rate */}
+						<FormField
+							control={form.control}
+							name="tax_rate"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Location Tax Rate</FormLabel>
+									<FormControl>
+										<Input
+											type="number"
+											step="0.0001"
+											placeholder="0.08"
+											{...field}
+										/>
+									</FormControl>
+									<FormDescription>
+										The sales tax rate for this location as a decimal (e.g., 0.08 for 8%).
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						{/* Global Settings: Read-Only */}
+						<div className="bg-muted/30 rounded-lg p-4 space-y-4">
+							<div className="flex items-center gap-2 mb-2">
+								<Lock className="h-4 w-4 text-muted-foreground" />
+								<h4 className="text-sm font-medium">Global Financial Rules (Read-Only)</h4>
+							</div>
+							<p className="text-xs text-muted-foreground mb-4">
+								These settings are managed tenant-wide in the admin site.
+							</p>
+
+							{/* Read-only: Currency */}
+							<div>
+								<FormLabel className="text-sm text-muted-foreground">Currency Code</FormLabel>
+								<div className="mt-1 px-3 py-2 bg-muted rounded-md text-sm">
+									{globalSettings?.currency || "USD"}
+								</div>
+								<FormDescription className="mt-1">
+									The 3-letter ISO 4217 currency code for all transactions.
 								</FormDescription>
 							</div>
-							<FormControl>
-								<Switch
-									checked={field.value}
-									onCheckedChange={field.onChange}
-								/>
-							</FormControl>
-						</FormItem>
-					)}
-				/>
+
+							{/* Read-only: Surcharge */}
+							<div>
+								<FormLabel className="text-sm text-muted-foreground">Surcharge Percentage</FormLabel>
+								<div className="mt-1 px-3 py-2 bg-muted rounded-md text-sm">
+									{globalSettings?.surcharge_percentage
+										? `${(globalSettings.surcharge_percentage * 100).toFixed(2)}%`
+										: "0%"}
+								</div>
+								<FormDescription className="mt-1">
+									Percentage-based surcharge applied to all orders.
+								</FormDescription>
+							</div>
+
+							{/* Read-only: Discount Stacking */}
+							<div>
+								<FormLabel className="text-sm text-muted-foreground">Allow Discount Stacking</FormLabel>
+								<div className="mt-1 px-3 py-2 bg-muted rounded-md text-sm">
+									{globalSettings?.allow_discount_stacking ? "Enabled" : "Disabled"}
+								</div>
+								<FormDescription className="mt-1">
+									Whether multiple discounts can be applied to a single order.
+								</FormDescription>
+							</div>
+						</div>
+
 						<Button
 							type="submit"
 							disabled={mutation.isPending || !form.formState.isDirty}

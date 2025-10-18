@@ -7,7 +7,6 @@ from .views import (
     PrinterConfigurationViewSet,
     TerminalLocationViewSet,
     TerminalReaderListView,
-    WebOrderSettingsViewSet,
     StockActionReasonConfigViewSet,
 )
 
@@ -43,19 +42,7 @@ urlpatterns = [
         ),
         name="printer-config",
     ),
-    # Custom singleton web order settings endpoints
-    path(
-        "web-order-settings/",
-        WebOrderSettingsViewSet.as_view(
-            {
-                "get": "list",
-                "put": "update",
-                "patch": "partial_update",
-                "post": "create",
-            }
-        ),
-        name="web-order-settings",
-    ),
+    # Web order settings endpoint REMOVED - settings now managed directly on StoreLocation
     path(
         "sync-stripe-locations/",
         SyncStripeLocationsView.as_view(),

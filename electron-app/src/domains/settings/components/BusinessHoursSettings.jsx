@@ -108,7 +108,8 @@ export function BusinessHoursSettings() {
 				enable_business_hours: hasBusinessHours,
 			});
 		}
-	}, [businessHours, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [businessHours]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const onSubmit = (values) => {
 		// If business hours are disabled, send null for opening/closing times
@@ -176,7 +177,7 @@ export function BusinessHoursSettings() {
 									</FormLabel>
 									<Select
 										onValueChange={field.onChange}
-										value={field.value}
+										value={field.value ?? "UTC"}
 									>
 										<FormControl>
 											<SelectTrigger>

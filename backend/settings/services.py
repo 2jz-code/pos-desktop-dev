@@ -18,7 +18,6 @@ from .models import (
     StoreLocation,
     TerminalLocation,
     PrinterConfiguration,
-    WebOrderSettings,
 )
 from terminals.models import TerminalRegistration
 from payments.strategies import StripeTerminalStrategy
@@ -54,13 +53,13 @@ class SettingsService:
         try:
             obj = GlobalSettings.objects.get(tenant=tenant)
         except GlobalSettings.DoesNotExist:
-            # Create new settings - avoid get_or_create due to id sequence conflicts
+            # Create new settings with defaults for this tenant
             obj = GlobalSettings(
                 tenant=tenant,
-                store_name=f"{tenant.name}",
-                store_address='',
-                store_phone='',
-                store_email='',
+                brand_name=f"{tenant.name}",
+                # Other fields will use their model defaults:
+                # brand_primary_color="#000000", brand_secondary_color="#FFFFFF",
+                # currency="USD", active_terminal_provider="STRIPE_TERMINAL", etc.
             )
             obj.save()
 
@@ -474,93 +473,7 @@ class PrinterConfigurationService:
         return instance
 
 
-class WebOrderSettingsService:
-    """
-    Service layer for managing web order settings.
-    Handles terminal receipt configuration for web orders.
-    
-    Extracted from WebOrderSettingsViewSet - previously 50+ lines in views.
-    """
-    
-    @staticmethod
-    def get_web_order_settings() -> WebOrderSettings:
-        """
-        Get the tenant-scoped WebOrderSettings instance.
-        Creates one if it doesn't exist for the current tenant.
-
-        TenantManager automatically filters by current tenant context.
-        OneToOneField ensures only one instance per tenant.
-
-        Extracted from WebOrderSettingsViewSet.get_object().
-        Terminal selection is now managed per-location on StoreLocation model.
-
-        Returns:
-            WebOrderSettings: The tenant's web order settings instance
-        """
-        from tenant.managers import get_current_tenant
-
-        tenant = get_current_tenant()
-        if not tenant:
-            raise ValidationError("No tenant context available for web order settings")
-
-        # Try to get existing settings for this tenant
-        try:
-            obj = WebOrderSettings.objects.get(tenant=tenant)
-        except WebOrderSettings.DoesNotExist:
-            # Create new settings - avoid get_or_create due to id sequence conflicts
-            obj = WebOrderSettings(tenant=tenant)
-            obj.save()
-        return obj
-    
-    @staticmethod
-    def update_web_order_settings(
-        update_data: Dict[str, Any], 
-        partial: bool = True
-    ) -> WebOrderSettings:
-        """
-        Update web order settings with many-to-many field handling.
-        
-        Extracted from WebOrderSettingsViewSet update methods.
-        
-        Args:
-            update_data: Dictionary of fields to update
-            partial: Whether this is a partial update
-            
-        Returns:
-            WebOrderSettings: Updated settings instance
-            
-        Raises:
-            ValidationError: If validation fails
-        """
-        instance = WebOrderSettingsService.get_web_order_settings()
-        
-        with transaction.atomic():
-            # Handle many-to-many fields specially (business logic from original view)
-            m2m_fields = {}
-            regular_fields = {}
-            
-            for field, value in update_data.items():
-                if hasattr(instance, field):
-                    field_obj = instance._meta.get_field(field)
-                    if field_obj.many_to_many:
-                        m2m_fields[field] = value
-                    else:
-                        regular_fields[field] = value
-            
-            # Update regular fields
-            for field, value in regular_fields.items():
-                setattr(instance, field, value)
-            
-            # Save regular field changes
-            if regular_fields:
-                instance.full_clean()
-                instance.save(update_fields=list(regular_fields.keys()) if partial else None)
-            
-            # Update many-to-many fields
-            for field, value in m2m_fields.items():
-                getattr(instance, field).set(value)
-                
-        return instance
+# WebOrderSettingsService REMOVED - settings now managed directly on StoreLocation
 
 
 class TerminalService:

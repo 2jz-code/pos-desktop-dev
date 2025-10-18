@@ -5,7 +5,6 @@ from .models import (
     StoreLocation,
     TerminalLocation,
     PrinterConfiguration,
-    WebOrderSettings,
     StockActionReasonConfig,
 )
 from terminals.models import TerminalRegistration
@@ -50,33 +49,54 @@ class GlobalSettingsSerializer(BaseModelSerializer):
             # Receipt templates
             "brand_receipt_header",
             "brand_receipt_footer",
-            # Web order notification defaults (tenant-wide)
+            # Web order notification defaults (tenant-wide, nested in response)
             "web_order_defaults",
+            # Actual model fields (write-only, not shown in response)
+            "default_enable_web_notifications",
+            "default_play_web_notification_sound",
+            "default_auto_print_web_receipt",
+            "default_auto_print_web_kitchen",
         ]
+        # Make the actual model fields write-only so they don't appear in GET responses
+        extra_kwargs = {
+            'default_enable_web_notifications': {'write_only': True},
+            'default_play_web_notification_sound': {'write_only': True},
+            'default_auto_print_web_receipt': {'write_only': True},
+            'default_auto_print_web_kitchen': {'write_only': True},
+        }
         select_related_fields = []
         prefetch_related_fields = []
 
     def get_web_order_defaults(self, obj):
         """
-        Get tenant-wide web order notification defaults.
+        Get tenant-wide web order notification defaults from GlobalSettings.
         These are fallback values used when locations don't have overrides.
         """
-        try:
-            web_settings = obj.tenant.web_order_settings
-            return {
-                "enable_notifications": web_settings.enable_notifications,
-                "play_notification_sound": web_settings.play_notification_sound,
-                "auto_print_receipt": web_settings.auto_print_receipt,
-                "auto_print_kitchen": web_settings.auto_print_kitchen,
-            }
-        except AttributeError:
-            # Fallback if WebOrderSettings doesn't exist yet
-            return {
-                "enable_notifications": True,
-                "play_notification_sound": True,
-                "auto_print_receipt": True,
-                "auto_print_kitchen": True,
-            }
+        return {
+            "enable_notifications": obj.default_enable_web_notifications,
+            "play_notification_sound": obj.default_play_web_notification_sound,
+            "auto_print_receipt": obj.default_auto_print_web_receipt,
+            "auto_print_kitchen": obj.default_auto_print_web_kitchen,
+        }
+
+    def update(self, instance, validated_data):
+        """
+        Handle updates including nested web_order_defaults structure.
+        React Admin may send updates via the nested structure.
+        """
+        # Handle web_order_defaults if sent as nested object
+        if "web_order_defaults" in self.initial_data:
+            web_order_data = self.initial_data["web_order_defaults"]
+            if "enable_notifications" in web_order_data:
+                instance.default_enable_web_notifications = web_order_data["enable_notifications"]
+            if "play_notification_sound" in web_order_data:
+                instance.default_play_web_notification_sound = web_order_data["play_notification_sound"]
+            if "auto_print_receipt" in web_order_data:
+                instance.default_auto_print_web_receipt = web_order_data["auto_print_receipt"]
+            if "auto_print_kitchen" in web_order_data:
+                instance.default_auto_print_web_kitchen = web_order_data["auto_print_kitchen"]
+
+        return super().update(instance, validated_data)
 
 
 class PrinterConfigurationSerializer(BaseModelSerializer):
@@ -301,23 +321,7 @@ class StoreLocationSerializer(BaseModelSerializer):
         return super().update(instance, validated_data)
 
 
-class WebOrderSettingsSerializer(BaseModelSerializer):
-    """
-    Serializer for WebOrderSettings model.
-    Handles tenant-wide web order notification defaults.
-    Terminal selection is managed per-location on StoreLocation model.
-    """
-
-    class Meta:
-        model = WebOrderSettings
-        fields = [
-            "enable_notifications",
-            "play_notification_sound",
-            "auto_print_receipt",
-            "auto_print_kitchen",
-        ]
-        select_related_fields = []
-        prefetch_related_fields = []
+# WebOrderSettingsSerializer REMOVED - settings now managed directly on StoreLocation
 
 
 class StockActionReasonConfigSerializer(BaseModelSerializer):

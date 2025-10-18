@@ -6,12 +6,16 @@ import apiClient from "@/shared/lib/apiClient";
  */
 
 // === Global Settings ===
+// READ-ONLY: For brand info display only (logo, colors, name)
+// Editing should be done via admin site
 
 export const getGlobalSettings = async () => {
 	const response = await apiClient.get("settings/global-settings/");
 	return response.data;
 };
 
+// DEPRECATED: Global settings should only be edited via admin site
+// @deprecated Use updateStoreLocation() for location-specific settings
 export const updateGlobalSettings = async (settingsData) => {
 	// The GlobalSettings model is a singleton, so we always target the object with pk=1.
 	const response = await apiClient.patch(
@@ -38,6 +42,11 @@ export const updatePrinterConfig = async (printerData) => {
 export const getStoreLocations = async () => {
 	const response = await apiClient.get("settings/store-locations/");
 	return response.data.results;
+};
+
+export const getStoreLocation = async (locationId) => {
+	const response = await apiClient.get(`settings/store-locations/${locationId}/`);
+	return response.data;
 };
 
 export const createStoreLocation = async (locationData) => {
@@ -85,12 +94,17 @@ export const upsertTerminalRegistration = async (data) => {
 	return response.data;
 };
 
+// DEPRECATED: These were for global settings
+// @deprecated Use getStoreLocation() / updateStoreLocation() instead
+
 // Store Information Section
+// @deprecated Use storeLocation.{name, address_line1, city, state, phone, email}
 export const getStoreInfo = async () => {
 	const response = await apiClient.get("/settings/global-settings/store-info/");
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateStoreInfo = async (storeData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/store-info/",
@@ -100,11 +114,13 @@ export const updateStoreInfo = async (storeData) => {
 };
 
 // Financial Settings Section
+// @deprecated Use storeLocation.tax_rate
 export const getFinancialSettings = async () => {
 	const response = await apiClient.get("/settings/global-settings/financial/");
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateFinancialSettings = async (financialData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/financial/",
@@ -114,6 +130,7 @@ export const updateFinancialSettings = async (financialData) => {
 };
 
 // Receipt Configuration Section
+// @deprecated Use storeLocation.{receipt_header, receipt_footer}
 export const getReceiptConfig = async () => {
 	const response = await apiClient.get(
 		"/settings/global-settings/receipt-config/"
@@ -121,6 +138,7 @@ export const getReceiptConfig = async () => {
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateReceiptConfig = async (receiptData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/receipt-config/",

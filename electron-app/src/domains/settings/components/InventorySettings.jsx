@@ -107,7 +107,8 @@ export function InventorySettings() {
 					: "none",
 			});
 		}
-	}, [settings, locations, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [settings, locations]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const onSubmit = (data) => {
 		// Convert "none" to null for the API
@@ -228,7 +229,7 @@ export function InventorySettings() {
 										</FormLabel>
 										<Select
 											onValueChange={field.onChange}
-											value={field.value}
+											value={field.value ?? "none"}
 										>
 											<FormControl>
 												<SelectTrigger>

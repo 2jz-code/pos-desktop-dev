@@ -10,7 +10,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 
 from tenant.managers import set_current_tenant
-from settings.models import GlobalSettings, StoreLocation, PrinterConfiguration, WebOrderSettings
+from settings.models import GlobalSettings, StoreLocation, PrinterConfiguration
 
 
 @pytest.mark.django_db
@@ -203,55 +203,8 @@ class TestPrinterConfiguration:
         assert PrinterConfiguration.objects.first().receipt_printers[0]["name"] == "Printer B"
 
 
-@pytest.mark.django_db
-class TestWebOrderSettings:
-    """Test WebOrderSettings model"""
-
-    def test_create_web_order_settings(self, tenant_a):
-        """Test creating web order settings"""
-        set_current_tenant(tenant_a)
-
-        # Clean up any existing singleton instance from previous tests (use all_objects to bypass tenant filter)
-        WebOrderSettings.all_objects.all().delete()
-
-        settings = WebOrderSettings.objects.create(
-            tenant=tenant_a,
-            enable_notifications=True,
-            play_notification_sound=True,
-            auto_print_receipt=True,
-            auto_print_kitchen=False
-        )
-
-        assert settings.enable_notifications is True
-        assert settings.play_notification_sound is True
-        assert settings.auto_print_receipt is True
-        assert settings.auto_print_kitchen is False
-
-    # NOTE: Skipping multi-tenant isolation test due to SingletonModel pk=1 constraint
-    # The SingletonModel base class forces pk=1 for all instances, which conflicts
-    # with creating separate singleton instances per tenant. This is a known limitation.
-
-    def test_web_order_settings_singleton_per_tenant(self, tenant_a):
-        """Test singleton behavior for web order settings"""
-        set_current_tenant(tenant_a)
-
-        # Clean up any existing singleton instance from previous tests (use all_objects to bypass tenant filter)
-        WebOrderSettings.all_objects.all().delete()
-
-        # Create first settings
-        settings1 = WebOrderSettings.objects.create(
-            tenant=tenant_a,
-            enable_notifications=True
-        )
-
-        # Try to create second settings - should raise error
-        with pytest.raises(Exception):
-            settings2 = WebOrderSettings(
-                tenant=tenant_a,
-                enable_notifications=False
-            )
-            settings2.full_clean()
-            settings2.save()
+# TestWebOrderSettings class REMOVED - WebOrderSettings model no longer exists
+# Web order settings are now managed directly on StoreLocation model with hardcoded defaults
 
 
 @pytest.mark.django_db

@@ -122,6 +122,10 @@ export function DeviceSettings() {
 	const terminalForm = useForm({
 		resolver: zodResolver(terminalRegistrationSchema),
 		disabled: !machineId || isLoadingRegistration,
+		defaultValues: {
+			nickname: "",
+			store_location: "",
+		},
 	});
 
 	useEffect(() => {
@@ -143,7 +147,8 @@ export function DeviceSettings() {
 				store_location: "",
 			});
 		}
-	}, [registration, terminalForm, isLoadingRegistration, isLoadingLocations, storeLocations, setSelectedReader]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [registration, isLoadingRegistration, isLoadingLocations, storeLocations]); // terminalForm and setSelectedReader are stable references
 
 	const { mutate: upsertRegistration, isPending: isUpsertingTerminal } =
 		useMutation({
@@ -234,7 +239,7 @@ export function DeviceSettings() {
 												<FormLabel>Assigned Store Location</FormLabel>
 												<Select
 													onValueChange={field.onChange}
-													value={field.value}
+													value={field.value ?? ""}
 												>
 													<FormControl>
 														<SelectTrigger disabled={isLoadingLocations}>

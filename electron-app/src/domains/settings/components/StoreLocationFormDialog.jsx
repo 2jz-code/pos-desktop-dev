@@ -67,7 +67,8 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 		} else {
 			form.reset({ name: "", address: "", phone: "", email: "" });
 		}
-	}, [locationData, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [locationData]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const mutation = useMutation({
 		mutationFn: isEditing

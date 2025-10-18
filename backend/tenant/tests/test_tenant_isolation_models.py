@@ -22,7 +22,7 @@ from payments.models import Payment, PaymentTransaction, GiftCard
 from discounts.models import Discount
 from inventory.models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from settings.models import (
-    GlobalSettings, PrinterConfiguration, WebOrderSettings,
+    GlobalSettings, PrinterConfiguration,
     StoreLocation, TerminalLocation, StockActionReasonConfig
 )
 from reports.models import ReportCache, SavedReport, ReportTemplate, ReportExecution

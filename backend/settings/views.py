@@ -10,7 +10,6 @@ from .models import (
     StoreLocation,
     TerminalLocation,
     PrinterConfiguration,
-    WebOrderSettings,
     StockActionReasonConfig,
 )
 from .serializers import (
@@ -18,7 +17,6 @@ from .serializers import (
     StoreLocationSerializer,
     TerminalLocationSerializer,
     PrinterConfigurationSerializer,
-    WebOrderSettingsSerializer,
     StockActionReasonConfigSerializer,
     StockActionReasonConfigListSerializer,
 )
@@ -29,7 +27,6 @@ from core_backend.base.mixins import ArchivingViewSetMixin
 from .services import (
     SettingsService,
     PrinterConfigurationService,
-    WebOrderSettingsService,
     TerminalService,
     SettingsValidationService,
 )
@@ -232,61 +229,7 @@ class PrinterConfigurationViewSet(BaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-class WebOrderSettingsViewSet(BaseViewSet):
-    """
-    API endpoint for viewing and editing the singleton WebOrderSettings object.
-    Manages which terminals should print customer receipts for web orders.
-    """
-
-    queryset = WebOrderSettings.objects.all()
-    serializer_class = WebOrderSettingsSerializer
-    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
-
-    def get_object(self):
-        """
-        Always returns the single WebOrderSettings instance.
-        Uses WebOrderSettingsService for optimized queries.
-        """
-        return WebOrderSettingsService.get_web_order_settings()
-
-    def list(self, request, *args, **kwargs):
-        """
-        Handle GET requests for the list view.
-        Since this is a singleton, this will retrieve the single settings object.
-        """
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
-
-    def create(self, request, *args, **kwargs):
-        """
-        For singleton, redirect create to update.
-        """
-        return self.update(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        """
-        Handle PUT/PATCH requests using WebOrderSettingsService.
-        """
-        partial = kwargs.pop("partial", False)
-        try:
-            instance = WebOrderSettingsService.update_web_order_settings(
-                request.data, partial=partial
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    def partial_update(self, request, *args, **kwargs):
-        """
-        Handle PATCH requests for partial updates.
-        """
-        kwargs["partial"] = True
-        return self.update(request, *args, **kwargs)
+# WebOrderSettings ViewSet REMOVED - settings now managed directly on StoreLocation
 
 
 class StoreLocationViewSet(BaseViewSet):

@@ -172,7 +172,8 @@ export function PrinterSettings() {
 				kitchen_zones: mappedZones,
 			});
 		}
-	}, [config, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [config]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const {
 		fields: kitchenFields,
@@ -485,7 +486,7 @@ export function PrinterSettings() {
 														<FormLabel>Assigned Printer</FormLabel>
 														<Select
 															onValueChange={field.onChange}
-															value={field.value}
+															value={field.value ?? ""}
 														>
 															<FormControl>
 																<SelectTrigger>

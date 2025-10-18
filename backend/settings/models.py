@@ -317,7 +317,10 @@ class StoreLocation(SoftDeleteMixin):
         """
         Get effective web order notification settings for this location.
 
-        Location-specific overrides take precedence over tenant-wide defaults.
+        3-tier hierarchy:
+        1. Location-specific override (if set)
+        2. Tenant-wide default from GlobalSettings
+        3. Hardcoded fallback (True)
 
         Returns:
             dict: Effective web order settings with keys:
@@ -327,32 +330,44 @@ class StoreLocation(SoftDeleteMixin):
                 - auto_print_kitchen (bool)
                 - terminals (QuerySet): Terminal registrations for this location
         """
+        # Get tenant defaults from GlobalSettings
         try:
-            tenant_defaults = self.tenant.web_order_settings
-        except AttributeError:
-            # Fallback if WebOrderSettings doesn't exist
-            tenant_defaults = None
+            global_settings = self.tenant.global_settings
+            tenant_defaults = {
+                'enable_notifications': global_settings.default_enable_web_notifications,
+                'play_notification_sound': global_settings.default_play_web_notification_sound,
+                'auto_print_receipt': global_settings.default_auto_print_web_receipt,
+                'auto_print_kitchen': global_settings.default_auto_print_web_kitchen,
+            }
+        except GlobalSettings.DoesNotExist:
+            # Fallback to hardcoded defaults if GlobalSettings doesn't exist yet
+            tenant_defaults = {
+                'enable_notifications': True,
+                'play_notification_sound': True,
+                'auto_print_receipt': True,
+                'auto_print_kitchen': True,
+            }
 
         return {
             'enable_notifications': (
                 self.enable_web_notifications
                 if self.enable_web_notifications is not None
-                else (tenant_defaults.enable_notifications if tenant_defaults else True)
+                else tenant_defaults['enable_notifications']
             ),
             'play_notification_sound': (
                 self.play_web_notification_sound
                 if self.play_web_notification_sound is not None
-                else (tenant_defaults.play_notification_sound if tenant_defaults else True)
+                else tenant_defaults['play_notification_sound']
             ),
             'auto_print_receipt': (
                 self.auto_print_web_receipt
                 if self.auto_print_web_receipt is not None
-                else (tenant_defaults.auto_print_receipt if tenant_defaults else True)
+                else tenant_defaults['auto_print_receipt']
             ),
             'auto_print_kitchen': (
                 self.auto_print_web_kitchen
                 if self.auto_print_web_kitchen is not None
-                else (tenant_defaults.auto_print_kitchen if tenant_defaults else True)
+                else tenant_defaults['auto_print_kitchen']
             ),
             'terminals': self.web_notification_terminals.filter(
                 tenant=self.tenant,
@@ -442,6 +457,24 @@ class GlobalSettings(models.Model):
         help_text="Default receipt footer template for all locations. Locations can override.",
     )
 
+    # === WEB ORDER NOTIFICATION DEFAULTS (Tenant-wide defaults) ===
+    default_enable_web_notifications = models.BooleanField(
+        default=True,
+        help_text="Tenant-wide default for web order notifications. Locations can override."
+    )
+    default_play_web_notification_sound = models.BooleanField(
+        default=True,
+        help_text="Tenant-wide default for notification sound. Locations can override."
+    )
+    default_auto_print_web_receipt = models.BooleanField(
+        default=True,
+        help_text="Tenant-wide default for auto-printing receipts. Locations can override."
+    )
+    default_auto_print_web_kitchen = models.BooleanField(
+        default=True,
+        help_text="Tenant-wide default for auto-printing kitchen tickets. Locations can override."
+    )
+
     objects = TenantManager()
     all_objects = models.Manager()
 
@@ -512,66 +545,12 @@ class PrinterConfiguration(models.Model):
         verbose_name_plural = "Printer Configuration"
 
 
-class SingletonModel(models.Model):
-    """
-    An abstract base class that ensures only one instance of a model exists.
-    """
-
-    class Meta:
-        abstract = True
-
-    def save(self, *args, **kwargs):
-        self.pk = 1
-        super(SingletonModel, self).save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        pass  # Deleting the singleton is not allowed
-
-    @classmethod
-    def load(cls):
-        obj, created = cls.objects.get_or_create(pk=1)
-        return obj
-
-
-class WebOrderSettings(SingletonModel):
-    """
-    Tenant-wide web order notification defaults.
-    These settings apply to all locations unless overridden.
-    Terminal selection is managed per-location on StoreLocation model.
-    """
-
-    tenant = models.OneToOneField(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='web_order_settings'
-    )
-
-    enable_notifications = models.BooleanField(
-        default=True,
-        help_text="Tenant-wide default: Enable all notifications for new web orders."
-    )
-    play_notification_sound = models.BooleanField(
-        default=True,
-        help_text="Tenant-wide default: Play a sound for new web orders."
-    )
-    auto_print_receipt = models.BooleanField(
-        default=True,
-        help_text="Tenant-wide default: Automatically print a receipt for new web orders."
-    )
-    auto_print_kitchen = models.BooleanField(
-        default=True,
-        help_text="Tenant-wide default: Automatically print kitchen tickets for new web orders.",
-    )
-
-    objects = TenantManager()
-    all_objects = models.Manager()
-
-    def __str__(self):
-        tenant_name = self.tenant.name if self.tenant else "System"
-        return f"Web Order Settings ({tenant_name})"
-
-    class Meta:
-        verbose_name = "Web Order Settings"
+# WebOrderSettings model REMOVED
+# Web order notification settings architecture:
+# 1. Location-specific overrides: StoreLocation.enable_web_notifications, etc. (nullable)
+# 2. Tenant-wide defaults: GlobalSettings.default_enable_web_notifications, etc. (boolean, default True)
+# 3. Hardcoded fallback: All True (if GlobalSettings doesn't exist)
+# See StoreLocation.get_effective_web_order_settings() for hierarchy logic
 
 
 # === DEVICE & PROVIDER-SPECIFIC MODELS ===

@@ -13,7 +13,8 @@ from uuid import UUID
 # Import the custom signal from orders app
 from orders.signals import web_order_ready_for_notification
 
-from settings.models import GlobalSettings, WebOrderSettings
+# Note: GlobalSettings and WebOrderSettings imports removed - not used in this file
+# Web order settings are accessed via store_location.get_effective_web_order_settings()
 
 logger = logging.getLogger(__name__)
 channel_layer = get_channel_layer()

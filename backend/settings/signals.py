@@ -5,7 +5,7 @@ Automatically updates the configuration cache when GlobalSettings are modified.
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import GlobalSettings, StoreLocation, PrinterConfiguration, WebOrderSettings
+from .models import GlobalSettings, StoreLocation, PrinterConfiguration
 from django.utils import timezone
 from django.db import transaction
 from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
@@ -154,15 +154,5 @@ def handle_printer_config_change(sender, instance, **kwargs):
     invalidate_cache_pattern('*get_cached_global_settings*')
 
 
-@receiver(post_save, sender=WebOrderSettings)
-def handle_web_order_settings_change(sender, instance, **kwargs):
-    """Handle web order settings updates"""
-    logger.info("Web order settings updated")
-    
-    # Reload app settings to refresh web order config
-    from .config import app_settings
-    app_settings.reload()
-    
-    # Invalidate web order related caches
-    invalidate_cache_pattern('*global_settings*')
-    invalidate_cache_pattern('*get_cached_global_settings*')
+# WebOrderSettings signal handler REMOVED - model no longer exists
+# Web order settings are now managed directly on StoreLocation model

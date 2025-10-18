@@ -8,9 +8,10 @@ Test Coverage:
 - GlobalSettings API (singleton pattern with custom actions)
 - StoreLocation API (CRUD with default location logic)
 - PrinterConfiguration API (singleton pattern)
-- WebOrderSettings API (singleton pattern)
 - TerminalLocation API (read-only)
 - StockActionReasonConfig API (CRUD with global/tenant-specific logic)
+
+Note: WebOrderSettings API tests removed - settings now managed directly on StoreLocation
 """
 
 import pytest
@@ -608,82 +609,11 @@ class TestPrinterConfigurationAPIIntegration:
 
 
 # ============================================================================
-# WEBORDERSETTINGS API TESTS
+# WEBORDERSETTINGS API TESTS - REMOVED
 # ============================================================================
-
-@pytest.mark.django_db
-class TestWebOrderSettingsAPIIntegration:
-    """Test WebOrderSettings API endpoints (singleton pattern)"""
-
-    def test_get_web_order_settings(self, tenant_a, admin_user_tenant_a):
-        """Test retrieving web order settings"""
-        from users.services import UserService
-        from tenant.managers import set_current_tenant
-
-        set_current_tenant(tenant_a)
-
-        client = create_csrf_client_with_tenant(tenant_a)
-        tokens = UserService.generate_tokens_for_user(admin_user_tenant_a)
-        client.cookies['access_token'] = tokens['access']
-
-        # Get web order settings
-        response = client.get('/api/settings/web-order-settings/')
-
-        assert response.status_code == status.HTTP_200_OK
-        assert 'enable_notifications' in response.data
-        assert 'play_notification_sound' in response.data
-        assert 'auto_print_receipt' in response.data
-        assert 'auto_print_kitchen' in response.data
-
-    def test_update_web_order_settings(self, tenant_a, admin_user_tenant_a):
-        """Test updating web order settings"""
-        from users.services import UserService
-        from tenant.managers import set_current_tenant
-
-        set_current_tenant(tenant_a)
-
-        client = create_csrf_client_with_tenant(tenant_a)
-        tokens = UserService.generate_tokens_for_user(admin_user_tenant_a)
-        client.cookies['access_token'] = tokens['access']
-
-        # Update web order settings
-        response = client.patch('/api/settings/web-order-settings/', {
-            'enable_notifications': False,
-            'auto_print_receipt': False
-        }, format='json')
-
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['enable_notifications'] is False
-        assert response.data['auto_print_receipt'] is False
-
-    def test_web_order_settings_tenant_isolation(self, tenant_a, tenant_b, admin_user_tenant_a, admin_user_tenant_b):
-        """Test that web order settings are isolated by tenant"""
-        from users.services import UserService
-        from tenant.managers import set_current_tenant
-        from settings.models import WebOrderSettings
-
-        # Clear any existing WebOrderSettings to avoid pk conflicts
-        WebOrderSettings.all_objects.all().delete()
-
-        # Update tenant A settings
-        set_current_tenant(tenant_a)
-        # Create WebOrderSettings for tenant A (will use pk=1)
-        web_settings_a = WebOrderSettings.objects.create(tenant=tenant_a)
-
-        client_a = create_csrf_client_with_tenant(tenant_a)
-        tokens_a = UserService.generate_tokens_for_user(admin_user_tenant_a)
-        client_a.cookies['access_token'] = tokens_a['access']
-
-        response = client_a.patch('/api/settings/web-order-settings/', {
-            'enable_notifications': False
-        }, format='json')
-
-        # Verify tenant A settings were updated
-        web_settings_a.refresh_from_db()
-        assert web_settings_a.enable_notifications is False
-
-        # Note: Cannot easily test tenant B in same test due to SingletonModel pk=1 constraint
-        # This would require separate test or database cleanup
+# WebOrderSettings model and API endpoints have been removed.
+# Web order settings are now managed directly on StoreLocation model with
+# location-specific overrides and hardcoded defaults (all True).
 
 
 # ============================================================================

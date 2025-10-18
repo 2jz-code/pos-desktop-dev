@@ -114,7 +114,13 @@ class AppSettings:
 
             # Load extended configurations from their own singleton models
             self._load_printer_config()
-            self._load_web_order_config()
+
+            # Set hardcoded web order defaults (no tenant-wide settings anymore)
+            # Location-specific overrides are managed via StoreLocation.get_effective_web_order_settings()
+            self.enable_web_order_notifications: bool = True
+            self.web_order_notification_sound: bool = True
+            self.web_order_auto_print_receipt: bool = True
+            self.web_order_auto_print_kitchen: bool = True
 
         except Exception as e:
             raise ImproperlyConfigured(f"Failed to load settings: {e}")
@@ -157,43 +163,9 @@ class AppSettings:
             self.kitchen_printers = []
             self.kitchen_zones = []
 
-    def _load_web_order_config(self) -> None:
-        """
-        Load web order settings from tenant-scoped WebOrderSettings model.
-        TenantManager automatically filters by current tenant.
-        """
-        from .models import WebOrderSettings
-        from tenant.managers import get_current_tenant
-
-        try:
-            tenant = get_current_tenant()
-            if not tenant:
-                raise Exception("No tenant context available")
-
-            # Try to get existing config for this tenant
-            try:
-                web_settings = WebOrderSettings.objects.get(tenant=tenant)
-                created = False
-            except WebOrderSettings.DoesNotExist:
-                # Create new config - avoid get_or_create due to id sequence conflicts
-                web_settings = WebOrderSettings(tenant=tenant)
-                web_settings.save()
-                created = True
-
-            # Map model fields to AppSettings attributes
-            self.enable_web_order_notifications: bool = web_settings.enable_notifications
-            self.web_order_notification_sound: bool = web_settings.play_notification_sound
-            self.web_order_auto_print_receipt: bool = web_settings.auto_print_receipt
-            self.web_order_auto_print_kitchen: bool = web_settings.auto_print_kitchen
-            if created:
-                logger.info("Created default WebOrderSettings instance")
-        except Exception as e:
-            logger.warning(f"Failed to load web order configuration: {e}")
-            # Set sensible defaults to prevent crashes
-            self.enable_web_order_notifications = False
-            self.web_order_notification_sound = False
-            self.web_order_auto_print_receipt = False
-            self.web_order_auto_print_kitchen = False
+    # _load_web_order_config() REMOVED - WebOrderSettings model no longer exists
+    # Web order settings are now hardcoded defaults in load_settings()
+    # Location-specific overrides managed via StoreLocation.get_effective_web_order_settings()
 
     def reload(self) -> None:
         """
@@ -314,7 +286,11 @@ class AppSettings:
         }
 
     def get_web_order_config(self) -> dict:
-        """Get web order notification configuration as a dictionary."""
+        """
+        Get web order notification configuration as a dictionary.
+        Returns hardcoded tenant-wide defaults (all True).
+        For location-specific settings, use StoreLocation.get_effective_web_order_settings().
+        """
         return {
             "notifications_enabled": self.enable_web_order_notifications,
             "play_notification_sound": self.web_order_notification_sound,
