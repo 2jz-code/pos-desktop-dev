@@ -13,24 +13,33 @@ class BusinessHoursMiddleware(MiddlewareMixin):
     Intelligent business hours enforcement middleware.
 
     Strategy:
-    - Block ONLY specific online order endpoints during closed hours
-    - Allow ALL POS/in-person operations (owners can take late orders)
+    - Block ONLY order creation and payment processing during closed hours for web customers
+    - Allow cart/browsing operations 24/7 (users can add items anytime)
+    - Allow ALL POS/in-person operations (authenticated staff can work anytime)
     - Allow ALL read operations and management tasks regardless of hours
-    - Allow ALL product/inventory/payment management operations
 
-    This primarily protects against online orders from website during closed hours
-    while keeping full POS functionality available for business owners.
+    This ensures customers can browse and build carts anytime, but only checkout
+    when the selected location is open. POS staff remain unrestricted.
     """
 
-    # Specific endpoints blocked during closed hours (primarily online/external orders)
+    # Endpoints that are ALWAYS allowed (browsing, cart management)
+    EXEMPT_ENDPOINTS = [
+        "/api/cart/",           # Cart operations - users can add items anytime
+        "/api/products/",       # Product browsing
+        "/api/menu/",           # Menu viewing
+        "/api/categories/",     # Category browsing
+        "/api/discounts/available/",  # View available discounts
+    ]
+
+    # Specific endpoints blocked during closed hours for web customers
+    # (Order creation and payment processing)
     RESTRICTED_ENDPOINTS = [
-        # Online order creation endpoints
-        "/api/orders/online/",  # Future online order endpoint
-        "/api/orders/website/",  # Future website order endpoint
-        "/api/orders/external/",  # Future external order endpoint
-        "/api/orders/public/",  # Future public order endpoint
-        "/api/orders/guest-order/",  # Guest order creation (when from external sources)
-        # Add more online-specific endpoints here as needed
+        "/api/orders/create/",          # Order creation
+        "/api/orders/guest-order/",     # Guest order creation
+        "/api/payments/initiate/",      # Payment initiation
+        "/api/payments/guest/",         # Guest payment
+        "/api/orders/online/",          # Online order endpoint
+        "/api/orders/website/",         # Website order endpoint
     ]
 
     # Headers that indicate requests from customer website/external sources
@@ -131,26 +140,28 @@ class BusinessHoursMiddleware(MiddlewareMixin):
         """
         Determine if this specific request should be restricted during closed hours.
 
-        Returns True only for:
-        1. Specific online/external order endpoints
-        2. Requests with headers indicating external/customer origin
-        3. POST requests to order creation that seem to be from external sources
+        Returns True only for order creation and payment endpoints from web customers.
+        Always allows cart, browsing, and product operations.
         """
         path = request.path
 
-        # Check for specific restricted endpoints
+        # ALWAYS allow exempt endpoints (cart, browsing, products)
+        for exempt_endpoint in self.EXEMPT_ENDPOINTS:
+            if path.startswith(exempt_endpoint):
+                return False
+
+        # Check for specific restricted endpoints (order creation, payments)
         for restricted_endpoint in self.RESTRICTED_ENDPOINTS:
             if path.startswith(restricted_endpoint):
                 return True
 
-        # Check for external request indicators in headers
-        for indicator in self.EXTERNAL_REQUEST_INDICATORS:
-            if request.META.get(f'HTTP_{indicator.upper().replace("-", "_")}'):
-                return True
+        # Check for external request indicators in headers on order/payment endpoints
+        if path.startswith("/api/orders/") or path.startswith("/api/payments/"):
+            for indicator in self.EXTERNAL_REQUEST_INDICATORS:
+                if request.META.get(f'HTTP_{indicator.upper().replace("-", "_")}'):
+                    return True
 
-        # For now, we're being very conservative - only block explicitly restricted endpoints
-        # This ensures POS functionality remains fully available
-
+        # Conservative approach - only block explicitly restricted endpoints
         return False
 
     def _business_closed_response(self, service, store_location):

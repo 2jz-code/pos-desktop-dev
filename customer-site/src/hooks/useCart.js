@@ -43,7 +43,6 @@ export const useCartMutations = () => {
 	const queryClient = useQueryClient();
 	const cartStore = useCartStore();
 	const { isAuthenticated } = useAuth();
-	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	const invalidateCart = () => {
 		queryClient.invalidateQueries({ queryKey: cartKeys.current() });
@@ -53,11 +52,7 @@ export const useCartMutations = () => {
 
 	const addToCartMutation = useMutation({
 		mutationFn: async ({ productId, quantity, notes, selectedModifiers }) => {
-			// Check if store is open and can accept orders before allowing cart additions
-			if (!isOpen || !canPlaceOrder) {
-				throw new Error("Store is currently closed and not accepting orders");
-			}
-
+			// Users can add to cart anytime - location selection during checkout will handle business hours
 			// New cart API handles session creation automatically
 			// Just call addItem - backend creates cart if needed
 			return await cartAPI.addItem(productId, quantity, notes, selectedModifiers);
@@ -103,12 +98,6 @@ export const useCartMutations = () => {
 			// Rollback on error
 			if (context?.previousCart) {
 				queryClient.setQueryData(cartKeys.current(), context.previousCart);
-			}
-
-			// Handle store closed errors with specific messaging
-			if (error.message === "Store is currently closed and not accepting orders") {
-				toast.error("Sorry, we're currently closed and not accepting orders. You can still browse our menu!");
-				return;
 			}
 
 			// Handle stock-related errors with user-friendly messages
@@ -319,7 +308,6 @@ export const useCart = () => {
 	const mutations = useCartMutations();
 	const summary = useCartSummary();
 	const cartStore = useCartStore();
-	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	return {
 		// Data
@@ -360,18 +348,13 @@ export const useCart = () => {
 		updateCartItemWithModifiers: async (itemId, product, quantity, notes = "", selectedModifiers = []) => {
 			// For modifier updates, we remove the old item and add a new one
 			// This ensures all calculations and snapshots are handled correctly
-
-			// Check store status before allowing cart modifications
-			if (!isOpen || !canPlaceOrder) {
-				toast.error("Sorry, we're currently closed and not accepting order modifications. You can still browse our menu!");
-				return;
-			}
+			// Users can modify cart anytime - location selection during checkout will handle business hours
 
 			try {
 				// Remove the old item (no orderId needed)
 				await mutations.removeFromCart.mutateAsync({ itemId });
 
-				// Add the updated item (this will also check store status in the mutation)
+				// Add the updated item
 				return mutations.addToCart.mutateAsync({
 					productId: product.id,
 					product,

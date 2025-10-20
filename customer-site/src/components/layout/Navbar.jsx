@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 // You will need to create and expose the AuthContext.
 import { useAuth } from "@/contexts/AuthContext";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
+import { useLocationSelector } from "@/hooks/useLocationSelector";
 // The logo asset needs to be placed in the specified path.
 import LogoImg from "@/assets/logo.png";
 import { useCartSidebar } from "@/contexts/CartSidebarContext";
@@ -336,6 +337,10 @@ const Navbar = () => {
 	const isMenuPage = location.pathname === "/menu";
 	const { openCart } = useCartSidebar();
 	const { cartItemCount } = useCart();
+	const { locations } = useLocationSelector();
+
+	// Only show store status if there's a single location
+	const showStoreStatus = locations && locations.length === 1;
 
 	const handleScroll = useCallback(() => {
 		// Use a small threshold to prevent style flickering on some browsers
@@ -501,15 +506,17 @@ const Navbar = () => {
 
 					{/* Right side items */}
 					<div className="flex items-center space-x-4">
-						{/* Store Status - Desktop */}
-						<div className="hidden md:block">
-							<StoreStatusIndicator 
-								scrolled={scrolled} 
-								isHomePage={isHomePage}
-								mobileMenuOpen={mobileMenuOpen}
-							/>
-						</div>
-						
+						{/* Store Status - Desktop (only for single location) */}
+						{showStoreStatus && (
+							<div className="hidden md:block">
+								<StoreStatusIndicator
+									scrolled={scrolled}
+									isHomePage={isHomePage}
+									mobileMenuOpen={mobileMenuOpen}
+								/>
+							</div>
+						)}
+
 						<div className="hidden md:block">
 							<Button
 								onClick={() => navigate("/menu")}
@@ -584,14 +591,16 @@ const Navbar = () => {
 							{renderMobileNavLinks()}
 							<div className="border-t border-gray-200 pt-4 pb-3">
 								<div className="px-2 space-y-3">
-									{/* Store Status - Mobile */}
-									<div className="flex items-center justify-center py-2">
-										<StoreStatusIndicator 
-											scrolled={true} 
-											isHomePage={false}
-											mobileMenuOpen={true}
-										/>
-									</div>
+									{/* Store Status - Mobile (only for single location) */}
+									{showStoreStatus && (
+										<div className="flex items-center justify-center py-2">
+											<StoreStatusIndicator
+												scrolled={true}
+												isHomePage={false}
+												mobileMenuOpen={true}
+											/>
+										</div>
+									)}
 									<Button
 										variant="ghost"
 										onClick={(e) => {

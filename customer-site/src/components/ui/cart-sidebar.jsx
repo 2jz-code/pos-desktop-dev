@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
-import { Clock, Store } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
 import { useCartStore } from "@/store/cartStore";
@@ -59,7 +59,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 	};
 
 	// Determine if the checkout button should be disabled
-	const isCheckoutButtonDisabled = cartItemCount === 0 || !cartStore.canProceedToCheckout();
+	// Users can proceed to checkout anytime - location selection will handle business hours
+	const isCheckoutButtonDisabled = cartItemCount === 0;
 
 	return (
 		<AnimatePresence>
@@ -214,7 +215,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									<span>${formatPrice(subtotal)}</span>
 								</div>
 
-								{/* Store Status */}
+								{/* Store Status - Only show if closing soon */}
 								{storeStatus.isClosingSoon && storeStatus.canPlaceOrder && (
 									<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
 										<div className="flex items-center justify-center">
@@ -225,26 +226,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 										</div>
 									</div>
 								)}
-								
-								{!storeStatus.canPlaceOrder && !storeStatus.isLoading && (
-									<div className="bg-red-50 border border-red-200 rounded-lg p-3">
-										<div className="flex items-center justify-center">
-											<Store className="h-4 w-4 text-red-500 mr-2" />
-											<div className="text-center">
-												<p className="text-sm text-red-700 font-medium">
-													Store is currently closed
-												</p>
-												{storeStatus.getNextOpeningDisplay() && (
-													<p className="text-xs text-red-600 mt-1">
-														We'll open again at {storeStatus.getNextOpeningDisplay()}
-													</p>
-												)}
-											</div>
-										</div>
-									</div>
-								)}
 
-								{/* Checkout Button */}
+								{/* Checkout Button - Users can proceed to checkout anytime */}
 								<Link
 									to="/checkout"
 									onClick={onClose}
@@ -256,12 +239,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									}`}
 									aria-disabled={isCheckoutButtonDisabled}
 								>
-									{!storeStatus.canPlaceOrder && !storeStatus.isLoading 
-										? "Store Closed" 
-										: cartItemCount === 0 
-										? "Cart Empty" 
-										: "Proceed to Checkout"
-									}
+									{cartItemCount === 0 ? "Cart Empty" : "Proceed to Checkout"}
 								</Link>
 							</div>
 						)}

@@ -7,6 +7,7 @@ from discounts.services import DiscountService
 from discounts.models import Discount
 from products.services import ModifierValidationService
 from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
+from business_hours.services import BusinessHoursService
 import hashlib
 import logging
 import time
@@ -508,7 +509,7 @@ class OrderService:
     @transaction.atomic
     def update_order_status(order: Order, new_status: str) -> Order:
         """
-        Updates the status of an order, checking for valid transitions.
+        Updates the status of an order, checking for valid transitions and business hours.
         """
         if new_status not in Order.OrderStatus.values:
             raise ValueError(f"'{new_status}' is not a valid order status.")
@@ -519,6 +520,25 @@ class OrderService:
             raise ValueError(
                 f"Cannot transition order from {order.status} to {new_status}."
             )
+
+        # Validate business hours when completing a web order
+        if (new_status == Order.OrderStatus.COMPLETED and
+            order.order_type == Order.OrderType.WEB and
+            order.status == Order.OrderStatus.PENDING):
+
+            if not order.store_location:
+                raise ValueError("Store location is required for web orders.")
+
+            business_hours_profile = order.store_location.business_hours_profile
+            if business_hours_profile and business_hours_profile.is_active:
+                service = BusinessHoursService(business_hours_profile)
+                if not service.is_open():
+                    status_summary = service.get_status_summary()
+                    next_opening = status_summary.get('next_opening', 'business hours')
+                    raise ValueError(
+                        f"Cannot complete order. {order.store_location.name} is currently closed. "
+                        f"Next opening: {next_opening}"
+                    )
 
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
@@ -533,9 +553,26 @@ class OrderService:
         - Updates order status to COMPLETED.
         - Updates order surcharges_total from payment data.
         - Triggers inventory deduction.
+        - Validates business hours for web orders.
         """
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError("Only PENDING or HOLD orders can be completed.")
+
+        # Validate business hours for web orders (POS orders can be completed anytime)
+        if order.order_type == Order.OrderType.WEB:
+            if not order.store_location:
+                raise ValueError("Store location is required for web orders.")
+
+            business_hours_profile = order.store_location.business_hours_profile
+            if business_hours_profile and business_hours_profile.is_active:
+                service = BusinessHoursService(business_hours_profile)
+                if not service.is_open():
+                    status_summary = service.get_status_summary()
+                    next_opening = status_summary.get('next_opening', 'business hours')
+                    raise ValueError(
+                        f"Cannot complete order. {order.store_location.name} is currently closed. "
+                        f"Next opening: {next_opening}"
+                    )
 
         # Update order surcharges from payment data
         if hasattr(order, 'payment_details') and order.payment_details:

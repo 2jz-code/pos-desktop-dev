@@ -2,11 +2,16 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Clock, Store, AlertTriangle } from "lucide-react";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
+import { useLocationSelector } from "@/hooks/useLocationSelector";
 
 const StatusBanner = () => {
 	const [isDismissed, setIsDismissed] = useState(false);
 	const [timeLeft, setTimeLeft] = useState(null);
 	const storeStatus = useStoreStatus();
+	const { locations } = useLocationSelector();
+
+	// Check if there are multiple locations
+	const hasMultipleLocations = locations.length > 1;
 
 	// Update countdown timer
 	useEffect(() => {
@@ -35,15 +40,16 @@ const StatusBanner = () => {
 	// Determine banner content and style based on store status
 	let bannerConfig = null;
 
-	if (!storeStatus.canPlaceOrder) {
-		// Store is closed
+	if (!storeStatus.canPlaceOrder && !hasMultipleLocations) {
+		// Store is closed - only show if there's a single location
+		// (multiple locations means customers can choose a different one)
 		bannerConfig = {
 			type: "error",
 			icon: Store,
 			bgColor: "bg-red-600",
 			textColor: "text-white",
 			title: "Store Closed",
-			message: storeStatus.getNextOpeningDisplay() 
+			message: storeStatus.getNextOpeningDisplay()
 				? `We'll reopen at ${storeStatus.getNextOpeningDisplay()}. Feel free to browse our menu!`
 				: "We're currently closed, but feel free to browse our menu!",
 			showTimer: false

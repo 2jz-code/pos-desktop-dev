@@ -127,21 +127,22 @@ class GooglePlacesService:
             logger.warning("Google API Key is not configured in settings.")
             return {"error": "Google API Key is not configured."}
 
-        # Get default store location for this tenant
+        # Get the first store location with a Google Place ID for this tenant
         try:
-            default_location = StoreLocation.objects.get(
+            location = StoreLocation.objects.filter(
                 tenant=tenant,
-                is_default=True
-            )
-        except StoreLocation.DoesNotExist:
-            logger.warning(f"No default store location found for tenant: {tenant.slug}")
-            return {"error": "Default store location not configured for this restaurant."}
+                google_place_id__isnull=False
+            ).exclude(google_place_id='').first()
 
-        place_id = default_location.google_place_id
+            if not location:
+                logger.warning(f"No store location with Google Place ID found for tenant: {tenant.slug}")
+                return {"error": "Google Place ID not configured for any location. Please contact support."}
 
-        if not place_id:
-            logger.warning(f"Google Place ID not configured for tenant: {tenant.slug}")
-            return {"error": "Google Place ID not configured for this location. Please contact support."}
+            place_id = location.google_place_id
+
+        except Exception as e:
+            logger.error(f"Error fetching store location for tenant {tenant.slug}: {str(e)}")
+            return {"error": "Error fetching location configuration."}
 
         # Tenant-scoped cache key
         cache_key = f"{GooglePlacesService.CACHE_KEY_PREFIX}{tenant.id}_{place_id}"

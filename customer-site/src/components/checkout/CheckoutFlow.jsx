@@ -4,8 +4,9 @@ import { useCheckout } from "@/hooks/useCheckout";
 import { useOrderConfirmation } from "@/hooks/useOrderConfirmation";
 import { useCart } from "@/hooks/useCart";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
-import { useCartStore } from "@/store/cartStore";
 import { useLocationSelector } from "@/hooks/useLocationSelector";
+import { useQuery } from "@tanstack/react-query";
+import locationsAPI from "@/api/locations";
 import ProgressIndicator from "./ProgressIndicator";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
@@ -14,15 +15,15 @@ import OrderConfirmation from "./OrderConfirmation";
 import LocationSelector from "./LocationSelector";
 import LocationHeader from "./LocationHeader";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, Clock, Store } from "lucide-react";
+import { AlertCircle, Clock, Store, MapPin, Edit2 } from "lucide-react";
 
 const CheckoutFlow = () => {
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const { cart } = useCart();
 	const storeStatus = useStoreStatus();
-	const cartStore = useCartStore();
-	const { selectedLocationId } = useLocationSelector();
+	const { selectedLocationId, selectedLocation, locations, isLoading: isLoadingLocations, formatAddress } = useLocationSelector();
+
 	const {
 		currentStep,
 		formData,
@@ -41,6 +42,12 @@ const CheckoutFlow = () => {
 		submitCustomerInfo,
 	} = useCheckout();
 
+	// Manually find the location if selectedLocation is undefined
+	// Handle type mismatch: selectedLocationId might be string, location IDs are numbers
+	const displayLocation = selectedLocation || locations.find(loc =>
+		loc.id === selectedLocationId || loc.id === Number(selectedLocationId)
+	);
+
 	// Check if we're in confirmation mode from URL
 	const isConfirmationMode = searchParams.get("step") === "confirmation";
 
@@ -58,24 +65,6 @@ const CheckoutFlow = () => {
 			return () => clearTimeout(timer);
 		}
 	}, [error, clearError]);
-
-	// Monitor store status and update cart store
-	useEffect(() => {
-		if (!storeStatus.isLoading) {
-			cartStore.updateStoreStatus(storeStatus.isOpen, storeStatus.canPlaceOrder);
-			
-			// If store closes during checkout (not in confirmation mode), redirect to cart
-			if (!isConfirmationMode && !storeStatus.canPlaceOrder && !storeStatus.isLoading) {
-				navigate("/menu", { 
-					replace: true, 
-					state: { 
-						message: "Store is now closed. You can continue browsing our menu.", 
-						type: "warning" 
-					} 
-				});
-			}
-		}
-	}, [storeStatus.isOpen, storeStatus.canPlaceOrder, storeStatus.isLoading, isConfirmationMode, navigate]);
 
 	const renderStep = () => {
 		// If URL indicates confirmation, show confirmation regardless of internal step
@@ -113,6 +102,8 @@ const CheckoutFlow = () => {
 		switch (currentStep) {
 			case 0:
 				// Step 0: Location Selection
+				// LocationSelector already validates business hours and prevents selecting closed locations
+				// No need to re-validate here
 				return (
 					<div>
 						<h2 className="text-xl font-semibold text-accent-dark-green mb-4">
@@ -122,14 +113,14 @@ const CheckoutFlow = () => {
 						<div className="mt-6">
 							<button
 								onClick={() => submitLocationSelection(selectedLocationId)}
-								disabled={!selectedLocationId}
+								disabled={!selectedLocationId || isLoadingLocations}
 								className={`w-full py-3 px-6 rounded-lg font-medium transition-colors ${
-									selectedLocationId
-										? "bg-primary-green text-white hover:bg-accent-dark-green"
-										: "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed"
+									!selectedLocationId || isLoadingLocations
+										? "bg-accent-subtle-gray/50 text-accent-subtle-gray cursor-not-allowed"
+										: "bg-primary-green text-white hover:bg-accent-dark-green"
 								}`}
 							>
-								Continue to Customer Info
+								{isLoadingLocations ? "Loading locations..." : "Continue to Customer Info"}
 							</button>
 						</div>
 					</div>
@@ -239,7 +230,7 @@ const CheckoutFlow = () => {
 								<div>
 									<h3 className="text-sm font-medium text-red-800">Store Closed</h3>
 									<p className="text-sm text-red-700 mt-1">
-										Sorry, we're currently closed. 
+										Sorry, we're currently closed.
 										{storeStatus.getNextOpeningDisplay() && (
 											<> We'll open again at {storeStatus.getNextOpeningDisplay()}.</>
 										)}
@@ -273,7 +264,63 @@ const CheckoutFlow = () => {
 
 			{/* Order Summary Sidebar */}
 			<div className="lg:col-span-2">
-				<div className="sticky top-8">
+				<div className="sticky top-8 space-y-4">
+					{/* Selected Location Card - Show after location selection */}
+					{currentStep > 0 && (displayLocation || cart?.store_location_name) && (
+						<Card className="border-primary-green/20 bg-gradient-to-br from-accent-light-beige to-white">
+							<CardContent className="p-4">
+								{/* Header with change button */}
+								<div className="flex items-start justify-between mb-3">
+									<div className="flex items-center space-x-2">
+										<div className="bg-primary-green/10 p-1.5 rounded-lg">
+											<MapPin className="h-4 w-4 text-primary-green" />
+										</div>
+										<h3 className="text-xs font-semibold text-accent-dark-green uppercase tracking-wide">
+											Pickup Location
+										</h3>
+									</div>
+									<button
+										onClick={prevStep}
+										className="flex items-center space-x-1 text-xs text-primary-green hover:text-accent-dark-green transition-colors focus:outline-none focus:ring-2 focus:ring-primary-green focus:ring-offset-2 rounded px-2 py-1 bg-white border border-primary-green/20 hover:border-primary-green/40"
+										aria-label="Change location"
+									>
+										<Edit2 className="h-3 w-3" />
+										<span className="font-medium">Change</span>
+									</button>
+								</div>
+
+								{/* Location details - compact */}
+								<div className="space-y-1">
+									<p className="text-sm font-bold text-accent-dark-green leading-tight">
+										{displayLocation?.name || cart?.store_location_name}
+									</p>
+									{displayLocation && (
+										<>
+											{displayLocation.address_line1 && (
+												<p className="text-xs text-accent-dark-brown/80 leading-tight">
+													{displayLocation.address_line1}
+												</p>
+											)}
+											{(displayLocation.city || displayLocation.state) && (
+												<p className="text-xs text-accent-dark-brown/80 leading-tight">
+													{displayLocation.city && displayLocation.state
+														? `${displayLocation.city}, ${displayLocation.state} ${displayLocation.postal_code || ''}`
+														: displayLocation.city || displayLocation.state}
+												</p>
+											)}
+											{displayLocation.phone && (
+												<p className="text-xs text-accent-dark-brown/70 leading-tight">
+													{displayLocation.phone}
+												</p>
+											)}
+										</>
+									)}
+								</div>
+							</CardContent>
+						</Card>
+					)}
+
+					{/* Order Summary */}
 					<OrderSummary
 						cart={cart}
 						isLoading={isLoading}
