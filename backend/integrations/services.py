@@ -8,6 +8,92 @@ from core_backend.infrastructure.cache_utils import cache_static_data
 logger = logging.getLogger(__name__)
 
 
+class GeocodingService:
+    """
+    A service to interact with the Google Geocoding API for converting addresses to coordinates.
+    Used to automatically populate latitude/longitude for StoreLocation addresses.
+    """
+
+    BASE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+
+    @staticmethod
+    def geocode_address(address_components):
+        """
+        Converts an address to latitude/longitude coordinates using Google Geocoding API.
+
+        Args:
+            address_components (dict): Dictionary with keys:
+                - address_line1 (str)
+                - address_line2 (str, optional)
+                - city (str)
+                - state (str)
+                - postal_code (str)
+
+        Returns:
+            dict: {'latitude': float, 'longitude': float} or {'error': str}
+        """
+        api_key = settings.GOOGLE_API_KEY
+
+        if not api_key:
+            logger.warning("Google API Key is not configured in settings.")
+            return {"error": "Google API Key is not configured."}
+
+        # Build full address string
+        address_parts = []
+        if address_components.get('address_line1'):
+            address_parts.append(address_components['address_line1'])
+        if address_components.get('address_line2'):
+            address_parts.append(address_components['address_line2'])
+        if address_components.get('city'):
+            address_parts.append(address_components['city'])
+        if address_components.get('state'):
+            address_parts.append(address_components['state'])
+        if address_components.get('postal_code'):
+            address_parts.append(address_components['postal_code'])
+
+        if not address_parts:
+            logger.warning("No address components provided for geocoding.")
+            return {"error": "No address provided."}
+
+        full_address = ', '.join(address_parts)
+
+        params = {
+            "address": full_address,
+            "key": api_key,
+        }
+
+        try:
+            logger.info(f"Geocoding address: {full_address}")
+            response = requests.get(GeocodingService.BASE_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("status") == "OK":
+                results = data.get("results", [])
+                if results:
+                    location = results[0].get("geometry", {}).get("location", {})
+                    latitude = location.get("lat")
+                    longitude = location.get("lng")
+
+                    if latitude is not None and longitude is not None:
+                        logger.info(f"Successfully geocoded address to: {latitude}, {longitude}")
+                        return {
+                            "latitude": latitude,
+                            "longitude": longitude
+                        }
+
+            error_message = data.get("error_message", f"Geocoding failed with status: {data.get('status')}")
+            logger.error(f"Google Geocoding API error: {error_message}")
+            return {"error": error_message}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HTTP request to Google Geocoding API failed: {e}")
+            return {"error": f"Failed to connect to Google Geocoding API: {e}"}
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while geocoding address: {e}")
+            return {"error": f"An unexpected error occurred: {e}"}
+
+
 class GooglePlacesService:
     """
     A service to interact with the Google Places API, specifically for fetching reviews.

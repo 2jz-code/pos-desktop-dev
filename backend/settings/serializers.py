@@ -178,6 +178,10 @@ class StoreLocationListSerializer(BaseModelSerializer):
             "low_stock_threshold",
             "expiration_threshold",
             "default_inventory_location",
+            # Integrations (needed for maps on customer site)
+            "google_place_id",
+            "latitude",
+            "longitude",
             "stripe_config",
             "business_hours",
         )
