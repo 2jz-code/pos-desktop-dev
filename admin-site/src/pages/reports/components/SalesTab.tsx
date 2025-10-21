@@ -209,7 +209,14 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				groupBy,
 				filters
 			);
-			setData(salesData as SalesData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (salesData && typeof salesData === 'object' && 'is_multi_location' in salesData && salesData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(salesData.consolidated as SalesData);
+			} else {
+				setData(salesData as SalesData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {

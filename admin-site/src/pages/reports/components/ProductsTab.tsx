@@ -143,7 +143,14 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				endDate,
 				filters
 			);
-			setData(productsData as ProductsData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (productsData && typeof productsData === 'object' && 'is_multi_location' in productsData && productsData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(productsData.consolidated as ProductsData);
+			} else {
+				setData(productsData as ProductsData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {

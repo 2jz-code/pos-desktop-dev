@@ -154,7 +154,14 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				endDate,
 				filters
 			);
-			setData(paymentsData as PaymentsData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (paymentsData && typeof paymentsData === 'object' && 'is_multi_location' in paymentsData && paymentsData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(paymentsData.consolidated as PaymentsData);
+			} else {
+				setData(paymentsData as PaymentsData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {

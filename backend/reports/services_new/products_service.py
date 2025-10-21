@@ -17,6 +17,9 @@ from django.db.models.functions import (
 )
 from django.utils import timezone
 
+# Export functionality imports
+from openpyxl.styles import Font, PatternFill, Alignment
+
 from orders.models import Order, OrderItem
 from products.models import Product, Category
 from .base import BaseReportService
@@ -60,8 +63,14 @@ class ProductsReportService(BaseReportService):
                 logger.info(f"Products report served from cache: {cache_key[:8]}...")
                 return cached_data
 
-        logger.info(f"Generating products report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
+        logger.info(f"Generating products report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else " (all locations)"))
         start_time = time.time()
+
+        # Multi-location report generation
+        if location_id is None:
+            return ProductsReportService._generate_multi_location_products_report(
+                tenant, start_date, end_date, category_id, limit, trend_period, use_cache
+            )
 
         # Get base data
         order_items = ProductsReportService._get_base_order_items_queryset(
@@ -139,6 +148,206 @@ class ProductsReportService(BaseReportService):
 
         logger.info(f"Products report generated in {generation_time:.2f}s")
         return products_data
+
+    @staticmethod
+    def _generate_multi_location_products_report(
+        tenant,
+        start_date: datetime,
+        end_date: datetime,
+        category_id: Optional[int] = None,
+        limit: int = 10,
+        trend_period: str = "auto",
+        use_cache: bool = True,
+    ) -> Dict[str, Any]:
+        """Generate products report for all locations with breakdown per location."""
+        from settings.models import StoreLocation
+
+        logger.info(f"Generating multi-location products report for {start_date} to {end_date}")
+
+        # Get all active locations
+        active_locations = StoreLocation.objects.filter(
+            tenant=tenant,
+            is_active=True
+        ).order_by('name')
+
+        # Generate report for each location
+        location_reports = []
+        for location in active_locations:
+            location_report = ProductsReportService.generate_products_report(
+                tenant=tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location.id,
+                category_id=category_id,
+                limit=limit,
+                trend_period=trend_period,
+                use_cache=use_cache
+            )
+            location_reports.append({
+                "location_id": location.id,
+                "location_name": location.name,
+                "report_data": location_report
+            })
+
+        # Calculate consolidated totals
+        consolidated_totals = ProductsReportService._calculate_consolidated_products_totals(location_reports, limit)
+
+        return {
+            "is_multi_location": True,
+            "location_count": len(location_reports),
+            "locations": location_reports,
+            "consolidated": consolidated_totals,
+            "generated_at": timezone.now().isoformat(),
+            "date_range": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "tenant_id": tenant.id,
+            "location_info": {
+                "location_id": None,
+                "location_name": "All Locations",
+                "is_multi_location": True
+            },
+            "filters": {
+                "category_id": category_id,
+                "limit": limit,
+                "trend_period": trend_period,
+            }
+        }
+
+    @staticmethod
+    def _calculate_consolidated_products_totals(location_reports: list, limit: int) -> Dict[str, Any]:
+        """Calculate consolidated product totals across all locations."""
+        from collections import defaultdict
+
+        # Initialize aggregation structures
+        products_revenue_agg = defaultdict(lambda: {'revenue': Decimal('0.00'), 'sold': 0, 'id': None})
+        products_quantity_agg = defaultdict(lambda: {'revenue': Decimal('0.00'), 'sold': 0, 'id': None})
+        category_performance_agg = defaultdict(lambda: {
+            'revenue': Decimal('0.00'),
+            'units_sold': 0,
+            'unique_products': set()
+        })
+        trends_by_product_agg = defaultdict(lambda: defaultdict(int))
+
+        # Summary totals
+        total_revenue = Decimal('0.00')
+        total_units_sold = 0
+        all_products = set()
+
+        # Aggregate across locations
+        for location_data in location_reports:
+            loc_report = location_data.get('report_data', {})
+
+            # Aggregate summary
+            summary = loc_report.get('summary', {})
+            total_revenue += Decimal(str(summary.get('total_revenue', 0)))
+            total_units_sold += summary.get('total_units_sold', 0)
+
+            # Aggregate top products by revenue
+            for product in loc_report.get('top_products', []):
+                name = product['name']
+                products_revenue_agg[name]['revenue'] += Decimal(str(product.get('revenue', 0)))
+                products_revenue_agg[name]['sold'] += product.get('sold', 0)
+                products_revenue_agg[name]['id'] = product.get('id')
+                all_products.add(product.get('id'))
+
+            # Aggregate best sellers by quantity
+            for product in loc_report.get('best_sellers', []):
+                name = product['name']
+                products_quantity_agg[name]['revenue'] += Decimal(str(product.get('revenue', 0)))
+                products_quantity_agg[name]['sold'] += product.get('sold', 0)
+                products_quantity_agg[name]['id'] = product.get('id')
+
+            # Aggregate category performance
+            for category in loc_report.get('category_performance', []):
+                cat_name = category['category']
+                category_performance_agg[cat_name]['revenue'] += Decimal(str(category.get('revenue', 0)))
+                category_performance_agg[cat_name]['units_sold'] += category.get('units_sold', 0)
+                # Track unique products per category (using sets)
+                # Note: We can't easily track unique products across locations without product IDs per category
+
+            # Aggregate product trends
+            for product_name, trends in loc_report.get('product_trends', {}).items():
+                for trend in trends:
+                    date = trend['date']
+                    sold = trend['sold']
+                    trends_by_product_agg[product_name][date] += sold
+
+        # Build top_products list (sorted by revenue, limited)
+        top_products = [
+            {
+                'name': name,
+                'id': data['id'],
+                'total_revenue': float(data['revenue']),
+                'revenue': float(data['revenue']),
+                'total_sold': data['sold'],
+                'sold': data['sold'],
+                'avg_price': float(data['revenue'] / data['sold']) if data['sold'] > 0 else 0
+            }
+            for name, data in sorted(
+                products_revenue_agg.items(),
+                key=lambda x: x[1]['revenue'],
+                reverse=True
+            )[:limit]
+        ]
+
+        # Build best_sellers list (sorted by quantity, limited)
+        best_sellers = [
+            {
+                'name': name,
+                'id': data['id'],
+                'total_sold': data['sold'],
+                'sold': data['sold'],
+                'total_revenue': float(data['revenue']),
+                'revenue': float(data['revenue'])
+            }
+            for name, data in sorted(
+                products_quantity_agg.items(),
+                key=lambda x: x[1]['sold'],
+                reverse=True
+            )[:limit]
+        ]
+
+        # Build category_performance list (sorted by revenue)
+        category_performance = [
+            {
+                'category': category,
+                'revenue': float(data['revenue']),
+                'units_sold': data['units_sold'],
+                'unique_products': len(data['unique_products']) if data['unique_products'] else 0
+            }
+            for category, data in sorted(
+                category_performance_agg.items(),
+                key=lambda x: x[1]['revenue'],
+                reverse=True
+            )
+        ]
+
+        # Build product_trends dict
+        product_trends = {}
+        for product_name, trends in trends_by_product_agg.items():
+            product_trends[product_name] = [
+                {'date': date, 'sold': sold}
+                for date, sold in sorted(trends.items())
+            ]
+
+        # Calculate summary
+        avg_price_per_unit = float(total_revenue / total_units_sold) if total_units_sold > 0 else 0
+
+        return {
+            'top_products': top_products,
+            'best_sellers': best_sellers,
+            'category_performance': category_performance,
+            'product_trends': product_trends,
+            'summary': {
+                'total_products': len(all_products),
+                'unique_products_sold': len(all_products),
+                'total_revenue': float(total_revenue),
+                'total_units_sold': total_units_sold,
+                'avg_price_per_unit': avg_price_per_unit
+            }
+        }
 
     @staticmethod
     def _get_base_order_items_queryset(
@@ -328,27 +537,376 @@ class ProductsReportService(BaseReportService):
     @staticmethod
     def export_products_to_pdf(report_data: Dict[str, Any], story, styles):
         """Export products report to PDF format."""
-        ProductsReportService._export_products_to_pdf(story, report_data, styles)
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            ProductsReportService._export_multi_location_products_to_pdf(story, report_data, styles)
+        else:
+            ProductsReportService._export_products_to_pdf(story, report_data, styles)
 
     @staticmethod
-    def export_products_to_xlsx(report_data: Dict[str, Any], ws, header_font, header_fill, header_alignment):
-        """Export products report to Excel format."""
-        ProductsReportService._export_products_to_xlsx(ws, report_data, header_font, header_fill, header_alignment)
+    def export_products_to_xlsx(report_data: Dict[str, Any], ws_or_wb, header_font, header_fill, header_alignment):
+        """Export products report to Excel format.
+
+        For single-location reports, ws_or_wb is a worksheet.
+        For multi-location reports, ws_or_wb is a workbook.
+        """
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            ProductsReportService._export_multi_location_products_to_xlsx(
+                ws_or_wb, report_data, header_font, header_fill, header_alignment
+            )
+        else:
+            ProductsReportService._export_products_to_xlsx(
+                ws_or_wb, report_data, header_font, header_fill, header_alignment
+            )
 
     @staticmethod
     def export_products_to_csv(report_data: Dict[str, Any]) -> bytes:
         """Export products report to CSV format."""
         import io
         import csv
-        
+
         output = io.StringIO()
         writer = csv.writer(output)
-        
-        ProductsReportService._export_products_to_csv(writer, report_data)
+
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            ProductsReportService._export_multi_location_products_to_csv(writer, report_data)
+        else:
+            ProductsReportService._export_products_to_csv(writer, report_data)
         
         csv_bytes = output.getvalue().encode('utf-8')
         output.close()
         return csv_bytes
+
+    # Multi-Location Export Methods
+    @staticmethod
+    def _export_multi_location_products_to_xlsx(wb, report_data: Dict[str, Any], header_font, header_fill, header_alignment):
+        """Export multi-location products report to Excel with separate sheets."""
+        from openpyxl.styles import Border, Side
+
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        # Create consolidated summary sheet
+        summary_ws = wb.create_sheet(title="Consolidated Summary", index=0)
+
+        # Add consolidated summary header
+        summary_ws.append(["MULTI-LOCATION PRODUCTS REPORT - CONSOLIDATED SUMMARY"])
+        summary_ws['A1'].font = Font(size=14, bold=True)
+
+        date_range = report_data.get('date_range', {})
+        summary_ws.append([f"Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}"])
+        summary_ws.append([f"Locations: {report_data.get('location_count', 0)} active locations"])
+        summary_ws.append([])
+
+        # Consolidated metrics
+        consolidated = report_data.get('consolidated', {})
+        summary = consolidated.get('summary', {})
+
+        summary_ws.append(["OVERALL METRICS"])
+        summary_ws['A5'].font = header_font
+        summary_ws.append(["Total Revenue", f"${summary.get('total_revenue', 0):,.2f}"])
+        summary_ws.append(["Total Units Sold", f"{summary.get('total_units_sold', 0):,}"])
+        summary_ws.append(["Unique Products Sold", f"{summary.get('unique_products_sold', 0):,}"])
+        summary_ws.append(["Avg Price Per Unit", f"${summary.get('avg_price_per_unit', 0):,.2f}"])
+        summary_ws.append([])
+
+        # Top products consolidated
+        summary_ws.append(["TOP PRODUCTS BY REVENUE (CONSOLIDATED)"])
+        row = summary_ws.max_row
+        summary_ws[f'A{row}'].font = header_font
+
+        # Headers
+        headers = ["Rank", "Product", "Total Revenue", "Units Sold", "Avg Price"]
+        summary_ws.append(headers)
+        for col, _ in enumerate(headers, 1):
+            cell = summary_ws.cell(row=summary_ws.max_row, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+
+        # Data rows
+        for rank, product in enumerate(consolidated.get('top_products', []), 1):
+            summary_ws.append([
+                rank,
+                product.get('name', ''),
+                product.get('revenue', 0),
+                product.get('sold', 0),
+                product.get('avg_price', 0),
+            ])
+            for col in range(1, 6):
+                summary_ws.cell(row=summary_ws.max_row, column=col).border = thin_border
+
+        summary_ws.append([])
+
+        # Location comparison table
+        summary_ws.append(["LOCATION COMPARISON"])
+        row = summary_ws.max_row
+        summary_ws[f'A{row}'].font = header_font
+
+        comparison_headers = ["Location", "Total Revenue", "Units Sold", "Unique Products", "Avg Price/Unit"]
+        summary_ws.append(comparison_headers)
+        for col, _ in enumerate(comparison_headers, 1):
+            cell = summary_ws.cell(row=summary_ws.max_row, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+
+        # Location comparison rows
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_summary = location_data.get('report_data', {}).get('summary', {})
+
+            summary_ws.append([
+                location_name,
+                loc_summary.get('total_revenue', 0),
+                loc_summary.get('total_units_sold', 0),
+                loc_summary.get('unique_products_sold', 0),
+                loc_summary.get('avg_price_per_unit', 0),
+            ])
+            for col in range(1, 6):
+                summary_ws.cell(row=summary_ws.max_row, column=col).border = thin_border
+
+        # Auto-size columns
+        for col in summary_ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if cell.value and len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            summary_ws.column_dimensions[column].width = adjusted_width
+
+        # Create individual location sheets
+        for i, location_data in enumerate(locations, 1):
+            location_name = location_data.get('location_name', f'Location {i}')
+            loc_report = location_data.get('report_data', {})
+
+            # Create sheet for this location
+            safe_sheet_name = location_name[:31]  # Excel sheet name limit
+            loc_ws = wb.create_sheet(title=safe_sheet_name)
+
+            # Export individual location data using the single-location method
+            ProductsReportService._export_products_to_xlsx(
+                loc_ws, loc_report, header_font, header_fill, header_alignment
+            )
+
+    @staticmethod
+    def _export_multi_location_products_to_csv(writer, report_data: Dict[str, Any]):
+        """Export multi-location products report to CSV with sectioned format."""
+
+        # Header
+        writer.writerow(["MULTI-LOCATION PRODUCTS REPORT - CONSOLIDATED"])
+        date_range = report_data.get('date_range', {})
+        writer.writerow([f"Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}"])
+        writer.writerow([f"Locations: {report_data.get('location_count', 0)} active locations"])
+        writer.writerow([])
+
+        # Consolidated summary
+        consolidated = report_data.get('consolidated', {})
+        summary = consolidated.get('summary', {})
+
+        writer.writerow(["OVERALL METRICS"])
+        writer.writerow(["Metric", "Value"])
+        writer.writerow(["Total Revenue", f"${summary.get('total_revenue', 0):,.2f}"])
+        writer.writerow(["Total Units Sold", f"{summary.get('total_units_sold', 0):,}"])
+        writer.writerow(["Unique Products Sold", f"{summary.get('unique_products_sold', 0):,}"])
+        writer.writerow(["Avg Price Per Unit", f"${summary.get('avg_price_per_unit', 0):,.2f}"])
+        writer.writerow([])
+
+        # Top products consolidated
+        writer.writerow(["TOP PRODUCTS BY REVENUE (CONSOLIDATED)"])
+        writer.writerow(["Rank", "Product", "Total Revenue", "Units Sold", "Avg Price"])
+        for rank, product in enumerate(consolidated.get('top_products', []), 1):
+            writer.writerow([
+                rank,
+                product.get('name', ''),
+                f"${product.get('revenue', 0):,.2f}",
+                f"{product.get('sold', 0):,}",
+                f"${product.get('avg_price', 0):,.2f}",
+            ])
+        writer.writerow([])
+
+        # Location comparison
+        writer.writerow(["LOCATION COMPARISON"])
+        writer.writerow(["Location", "Total Revenue", "Units Sold", "Unique Products", "Avg Price/Unit"])
+
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_summary = location_data.get('report_data', {}).get('summary', {})
+
+            writer.writerow([
+                location_name,
+                f"${loc_summary.get('total_revenue', 0):,.2f}",
+                f"{loc_summary.get('total_units_sold', 0):,}",
+                f"{loc_summary.get('unique_products_sold', 0):,}",
+                f"${loc_summary.get('avg_price_per_unit', 0):,.2f}",
+            ])
+
+        writer.writerow([])
+        writer.writerow([])
+
+        # Individual location details
+        writer.writerow(["=" * 100])
+        writer.writerow(["=== DETAILED BREAKDOWN BY LOCATION ==="])
+        writer.writerow(["=" * 100])
+        writer.writerow([])
+
+        for i, location_data in enumerate(locations, 1):
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+
+            writer.writerow(["=" * 100])
+            writer.writerow([f"LOCATION {i}: {location_name}"])
+            writer.writerow(["=" * 100])
+            writer.writerow([])
+
+            # Export this location's data using single-location method
+            ProductsReportService._export_products_to_csv(writer, loc_report)
+
+            writer.writerow([])
+            writer.writerow([])
+
+    @staticmethod
+    def _export_multi_location_products_to_pdf(story, report_data: Dict[str, Any], styles):
+        """Export multi-location products report to PDF with multi-page format."""
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, PageBreak
+
+        # Title page / Executive summary
+        story.append(Paragraph("Multi-Location Products Report", styles["Title"]))
+        story.append(Spacer(1, 12))
+
+        date_range = report_data.get('date_range', {})
+        story.append(Paragraph(
+            f"Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}",
+            styles["Normal"]
+        ))
+        story.append(Paragraph(
+            f"Locations: {report_data.get('location_count', 0)} active locations",
+            styles["Normal"]
+        ))
+        story.append(Spacer(1, 24))
+
+        # Consolidated metrics
+        consolidated = report_data.get('consolidated', {})
+        summary = consolidated.get('summary', {})
+
+        story.append(Paragraph("Overall Metrics", styles["Heading1"]))
+        story.append(Spacer(1, 12))
+
+        metrics_data = [
+            ["Metric", "Value"],
+            ["Total Revenue", f"${summary.get('total_revenue', 0):,.2f}"],
+            ["Total Units Sold", f"{summary.get('total_units_sold', 0):,}"],
+            ["Unique Products Sold", f"{summary.get('unique_products_sold', 0):,}"],
+            ["Avg Price Per Unit", f"${summary.get('avg_price_per_unit', 0):,.2f}"],
+        ]
+
+        metrics_table = Table(metrics_data, colWidths=[3*inch, 2*inch])
+        metrics_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 12),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        story.append(metrics_table)
+        story.append(Spacer(1, 24))
+
+        # Top products consolidated
+        story.append(Paragraph("Top Products by Revenue (Consolidated)", styles["Heading2"]))
+        story.append(Spacer(1, 12))
+
+        top_products_data = [["Rank", "Product", "Revenue", "Units Sold", "Avg Price"]]
+        for rank, product in enumerate(consolidated.get('top_products', []), 1):
+            top_products_data.append([
+                str(rank),
+                product.get('name', '')[:30],
+                f"${product.get('revenue', 0):,.2f}",
+                f"{product.get('sold', 0):,}",
+                f"${product.get('avg_price', 0):,.2f}",
+            ])
+
+        top_products_table = Table(top_products_data, colWidths=[0.5*inch, 2.5*inch, 1.2*inch, 1*inch, 1*inch])
+        top_products_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        story.append(top_products_table)
+        story.append(Spacer(1, 24))
+
+        # Location comparison
+        story.append(Paragraph("Location Comparison", styles["Heading2"]))
+        story.append(Spacer(1, 12))
+
+        comparison_data = [["Location", "Revenue", "Units Sold", "Unique Products", "Avg Price/Unit"]]
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_summary = location_data.get('report_data', {}).get('summary', {})
+
+            comparison_data.append([
+                location_name,
+                f"${loc_summary.get('total_revenue', 0):,.2f}",
+                f"{loc_summary.get('total_units_sold', 0):,}",
+                f"{loc_summary.get('unique_products_sold', 0):,}",
+                f"${loc_summary.get('avg_price_per_unit', 0):,.2f}",
+            ])
+
+        comparison_table = Table(comparison_data, colWidths=[2*inch, 1.3*inch, 1*inch, 1.2*inch, 1.2*inch])
+        comparison_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        story.append(comparison_table)
+        story.append(PageBreak())
+
+        # Individual location pages
+        for i, location_data in enumerate(locations):
+            location_name = location_data.get('location_name', f'Location {i+1}')
+            loc_report = location_data.get('report_data', {})
+
+            story.append(Paragraph(f"Location: {location_name}", styles["Heading1"]))
+            story.append(Spacer(1, 12))
+
+            # Export individual location data using the single-location method
+            ProductsReportService._export_products_to_pdf(story, loc_report, styles)
+
+            # Add page break between locations (except for the last one)
+            if i < len(locations) - 1:
+                story.append(PageBreak())
 
     @staticmethod
     def _get_all_products_for_export(start_date, end_date, category_id=None, tenant_id=None, location_id=None):

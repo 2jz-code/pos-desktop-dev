@@ -59,6 +59,12 @@ class PaymentsReportService(BaseReportService):
         logger.info(f"Generating payments report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
+        # Multi-location report generation
+        if location_id is None:
+            return PaymentsReportService._generate_multi_location_payments_report(
+                tenant, start_date, end_date, use_cache
+            )
+
         # Get base transaction querysets
         transaction_querysets = PaymentsReportService._get_transaction_querysets(tenant, start_date, end_date, location_id)
 
@@ -507,6 +513,248 @@ class PaymentsReportService(BaseReportService):
         
         return transaction_data
 
+    @staticmethod
+    def _generate_multi_location_payments_report(
+        tenant, start_date: datetime, end_date: datetime, use_cache: bool = True
+    ) -> Dict[str, Any]:
+        """Generate payments report for all locations with breakdown per location."""
+        from settings.models import StoreLocation
+
+        logger.info(f"Generating multi-location payments report for {start_date} to {end_date}")
+
+        # Get all active locations
+        active_locations = StoreLocation.objects.filter(
+            tenant=tenant,
+            is_active=True
+        ).order_by('name')
+
+        # Generate report for each location
+        location_reports = []
+        for location in active_locations:
+            location_report = PaymentsReportService.generate_payments_report(
+                tenant=tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location.id,
+                use_cache=use_cache
+            )
+            location_reports.append({
+                "location_id": location.id,
+                "location_name": location.name,
+                "report_data": location_report
+            })
+
+        # Calculate consolidated totals
+        consolidated_totals = PaymentsReportService._calculate_consolidated_payments_totals(location_reports)
+
+        return {
+            "is_multi_location": True,
+            "location_count": len(location_reports),
+            "locations": location_reports,
+            "consolidated": consolidated_totals,
+            "generated_at": timezone.now().isoformat(),
+            "date_range": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "tenant_id": tenant.id,
+        }
+
+    @staticmethod
+    def _calculate_consolidated_payments_totals(location_reports: list) -> Dict[str, Any]:
+        """Calculate consolidated payment totals across all locations."""
+        from decimal import Decimal
+        from collections import defaultdict
+
+        # Initialize aggregation structures
+        payment_methods_agg = defaultdict(lambda: {
+            'amount': Decimal('0.00'),
+            'count': 0,
+            'tips_total': Decimal('0.00'),
+            'surcharges_total': Decimal('0.00'),
+            'processing_fees': Decimal('0.00'),
+            'refunded_amount': Decimal('0.00'),
+            'refunded_count': 0,
+            'base_amount': Decimal('0.00'),
+        })
+
+        daily_volume_agg = defaultdict(lambda: {'amount': Decimal('0.00'), 'count': 0})
+        daily_breakdown_agg = defaultdict(lambda: defaultdict(Decimal))
+
+        # Totals for summary
+        total_successful_amount = Decimal("0.00")
+        total_refunded_amount = Decimal("0.00")
+        total_failed_amount = Decimal("0.00")
+        total_canceled_amount = Decimal("0.00")
+        successful_count = 0
+        refunded_count = 0
+        failed_count = 0
+        canceled_count = 0
+
+        total_attempted = Decimal("0.00")
+        total_processed = Decimal("0.00")
+        total_collected = Decimal("0.00")
+        processing_issues = Decimal("0.00")
+
+        order_grand_total = Decimal("0.00")
+        order_count = 0
+        payment_transaction_total = Decimal("0.00")
+
+        # Aggregate across locations
+        for location_data in location_reports:
+            loc_report = location_data.get('report_data', {})
+            summary = loc_report.get('summary', {})
+            breakdown = summary.get('breakdown', {})
+
+            # Aggregate breakdown
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+            canceled = breakdown.get('canceled', {})
+
+            total_successful_amount += Decimal(str(successful.get('amount', 0)))
+            total_refunded_amount += Decimal(str(refunded.get('amount', 0)))
+            total_failed_amount += Decimal(str(failed.get('amount', 0)))
+            total_canceled_amount += Decimal(str(canceled.get('amount', 0)))
+            successful_count += successful.get('count', 0)
+            refunded_count += refunded.get('count', 0)
+            failed_count += failed.get('count', 0)
+            canceled_count += canceled.get('count', 0)
+
+            # Aggregate summary totals
+            total_attempted += Decimal(str(summary.get('total_attempted', 0)))
+            total_processed += Decimal(str(summary.get('total_processed', 0)))
+            total_collected += Decimal(str(summary.get('total_collected', 0)))
+            processing_issues += Decimal(str(summary.get('processing_issues', 0)))
+
+            # Aggregate payment methods
+            for method in loc_report.get('payment_methods', []):
+                method_name = method['method']
+                payment_methods_agg[method_name]['amount'] += Decimal(str(method.get('amount', 0)))
+                payment_methods_agg[method_name]['count'] += method.get('count', 0)
+                payment_methods_agg[method_name]['tips_total'] += Decimal(str(method.get('tips_total', 0)))
+                payment_methods_agg[method_name]['surcharges_total'] += Decimal(str(method.get('surcharges_total', 0)))
+                payment_methods_agg[method_name]['processing_fees'] += Decimal(str(method.get('processing_fees', 0)))
+                payment_methods_agg[method_name]['refunded_amount'] += Decimal(str(method.get('refunded_amount', 0)))
+                payment_methods_agg[method_name]['refunded_count'] += method.get('refunded_count', 0)
+                payment_methods_agg[method_name]['base_amount'] += Decimal(str(method.get('base_amount', 0)))
+
+            # Aggregate daily volume
+            for daily in loc_report.get('daily_volume', []):
+                date = daily['date']
+                daily_volume_agg[date]['amount'] += Decimal(str(daily.get('amount', 0)))
+                daily_volume_agg[date]['count'] += daily.get('count', 0)
+
+            # Aggregate daily breakdown
+            for daily in loc_report.get('daily_breakdown', []):
+                date = daily['date']
+                for key, value in daily.items():
+                    if key != 'date':
+                        daily_breakdown_agg[date][key] += Decimal(str(value))
+
+            # Aggregate order totals comparison
+            comparison = loc_report.get('order_totals_comparison', {})
+            order_grand_total += Decimal(str(comparison.get('order_grand_total', 0)))
+            order_count += comparison.get('order_count', 0)
+            payment_transaction_total += Decimal(str(comparison.get('payment_transaction_total', 0)))
+
+        # Build payment methods list
+        payment_methods = []
+        total_payment_amount = float(total_successful_amount)
+
+        for method, data in payment_methods_agg.items():
+            amount = float(data['amount'])
+            count = data['count']
+            payment_methods.append({
+                'method': method,
+                'amount': amount,
+                'count': count,
+                'avg_amount': amount / count if count > 0 else 0,
+                'processing_fees': float(data['processing_fees']),
+                'percentage': (amount / total_payment_amount * 100) if total_payment_amount > 0 else 0,
+                'trend': 0,  # Not calculated for multi-location
+                'refunded_amount': float(data['refunded_amount']),
+                'refunded_count': data['refunded_count'],
+                'total_processed': amount,
+                'net_amount': amount,
+                'tips_total': float(data['tips_total']),
+                'base_amount': float(data['base_amount']),
+                'surcharges_total': float(data['surcharges_total']),
+            })
+
+        # Build daily volume list
+        daily_volume = [
+            {
+                'date': date,
+                'amount': float(data['amount']),
+                'count': data['count']
+            }
+            for date, data in sorted(daily_volume_agg.items())
+        ]
+
+        # Build daily breakdown list
+        daily_breakdown = [
+            {
+                'date': date,
+                **{k: float(v) for k, v in data.items()}
+            }
+            for date, data in sorted(daily_breakdown_agg.items())
+        ]
+
+        # Calculate total transactions
+        total_transactions = successful_count + refunded_count + failed_count + canceled_count
+
+        # Build the complete consolidated structure matching the single-location format
+        return {
+            'payment_methods': payment_methods,
+            'daily_volume': daily_volume,
+            'daily_breakdown': daily_breakdown,
+            'processing_stats': {
+                'total_attempts': total_transactions,
+                'successful': successful_count,
+                'failed': failed_count,
+                'refunded': refunded_count,
+                'success_rate': (successful_count / total_transactions * 100) if total_transactions > 0 else 0,
+            },
+            'order_totals_comparison': {
+                'order_grand_total': float(order_grand_total),
+                'order_count': order_count,
+                'payment_transaction_total': float(payment_transaction_total),
+                'difference': float(order_grand_total - payment_transaction_total),
+            },
+            'summary': {
+                'breakdown': {
+                    'successful': {
+                        'amount': float(total_successful_amount),
+                        'count': successful_count,
+                    },
+                    'refunded': {
+                        'amount': float(total_refunded_amount),
+                        'count': refunded_count,
+                    },
+                    'failed': {
+                        'amount': float(total_failed_amount),
+                        'count': failed_count,
+                    },
+                    'canceled': {
+                        'amount': float(total_canceled_amount),
+                        'count': canceled_count,
+                    },
+                },
+                'total_attempted': float(total_attempted),
+                'successfully_processed': float(total_processed),
+                'processing_issues': float(processing_issues),
+                'processing_success_rate': (successful_count / total_transactions * 100) if total_transactions > 0 else 0,
+                'processing_issues_rate': (failed_count / total_transactions * 100) if total_transactions > 0 else 0,
+                'total_processed': float(total_processed),
+                'total_transactions': total_transactions,
+                'total_refunds': float(total_refunded_amount),
+                'total_refunded_transactions': refunded_count,
+                'net_revenue': float(total_successful_amount - total_refunded_amount),
+                'total_collected': float(total_collected),
+            }
+        }
+
     # Export Methods
 
     @staticmethod
@@ -514,9 +762,13 @@ class PaymentsReportService(BaseReportService):
         """Export payments report to CSV format."""
         output = io.StringIO()
         writer = csv.writer(output)
-        
-        PaymentsReportService._export_payments_to_csv(writer, report_data)
-        
+
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            PaymentsReportService._export_multi_location_payments_to_csv(writer, report_data)
+        else:
+            PaymentsReportService._export_payments_to_csv(writer, report_data)
+
         csv_bytes = output.getvalue().encode('utf-8')
         output.close()
         return csv_bytes
@@ -626,9 +878,160 @@ class PaymentsReportService(BaseReportService):
         writer.writerow([f"Total Transactions Exported: {len(transaction_data)}"])
 
     @staticmethod
+    def _export_multi_location_payments_to_csv(writer, report_data: Dict[str, Any]):
+        """Export multi-location payments report to CSV with consolidated and per-location sections."""
+        from django.utils import timezone
+        from datetime import datetime
+
+        # Header
+        writer.writerow(["Payments Report - All Locations"])
+        writer.writerow(["Generated:", report_data.get("generated_at", timezone.now().isoformat())])
+
+        # Date range
+        date_range = report_data.get("date_range", {})
+        start_str = date_range.get("start", "")
+        end_str = date_range.get("end", "")
+
+        try:
+            start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00')).date()
+            end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00')).date()
+            writer.writerow([f"Date Range: {start_date} to {end_date}"])
+        except:
+            writer.writerow([f"Date Range: {start_str} to {end_str}"])
+
+        # Location count
+        location_count = report_data.get('location_count', 0)
+        writer.writerow([f"Locations Included: {location_count}"])
+        writer.writerow([])
+
+        # === CONSOLIDATED PAYMENT SUMMARY ===
+        consolidated = report_data.get('consolidated', {})
+
+        writer.writerow(["=== CONSOLIDATED PAYMENT SUMMARY (ALL LOCATIONS) ==="])
+        writer.writerow(["Metric", "Total Value"])
+        writer.writerow(["Total Successful Payments", f"${consolidated.get('total_successful_amount', 0):,.2f}"])
+        writer.writerow(["Total Refunded", f"${consolidated.get('total_refunded_amount', 0):,.2f}"])
+        writer.writerow(["Net Payment Amount", f"${consolidated.get('net_payment_amount', 0):,.2f}"])
+        writer.writerow(["Total Tips", f"${consolidated.get('total_tips', 0):,.2f}"])
+        writer.writerow(["Total Surcharges", f"${consolidated.get('total_surcharges', 0):,.2f}"])
+        writer.writerow([])
+        writer.writerow(["Successful Transactions", f"{consolidated.get('successful_count', 0):,}"])
+        writer.writerow(["Refunded Transactions", f"{consolidated.get('refunded_count', 0):,}"])
+        writer.writerow(["Failed Transactions", f"{consolidated.get('failed_count', 0):,}"])
+        writer.writerow(["Total Transactions", f"{consolidated.get('total_transactions', 0):,}"])
+        writer.writerow(["Average Transaction", f"${consolidated.get('avg_transaction_amount', 0):,.2f}"])
+        writer.writerow([])
+
+        # === LOCATION COMPARISON TABLE ===
+        writer.writerow(["=== LOCATION COMPARISON ==="])
+        writer.writerow(["Location", "Successful", "Refunded", "Net Amount", "Tips", "Transactions", "Avg Txn", "Failed"])
+
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+            loc_summary = loc_report.get('summary', {})
+            breakdown = loc_summary.get('breakdown', {})
+
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+
+            successful_amount = successful.get('amount', 0)
+            successful_count = successful.get('count', 0)
+            refunded_amount = refunded.get('amount', 0)
+            failed_count = failed.get('count', 0)
+            net_revenue = loc_summary.get('net_revenue', 0)
+
+            avg_txn = successful_amount / successful_count if successful_count > 0 else 0
+
+            writer.writerow([
+                location_name,
+                f"${successful_amount:,.2f}",
+                f"${refunded_amount:,.2f}",
+                f"${net_revenue:,.2f}",
+                f"$0.00",  # Tips (included in successful_amount)
+                f"{successful_count:,}",
+                f"${avg_txn:,.2f}",
+                f"{failed_count:,}",
+            ])
+
+        writer.writerow([])
+        writer.writerow([])
+
+        # === INDIVIDUAL LOCATION DETAILS ===
+        writer.writerow(["=" * 100])
+        writer.writerow(["=== DETAILED BREAKDOWN BY LOCATION ==="])
+        writer.writerow(["=" * 100])
+        writer.writerow([])
+
+        for i, location_data in enumerate(locations, 1):
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+
+            # Location separator
+            writer.writerow(["=" * 100])
+            writer.writerow([f"LOCATION {i}: {location_name}"])
+            writer.writerow(["=" * 100])
+            writer.writerow([])
+
+            # Export this location's summary data (without full transaction details for brevity)
+            loc_summary = loc_report.get('summary', {})
+            breakdown = loc_summary.get('breakdown', {})
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+
+            successful_amount = successful.get('amount', 0)
+            successful_count = successful.get('count', 0)
+            refunded_amount = refunded.get('amount', 0)
+            refunded_count = refunded.get('count', 0)
+            failed_count = failed.get('count', 0)
+            net_revenue = loc_summary.get('net_revenue', 0)
+            total_collected = loc_summary.get('total_collected', 0)
+
+            # Calculate average
+            avg_txn = successful_amount / successful_count if successful_count > 0 else 0
+
+            writer.writerow(["PAYMENT SUMMARY"])
+            writer.writerow(["Metric", "Value"])
+            writer.writerow(["Total Successful Payments", f"${successful_amount:,.2f}"])
+            writer.writerow(["Total Refunded", f"${refunded_amount:,.2f}"])
+            writer.writerow(["Net Payment Amount", f"${net_revenue:,.2f}"])
+            writer.writerow(["Total Collected", f"${total_collected:,.2f}"])
+            writer.writerow([])
+            writer.writerow(["Successful Transactions", f"{successful_count:,}"])
+            writer.writerow(["Refunded Transactions", f"{refunded_count:,}"])
+            writer.writerow(["Failed Transactions", f"{failed_count:,}"])
+            writer.writerow(["Average Transaction", f"${avg_txn:,.2f}"])
+            writer.writerow([])
+
+            # Payment methods breakdown
+            payment_methods = loc_report.get('payment_methods', [])
+            if payment_methods:
+                writer.writerow(["PAYMENT METHODS BREAKDOWN"])
+                writer.writerow(["Method", "Count", "Amount", "Percentage"])
+                for method in payment_methods:
+                    writer.writerow([
+                        method.get('method', 'Unknown'),
+                        f"{method.get('count', 0):,}",
+                        f"${method.get('amount', 0):,.2f}",
+                        f"{method.get('percentage', 0):.1f}%"
+                    ])
+                writer.writerow([])
+
+            writer.writerow([])
+
+    @staticmethod
     def export_payments_to_xlsx(report_data: Dict[str, Any], ws, header_font, header_fill, header_alignment):
         """Export payments report to Excel format."""
-        PaymentsReportService._export_payments_to_xlsx(ws, report_data, header_font, header_fill, header_alignment)
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            # For multi-location reports, ws is actually the workbook
+            PaymentsReportService._export_multi_location_payments_to_xlsx(ws, report_data, header_font, header_fill, header_alignment)
+        else:
+            # Single location report - ws is a worksheet
+            PaymentsReportService._export_payments_to_xlsx(ws, report_data, header_font, header_fill, header_alignment)
 
     @staticmethod
     def _export_payments_to_xlsx(ws, report_data: Dict[str, Any], header_font, header_fill, header_alignment):
@@ -864,9 +1267,217 @@ class PaymentsReportService(BaseReportService):
             pass
 
     @staticmethod
+    def _export_multi_location_payments_to_xlsx(wb, report_data: Dict[str, Any], header_font, header_fill, header_alignment):
+        """Export multi-location payments report to Excel with multiple sheets."""
+        from openpyxl.styles import Border, Side, Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        from django.utils import timezone
+
+        # Define styles
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        section_header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        section_header_font = Font(bold=True, color="FFFFFF", size=12)
+        subsection_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+        subsection_font = Font(bold=True, size=11)
+        currency_format = '"$"#,##0.00'
+        number_format = '#,##0'
+
+        # Sheet 1: Summary - All Locations
+        summary_ws = wb.active
+        summary_ws.title = "Summary - All Locations"
+
+        row = 1
+
+        # Title
+        summary_ws.merge_cells(f"A{row}:F{row}")
+        summary_ws[f"A{row}"] = "Payments Report - All Locations Summary"
+        summary_ws[f"A{row}"].font = Font(bold=True, size=16)
+        summary_ws[f"A{row}"].alignment = Alignment(horizontal="center", vertical="center")
+        row += 1
+
+        # Generated date and range
+        generated_at = report_data.get('generated_at', timezone.now().isoformat())
+        summary_ws.merge_cells(f"A{row}:F{row}")
+        summary_ws[f"A{row}"] = f"Generated: {generated_at}"
+        summary_ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        row += 1
+
+        date_range = report_data.get("date_range", {})
+        start_str = date_range.get("start", "")
+        end_str = date_range.get("end", "")
+
+        from datetime import datetime
+        try:
+            start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00')).date()
+            end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00')).date()
+            summary_ws.merge_cells(f"A{row}:F{row}")
+            summary_ws[f"A{row}"] = f"Date Range: {start_date} to {end_date}"
+            summary_ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        except:
+            summary_ws.merge_cells(f"A{row}:F{row}")
+            summary_ws[f"A{row}"] = f"Date Range: {start_str} to {end_str}"
+            summary_ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        row += 1
+
+        # Location count
+        location_count = report_data.get('location_count', 0)
+        summary_ws.merge_cells(f"A{row}:F{row}")
+        summary_ws[f"A{row}"] = f"Locations Included: {location_count}"
+        summary_ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        summary_ws[f"A{row}"].font = Font(bold=True)
+        row += 2
+
+        # === CONSOLIDATED PAYMENT SUMMARY ===
+        consolidated = report_data.get('consolidated', {})
+
+        summary_ws.merge_cells(f"A{row}:B{row}")
+        summary_ws[f"A{row}"] = "CONSOLIDATED PAYMENT SUMMARY"
+        summary_ws[f"A{row}"].font = section_header_font
+        summary_ws[f"A{row}"].fill = section_header_fill
+        summary_ws[f"A{row}"].alignment = Alignment(horizontal="center", vertical="center")
+        row += 1
+
+        # Headers
+        summary_ws[f"A{row}"] = "Metric"
+        summary_ws[f"B{row}"] = "Total Value"
+        summary_ws[f"A{row}"].font = subsection_font
+        summary_ws[f"B{row}"].font = subsection_font
+        summary_ws[f"A{row}"].fill = subsection_fill
+        summary_ws[f"B{row}"].fill = subsection_fill
+        row += 1
+
+        # Consolidated metrics
+        consolidated_metrics = [
+            ("Total Successful Payments", consolidated.get('total_successful_amount', 0), currency_format),
+            ("Total Refunded", consolidated.get('total_refunded_amount', 0), currency_format),
+            ("Net Payment Amount", consolidated.get('net_payment_amount', 0), currency_format),
+            ("Total Tips", consolidated.get('total_tips', 0), currency_format),
+            ("Total Surcharges", consolidated.get('total_surcharges', 0), currency_format),
+            ("", "", ""),  # Empty row
+            ("Successful Transactions", consolidated.get('successful_count', 0), number_format),
+            ("Refunded Transactions", consolidated.get('refunded_count', 0), number_format),
+            ("Failed Transactions", consolidated.get('failed_count', 0), number_format),
+            ("Total Transactions", consolidated.get('total_transactions', 0), number_format),
+            ("Average Transaction", consolidated.get('avg_transaction_amount', 0), currency_format),
+        ]
+
+        for metric, value, fmt in consolidated_metrics:
+            summary_ws[f"A{row}"] = metric
+            summary_ws[f"B{row}"] = value if value != "" else ""
+            if fmt and value != "":
+                summary_ws[f"B{row}"].number_format = fmt
+            summary_ws[f"A{row}"].border = thin_border
+            summary_ws[f"B{row}"].border = thin_border
+            row += 1
+
+        row += 2
+
+        # === LOCATION COMPARISON TABLE ===
+        summary_ws.merge_cells(f"A{row}:H{row}")
+        summary_ws[f"A{row}"] = "LOCATION COMPARISON"
+        summary_ws[f"A{row}"].font = section_header_font
+        summary_ws[f"A{row}"].fill = section_header_fill
+        summary_ws[f"A{row}"].alignment = Alignment(horizontal="center", vertical="center")
+        row += 1
+
+        # Comparison headers
+        comparison_headers = ["Location", "Successful", "Refunded", "Net Amount", "Tips", "Txns", "Avg Txn", "Failed"]
+        for col, header in enumerate(comparison_headers, 1):
+            cell = summary_ws.cell(row=row, column=col, value=header)
+            cell.font = subsection_font
+            cell.fill = subsection_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        row += 1
+
+        # Location comparison rows
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+            loc_summary = loc_report.get('summary', {})
+            breakdown = loc_summary.get('breakdown', {})
+
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+
+            successful_amount = successful.get('amount', 0)
+            successful_count = successful.get('count', 0)
+            refunded_amount = refunded.get('amount', 0)
+            failed_count = failed.get('count', 0)
+            net_revenue = loc_summary.get('net_revenue', 0)
+
+            avg_txn = successful_amount / successful_count if successful_count > 0 else 0
+
+            comparison_data = [
+                location_name,
+                successful_amount,
+                refunded_amount,
+                net_revenue,
+                0,  # Tips (included in successful_amount)
+                successful_count,
+                avg_txn,
+                failed_count,
+            ]
+
+            for col, value in enumerate(comparison_data, 1):
+                cell = summary_ws.cell(row=row, column=col, value=value)
+                cell.border = thin_border
+
+                # Apply number formats
+                if col == 1:  # Location name
+                    cell.alignment = Alignment(horizontal="left")
+                elif col in [2, 3, 4, 5, 7]:  # Currency columns
+                    cell.number_format = currency_format
+                elif col in [6, 8]:  # Number columns
+                    cell.number_format = number_format
+
+            row += 1
+
+        # Auto-adjust column widths for summary sheet
+        for column in summary_ws.columns:
+            max_length = 0
+            column_letter = get_column_letter(column[0].column)
+
+            for cell in column:
+                try:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                except:
+                    pass
+
+            adjusted_width = min(max_length + 2, 50)
+            summary_ws.column_dimensions[column_letter].width = adjusted_width
+
+        # === CREATE INDIVIDUAL LOCATION SHEETS ===
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+
+            # Create a new sheet for this location
+            # Sanitize sheet name (Excel sheet names have restrictions)
+            safe_sheet_name = location_name[:31]  # Excel sheet name max length is 31
+            # Remove invalid characters
+            for char in ['\\', '/', '*', '?', ':', '[', ']']:
+                safe_sheet_name = safe_sheet_name.replace(char, '')
+
+            location_ws = wb.create_sheet(title=safe_sheet_name)
+
+            # Export this location's data using the existing single-location export logic
+            PaymentsReportService._export_payments_to_xlsx(location_ws, loc_report, header_font, header_fill, header_alignment)
+
+    @staticmethod
     def export_payments_to_pdf(report_data: Dict[str, Any], story, styles):
         """Export payments report to PDF format."""
-        PaymentsReportService._export_payments_to_pdf(story, report_data, styles)
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            PaymentsReportService._export_multi_location_payments_to_pdf(story, report_data, styles)
+        else:
+            PaymentsReportService._export_payments_to_pdf(story, report_data, styles)
 
     @staticmethod
     def _export_payments_to_pdf(story, report_data: Dict[str, Any], styles):
@@ -1040,5 +1651,244 @@ class PaymentsReportService(BaseReportService):
             ))
         else:
             story.append(Paragraph("No transaction data available for this period.", styles["Normal"]))
-        
+
         story.append(Spacer(1, 20))
+
+    @staticmethod
+    def _export_multi_location_payments_to_pdf(story, report_data: Dict[str, Any], styles):
+        """Export multi-location payments report to PDF with multiple pages."""
+        from django.utils import timezone
+        from datetime import datetime
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+
+        # === EXECUTIVE SUMMARY PAGE ===
+        story.append(Paragraph("Payments Report - All Locations", styles["Title"]))
+        story.append(Paragraph("Executive Summary", styles["Heading1"]))
+        story.append(Spacer(1, 12))
+
+        # Generated date and range
+        generated_at = report_data.get('generated_at', timezone.now().isoformat())
+        story.append(Paragraph(f"Generated: {generated_at}", styles["Normal"]))
+
+        date_range = report_data.get("date_range", {})
+        start_str = date_range.get("start", "")
+        end_str = date_range.get("end", "")
+
+        try:
+            start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00')).date()
+            end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00')).date()
+            story.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
+        except:
+            story.append(Paragraph(f"Date Range: {start_str} to {end_str}", styles["Normal"]))
+
+        # Location count
+        location_count = report_data.get('location_count', 0)
+        story.append(Paragraph(f"<b>Locations Included: {location_count}</b>", styles["Normal"]))
+        story.append(Spacer(1, 20))
+
+        # === CONSOLIDATED PAYMENT SUMMARY ===
+        consolidated = report_data.get('consolidated', {})
+
+        story.append(Paragraph("Consolidated Payment Summary (All Locations)", styles["Heading2"]))
+        story.append(Spacer(1, 12))
+
+        consolidated_summary_data = [
+            ["Metric", "Total Value"],
+            ["Total Successful Payments", f"${consolidated.get('total_successful_amount', 0):,.2f}"],
+            ["Total Refunded", f"${consolidated.get('total_refunded_amount', 0):,.2f}"],
+            ["Net Payment Amount", f"${consolidated.get('net_payment_amount', 0):,.2f}"],
+            ["Total Tips", f"${consolidated.get('total_tips', 0):,.2f}"],
+            ["Total Surcharges", f"${consolidated.get('total_surcharges', 0):,.2f}"],
+            ["", ""],  # Empty row
+            ["Successful Transactions", f"{consolidated.get('successful_count', 0):,}"],
+            ["Refunded Transactions", f"{consolidated.get('refunded_count', 0):,}"],
+            ["Failed Transactions", f"{consolidated.get('failed_count', 0):,}"],
+            ["Total Transactions", f"{consolidated.get('total_transactions', 0):,}"],
+            ["Average Transaction", f"${consolidated.get('avg_transaction_amount', 0):,.2f}"],
+        ]
+
+        summary_table = Table(consolidated_summary_data, colWidths=[4*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 11),
+            ("FONTSIZE", (0, 1), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 1), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+
+        story.append(summary_table)
+        story.append(Spacer(1, 20))
+
+        # === LOCATION COMPARISON TABLE ===
+        story.append(Paragraph("Location Comparison", styles["Heading2"]))
+        story.append(Spacer(1, 12))
+
+        comparison_data = [
+            ["Location", "Successful", "Refunded", "Net", "Tips", "Txns", "Failed"]
+        ]
+
+        locations = report_data.get('locations', [])
+        for location_data in locations:
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+            loc_summary = loc_report.get('summary', {})
+            breakdown = loc_summary.get('breakdown', {})
+
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+
+            successful_amount = successful.get('amount', 0)
+            successful_count = successful.get('count', 0)
+            refunded_amount = refunded.get('amount', 0)
+            failed_count = failed.get('count', 0)
+            net_revenue = loc_summary.get('net_revenue', 0)
+
+            comparison_data.append([
+                location_name,
+                f"${successful_amount:,.2f}",
+                f"${refunded_amount:,.2f}",
+                f"${net_revenue:,.2f}",
+                f"$0.00",  # Tips (included in successful_amount)
+                f"{successful_count:,}",
+                f"{failed_count:,}",
+            ])
+
+        comparison_table = Table(comparison_data, colWidths=[
+            1.6*inch,  # Location
+            1.2*inch,  # Successful
+            1.0*inch,  # Refunded
+            1.0*inch,  # Net
+            0.8*inch,  # Tips
+            0.7*inch,  # Txns
+            0.7*inch,  # Failed
+        ])
+        comparison_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 9),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 1), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.lightgrey),
+            ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ]))
+
+        story.append(comparison_table)
+        story.append(Spacer(1, 20))
+
+        # === INDIVIDUAL LOCATION PAGES ===
+        for i, location_data in enumerate(locations, 1):
+            # Page break before each location
+            story.append(PageBreak())
+
+            location_name = location_data.get('location_name', 'Unknown')
+            loc_report = location_data.get('report_data', {})
+
+            # Location header
+            story.append(Paragraph(f"Location {i}: {location_name}", styles["Title"]))
+            story.append(Paragraph("Detailed Payments Report", styles["Heading1"]))
+            story.append(Spacer(1, 12))
+
+            # Add date range for this location
+            story.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
+            story.append(Spacer(1, 20))
+
+            # Export summary data for this location
+            loc_summary = loc_report.get('summary', {})
+            breakdown = loc_summary.get('breakdown', {})
+
+            successful = breakdown.get('successful', {})
+            refunded = breakdown.get('refunded', {})
+            failed = breakdown.get('failed', {})
+
+            successful_amount = successful.get('amount', 0)
+            successful_count = successful.get('count', 0)
+            refunded_amount = refunded.get('amount', 0)
+            refunded_count = refunded.get('count', 0)
+            failed_count = failed.get('count', 0)
+            net_revenue = loc_summary.get('net_revenue', 0)
+            total_collected = loc_summary.get('total_collected', 0)
+
+            avg_txn = successful_amount / successful_count if successful_count > 0 else 0
+
+            story.append(Paragraph("Payment Summary", styles["Heading2"]))
+            story.append(Spacer(1, 12))
+
+            loc_summary_data = [
+                ["Metric", "Value"],
+                ["Total Successful Payments", f"${successful_amount:,.2f}"],
+                ["Total Refunded", f"${refunded_amount:,.2f}"],
+                ["Net Payment Amount", f"${net_revenue:,.2f}"],
+                ["Total Collected", f"${total_collected:,.2f}"],
+                ["", ""],
+                ["Successful Transactions", f"{successful_count:,}"],
+                ["Refunded Transactions", f"{refunded_count:,}"],
+                ["Failed Transactions", f"{failed_count:,}"],
+                ["Average Transaction", f"${avg_txn:,.2f}"],
+            ]
+
+            loc_table = Table(loc_summary_data, colWidths=[4*inch, 2*inch])
+            loc_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 11),
+                ("FONTSIZE", (0, 1), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("TOPPADDING", (0, 1), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+            ]))
+
+            story.append(loc_table)
+            story.append(Spacer(1, 20))
+
+            # Payment methods breakdown
+            payment_methods = loc_report.get('payment_methods', [])
+            if payment_methods:
+                story.append(Paragraph("Payment Methods Breakdown", styles["Heading2"]))
+                story.append(Spacer(1, 12))
+
+                method_data = [["Method", "Count", "Amount", "Percentage"]]
+                for method in payment_methods:
+                    method_data.append([
+                        method.get('method', 'Unknown'),
+                        f"{method.get('count', 0):,}",
+                        f"${method.get('amount', 0):,.2f}",
+                        f"{method.get('percentage', 0):.1f}%"
+                    ])
+
+                method_table = Table(method_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1*inch])
+                method_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                    ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 11),
+                    ("FONTSIZE", (0, 1), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                    ("TOPPADDING", (0, 1), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+                    ("BACKGROUND", (0, 1), (-1, -1), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                ]))
+
+                story.append(method_table)
+                story.append(Spacer(1, 20))

@@ -107,7 +107,14 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 				endDate,
 				filters
 			);
-			setData(operationsData as OperationsData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (operationsData && typeof operationsData === 'object' && 'is_multi_location' in operationsData && operationsData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(operationsData.consolidated as OperationsData);
+			} else {
+				setData(operationsData as OperationsData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {

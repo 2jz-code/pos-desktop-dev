@@ -368,8 +368,12 @@ class ReportViewSet(viewsets.ViewSet):
                     header_alignment = Alignment(horizontal="center", vertical="center")
                     
                     # Call the new SalesReportService export method
-                    SalesReportService.export_sales_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        SalesReportService.export_sales_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        SalesReportService.export_sales_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
@@ -388,10 +392,14 @@ class ReportViewSet(viewsets.ViewSet):
                         start_color="366092", end_color="366092", fill_type="solid"
                     )
                     header_alignment = Alignment(horizontal="center", vertical="center")
-                    
+
                     # Call the new PaymentsReportService export method
-                    PaymentsReportService.export_payments_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        PaymentsReportService.export_payments_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        PaymentsReportService.export_payments_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
@@ -412,7 +420,11 @@ class ReportViewSet(viewsets.ViewSet):
                     header_alignment = Alignment(horizontal="center", vertical="center")
                     
                     # Call the new ProductsReportService export method
-                    ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        ProductsReportService.export_products_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
                     
                     # Save to bytes
                     output = io.BytesIO()
@@ -421,21 +433,25 @@ class ReportViewSet(viewsets.ViewSet):
                 elif report_type == "operations":
                     from openpyxl import Workbook
                     from openpyxl.styles import Font, PatternFill, Alignment
-                    
+
                     wb = Workbook()
                     ws = wb.active
                     ws.title = "Operations Report"
-                    
+
                     # Styles
                     header_font = Font(bold=True, color="FFFFFF")
                     header_fill = PatternFill(
                         start_color="366092", end_color="366092", fill_type="solid"
                     )
                     header_alignment = Alignment(horizontal="center", vertical="center")
-                    
+
                     # Call the new OperationsReportService export method
-                    OperationsReportService.export_operations_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        OperationsReportService.export_operations_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        OperationsReportService.export_operations_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
