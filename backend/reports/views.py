@@ -259,11 +259,11 @@ class ReportViewSet(viewsets.ViewSet):
             report_type = serializer.validated_data["report_type"]
             parameters = serializer.validated_data["parameters"]
             format_type = serializer.validated_data["format"]
-            
+
             # Extract date parameters
             start_date = parameters.get("start_date")
             end_date = parameters.get("end_date")
-            
+
             if not start_date or not end_date:
                 return Response(
                     {"error": "start_date and end_date are required"},
@@ -279,23 +279,55 @@ class ReportViewSet(viewsets.ViewSet):
                     {"error": "Invalid date format. Use ISO 8601 format."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
+            # Extract location_id from middleware (X-Store-Location header) or parameters
+            location_id = getattr(request, 'store_location_id', None) or parameters.get("location_id")
+
             # Generate the report data first
             if report_type == "summary":
-                report_data = SummaryReportService.generate_summary_report(start_date, end_date)
+                report_data = SummaryReportService.generate_summary_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             elif report_type == "sales":
-                report_data = SalesReportService.generate_sales_report(start_date, end_date)
+                group_by = parameters.get("group_by", "day")
+                report_data = SalesReportService.generate_sales_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id,
+                    group_by=group_by,
+                    use_cache=True
+                )
             elif report_type == "products":
                 category_id = parameters.get("category_id")
                 limit = parameters.get("limit", 10)
                 trend_period = parameters.get("trend_period", "auto")
                 report_data = ProductsReportService.generate_products_report(
-                    start_date, end_date, category_id, limit, trend_period
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id,
+                    category_id=category_id,
+                    limit=limit,
+                    trend_period=trend_period
                 )
             elif report_type == "payments":
-                report_data = PaymentsReportService.generate_payments_report(start_date, end_date)
+                report_data = PaymentsReportService.generate_payments_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             elif report_type == "operations":
-                report_data = OperationsReportService.generate_operations_report(start_date, end_date)
+                report_data = OperationsReportService.generate_operations_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             else:
                 return Response(
                     {"error": f"Unknown report type: {report_type}"},

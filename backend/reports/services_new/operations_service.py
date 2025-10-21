@@ -199,6 +199,22 @@ class OperationsReportService(BaseReportService):
             "end": end_date.isoformat(),
         }
 
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        operations_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
         return operations_data
 
     @staticmethod
@@ -257,6 +273,12 @@ class OperationsReportService(BaseReportService):
                 pass
         
         writer.writerow(["Date Range:", f"{start_str} to {end_str}"])
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow(["Location:", location_name])
+
         writer.writerow([])  # Empty row
 
         # --- EXECUTIVE SUMMARY ---
@@ -473,11 +495,18 @@ class OperationsReportService(BaseReportService):
         ws.cell(row=row, column=1, value="Date Range:")
         ws.cell(row=row, column=2, value=f"{start_str} to {end_str}")
         row += 1
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws.cell(row=row, column=1, value="Location:")
+        ws.cell(row=row, column=2, value=location_name)
+        row += 1
+
         ws.cell(row=row, column=1, value="Generated:")
         ws.cell(row=row, column=2, value=report_data.get("generated_at", "N/A"))
         row += 1
-        
+
         row += 1  # Empty row
         
         # --- EXECUTIVE SUMMARY ---
@@ -756,8 +785,14 @@ class OperationsReportService(BaseReportService):
                 pass
         
         story.append(Paragraph(f"<b>Date Range:</b> {start_str} to {end_str}", styles['Normal']))
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location:</b> {location_name}", styles['Normal']))
+
         story.append(Spacer(1, 12))
-        
+
         # === EXECUTIVE SUMMARY ===
         story.append(Paragraph("EXECUTIVE SUMMARY", styles['Heading1']))
         story.append(Spacer(1, 6))

@@ -103,6 +103,26 @@ class ProductsReportService(BaseReportService):
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
         }
+
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        products_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
+        # Add tenant_id for export filtering
+        products_data["tenant_id"] = tenant.id
+
         products_data["filters"] = {
             "location_id": location_id,
             "category_id": category_id,
@@ -331,17 +351,27 @@ class ProductsReportService(BaseReportService):
         return csv_bytes
 
     @staticmethod
-    def _get_all_products_for_export(start_date, end_date, category_id=None):
+    def _get_all_products_for_export(start_date, end_date, category_id=None, tenant_id=None, location_id=None):
         """Get ALL products sold in the time period for comprehensive export"""
         from orders.models import OrderItem, Order
         from django.db.models import Sum, Count, Avg, F
-        
+
         # Get base queryset - same logic as main report but no limit
-        order_items = OrderItem.objects.filter(
-            order__status=Order.OrderStatus.COMPLETED,
-            order__created_at__range=(start_date, end_date),
-            order__subtotal__gt=0,
-        ).select_related("product", "product__category")
+        filters = {
+            'order__status': Order.OrderStatus.COMPLETED,
+            'order__created_at__range': (start_date, end_date),
+            'order__subtotal__gt': 0,
+        }
+
+        # Add tenant filter
+        if tenant_id:
+            filters['order__tenant_id'] = tenant_id
+
+        # Add location filter if specified
+        if location_id is not None:
+            filters['order__store_location_id'] = location_id
+
+        order_items = OrderItem.objects.filter(**filters).select_related("product", "product__category")
 
         if category_id:
             order_items = order_items.filter(product__category_id=category_id)
@@ -388,7 +418,12 @@ class ProductsReportService(BaseReportService):
             end_str = end_str.split('T')[0]
             
         writer.writerow(["Date Range:", f"{start_str} to {end_str}"])
-        
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow(["Location:", location_name])
+
         # Add filter information
         filters = report_data.get("filters", {})
         if filters.get("category_id"):
@@ -491,10 +526,14 @@ class ProductsReportService(BaseReportService):
                 # Get category filter if present
                 filters = report_data.get("filters", {})
                 category_id = filters.get("category_id")
-                
+
+                # Extract tenant and location filters
+                tenant_id = report_data.get('tenant_id')
+                location_id = report_data.get('location_info', {}).get('location_id')
+
                 # Get ALL products for ranking
                 all_products = ProductsReportService._get_all_products_for_export(
-                    start_date, end_date, category_id
+                    start_date, end_date, category_id, tenant_id, location_id
                 )
                 
                 # Write all products ranked by revenue
@@ -569,7 +608,14 @@ class ProductsReportService(BaseReportService):
         ws.cell(row=row, column=1, value="Date Range:")
         ws.cell(row=row, column=2, value=f"{start_str} to {end_str}")
         row += 1
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws.cell(row=row, column=1, value="Location:")
+        ws.cell(row=row, column=2, value=location_name)
+        row += 1
+
         # Filter information
         filters = report_data.get("filters", {})
         if filters.get("category_id"):
@@ -696,9 +742,13 @@ class ProductsReportService(BaseReportService):
                 start_date_obj = datetime.fromisoformat(date_range["start"].replace('Z', '+00:00'))
                 end_date_obj = datetime.fromisoformat(date_range["end"].replace('Z', '+00:00'))
                 category_id = filters.get("category_id") if filters.get("category_id") != "all" else None
-                
+
+                # Extract tenant and location filters
+                tenant_id = report_data.get('tenant_id')
+                location_id = report_data.get('location_info', {}).get('location_id')
+
                 all_products = ProductsReportService._get_all_products_for_export(
-                    start_date_obj, end_date_obj, category_id
+                    start_date_obj, end_date_obj, category_id, tenant_id, location_id
                 )
                 
                 if all_products:
@@ -784,7 +834,12 @@ class ProductsReportService(BaseReportService):
                 pass
         
         story.append(Paragraph(f"<b>Date Range:</b> {start_str} to {end_str}", styles['Normal']))
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location:</b> {location_name}", styles['Normal']))
+
         # Filter information
         filters = report_data.get("filters", {})
         if filters.get("category_id"):
@@ -983,9 +1038,13 @@ class ProductsReportService(BaseReportService):
                 start_date_obj = datetime.fromisoformat(date_range["start"].replace('Z', '+00:00'))
                 end_date_obj = datetime.fromisoformat(date_range["end"].replace('Z', '+00:00'))
                 category_id = filters.get("category_id") if filters.get("category_id") != "all" else None
-                
+
+                # Extract tenant and location filters
+                tenant_id = report_data.get('tenant_id')
+                location_id = report_data.get('location_info', {}).get('location_id')
+
                 all_products = ProductsReportService._get_all_products_for_export(
-                    start_date_obj, end_date_obj, category_id
+                    start_date_obj, end_date_obj, category_id, tenant_id, location_id
                 )
                 
                 if all_products:

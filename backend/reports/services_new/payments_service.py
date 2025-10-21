@@ -95,6 +95,25 @@ class PaymentsReportService(BaseReportService):
             },
         }
 
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        payments_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
+        # Add tenant_id for export filtering
+        payments_data["tenant_id"] = tenant.id
+
         # Cache the result
         generation_time = time.time() - start_time
         PaymentsReportService._cache_report(
@@ -440,19 +459,29 @@ class PaymentsReportService(BaseReportService):
         }
 
     @staticmethod
-    def _get_detailed_transaction_data(start_date: datetime, end_date: datetime) -> list:
+    def _get_detailed_transaction_data(start_date: datetime, end_date: datetime, tenant_id: Optional[int] = None, location_id: Optional[int] = None) -> list:
         """Get detailed transaction data for CSV export."""
-        transactions = PaymentTransaction.objects.select_related(
-            'payment', 'payment__order'
-        ).filter(
-            payment__order__status=Order.OrderStatus.COMPLETED,
-            payment__order__created_at__range=(start_date, end_date),
-            payment__order__subtotal__gt=0,
-            status__in=[
+        filters = {
+            'payment__order__status': Order.OrderStatus.COMPLETED,
+            'payment__order__created_at__range': (start_date, end_date),
+            'payment__order__subtotal__gt': 0,
+            'status__in': [
                 PaymentTransaction.TransactionStatus.SUCCESSFUL,
                 PaymentTransaction.TransactionStatus.REFUNDED
             ]
-        ).order_by('payment__payment_number', 'created_at')
+        }
+
+        # Add tenant filter
+        if tenant_id:
+            filters['payment__order__tenant_id'] = tenant_id
+
+        # Add location filter if specified
+        if location_id is not None:
+            filters['payment__order__store_location_id'] = location_id
+
+        transactions = PaymentTransaction.objects.select_related(
+            'payment', 'payment__order'
+        ).filter(**filters).order_by('payment__payment_number', 'created_at')
 
         transaction_data = []
         for txn in transactions:
@@ -506,14 +535,19 @@ class PaymentsReportService(BaseReportService):
         date_range = report_data.get("date_range", {})
         start_str = date_range.get("start", "")
         end_str = date_range.get("end", "")
-        
+
         try:
             start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
             writer.writerow([f"Date Range: {start_date.date()} to {end_date.date()}"])
         except:
             writer.writerow([f"Date Range: {start_str} to {end_str}"])
-        
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow(["Location:", location_name])
+
         writer.writerow([])
         
         # === PAYMENT SUMMARY ===
@@ -552,8 +586,12 @@ class PaymentsReportService(BaseReportService):
         
         # Get detailed transaction data
         try:
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             transaction_data = PaymentsReportService._get_detailed_transaction_data(
-                start_date, end_date
+                start_date, end_date, tenant_id, location_id
             )
         except:
             # Fallback if datetime parsing fails
@@ -633,7 +671,7 @@ class PaymentsReportService(BaseReportService):
         date_range = report_data.get("date_range", {})
         start_str = date_range.get("start", "")
         end_str = date_range.get("end", "")
-        
+
         try:
             start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
@@ -644,6 +682,13 @@ class PaymentsReportService(BaseReportService):
             ws.merge_cells(f"A{row}:N{row}")
             ws[f"A{row}"] = f"Date Range: {start_str} to {end_str}"
             ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        row += 1
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws.cell(row=row, column=1, value="Location:")
+        ws.cell(row=row, column=2, value=location_name)
         row += 2
         
         # === PAYMENT SUMMARY ===
@@ -742,8 +787,12 @@ class PaymentsReportService(BaseReportService):
         
         # Get detailed transaction data
         try:
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             transaction_data = PaymentsReportService._get_detailed_transaction_data(
-                start_date, end_date
+                start_date, end_date, tenant_id, location_id
             )
         except:
             transaction_data = []
@@ -840,14 +889,19 @@ class PaymentsReportService(BaseReportService):
         date_range = report_data.get("date_range", {})
         start_str = date_range.get("start", "")
         end_str = date_range.get("end", "")
-        
+
         try:
             start_date = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
             story.append(Paragraph(f"Date Range: {start_date.date()} to {end_date.date()}", styles["Normal"]))
         except:
             story.append(Paragraph(f"Date Range: {start_str} to {end_str}", styles["Normal"]))
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location:</b> {location_name}", styles['Normal']))
+
         story.append(Spacer(1, 20))
         
         # === PAYMENT SUMMARY ===
@@ -931,9 +985,13 @@ class PaymentsReportService(BaseReportService):
                 # Parse from strings if needed
                 query_start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
                 query_end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-            
+
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             transaction_data = PaymentsReportService._get_detailed_transaction_data(
-                query_start, query_end
+                query_start, query_end, tenant_id, location_id
             )
             # Show max 10 most recent transactions
             sample_transactions = transaction_data[:10] if transaction_data else []

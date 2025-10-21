@@ -73,6 +73,22 @@ class SummaryReportService(BaseReportService):
             "end": end_date.isoformat(),
         }
 
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        summary_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
         # Cache the result
         generation_time = time.time() - start_time
         SummaryReportService._cache_report(

@@ -168,8 +168,13 @@ class ExportService(BaseReportService):
             date_range = report_data["date_range"]
             date_text = f"Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}"
             story.append(Paragraph(date_text, styles["Normal"]))
-            story.append(Spacer(1, 0.2 * inch))
-        
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location:</b> {location_name}", styles["Normal"]))
+        story.append(Spacer(1, 0.2 * inch))
+
         try:
             if report_type == "summary":
                 cls._export_summary_to_pdf(story, report_data, styles)
@@ -196,10 +201,15 @@ class ExportService(BaseReportService):
         
         # Date range
         if "date_range" in report_data:
-            writer.writerow(["Date Range", report_data["date_range"].get("start", ""), 
+            writer.writerow(["Date Range", report_data["date_range"].get("start", ""),
                            "to", report_data["date_range"].get("end", "")])
-            writer.writerow([])
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow(["Location", location_name])
+        writer.writerow([])
+
         # Key Metrics
         writer.writerow(["Key Metrics"])
         writer.writerow(["Metric", "Value"])
@@ -259,8 +269,16 @@ class ExportService(BaseReportService):
         if "date_range" in report_data:
             ws[f"A{row}"] = "Date Range:"
             ws[f"B{row}"] = f"{report_data['date_range'].get('start', '')} to {report_data['date_range'].get('end', '')}"
-            row += 2
-        
+            row += 1
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws[f"A{row}"] = "Location:"
+        ws[f"B{row}"] = location_name
+        ws[f"A{row}"].font = Font(bold=True)
+        row += 2
+
         # Key Metrics
         ws[f"A{row}"] = "Key Metrics"
         ws[f"A{row}"].font = Font(bold=True, size=12)

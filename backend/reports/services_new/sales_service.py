@@ -82,6 +82,25 @@ class SalesReportService(BaseReportService):
             "end": end_date.isoformat(),
         }
 
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        sales_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
+        # Add tenant_id for export filtering
+        sales_data["tenant_id"] = tenant.id
+
         # Cache the result
         generation_time = time.time() - start_time
         SalesReportService._cache_report(
@@ -518,7 +537,12 @@ class SalesReportService(BaseReportService):
             writer.writerow([f"Date Range: {start_date} to {end_date}"])
         except:
             writer.writerow([f"Date Range: {start_str} to {end_str}"])
-        
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow([f"Location: {location_name}"])
+
         writer.writerow([])
         
         # === FINANCIAL SUMMARY ===
@@ -555,14 +579,28 @@ class SalesReportService(BaseReportService):
         try:
             start_date_obj = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date_obj = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-            
+
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             # Query orders for detailed export
             from orders.models import Order
-            orders = Order.objects.filter(
-                status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_date_obj, end_date_obj),
-                subtotal__gt=0
-            ).select_related(
+            filters = {
+                'status': Order.OrderStatus.COMPLETED,
+                'created_at__range': (start_date_obj, end_date_obj),
+                'subtotal__gt': 0
+            }
+
+            # Add tenant filter
+            if tenant_id:
+                filters['tenant_id'] = tenant_id
+
+            # Add location filter if specified
+            if location_id is not None:
+                filters['store_location_id'] = location_id
+
+            orders = Order.objects.filter(**filters).select_related(
                 'cashier', 'customer', 'payment_details'
             ).prefetch_related(
                 'items__product'
@@ -699,6 +737,15 @@ class SalesReportService(BaseReportService):
             ws.merge_cells(f"A{row}:F{row}")
             ws[f"A{row}"] = f"Date Range: {start_str} to {end_str}"
             ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        row += 1
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws.merge_cells(f"A{row}:F{row}")
+        ws[f"A{row}"] = f"Location: {location_name}"
+        ws[f"A{row}"].alignment = Alignment(horizontal="center")
+        ws[f"A{row}"].font = Font(bold=True)
         row += 2
 
         # === FINANCIAL SUMMARY ===
@@ -839,14 +886,28 @@ class SalesReportService(BaseReportService):
         try:
             start_date_obj = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date_obj = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-            
+
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             from orders.models import Order
-            
-            orders = Order.objects.filter(
-                status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_date_obj, end_date_obj),
-                subtotal__gt=0
-            ).select_related(
+
+            filters = {
+                'status': Order.OrderStatus.COMPLETED,
+                'created_at__range': (start_date_obj, end_date_obj),
+                'subtotal__gt': 0
+            }
+
+            # Add tenant filter
+            if tenant_id:
+                filters['tenant_id'] = tenant_id
+
+            # Add location filter if specified
+            if location_id is not None:
+                filters['store_location_id'] = location_id
+
+            orders = Order.objects.filter(**filters).select_related(
                 'cashier', 'customer', 'payment_details'
             ).prefetch_related(
                 'items__product'
@@ -983,7 +1044,12 @@ class SalesReportService(BaseReportService):
             story.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
         except:
             story.append(Paragraph(f"Date Range: {start_str} to {end_str}", styles["Normal"]))
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location: {location_name}</b>", styles["Normal"]))
+
         story.append(Spacer(1, 20))
 
         # === FINANCIAL SUMMARY ===
@@ -1089,13 +1155,28 @@ class SalesReportService(BaseReportService):
         try:
             start_date_obj = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_date_obj = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-            
+
+            # Extract tenant and location filters
+            tenant_id = report_data.get('tenant_id')
+            location_id = report_data.get('location_info', {}).get('location_id')
+
             from orders.models import Order
-            orders = Order.objects.filter(
-                status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_date_obj, end_date_obj),
-                subtotal__gt=0
-            ).select_related(
+
+            filters = {
+                'status': Order.OrderStatus.COMPLETED,
+                'created_at__range': (start_date_obj, end_date_obj),
+                'subtotal__gt': 0
+            }
+
+            # Add tenant filter
+            if tenant_id:
+                filters['tenant_id'] = tenant_id
+
+            # Add location filter if specified
+            if location_id is not None:
+                filters['store_location_id'] = location_id
+
+            orders = Order.objects.filter(**filters).select_related(
                 'cashier', 'customer', 'payment_details'
             ).prefetch_related(
                 'items__product'
