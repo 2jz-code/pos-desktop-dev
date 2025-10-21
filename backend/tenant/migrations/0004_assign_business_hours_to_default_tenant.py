@@ -117,7 +117,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('tenant', '0003_fix_remaining_null_tenants'),
-        ('business_hours', '0001_initial'),  # Ensure business_hours app exists
+        ('business_hours', '0002_businesshoursprofile_tenant_holiday_tenant_and_more'),  # Ensure tenant field exists
     ]
 
     operations = [
