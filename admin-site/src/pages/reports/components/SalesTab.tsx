@@ -58,6 +58,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 interface Transaction {
 	order_number: string;
@@ -139,6 +140,7 @@ interface SalesTabProps {
 }
 
 export function SalesTab({ dateRange }: SalesTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<SalesData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -200,10 +202,12 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				return;
 			}
 
+			const filters = selectedLocationId ? { location_id: selectedLocationId } : {};
 			const salesData = await reportsService.generateSalesReport(
 				startDate,
 				endDate,
-				groupBy
+				groupBy,
+				filters
 			);
 			setData(salesData as SalesData);
 		} catch (err) {
@@ -215,7 +219,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 	useEffect(() => {
 		fetchSalesData();
-	}, [dateRange, groupBy]);
+	}, [dateRange, groupBy, selectedLocationId]);
 
 	if (loading) {
 		return (

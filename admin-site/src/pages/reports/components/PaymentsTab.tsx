@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Card,
 	CardContent,
@@ -125,6 +126,7 @@ interface PaymentsTabProps {
 }
 
 export function PaymentsTab({ dateRange }: PaymentsTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<PaymentsData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -145,9 +147,12 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 				return;
 			}
 
+			const filters = selectedLocationId ? { location_id: selectedLocationId } : {};
+			console.log("🔍 Fetching payments report with filters:", filters, "selectedLocationId:", selectedLocationId);
 			const paymentsData = await reportsService.generatePaymentsReport(
 				startDate,
-				endDate
+				endDate,
+				filters
 			);
 			setData(paymentsData as PaymentsData);
 		} catch (err) {
@@ -159,7 +164,7 @@ export function PaymentsTab({ dateRange }: PaymentsTabProps) {
 
 	useEffect(() => {
 		fetchPaymentsData();
-	}, [dateRange]);
+	}, [dateRange, selectedLocationId]);
 
 	if (loading) {
 		return (

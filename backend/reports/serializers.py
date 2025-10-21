@@ -19,6 +19,7 @@ class ReportParameterSerializer(serializers.Serializer):
 
     start_date = serializers.DateTimeField()
     end_date = serializers.DateTimeField()
+    location_id = serializers.IntegerField(required=False, allow_null=True, help_text="Filter by store location ID")
 
     def validate(self, data):
         """Validate date range parameters"""
@@ -43,13 +44,13 @@ class ReportParameterSerializer(serializers.Serializer):
         try:
             from settings.config import AppSettings
             from .services_new.timezone_utils import TimezoneUtils
-            
+
             business_tz = TimezoneUtils.get_local_timezone()
-            
+
             # Convert dates to business timezone
             data["start_date"] = start_date.astimezone(business_tz)
             data["end_date"] = end_date.astimezone(business_tz)
-            
+
         except Exception as e:
             # Log the error but don't fail validation
             import logging
@@ -57,6 +58,18 @@ class ReportParameterSerializer(serializers.Serializer):
             logger.warning(f"Failed to convert dates to business timezone: {e}")
 
         return data
+
+    def validate_location_id(self, value):
+        """Validate location belongs to tenant"""
+        if value is not None:
+            # Import here to avoid circular imports
+            from settings.models import StoreLocation
+            from tenant.managers import get_current_tenant
+
+            tenant = get_current_tenant()
+            if tenant and not StoreLocation.objects.filter(tenant=tenant, id=value).exists():
+                raise serializers.ValidationError("Invalid location ID for current tenant")
+        return value
 
 
 class ProductReportParameterSerializer(ReportParameterSerializer):

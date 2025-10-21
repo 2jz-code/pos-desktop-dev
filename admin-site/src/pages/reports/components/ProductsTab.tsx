@@ -45,6 +45,7 @@ import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { getCategories } from "@/services/api/categoryService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 interface Category {
 	id: number;
@@ -91,6 +92,7 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ dateRange }: ProductsTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<ProductsData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -133,6 +135,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				limit: limit,
 				trend_period: trendPeriod,
 				...(categoryFilter && { category_id: categoryFilter }),
+				...(selectedLocationId && { location_id: selectedLocationId }),
 			};
 
 			const productsData = await reportsService.generateProductsReport(
@@ -183,7 +186,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 
 	useEffect(() => {
 		fetchProductsData();
-	}, [dateRange, categoryFilter, limit, trendPeriod]);
+	}, [dateRange, categoryFilter, limit, trendPeriod, selectedLocationId]);
 
 	if (loading) {
 		return (

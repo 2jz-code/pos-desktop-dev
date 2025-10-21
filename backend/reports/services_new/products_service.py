@@ -34,6 +34,7 @@ class ProductsReportService(BaseReportService):
         tenant,
         start_date: datetime,
         end_date: datetime,
+        location_id: Optional[int] = None,
         category_id: Optional[int] = None,
         limit: int = 10,
         trend_period: str = "auto",  # "daily", "weekly", "monthly", "auto"
@@ -46,6 +47,7 @@ class ProductsReportService(BaseReportService):
             {
                 "start_date": start_date,
                 "end_date": end_date,
+                "location_id": location_id,
                 "category_id": category_id,
                 "limit": limit,
                 "trend_period": trend_period,
@@ -58,12 +60,12 @@ class ProductsReportService(BaseReportService):
                 logger.info(f"Products report served from cache: {cache_key[:8]}...")
                 return cached_data
 
-        logger.info(f"Generating products report for {start_date} to {end_date}")
+        logger.info(f"Generating products report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
         # Get base data
         order_items = ProductsReportService._get_base_order_items_queryset(
-            tenant, start_date, end_date, category_id
+            tenant, start_date, end_date, location_id, category_id
         )
 
         # Calculate core metrics
@@ -102,6 +104,7 @@ class ProductsReportService(BaseReportService):
             "end": end_date.isoformat(),
         }
         products_data["filters"] = {
+            "location_id": location_id,
             "category_id": category_id,
             "limit": limit,
             "trend_period": trend_period,
@@ -119,15 +122,20 @@ class ProductsReportService(BaseReportService):
 
     @staticmethod
     def _get_base_order_items_queryset(
-        tenant, start_date: datetime, end_date: datetime, category_id: Optional[int] = None
+        tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None, category_id: Optional[int] = None
     ):
         """Get optimized base queryset for order items in date range."""
-        queryset = OrderItem.objects.filter(
-            order__tenant=tenant,
-            order__status=Order.OrderStatus.COMPLETED,
-            order__created_at__range=(start_date, end_date),
-            order__subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-        ).select_related("product", "product__category")
+        filters = {
+            "order__tenant": tenant,
+            "order__status": Order.OrderStatus.COMPLETED,
+            "order__created_at__range": (start_date, end_date),
+            "order__subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        if location_id is not None:
+            filters["order__store_location_id"] = location_id
+
+        queryset = OrderItem.objects.filter(**filters).select_related("product", "product__category", "order__store_location")
 
         # Filter by category if specified
         if category_id:

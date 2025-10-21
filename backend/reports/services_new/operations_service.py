@@ -2,7 +2,7 @@ import time
 import logging
 from decimal import Decimal
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from django.db.models import (
     Sum,
@@ -34,12 +34,15 @@ class OperationsReportService(BaseReportService):
     @staticmethod
     def generate_operations_report(
         tenant,
-        start_date: datetime, end_date: datetime, use_cache: bool = True
+        start_date: datetime,
+        end_date: datetime,
+        location_id: Optional[int] = None,
+        use_cache: bool = True
     ) -> Dict[str, Any]:
         """Generate comprehensive operations report"""
 
         cache_key = OperationsReportService._generate_cache_key(
-            "operations", {"start_date": start_date, "end_date": end_date}
+            "operations", {"start_date": start_date, "end_date": end_date, "location_id": location_id}
         )
 
         if use_cache:
@@ -48,13 +51,13 @@ class OperationsReportService(BaseReportService):
                 logger.info(f"Operations report served from cache: {cache_key[:8]}...")
                 return cached_data
 
-        logger.info(f"Generating operations report for {start_date} to {end_date}")
+        logger.info(f"Generating operations report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
         try:
             # Generate the operations data
             operations_data = OperationsReportService._generate_operations_data(
-                tenant, start_date, end_date
+                tenant, start_date, end_date, location_id
             )
 
             # Cache the result
@@ -71,16 +74,21 @@ class OperationsReportService(BaseReportService):
             raise
 
     @staticmethod
-    def _generate_operations_data(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _generate_operations_data(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Generate the core operations report data"""
 
         # Base queryset
-        orders = Order.objects.filter(
-            tenant=tenant,
-            status=Order.OrderStatus.COMPLETED,
-            created_at__range=(start_date, end_date),
-            subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-        ).select_related("cashier")
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
+        orders = Order.objects.filter(**filters).select_related("cashier", "store_location")
 
         # Hourly patterns
         hourly_patterns = (

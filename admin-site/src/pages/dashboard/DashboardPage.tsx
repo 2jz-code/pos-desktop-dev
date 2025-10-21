@@ -256,21 +256,44 @@ const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
 
 export function DashboardPage() {
 	const { user: authUser, tenant, loading: authLoading } = useAuth();
-	const { selectedLocationId } = useStoreLocation();
+	const locationContext = useStoreLocation();
+	const { selectedLocationId, locations } = locationContext;
 	const permissions = useRolePermissions();
 	const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 	const [activities, setActivities] = useState<ActivityItem[]>([]);
 	const [metricsLoading, setMetricsLoading] = useState(true);
 	const [activitiesLoading, setActivitiesLoading] = useState(true);
 
+	// Debug: log on every render
+	console.log("🔍 DashboardPage RENDER - selectedLocationId:", selectedLocationId, "context:", locationContext);
+
 	// Get tenant slug for routing
 	const tenantSlug = tenant?.slug || '';
 
+	// Mount effect
+	useEffect(() => {
+		console.log("🎯 DashboardPage MOUNTED");
+		return () => console.log("💀 DashboardPage UNMOUNTED");
+	}, []);
+
+	// Separate useEffect to track location changes
+	useEffect(() => {
+		console.log("⚡ Location changed in DashboardPage:", selectedLocationId);
+	}, [selectedLocationId]);
+
 	useEffect(() => {
 		if (!authLoading && authUser) {
-			// Fetch dashboard metrics (store location extracted from X-Store-Location header by middleware)
+			console.log("📍 Dashboard refetching for location:", selectedLocationId);
+
+			// Reset states to show fresh data is being fetched
+			setMetricsLoading(true);
+			setActivitiesLoading(true);
+			setMetrics(null); // Clear old metrics
+			setActivities([]); // Clear old activities
+
+			// Fetch dashboard metrics filtered by selected location
 			dashboardService
-				.getDashboardMetrics()
+				.getDashboardMetrics(selectedLocationId ?? undefined)
 				.then(setMetrics)
 				.catch((err) => console.error("Error fetching metrics:", err))
 				.finally(() => setMetricsLoading(false));

@@ -53,7 +53,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
 		// Don't fetch if no tenant
 		if (!tenant) {
 			setLocations([]);
-			setSelectedLocationId(null);
+			// Don't clear selectedLocationId - preserve the value from localStorage
+			// It will be validated when tenant loads and locations are fetched
 			setIsLoading(false);
 			return;
 		}

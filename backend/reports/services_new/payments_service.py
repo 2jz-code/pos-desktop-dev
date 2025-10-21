@@ -41,13 +41,14 @@ class PaymentsReportService(BaseReportService):
         tenant,
         start_date: datetime,
         end_date: datetime,
+        location_id: Optional[int] = None,
         use_cache: bool = True,
     ) -> Dict[str, Any]:
         """Generate comprehensive payments report"""
 
         cache_key = PaymentsReportService._generate_cache_key(
             "payments",
-            {"start_date": start_date, "end_date": end_date},
+            {"start_date": start_date, "end_date": end_date, "location_id": location_id},
         )
 
         if use_cache:
@@ -55,29 +56,29 @@ class PaymentsReportService(BaseReportService):
             if cached_data:
                 return cached_data
 
-        logger.info(f"Generating payments report for {start_date} to {end_date}")
+        logger.info(f"Generating payments report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
         # Get base transaction querysets
-        transaction_querysets = PaymentsReportService._get_transaction_querysets(tenant, start_date, end_date)
+        transaction_querysets = PaymentsReportService._get_transaction_querysets(tenant, start_date, end_date, location_id)
 
         # Calculate payment method breakdown
         payment_methods = PaymentsReportService._calculate_payment_methods(transaction_querysets)
 
         # Get daily volume data
-        daily_volume = PaymentsReportService._calculate_daily_volume(tenant, start_date, end_date)
+        daily_volume = PaymentsReportService._calculate_daily_volume(tenant, start_date, end_date, location_id)
 
         # Get daily breakdown by method
         daily_breakdown = PaymentsReportService._calculate_daily_breakdown(transaction_querysets['successful'])
 
         # Calculate comprehensive summary
-        summary = PaymentsReportService._calculate_payments_summary(transaction_querysets, start_date, end_date)
+        summary = PaymentsReportService._calculate_payments_summary(transaction_querysets, start_date, end_date, location_id)
 
         # Get processing statistics
-        processing_stats = PaymentsReportService._calculate_processing_stats(tenant, start_date, end_date)
+        processing_stats = PaymentsReportService._calculate_processing_stats(tenant, start_date, end_date, location_id)
 
         # Get reconciliation data
-        order_totals_comparison = PaymentsReportService._calculate_order_reconciliation(tenant, start_date, end_date, summary)
+        order_totals_comparison = PaymentsReportService._calculate_order_reconciliation(tenant, start_date, end_date, location_id, summary)
 
         # Build final report data
         payments_data = {
@@ -104,13 +105,16 @@ class PaymentsReportService(BaseReportService):
         return payments_data
 
     @staticmethod
-    def _get_transaction_querysets(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _get_transaction_querysets(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Get base transaction querysets for different statuses."""
         base_filter = {
             "payment__order__tenant": tenant,
             "payment__order__created_at__range": (start_date, end_date),
             "payment__order__subtotal__gt": 0,
         }
+
+        if location_id is not None:
+            base_filter["payment__order__store_location_id"] = location_id
 
         successful_transactions = PaymentTransaction.objects.select_related(
             "payment", "payment__order"
@@ -227,14 +231,19 @@ class PaymentsReportService(BaseReportService):
         return payment_methods
 
     @staticmethod
-    def _calculate_daily_volume(tenant, start_date: datetime, end_date: datetime) -> list:
+    def _calculate_daily_volume(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> list:
         """Calculate daily payment volume using Payment model."""
-        payments = Payment.objects.filter(
-            order__tenant=tenant,
-            order__status=Order.OrderStatus.COMPLETED,
-            order__created_at__range=(start_date, end_date),
-            order__subtotal__gt=0,
-        )
+        filters = {
+            "order__tenant": tenant,
+            "order__status": Order.OrderStatus.COMPLETED,
+            "order__created_at__range": (start_date, end_date),
+            "order__subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            filters["order__store_location_id"] = location_id
+
+        payments = Payment.objects.filter(**filters)
 
         daily_payments = (
             payments.annotate(date=TruncDate("order__created_at"))
@@ -279,7 +288,7 @@ class PaymentsReportService(BaseReportService):
         return sorted(list(daily_breakdown.values()), key=lambda x: x["date"])
 
     @staticmethod
-    def _calculate_payments_summary(transaction_querysets: Dict[str, Any], start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _calculate_payments_summary(transaction_querysets: Dict[str, Any], start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Calculate comprehensive payments summary."""
         successful = transaction_querysets['successful']
         refunded = transaction_querysets['refunded']
@@ -294,11 +303,16 @@ class PaymentsReportService(BaseReportService):
         
         # Get the actual total collected from Payment objects for consistency with sales reports
         # Use the same filtering logic as sales service for consistency
-        payment_totals = Payment.objects.filter(
-            order__status=Order.OrderStatus.COMPLETED,
-            order__created_at__range=(start_date, end_date),
-            order__subtotal__gt=0,
-        ).aggregate(
+        filters = {
+            "order__status": Order.OrderStatus.COMPLETED,
+            "order__created_at__range": (start_date, end_date),
+            "order__subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            filters["order__store_location_id"] = location_id
+
+        payment_totals = Payment.objects.filter(**filters).aggregate(
             total_collected_payments=Coalesce(Sum("total_collected"), Value(Decimal("0.00")))
         )
         total_collected_from_payments = float(payment_totals["total_collected_payments"] or 0)
@@ -361,16 +375,21 @@ class PaymentsReportService(BaseReportService):
         }
 
     @staticmethod
-    def _calculate_processing_stats(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _calculate_processing_stats(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Calculate processing statistics for all transactions."""
+        filters = {
+            "payment__order__tenant": tenant,
+            "payment__order__status": Order.OrderStatus.COMPLETED,
+            "payment__order__created_at__range": (start_date, end_date),
+            "payment__order__subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            filters["payment__order__store_location_id"] = location_id
+
         all_transactions = PaymentTransaction.objects.select_related(
             "payment", "payment__order"
-        ).filter(
-            payment__order__tenant=tenant,
-            payment__order__status=Order.OrderStatus.COMPLETED,
-            payment__order__created_at__range=(start_date, end_date),
-            payment__order__subtotal__gt=0,
-        )
+        ).filter(**filters)
 
         processing_stats = all_transactions.aggregate(
             total_attempts=Count("id"),
@@ -393,14 +412,19 @@ class PaymentsReportService(BaseReportService):
         }
 
     @staticmethod
-    def _calculate_order_reconciliation(tenant, start_date: datetime, end_date: datetime, summary: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_order_reconciliation(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int], summary: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate order totals comparison for reconciliation."""
-        completed_orders = Order.objects.filter(
-            tenant=tenant,
-            status=Order.OrderStatus.COMPLETED,
-            created_at__range=(start_date, end_date),
-            subtotal__gt=0,
-        ).aggregate(
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
+        completed_orders = Order.objects.filter(**filters).aggregate(
             order_total=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             order_count=Count("id"),
         )

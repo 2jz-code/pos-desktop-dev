@@ -43,6 +43,14 @@ class ReportCache(models.Model):
         on_delete=models.CASCADE,
         related_name='report_caches'
     )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.CASCADE,
+        related_name='report_caches',
+        null=True,
+        blank=True,
+        help_text='Store location this cache entry is for (optional for multi-location filtering)'
+    )
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
     parameters_hash = models.CharField(max_length=64)
     parameters = models.JSONField()
@@ -57,6 +65,7 @@ class ReportCache(models.Model):
         indexes = [
             models.Index(fields=["tenant", "report_type", "parameters_hash"]),
             models.Index(fields=["tenant", "expires_at"]),
+            models.Index(fields=['tenant', 'store_location', 'report_type'], name='reports_cache_ten_loc_type_idx'),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -88,6 +97,14 @@ class SavedReport(SoftDeleteMixin):
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='saved_reports'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='saved_reports',
+        null=True,
+        blank=True,
+        help_text='Default store location for this saved report'
     )
     user = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name="saved_reports"
@@ -139,6 +156,7 @@ class SavedReport(SoftDeleteMixin):
         indexes = [
             models.Index(fields=["tenant", "user", "report_type"]),
             models.Index(fields=["tenant", "status", "next_run"]),
+            models.Index(fields=['tenant', 'store_location', 'report_type'], name='reports_saved_ten_loc_type_idx'),
         ]
 
     def __str__(self):
@@ -200,6 +218,14 @@ class ReportTemplate(SoftDeleteMixin):
         on_delete=models.CASCADE,
         related_name='report_templates'
     )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='report_templates',
+        null=True,
+        blank=True,
+        help_text='Default store location for this report template'
+    )
     name = models.CharField(max_length=200)
     description = models.TextField()
     report_type = models.CharField(max_length=50, choices=ReportType.choices)
@@ -221,6 +247,7 @@ class ReportTemplate(SoftDeleteMixin):
         indexes = [
             models.Index(fields=["tenant", "name"]),
             models.Index(fields=["tenant", "report_type"]),
+            models.Index(fields=['tenant', 'store_location', 'report_type'], name='reports_tmpl_ten_loc_type_idx'),
         ]
 
     def __str__(self):
@@ -234,6 +261,14 @@ class ReportExecution(models.Model):
         'tenant.Tenant',
         on_delete=models.CASCADE,
         related_name='report_executions'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='report_executions',
+        null=True,
+        blank=True,
+        help_text='Store location this execution is for'
     )
     saved_report = models.ForeignKey(
         SavedReport, on_delete=models.CASCADE, related_name="executions",
@@ -280,6 +315,7 @@ class ReportExecution(models.Model):
             models.Index(fields=['tenant', 'status', 'started_at']),
             models.Index(fields=['tenant', 'saved_report', 'status']),
             models.Index(fields=['tenant', 'started_at']),
+            models.Index(fields=['tenant', 'store_location', 'status'], name='reports_exec_ten_loc_stat_idx'),
         ]
 
     def __str__(self):

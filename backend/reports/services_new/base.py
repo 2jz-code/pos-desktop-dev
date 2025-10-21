@@ -141,37 +141,47 @@ class BaseReportService:
         }
 
     @staticmethod
-    def get_quick_metrics() -> Dict[str, Any]:
+    def get_quick_metrics(tenant, location_id=None) -> Dict[str, Any]:
         """Get quick business metrics for dashboard."""
         try:
             now = timezone.now()
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            
+
+            # Base filters
+            base_filters = {
+                'tenant': tenant,
+                'status': Order.OrderStatus.COMPLETED
+            }
+
+            # Add location filter if specified
+            if location_id is not None:
+                base_filters['store_location_id'] = location_id
+
             # Today's metrics
             today_orders = Order.objects.filter(
                 created_at__gte=today_start,
-                status=Order.OrderStatus.COMPLETED
+                **base_filters
             )
-            
+
             today_revenue = today_orders.aggregate(
                 total=Sum('grand_total')
             )['total'] or Decimal('0.00')
-            
+
             today_count = today_orders.count()
-            
+
             # This week's metrics
             week_start = today_start - timedelta(days=now.weekday())
             week_orders = Order.objects.filter(
                 created_at__gte=week_start,
-                status=Order.OrderStatus.COMPLETED
+                **base_filters
             )
-            
+
             week_revenue = week_orders.aggregate(
                 total=Sum('grand_total')
             )['total'] or Decimal('0.00')
-            
+
             week_count = week_orders.count()
-            
+
             return {
                 'today': {
                     'revenue': float(today_revenue),

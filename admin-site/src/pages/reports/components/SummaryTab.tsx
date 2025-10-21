@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Card,
 	CardContent,
@@ -135,6 +136,7 @@ interface SummaryTabProps {
 }
 
 export function SummaryTab({ dateRange }: SummaryTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<SummaryData | null>(null);
 	const [quickMetrics, setQuickMetrics] = useState<QuickMetrics | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -156,9 +158,11 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 				return;
 			}
 
+			const filters = selectedLocationId ? { location_id: selectedLocationId } : {};
 			const summaryData = await reportsService.generateSummaryReport(
 				startDate,
-				endDate
+				endDate,
+				filters
 			);
 			setData(summaryData as SummaryData);
 		} catch (err) {
@@ -172,7 +176,7 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 		setQuickMetricsLoading(true);
 
 		try {
-			const metricsData = await reportsService.getQuickMetrics();
+			const metricsData = await reportsService.getQuickMetrics(selectedLocationId ?? undefined);
 			setQuickMetrics(metricsData as QuickMetrics);
 		} catch (err) {
 			console.error("Error fetching quick metrics:", err);
@@ -184,11 +188,11 @@ export function SummaryTab({ dateRange }: SummaryTabProps) {
 
 	useEffect(() => {
 		fetchSummaryData();
-	}, [dateRange]);
+	}, [dateRange, selectedLocationId]);
 
 	useEffect(() => {
 		fetchQuickMetrics();
-	}, []);
+	}, [selectedLocationId]);
 
 	if (loading) {
 		return (

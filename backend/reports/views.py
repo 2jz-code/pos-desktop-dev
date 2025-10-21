@@ -58,13 +58,18 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
 
             # Use cache by default, but allow bypassing with ?use_cache=false
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SummaryReportService.generate_summary_report(
                 tenant=request.tenant,
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -86,12 +91,18 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             group_by = request.query_params.get("group_by", "day")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SalesReportService.generate_sales_report(
                 tenant=request.tenant,
-                start_date=start_date, end_date=end_date, group_by=group_by, use_cache=use_cache
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                group_by=group_by,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -113,6 +124,8 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             category_id = serializer.validated_data.get("category_id")
             limit = serializer.validated_data.get("limit", 10)
             trend_period = request.query_params.get("trend_period", "auto")
@@ -122,6 +135,7 @@ class ReportViewSet(viewsets.ViewSet):
                 tenant=request.tenant,
                 start_date=start_date,
                 end_date=end_date,
+                location_id=location_id,
                 category_id=category_id,
                 limit=limit,
                 trend_period=trend_period,
@@ -147,11 +161,20 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
+
+            # Debug logging
+            logger.info(f"Payments report: request.store_location_id={getattr(request, 'store_location_id', 'NOT SET')}, X-Store-Location header={request.META.get('HTTP_X_STORE_LOCATION', 'NOT SET')}, final location_id={location_id}")
+
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = PaymentsReportService.generate_payments_report(
                 tenant=request.tenant,
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -173,11 +196,16 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = OperationsReportService.generate_operations_report(
                 tenant=request.tenant,
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -193,7 +221,24 @@ class ReportViewSet(viewsets.ViewSet):
     def quick_metrics(self, request):
         """Get today/MTD/YTD quick metrics for dashboard"""
         try:
-            metrics_data = SummaryReportService.get_quick_metrics()
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None)
+            if not location_id:
+                location_param = request.query_params.get("location_id")
+                if location_param:
+                    try:
+                        location_id = int(location_param)
+                    except (ValueError, TypeError):
+                        return Response(
+                            {"error": "Invalid location_id parameter"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+            logger.info(f"Quick metrics for location: {location_id}")
+            metrics_data = SummaryReportService.get_quick_metrics(
+                tenant=request.tenant,
+                location_id=location_id
+            )
             return Response(metrics_data, status=status.HTTP_200_OK)
 
         except Exception as e:

@@ -40,9 +40,9 @@ export interface ActivityItem {
 class DashboardService {
 	/**
 	 * Get dashboard metrics for today
-	 * Store location is automatically extracted from X-Store-Location header by backend middleware
+	 * @param locationId - Optional store location ID to filter metrics by location
 	 */
-	async getDashboardMetrics(): Promise<DashboardMetrics> {
+	async getDashboardMetrics(locationId?: number): Promise<DashboardMetrics> {
 		try {
 			const today = new Date();
 			const yesterday = new Date(today);
@@ -71,13 +71,17 @@ class DashboardService {
 			console.log("Dashboard fetching reports for:", {
 				today: { start: todayStart, end: todayEnd },
 				yesterday: { start: yesterdayStart, end: yesterdayEnd },
+				locationId,
 			});
+
+			// Build filters with optional location_id
+			const filters = locationId ? { location_id: locationId } : {};
 
 			// Fetch today's sales report and products report in parallel
 			const [todaySalesData, yesterdaySalesData, todayProductsData] = await Promise.all([
-				reportsService.generateSalesReport(todayStart, todayEnd, "day"),
-				reportsService.generateSalesReport(yesterdayStart, yesterdayEnd, "day"),
-				reportsService.generateProductsReport(todayStart, todayEnd),
+				reportsService.generateSalesReport(todayStart, todayEnd, "day", filters),
+				reportsService.generateSalesReport(yesterdayStart, yesterdayEnd, "day", filters),
+				reportsService.generateProductsReport(todayStart, todayEnd, filters),
 			]);
 
 			// Extract metrics from sales reports (use net_revenue instead of total_revenue)

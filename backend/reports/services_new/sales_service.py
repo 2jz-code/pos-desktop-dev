@@ -44,6 +44,7 @@ class SalesReportService(BaseReportService):
         tenant,
         start_date: datetime,
         end_date: datetime,
+        location_id: Optional[int] = None,
         group_by: str = "day",
         use_cache: bool = True,
     ) -> Dict[str, Any]:
@@ -51,7 +52,7 @@ class SalesReportService(BaseReportService):
 
         cache_key = SalesReportService._generate_cache_key(
             "sales",
-            {"start_date": start_date, "end_date": end_date, "group_by": group_by},
+            {"start_date": start_date, "end_date": end_date, "location_id": location_id, "group_by": group_by},
         )
 
         if use_cache:
@@ -59,11 +60,11 @@ class SalesReportService(BaseReportService):
             if cached_data:
                 return cached_data
 
-        logger.info(f"Generating sales report for {start_date} to {end_date}")
+        logger.info(f"Generating sales report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
         # Get base data
-        orders_queryset = SalesReportService._get_base_orders_queryset(tenant, start_date, end_date)
+        orders_queryset = SalesReportService._get_base_orders_queryset(tenant, start_date, end_date, location_id)
 
         # Calculate core metrics
         sales_data = SalesReportService._calculate_core_sales_metrics(orders_queryset)
@@ -72,7 +73,7 @@ class SalesReportService(BaseReportService):
         sales_data.update(SalesReportService._calculate_sales_by_period(orders_queryset, group_by))
         sales_data.update(SalesReportService._calculate_category_sales(orders_queryset))
         sales_data.update(SalesReportService._calculate_peak_hours(orders_queryset))
-        sales_data.update(SalesReportService._calculate_payment_reconciliation(tenant, start_date, end_date))
+        sales_data.update(SalesReportService._calculate_payment_reconciliation(tenant, start_date, end_date, location_id))
 
         # Add metadata
         sales_data["generated_at"] = timezone.now().isoformat()
@@ -91,16 +92,22 @@ class SalesReportService(BaseReportService):
         return sales_data
     
     @staticmethod
-    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime):
+    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None):
         """Get optimized base queryset for completed orders in date range."""
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        # Add location filter if specified
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
         return (
-            Order.objects.filter(
-                tenant=tenant,
-                status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_date, end_date),
-                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-            )
-            .select_related("cashier", "customer", "payment_details")
+            Order.objects.filter(**filters)
+            .select_related("cashier", "customer", "payment_details", "store_location")
             .prefetch_related("items__product")
         )
     
@@ -388,15 +395,20 @@ class SalesReportService(BaseReportService):
         return {"top_hours": top_hours}
     
     @staticmethod
-    def _calculate_payment_reconciliation(tenant, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _calculate_payment_reconciliation(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Calculate payment success metrics focusing on transaction success rates."""
 
         # Get all orders in the date range
-        all_orders = Order.objects.filter(
-            tenant=tenant,
-            created_at__range=(start_date, end_date),
-            subtotal__gt=0  # Exclude $0 orders
-        )
+        filters = {
+            "tenant": tenant,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0  # Exclude $0 orders
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
+        all_orders = Order.objects.filter(**filters)
 
         # Get payments for these orders
         all_payments = Payment.objects.filter(

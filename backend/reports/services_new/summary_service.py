@@ -6,7 +6,7 @@ import time
 import logging
 from decimal import Decimal
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from django.db import transaction
 from django.db.models import (
@@ -33,13 +33,14 @@ class SummaryReportService(BaseReportService):
         tenant,
         start_date: datetime,
         end_date: datetime,
+        location_id: Optional[int] = None,
         use_cache: bool = True,
     ) -> Dict[str, Any]:
         """Generate comprehensive summary report for dashboard"""
 
         cache_key = SummaryReportService._generate_cache_key(
             "summary",
-            {"start_date": start_date, "end_date": end_date},
+            {"start_date": start_date, "end_date": end_date, "location_id": location_id},
         )
 
         if use_cache:
@@ -47,17 +48,17 @@ class SummaryReportService(BaseReportService):
             if cached_data:
                 return cached_data
 
-        logger.info(f"Generating summary report for {start_date} to {end_date}")
+        logger.info(f"Generating summary report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else ""))
         start_time = time.time()
 
         # Get base data
-        orders_queryset = SummaryReportService._get_base_orders_queryset(tenant, start_date, end_date)
+        orders_queryset = SummaryReportService._get_base_orders_queryset(tenant, start_date, end_date, location_id)
 
         # Calculate core metrics
         summary_data = SummaryReportService._calculate_core_summary_metrics(orders_queryset)
 
         # Add growth metrics
-        summary_data.update(SummaryReportService._calculate_growth_metrics(tenant, start_date, end_date, summary_data))
+        summary_data.update(SummaryReportService._calculate_growth_metrics(tenant, start_date, end_date, location_id, summary_data))
 
         # Add detailed breakdowns
         summary_data.update(SummaryReportService._calculate_product_metrics(orders_queryset))
@@ -82,16 +83,21 @@ class SummaryReportService(BaseReportService):
         return summary_data
 
     @staticmethod
-    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime):
+    def _get_base_orders_queryset(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None):
         """Get optimized base queryset for completed orders in date range."""
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
         return (
-            Order.objects.filter(
-                tenant=tenant,
-                status=Order.OrderStatus.COMPLETED,
-                created_at__range=(start_date, end_date),
-                subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-            )
-            .select_related("cashier", "customer")
+            Order.objects.filter(**filters)
+            .select_related("cashier", "customer", "store_location")
             .prefetch_related("items__product")
         )
 
@@ -137,7 +143,7 @@ class SummaryReportService(BaseReportService):
         return summary_data
 
     @staticmethod
-    def _calculate_growth_metrics(tenant, start_date: datetime, end_date: datetime, current_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_growth_metrics(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int], current_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate growth metrics compared to previous period."""
 
         # Calculate previous period
@@ -145,12 +151,17 @@ class SummaryReportService(BaseReportService):
         previous_start = start_date - timedelta(days=previous_period_days)
         previous_end = start_date
 
-        previous_data = Order.objects.filter(
-            tenant=tenant,
-            status=Order.OrderStatus.COMPLETED,
-            created_at__range=(previous_start, previous_end),
-            subtotal__gt=0,
-        ).aggregate(
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (previous_start, previous_end),
+            "subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
+        previous_data = Order.objects.filter(**filters).aggregate(
             prev_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
             prev_transactions=Count("id"),
         )
@@ -311,9 +322,9 @@ class SummaryReportService(BaseReportService):
         }
 
     @staticmethod
-    def get_quick_metrics() -> Dict[str, Any]:
+    def get_quick_metrics(tenant, location_id=None) -> Dict[str, Any]:
         """Get today/MTD/YTD metrics for dashboard."""
-        
+
         # Use the same approach as sales service - get local timezone and make timezone-aware datetimes
         local_tz = TimezoneUtils.get_local_timezone()
         now_local = timezone.now().astimezone(local_tz)
@@ -336,22 +347,30 @@ class SummaryReportService(BaseReportService):
 
 
         return {
-            "today": SummaryReportService._get_metrics_for_period(today_start, now),
-            "month_to_date": SummaryReportService._get_metrics_for_period(mtd_start, now),
-            "year_to_date": SummaryReportService._get_metrics_for_period(ytd_start, now),
+            "today": SummaryReportService._get_metrics_for_period(today_start, now, tenant, location_id),
+            "month_to_date": SummaryReportService._get_metrics_for_period(mtd_start, now, tenant, location_id),
+            "year_to_date": SummaryReportService._get_metrics_for_period(ytd_start, now, tenant, location_id),
             "generated_at": timezone.now().isoformat(),
         }
 
     @staticmethod
-    def _get_metrics_for_period(start_time: datetime, end_time: datetime) -> Dict[str, Any]:
+    def _get_metrics_for_period(start_time: datetime, end_time: datetime, tenant, location_id=None) -> Dict[str, Any]:
         """Get comprehensive metrics for a specific time period."""
-        
+
+        # Build base filters
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_time, end_time),
+            "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        # Add location filter if specified
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
         # Get order-level metrics WITHOUT JOINs to avoid duplication
-        orders_queryset = Order.objects.filter(
-            status=Order.OrderStatus.COMPLETED,
-            created_at__range=(start_time, end_time),
-            subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-        )
+        orders_queryset = Order.objects.filter(**filters)
         
         orders = orders_queryset.aggregate(
             total_sales=Coalesce(Sum("grand_total"), Value(Decimal("0.00"))),
@@ -367,11 +386,19 @@ class SummaryReportService(BaseReportService):
         )
 
         # Calculate total items separately to avoid JOIN duplication
-        total_items = OrderItem.objects.filter(
-            order__status=Order.OrderStatus.COMPLETED,
-            order__created_at__range=(start_time, end_time),
-            order__subtotal__gt=0,
-        ).aggregate(total_items=Coalesce(Sum("quantity"), Value(0)))["total_items"]
+        item_filters = {
+            "order__tenant": tenant,
+            "order__status": Order.OrderStatus.COMPLETED,
+            "order__created_at__range": (start_time, end_time),
+            "order__subtotal__gt": 0,
+        }
+
+        if location_id is not None:
+            item_filters["order__store_location_id"] = location_id
+
+        total_items = OrderItem.objects.filter(**item_filters).aggregate(
+            total_items=Coalesce(Sum("quantity"), Value(0))
+        )["total_items"]
 
         total_orders_value = float(orders["total_sales"] or 0)
         total_revenue = float(payment_totals["total_revenue"] or 0)
