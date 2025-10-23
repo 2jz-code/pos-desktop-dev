@@ -22,7 +22,7 @@ const initialFormData = {
 	tip: 0,
 };
 
-export const useCheckout = () => {
+export const useCheckout = (initialStep = 0) => {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { cart } = useCart();
@@ -30,7 +30,8 @@ export const useCheckout = () => {
 	const { user, isAuthenticated } = useAuth();
 
 	// State management
-	const [currentStep, setCurrentStep] = useState(0); // Start at 0 for location selection
+	// Start at provided initial step (0 for multi-location, 1 for single-location)
+	const [currentStep, setCurrentStep] = useState(initialStep);
 	const [formData, setFormData] = useState(initialFormData);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false); // <-- New state for payment submission
@@ -186,8 +187,9 @@ export const useCheckout = () => {
 
 	const prevStep = useCallback(() => {
 		setError(null);
-		setCurrentStep((prev) => Math.max(prev - 1, 0)); // Allow going back to step 0 (location)
-	}, []);
+		// Don't go below the initial step (0 for multi-location, 1 for single-location)
+		setCurrentStep((prev) => Math.max(prev - 1, initialStep));
+	}, [initialStep]);
 
 	// Handle location selection completion (Step 0 -> Step 1)
 	const submitLocationSelection = useCallback((selectedLocationId) => {

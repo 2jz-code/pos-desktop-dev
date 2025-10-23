@@ -20,6 +20,20 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 		);
 	}
 
+	// Use order's store location details if available, fallback to global storeInfo (no hardcoded values)
+	const locationDetails = orderData.store_location_details || {};
+	const displayAddress = locationDetails.address_line1 || storeInfo?.store_address;
+	const displayPhone = locationDetails.phone || storeInfo?.store_phone;
+	const displayName = locationDetails.name || storeInfo?.store_name;
+	const displayCity = locationDetails.city || "";
+	const displayState = locationDetails.state || "";
+	const displayPostalCode = locationDetails.postal_code || "";
+
+	// Format full address
+	const fullAddress = locationDetails.address_line1
+		? `${locationDetails.address_line1}${locationDetails.city ? `, ${locationDetails.city}` : ""}${locationDetails.state ? `, ${locationDetails.state}` : ""} ${locationDetails.postal_code || ""}`.trim()
+		: displayAddress;
+
 	const formatPrice = (price) => {
 		const numericPrice =
 			typeof price === "string" ? parseFloat(price) : Number(price);
@@ -35,19 +49,14 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 		if (orderData.status === "READY") {
 			return "Ready for pickup!";
 		}
-		// If order is completed (payment succeeded), still show pickup time since they need to collect it
-		if (orderData.status === "COMPLETED") {
-			const now = new Date();
-			const pickupTime = new Date(now.getTime() + 15 * 60000); // 15 minutes from now for paid orders
-			return pickupTime.toLocaleTimeString([], {
-				hour: "2-digit",
-				minute: "2-digit",
-			});
-		}
 
-		// For all other statuses (PENDING, PREPARING, etc.), show standard pickup time
-		const now = new Date();
-		const pickupTime = new Date(now.getTime() + 20 * 60000); // 20 minutes from now
+		// Get lead time from order's location, fallback to 20 minutes if not available
+		const leadTimeMinutes = orderData.store_location_details?.web_order_lead_time_minutes || 20;
+
+		// Calculate pickup time based on order's last update time + lead time
+		// This ensures the time is fixed and doesn't change on page refresh
+		const orderUpdatedAt = new Date(orderData.updated_at);
+		const pickupTime = new Date(orderUpdatedAt.getTime() + leadTimeMinutes * 60000);
 		return pickupTime.toLocaleTimeString([], {
 			hour: "2-digit",
 			minute: "2-digit",
@@ -379,30 +388,40 @@ const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 								</h4>
 								<div className="mt-2 p-4 bg-primary-beige/30 rounded-lg border border-primary-beige/50">
 									<div className="space-y-2 text-sm">
-										<div className="flex items-center space-x-2">
-											<MapPin className="h-4 w-4 text-primary-green flex-shrink-0" />
-											<Link
-												to="https://maps.app.goo.gl/UEHKAs1eg7pVsq2D7"
-												target="_blank"
-												rel="noopener noreferrer"
-											>
-												<span className="text-accent-dark-brown hover:text-primary-green transition-colors">
-													{storeInfo?.store_address ||
-														"2105 Cliff Rd Suite 300, Eagan, MN, 55124"}
-												</span>
-											</Link>
-										</div>
-										<div className="flex items-center space-x-2">
-											<Phone className="h-4 w-4 text-primary-green flex-shrink-0" />
-											<a
-												href={`tel:+1${(
-													storeInfo?.store_phone || "6514125336"
-												).replace(/\D/g, "")}`}
-												className="text-accent-dark-brown hover:text-primary-green transition-colors"
-											>
-												{storeInfo?.store_phone || "(651) 412-5336"}
-											</a>
-										</div>
+										{/* Location Name */}
+										{displayName && (
+											<p className="font-semibold text-accent-dark-green">
+												{displayName}
+											</p>
+										)}
+										{/* Address with Google Maps link - only show if available */}
+										{fullAddress && (
+											<div className="flex items-start space-x-2">
+												<MapPin className="h-4 w-4 text-primary-green flex-shrink-0 mt-0.5" />
+												<div>
+													<a
+														href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="text-accent-dark-brown hover:text-primary-green transition-colors"
+													>
+														{fullAddress}
+													</a>
+												</div>
+											</div>
+										)}
+										{/* Phone - only show if available */}
+										{displayPhone && (
+											<div className="flex items-center space-x-2">
+												<Phone className="h-4 w-4 text-primary-green flex-shrink-0" />
+												<a
+													href={`tel:+1${displayPhone.replace(/\D/g, "")}`}
+													className="text-accent-dark-brown hover:text-primary-green transition-colors"
+												>
+													{formatPhoneNumber(displayPhone)}
+												</a>
+											</div>
+										)}
 										<div className="pt-2 border-t border-accent-subtle-gray/30">
 											<p className="text-accent-dark-brown/70">
 												Please come to our restaurant counter to collect your

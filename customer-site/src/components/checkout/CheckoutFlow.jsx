@@ -22,7 +22,10 @@ const CheckoutFlow = () => {
 	const navigate = useNavigate();
 	const { cart } = useCart();
 	const storeStatus = useStoreStatus();
-	const { selectedLocationId, selectedLocation, locations, isLoading: isLoadingLocations, formatAddress } = useLocationSelector();
+	const { selectedLocationId, selectedLocation, locations, isLoading: isLoadingLocations, formatAddress, selectionRequired } = useLocationSelector();
+
+	// If only 1 location exists, start at step 1 (customer info), otherwise start at step 0 (location selection)
+	const initialStep = !isLoadingLocations && !selectionRequired ? 1 : 0;
 
 	const {
 		currentStep,
@@ -40,7 +43,7 @@ const CheckoutFlow = () => {
 		submitOrder,
 		clearError,
 		submitCustomerInfo,
-	} = useCheckout();
+	} = useCheckout(initialStep);
 
 	// Manually find the location if selectedLocation is undefined
 	// Handle type mismatch: selectedLocationId might be string, location IDs are numbers
@@ -279,14 +282,17 @@ const CheckoutFlow = () => {
 											Pickup Location
 										</h3>
 									</div>
-									<button
-										onClick={prevStep}
-										className="flex items-center space-x-1 text-xs text-primary-green hover:text-accent-dark-green transition-colors focus:outline-none focus:ring-2 focus:ring-primary-green focus:ring-offset-2 rounded px-2 py-1 bg-white border border-primary-green/20 hover:border-primary-green/40"
-										aria-label="Change location"
-									>
-										<Edit2 className="h-3 w-3" />
-										<span className="font-medium">Change</span>
-									</button>
+									{/* Only show "Change" button if multiple locations exist */}
+									{selectionRequired && (
+										<button
+											onClick={prevStep}
+											className="flex items-center space-x-1 text-xs text-primary-green hover:text-accent-dark-green transition-colors focus:outline-none focus:ring-2 focus:ring-primary-green focus:ring-offset-2 rounded px-2 py-1 bg-white border border-primary-green/20 hover:border-primary-green/40"
+											aria-label="Change location"
+										>
+											<Edit2 className="h-3 w-3" />
+											<span className="font-medium">Change</span>
+										</button>
+									)}
 								</div>
 
 								{/* Location details - compact */}

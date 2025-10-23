@@ -184,6 +184,7 @@ class OrderSerializer(BaseModelSerializer):
     customer = UserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
     payment_details = serializers.SerializerMethodField()
+    store_location_details = serializers.SerializerMethodField()
     # Essential payment fields for frontend compatibility
     total_with_tip = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
@@ -210,7 +211,7 @@ class OrderSerializer(BaseModelSerializer):
             "created_at",
             "updated_at",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details"]
+        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
         prefetch_related_fields = [
             # Let Django use the default manager to respect tenant context at request time
             # Don't use explicit querysets with TenantManager - they're evaluated at class definition time
@@ -229,6 +230,17 @@ class OrderSerializer(BaseModelSerializer):
 
         if hasattr(obj, "payment_details") and obj.payment_details:
             return PaymentSerializer(obj.payment_details).data
+        return None
+
+    def get_store_location_details(self, obj):
+        """
+        Return nested store location details for confirmation page.
+        Includes all relevant contact and address information.
+        """
+        from settings.serializers import StoreLocationSerializer
+
+        if hasattr(obj, "store_location") and obj.store_location:
+            return StoreLocationSerializer(obj.store_location).data
         return None
 
     def get_total_with_tip(self, obj):

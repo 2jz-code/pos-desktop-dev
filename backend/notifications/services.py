@@ -53,18 +53,25 @@ class EmailService:
                 logger.warning(f"No email address found for order_id {order.id}")
                 return False
 
-            # Calculate estimated pickup time
-            utc_pickup_time = timezone.now() + timedelta(minutes=15)
+            # Calculate estimated pickup time using location's lead time
+            # Use order.updated_at (not now()) so the time is fixed and doesn't change
+            lead_time_minutes = order.store_location.web_order_lead_time_minutes if order.store_location else 20
+            utc_pickup_time = order.updated_at + timedelta(minutes=lead_time_minutes)
 
-            # Convert to local timezone
+            # Convert to local timezone using location's timezone
             try:
-                local_tz = pytz.timezone("America/Chicago")
+                location_timezone = order.store_location.timezone if order.store_location else "America/Chicago"
+                local_tz = pytz.timezone(location_timezone)
                 local_pickup_time = utc_pickup_time.astimezone(local_tz)
             except pytz.UnknownTimeZoneError:
+                logger.warning(f"Invalid timezone {location_timezone}, falling back to UTC")
                 local_pickup_time = utc_pickup_time  # Fallback to UTC
 
             # Get store info from order's store location (with tenant context)
             store_info = self._get_store_info(order.tenant, order.store_location)
+
+            # Get brand name from global settings
+            brand_name = self._get_brand_name(order.tenant)
 
             # Determine which template to use and prepare context
             if order.customer:
@@ -100,6 +107,7 @@ class EmailService:
                         "createdAt": order.created_at.strftime("%B %d, %Y at %I:%M %p"),
                     },
                     "store_info": store_info,
+                    "brand_name": brand_name,
                 }
             else:
                 # Guest user
@@ -132,10 +140,11 @@ class EmailService:
                         "createdAt": order.created_at.strftime("%B %d, %Y at %I:%M %p"),
                     },
                     "store_info": store_info,
+                    "brand_name": brand_name,
                 }
 
             # Send the email
-            subject = f"Your Ajeen Order Confirmation #{order.order_number}"
+            subject = f"Your {brand_name} Order Confirmation #{order.order_number}"
             self.send_email(
                 recipient_list=[recipient_email],
                 subject=subject,
@@ -270,6 +279,23 @@ class EmailService:
             "phone": "",
             "email": "",
         }
+
+    def _get_brand_name(self, tenant):
+        """
+        Get brand name from GlobalSettings.
+
+        Args:
+            tenant: Tenant instance
+
+        Returns:
+            str: Brand name or default fallback
+        """
+        try:
+            global_settings = GlobalSettings.objects.get(tenant=tenant)
+            return global_settings.brand_name
+        except GlobalSettings.DoesNotExist:
+            logger.warning(f"No GlobalSettings found for tenant {tenant.id}, using default brand name")
+            return "Ajeen"
 
     def send_daily_low_stock_summary(self, recipient_email, low_stock_items):
         """

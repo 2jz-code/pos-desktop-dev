@@ -366,11 +366,14 @@
                                 <img src="https://bakeajeen-media.s3.amazonaws.com/email-images/map-pin.png" alt="Map Pin" width="16" height="16" style="max-width: 100%; vertical-align: middle; width: 16px; height: 16px">
                               </td>
                               <td style="padding-bottom: 8px; font-size: 14px">
-                                <a href="https://maps.app.goo.gl/UEHKAs1eg7pVsq2D7" class="hover-text-primary-green" style="text-decoration: none; color: #654321">
+                                {% if store_info.address %}
+                                <a href="https://www.google.com/maps/search/?api=1&query={{ store_info.address|urlencode }}" class="hover-text-primary-green" style="text-decoration: none; color: #654321">
                                   {{ store_info.address }}
                                 </a>
+                                {% endif %}
                               </td>
                             </tr>
+                            {% if store_info.phone_display %}
                             <tr>
                               <td style="width: 24px; padding-right: 8px; vertical-align: top">
                                 <img src="https://bakeajeen-media.s3.amazonaws.com/email-images/phone.png" alt="Phone" width="16" height="16" style="max-width: 100%; vertical-align: middle; width: 16px; height: 16px">
@@ -381,6 +384,7 @@
                                 </a>
                               </td>
                             </tr>
+                            {% endif %}
                             <tr>
                               <td colspan="2" style="padding-top: 8px; padding-bottom: 8px">
                                 <div style="height: 1px; background-color: rgba(209, 199, 188, 0.3)"></div>
@@ -420,12 +424,14 @@
               <tr>
                 <td class="sm-px-6" style="padding: 24px 36px; text-align: center">
                   <p style="margin: 0; font-size: 12px; color: #64748b">
-                    &copy; 2025 Ajeen. All rights
+                    &copy; 2025 {{ brand_name }}. All rights
                     reserved.
                   </p>
+                  {% if store_info.address %}
                   <p style="margin: 0; font-size: 12px; color: #64748b">
-                    2105 Cliff Rd Suite 300, Eagan, MN, 55124
+                    {{ store_info.address }}
                   </p>
+                  {% endif %}
                 </td>
               </tr>
             </table>
