@@ -114,6 +114,24 @@ MIDDLEWARE = [
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "myrestaurant")
 SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG", "system")
 
+# ==============================================================================
+# MULTI-TENANCY & SUBSCRIPTIONS (Phase 1 Configuration)
+# ==============================================================================
+# Phase 1: Permissive defaults (allow everything during transition)
+# Phase 2: Set DEFAULT_FEATURE_ACCESS = False to enforce subscription limits
+DEFAULT_FEATURE_ACCESS = True
+
+# Custom domain verification settings
+CUSTOM_DOMAIN_VERIFICATION_METHODS = ['manual', 'txt', 'cname', 'meta', 'file']
+CUSTOM_DOMAIN_AUTO_VERIFY = False  # Phase 3: Enable automated verification
+
+# Future Phase 2 settings (commented for now):
+# STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+# STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+# STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+# DEFAULT_TRIAL_DAYS = 14
+# DEFAULT_SUBSCRIPTION_TIER = 'starter'
+
 INTERNAL_IPS = [
     "127.0.0.1",
     "192.168.5.144",

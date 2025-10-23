@@ -22,16 +22,19 @@ class TenantMiddleware:
 
     Resolution precedence (highest to lowest):
     1. URL parameter (?tenant=slug) - Superuser override only
-    2. Authenticated user's tenant - Staff/POS users
+    2. Authenticated user's tenant - Staff/POS users (JWT)
     3. Admin subdomain path - Staff admin React app (admin.ajeen.com/joespizza)
     4. Management subdomain - System admin (manage.ajeen.com)
-    5. Customer subdomain - Public ordering (joespizza.ajeen.com)
-    6. Session tenant - Guest users mid-checkout
-    7. Development fallback - localhost
-    8. Fail with 400
+    5. X-Tenant header - Customer sites using shared API
+    6. Custom domain - Customer's own domain (order.joespizza.com)
+    7. Customer subdomain - Public ordering (joespizza.ajeen.com)
+    8. Session tenant - Guest users mid-checkout
+    9. Development fallback - localhost
+    10. Fail with 400
 
     Examples:
         joespizza.ajeen.com → Tenant "joespizza" (from subdomain)
+        order.joespizza.com → Tenant "joespizza" (from custom domain)
         admin.ajeen.com/joespizza → Tenant "joespizza" (from path)
         manage.ajeen.com → System tenant (for SaaS owner)
         localhost:8000 → DEFAULT_TENANT_SLUG (development)
@@ -162,6 +165,14 @@ class TenantMiddleware:
                 raise TenantNotFoundError(
                     f"Tenant '{tenant_header}' not found. Check X-Tenant header value."
                 )
+
+        # 4.6. Custom domain (order.joespizza.com) - Phase 1 custom domains
+        # Allows customers to use their own domains instead of subdomains
+        tenant_from_domain = self.get_tenant_from_custom_domain(host)
+        if tenant_from_domain:
+            print(f"✅ [TenantMiddleware] Resolved tenant from custom domain: {host} → {tenant_from_domain.name}")
+            request.session['tenant_id'] = str(tenant_from_domain.id)
+            return tenant_from_domain
 
         # 5. Customer subdomain (joespizza.ajeen.com) - Public ordering
         # Extract tenant from subdomain for customer-facing sites
@@ -307,6 +318,43 @@ class TenantMiddleware:
         except (InvalidTokenError, KeyError, ValueError):
             # Invalid JWT format or other decode errors
             # Fall through to other tenant resolution methods
+            return None
+
+    def get_tenant_from_custom_domain(self, host):
+        """
+        Resolve tenant by custom domain.
+
+        Phase 1: Proper relational model with O(1) indexed lookup
+        Phase 3: Add automated verification and SSL provisioning
+
+        Args:
+            host: Incoming host header (e.g., 'order.joespizza.com')
+
+        Returns:
+            Tenant instance if custom domain matches and is verified, None otherwise
+
+        Examples:
+            order.joespizza.com → Tenant "joespizza"
+            shop.mariascafe.com → Tenant "mariascafe"
+        """
+        try:
+            from tenant.models import CustomDomain
+
+            # Fast O(1) lookup with database index
+            # Only match verified domains for security
+            domain = CustomDomain.objects.select_related('tenant').get(
+                domain=host,
+                verified=True,
+                tenant__is_active=True
+            )
+            return domain.tenant
+
+        except CustomDomain.DoesNotExist:
+            # No custom domain found for this host
+            return None
+        except Exception as e:
+            # Log error but don't break request flow
+            print(f"❌ [TenantMiddleware] Error resolving custom domain: {e}")
             return None
 
     def get_fallback_tenant_slug(self, host, subdomain):
