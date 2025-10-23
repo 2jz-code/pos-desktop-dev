@@ -199,16 +199,17 @@ class Order(models.Model):
             models.Index(fields=['tenant', 'customer', 'status'], name='order_ten_cust_stat_idx'),
             models.Index(fields=['tenant', 'guest_id', 'status'], name='order_ten_guest_stat_idx'),
             models.Index(fields=['tenant', 'cashier'], name='order_tenant_cashier_idx'),
-            models.Index(fields=['tenant', 'order_number'], name='order_tenant_num_idx'),
+            models.Index(fields=['tenant', 'store_location', 'order_number'], name='order_loc_num_idx'),
             # Performance-critical compound indexes
             models.Index(fields=['tenant', 'status', 'created_at'], name='order_ten_stat_dt_idx'),
             models.Index(fields=['tenant', 'payment_status', 'status'], name='order_ten_pay_st_st_idx'),
+            models.Index(fields=['tenant', 'store_location', '-created_at'], name='order_loc_created_idx'),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "order_number"],
+                fields=["tenant", "store_location", "order_number"],
                 condition=models.Q(order_number__isnull=False),
-                name="unique_order_number_per_tenant",
+                name="unique_order_number_per_location",
             ),
             models.UniqueConstraint(
                 fields=["tenant", "guest_id"],
@@ -374,20 +375,32 @@ class Order(models.Model):
 
     def _generate_sequential_order_number(self):
         """
-        Generates the next sequential order number PER TENANT.
-        Each tenant has independent numbering starting from 1.
+        Generates the next sequential order number PER LOCATION.
+        Each location has independent numbering starting from 1.
 
-        CRITICAL FIX: Added tenant filter to prevent cross-tenant number sharing.
+        CRITICAL: Both tenant AND store_location filtering for proper isolation.
+
+        Architecture:
+        - Tenant isolation: Orders belong to one tenant (security boundary)
+        - Location scoping: Each location has independent sequence (operational boundary)
 
         Example:
-            Tenant A: ORD-00001, ORD-00002, ORD-00003
-            Tenant B: ORD-00001, ORD-00002  (independent sequence)
+            Downtown:  ORD-00001, ORD-00002, ORD-00003
+            Airport:   ORD-00001, ORD-00002, ORD-00003
+            (Same tenant, different locations, independent sequences)
+
+        Benefits:
+        - Clean sequences per location (no gaps)
+        - Matches operational reality (staff work at one location)
+        - Aligns with location-separated reports
+        - Natural fit for terminal context (terminals are location-bound)
         """
         prefix = "ORD-"
-        # Get the highest existing order number for THIS TENANT
+        # Get the highest existing order number for THIS TENANT + LOCATION
         last_order = (
             Order.objects.filter(
-                tenant=self.tenant,  # ← CRITICAL FIX: Tenant isolation
+                tenant=self.tenant,           # ← Tenant isolation (security)
+                store_location=self.store_location,  # ← Location scoping (operations)
                 order_number__startswith=prefix
             )
             .order_by("-order_number")
@@ -404,7 +417,7 @@ class Order(models.Model):
                 # If existing numbers don't follow the pattern, start from 1
                 next_number = 1
         else:
-            # No existing order numbers with the prefix, start from 1
+            # No existing order numbers with the prefix at this location, start from 1
             next_number = 1
 
         # Format with leading zeros (e.g., 00001) for a fixed width
