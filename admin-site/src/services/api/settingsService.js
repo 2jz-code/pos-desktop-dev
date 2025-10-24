@@ -21,7 +21,7 @@ export const updateGlobalSettings = async (settingsData) => {
 	return response.data;
 };
 
-// === Printer Configuration ===
+// === Printer Configuration (DEPRECATED - use Printers & Kitchen Zones below) ===
 
 export const getPrinterConfig = async () => {
 	const response = await apiClient.get("settings/printer-config/");
@@ -31,6 +31,72 @@ export const getPrinterConfig = async () => {
 export const updatePrinterConfig = async (printerData) => {
 	const response = await apiClient.put("settings/printer-config/", printerData);
 	return response.data;
+};
+
+// === Printers (NEW RELATIONAL API) ===
+
+export const getPrinters = async (locationId = null) => {
+	const params = new URLSearchParams();
+	if (locationId) {
+		params.append("location", locationId);
+	}
+	const response = await apiClient.get(`settings/printers/?${params}`);
+	return response.data.results;
+};
+
+export const getPrinter = async (printerId) => {
+	const response = await apiClient.get(`settings/printers/${printerId}/`);
+	return response.data;
+};
+
+export const createPrinter = async (printerData) => {
+	const response = await apiClient.post("settings/printers/", printerData);
+	return response.data;
+};
+
+export const updatePrinter = async (printerId, printerData) => {
+	const response = await apiClient.patch(
+		`settings/printers/${printerId}/`,
+		printerData
+	);
+	return response.data;
+};
+
+export const deletePrinter = async (printerId) => {
+	await apiClient.delete(`settings/printers/${printerId}/`);
+};
+
+// === Kitchen Zones (NEW RELATIONAL API) ===
+
+export const getKitchenZones = async (locationId = null) => {
+	const params = new URLSearchParams();
+	if (locationId) {
+		params.append("location", locationId);
+	}
+	const response = await apiClient.get(`settings/kitchen-zones/?${params}`);
+	return response.data.results;
+};
+
+export const getKitchenZone = async (zoneId) => {
+	const response = await apiClient.get(`settings/kitchen-zones/${zoneId}/`);
+	return response.data;
+};
+
+export const createKitchenZone = async (zoneData) => {
+	const response = await apiClient.post("settings/kitchen-zones/", zoneData);
+	return response.data;
+};
+
+export const updateKitchenZone = async (zoneId, zoneData) => {
+	const response = await apiClient.patch(
+		`settings/kitchen-zones/${zoneId}/`,
+		zoneData
+	);
+	return response.data;
+};
+
+export const deleteKitchenZone = async (zoneId) => {
+	await apiClient.delete(`settings/kitchen-zones/${zoneId}/`);
 };
 
 // === Store Locations ===

@@ -9,6 +9,8 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
+    Printer,
+    KitchenZone,
     PrinterConfiguration,
     StockActionReasonConfig,
 )
@@ -16,6 +18,9 @@ from .serializers import (
     GlobalSettingsSerializer,
     StoreLocationSerializer,
     TerminalLocationSerializer,
+    PrinterSerializer,
+    KitchenZoneSerializer,
+    PrinterConfigResponseSerializer,
     PrinterConfigurationSerializer,
     StockActionReasonConfigSerializer,
     StockActionReasonConfigListSerializer,
@@ -179,55 +184,147 @@ class GlobalSettingsViewSet(BaseViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+class PrinterViewSet(BaseViewSet):
+    """
+    API endpoint for managing network printers.
+    Scoped to current location based on query parameters.
+    """
+    queryset = Printer.objects.all()
+    serializer_class = PrinterSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+    filterset_fields = ['location', 'printer_type', 'is_active']
+
+    def get_queryset(self):
+        """Filter by tenant and optionally by location."""
+        queryset = super().get_queryset()
+
+        # Filter by location if provided
+        location_id = self.request.query_params.get('location')
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set tenant on printer creation."""
+        serializer.save(tenant=self.request.tenant)
+
+
+class KitchenZoneViewSet(BaseViewSet):
+    """
+    API endpoint for managing kitchen zones.
+    Scoped to current location based on query parameters.
+    """
+    queryset = KitchenZone.objects.all()
+    serializer_class = KitchenZoneSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+    filterset_fields = ['location', 'is_active']
+
+    def get_queryset(self):
+        """Filter by tenant and optionally by location."""
+        queryset = super().get_queryset()
+
+        # Filter by location if provided
+        location_id = self.request.query_params.get('location')
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set tenant on kitchen zone creation."""
+        serializer.save(tenant=self.request.tenant)
+
+
 class PrinterConfigurationViewSet(BaseViewSet):
     """
-    API endpoint for viewing and editing the singleton PrinterConfiguration object.
-    """
+    BACKWARD COMPATIBILITY ENDPOINT
 
-    queryset = PrinterConfiguration.objects.all()
-    serializer_class = PrinterConfigurationSerializer
+    Returns printer config in old JSON format for Electron app.
+    Now sources data from relational Printer and KitchenZone models.
+
+    GET settings/printer-config/ → Returns config for terminal's location
+    GET settings/printer-config/?location=123 → Returns config for specific location
+    """
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
 
-    def get_object(self):
-        """Uses PrinterConfigurationService for consistent singleton management."""
-        return PrinterConfigurationService.get_printer_configuration()
-
     def list(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
+        """
+        Return printer configuration in backward-compatible format.
+        Sources from new relational models instead of JSON.
+        """
+        # Determine which location to fetch config for
+        location_id = request.query_params.get('location')
+
+        if not location_id:
+            # Try to get location from terminal registration
+            device_id = request.headers.get('X-Device-ID')
+            if device_id:
+                try:
+                    from terminals.models import TerminalRegistration
+                    terminal = TerminalRegistration.objects.get(
+                        device_id=device_id,
+                        tenant=request.tenant
+                    )
+                    location = terminal.store_location
+                except TerminalRegistration.DoesNotExist:
+                    # No terminal registration, use first active location
+                    location = StoreLocation.objects.filter(
+                        tenant=request.tenant,
+                        is_active=True
+                    ).first()
+            else:
+                # No device ID, use first active location
+                location = StoreLocation.objects.filter(
+                    tenant=request.tenant,
+                    is_active=True
+                ).first()
+        else:
+            # Specific location requested
+            try:
+                location = StoreLocation.objects.get(
+                    id=location_id,
+                    tenant=request.tenant
+                )
+            except StoreLocation.DoesNotExist:
+                return Response(
+                    {"error": "Location not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        if not location:
+            return Response(
+                {
+                    "receipt_printers": [],
+                    "kitchen_printers": [],
+                    "kitchen_zones": [],
+                }
+            )
+
+        # Use backward-compatible serializer
+        serializer = PrinterConfigResponseSerializer({'location': location})
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
-        # For singleton, redirect create to update
-        return self.update(request, *args, **kwargs)
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to create configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     def update(self, request, *args, **kwargs):
-        """Handle singleton update using PrinterConfigurationService."""
-        try:
-            instance = PrinterConfigurationService.update_printer_configuration(
-                request.data, partial=False
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to update configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     def partial_update(self, request, *args, **kwargs):
-        """Handle singleton partial update using PrinterConfigurationService."""
-        try:
-            instance = PrinterConfigurationService.update_printer_configuration(
-                request.data, partial=True
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to update configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 # WebOrderSettings ViewSet REMOVED - settings now managed directly on StoreLocation
 

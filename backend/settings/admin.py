@@ -7,6 +7,8 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
+    Printer,
+    KitchenZone,
     PrinterConfiguration,
     StockActionReasonConfig,
 )
@@ -110,37 +112,135 @@ class GlobalSettingsAdmin(TenantAdminMixin, admin.ModelAdmin):
         return False
 
 
+@admin.register(Printer)
+class PrinterAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """Admin interface for Printer model."""
+
+    list_display = (
+        'name',
+        'printer_type',
+        'location',
+        'ip_address',
+        'port',
+        'is_active',
+        'updated_at',
+    )
+    list_filter = ('printer_type', 'is_active', 'location')
+    search_fields = ('name', 'ip_address', 'location__name')
+    readonly_fields = ('tenant', 'created_at', 'updated_at')
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('tenant', 'location', 'name', 'printer_type', 'is_active')
+        }),
+        ('Network Configuration', {
+            'fields': ('ip_address', 'port')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        """Show all printers across all locations for this tenant."""
+        return Printer.all_objects.select_related('location', 'tenant')
+
+
+@admin.register(KitchenZone)
+class KitchenZoneAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """Admin interface for KitchenZone model."""
+
+    list_display = (
+        'name',
+        'location',
+        'printer',
+        'category_count',
+        'is_active',
+    )
+    list_filter = ('is_active', 'location', 'printer')
+    search_fields = ('name', 'location__name', 'printer__name')
+    readonly_fields = ('tenant', 'created_at', 'updated_at')
+    filter_horizontal = ('categories',)
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('tenant', 'location', 'name', 'printer', 'is_active')
+        }),
+        ('Filtering Configuration', {
+            'fields': ('print_all_items', 'categories'),
+            'description': 'Define which categories should print to this kitchen zone. If "Print all items" is checked, all order items will be included regardless of category filters.'
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def category_count(self, obj):
+        if obj.print_all_items:
+            return "ALL"
+        return obj.categories.count()
+    category_count.short_description = "Categories"
+
+    def get_queryset(self, request):
+        """Optimize queryset with prefetch."""
+        return KitchenZone.all_objects.select_related(
+            'location', 'printer', 'tenant'
+        ).prefetch_related('categories')
+
+
 @admin.register(PrinterConfiguration)
 class PrinterConfigurationAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
-    Admin view for the tenant-specific PrinterConfiguration model.
+    DEPRECATED: Use Printer and KitchenZone models instead.
+    This admin is read-only and will be removed in a future version.
     """
 
-    list_display = ("id", "tenant", "receipt_printers_count", "kitchen_printers_count", "kitchen_zones_count")
-    search_fields = ("tenant__name",)
+    list_display = ("id", "tenant", "deprecation_notice")
 
-    def receipt_printers_count(self, obj):
-        return len(obj.receipt_printers) if obj.receipt_printers else 0
-    receipt_printers_count.short_description = "Receipt Printers"
-
-    def kitchen_printers_count(self, obj):
-        return len(obj.kitchen_printers) if obj.kitchen_printers else 0
-    kitchen_printers_count.short_description = "Kitchen Printers"
-
-    def kitchen_zones_count(self, obj):
-        return len(obj.kitchen_zones) if obj.kitchen_zones else 0
-    kitchen_zones_count.short_description = "Kitchen Zones"
+    def deprecation_notice(self, obj):
+        return "⚠️ DEPRECATED - Use Printer and KitchenZone models"
+    deprecation_notice.short_description = "Status"
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""
         return PrinterConfiguration.all_objects.select_related('tenant')
 
     def has_add_permission(self, request):
-        # Allow adding from the admin (will prompt for tenant selection)
-        return True
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        # Allow deletion to clean up old records
+        return request.user.is_superuser
+
+
+class PrinterInline(admin.TabularInline):
+    """Inline admin for printers within StoreLocation."""
+    model = Printer
+    extra = 0
+    fields = ('name', 'printer_type', 'ip_address', 'port', 'is_active')
+    verbose_name_plural = "Network Printers"
+
+    def get_queryset(self, request):
+        """Use all_objects to show items across all tenants in admin"""
+        return Printer.all_objects.select_related('location')
+
+
+class KitchenZoneInline(admin.TabularInline):
+    """Inline admin for kitchen zones within StoreLocation."""
+    model = KitchenZone
+    extra = 0
+    fields = ('name', 'printer', 'is_active')
+    verbose_name_plural = "Kitchen Zones"
+    show_change_link = True  # Allow editing in detail page for M2M fields
+
+    def get_queryset(self, request):
+        """Use all_objects to show items across all tenants in admin"""
+        return KitchenZone.all_objects.select_related('location', 'printer')
 
 
 class TerminalLocationInline(admin.StackedInline):
@@ -186,7 +286,7 @@ class StoreLocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin
     list_display = ("name", "city", "state", "accepts_web_orders", "timezone", "phone")
     list_filter = ("accepts_web_orders", "timezone", "country")
     search_fields = ("name", "city", "state", "slug", "address_line1")
-    inlines = [TerminalLocationInline]
+    inlines = [PrinterInline, KitchenZoneInline, TerminalLocationInline]
 
     readonly_fields = ('slug',)  # Auto-generated from name
 

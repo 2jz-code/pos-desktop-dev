@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('reports', '0006_reportexecution_parameters_and_more'),
-        ('settings', '__latest__'),  # Ensure StoreLocation exists
+        ('settings', '0028_add_web_order_defaults_to_global_settings'),  # Ensure StoreLocation exists
     ]
 
     operations = [

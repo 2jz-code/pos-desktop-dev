@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -17,13 +17,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { getCategories } from "@/services/api/categoryService";
 import CategoryTree from "./CategoryTree";
-import type { Category } from "@/types";
+import type { Category, Printer, KitchenZone } from "@/types";
 
 // Helper to build the category tree
 const buildTree = (categories: Category[]): Category[] => {
@@ -42,77 +42,68 @@ const buildTree = (categories: Category[]): Category[] => {
 	return tree;
 };
 
-interface Printer {
-	id: number;
-	name: string;
-	connection_type: string;
-	ip_address: string;
-}
-
-interface Zone {
-	id: number;
-	name: string;
-	printerId: number;
-	categories: (string | number)[];
-}
 interface AddEditKitchenZoneDialogProps {
 	isOpen: boolean;
 	onOpenChange: (isOpen: boolean) => void;
-	onSave: (data: Partial<Zone>) => void;
-	zone: Zone | null;
+	onSave: (data: Partial<KitchenZone>) => void;
+	zone: KitchenZone | null;
 	printers: Printer[];
 }
 
-export const AddEditKitchenZoneDialog: React.FC<
-	AddEditKitchenZoneDialogProps
-> = ({ isOpen, onOpenChange, onSave, zone, printers }) => {
+export function AddEditKitchenZoneDialog({
+	isOpen,
+	onOpenChange,
+	onSave,
+	zone,
+	printers,
+}: AddEditKitchenZoneDialogProps) {
 	const [formData, setFormData] = useState({
 		name: "",
-		printerId: "",
-		categories: [] as (string | number)[], // Array of category IDs
+		printer: 0,
+		categories: [] as number[],
+		print_all_items: false,
+		is_active: true,
 	});
 
 	const [categoryTree, setCategoryTree] = useState<Category[]>([]);
 	const [loading, setLoading] = useState(false);
 
-	// Fetch categories and product types when dialog opens
+	// Fetch categories when dialog opens
 	useEffect(() => {
 		if (isOpen) {
-			fetchData();
+			fetchCategories();
 		}
 	}, [isOpen]);
 
 	useEffect(() => {
-		if (zone) {
-			// Handle both printerId and printer_name for compatibility
-			let printerValue = "";
-			if (zone.printer_name) {
-				// Find printer by name and get its ID
-				const printer = printers.find(p => p.name === zone.printer_name);
-				printerValue = printer ? String(printer.id) : "";
-			} else if (zone.printerId) {
-				printerValue = String(zone.printerId);
-			}
-			
+		if (zone && isOpen) {
 			setFormData({
 				name: zone.name || "",
-				printerId: printerValue,
+				printer: zone.printer || 0,
 				categories: zone.categories || [],
+				print_all_items: zone.print_all_items || false,
+				is_active: zone.is_active !== undefined ? zone.is_active : true,
 			});
-		} else {
+		} else if (isOpen) {
 			setFormData({
 				name: "",
-				printerId: "",
+				printer: 0,
 				categories: [],
+				print_all_items: false,
+				is_active: true,
 			});
 		}
-	}, [zone, isOpen, printers]);
+	}, [zone, isOpen]);
 
-	const fetchData = async () => {
+	const fetchCategories = async () => {
 		setLoading(true);
 		try {
 			const categoriesResponse = await getCategories();
-			setCategoryTree(buildTree(categoriesResponse.data?.results));
+			// API returns array directly, not wrapped in results
+			const categories = Array.isArray(categoriesResponse.data)
+				? categoriesResponse.data
+				: categoriesResponse.data?.results || [];
+			setCategoryTree(buildTree(categories));
 		} catch (error) {
 			console.error("Failed to fetch categories:", error);
 		} finally {
@@ -125,8 +116,21 @@ export const AddEditKitchenZoneDialog: React.FC<
 		setFormData((prev) => ({ ...prev, [name]: value }));
 	};
 
-	const handleSelectChange = (value: string) => {
-		setFormData((prev) => ({ ...prev, printerId: value }));
+	const handlePrinterChange = (value: string) => {
+		setFormData((prev) => ({ ...prev, printer: parseInt(value) }));
+	};
+
+	const handlePrintAllChange = (checked: boolean) => {
+		setFormData((prev) => ({
+			...prev,
+			print_all_items: checked,
+			// Clear categories when "print all" is enabled
+			categories: checked ? [] : prev.categories,
+		}));
+	};
+
+	const handleActiveChange = (checked: boolean) => {
+		setFormData((prev) => ({ ...prev, is_active: checked }));
 	};
 
 	const handleCategoryChange = (node: Category, checked: boolean) => {
@@ -148,155 +152,146 @@ export const AddEditKitchenZoneDialog: React.FC<
 				newSelected = [...new Set([...newSelected, ...childIds])];
 			} else {
 				// Remove the node and all its children
-				newSelected = newSelected.filter(
-					(id) => !childIds.includes(id as number)
-				);
-			}
-
-			// Remove "ALL" if any specific category is toggled
-			const allIndex = newSelected.indexOf("ALL");
-			if (allIndex > -1) {
-				newSelected.splice(allIndex, 1);
+				newSelected = newSelected.filter((id) => !childIds.includes(id));
 			}
 
 			return { ...prev, categories: newSelected };
 		});
 	};
 
-	const handleSelectAll = (checked: boolean) => {
-		if (checked) {
-			setFormData((prev) => ({ ...prev, categories: ["ALL"] }));
-		} else {
-			setFormData((prev) => ({ ...prev, categories: [] }));
-		}
-	};
-
 	const handleSave = () => {
-		onSave({
-			...formData,
-			printerId: parseInt(formData.printerId, 10),
-		});
-		onOpenChange(false);
+		if (!formData.name || !formData.printer) {
+			alert("Please fill in all required fields");
+			return;
+		}
+		onSave(formData);
 	};
-
-	const isAllSelected = formData.categories.includes("ALL");
 
 	return (
-		<Dialog
-			open={isOpen}
-			onOpenChange={onOpenChange}
-		>
-			<DialogContent className="max-w-2xl max-h-[80vh]">
+		<Dialog open={isOpen} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-2xl max-h-[85vh]">
 				<DialogHeader>
-					<DialogTitle>{zone ? "Edit Zone" : "Add Kitchen Zone"}</DialogTitle>
+					<DialogTitle>{zone ? "Edit Kitchen Zone" : "Add Kitchen Zone"}</DialogTitle>
 					<DialogDescription>
-						Configure which categories and product types this kitchen zone
-						should print.
-						<br />
-						<strong>Note:</strong> If no categories are selected, this zone will
-						not print any tickets.
+						Configure which items should print to this kitchen zone based on categories
 					</DialogDescription>
 				</DialogHeader>
 
-				<ScrollArea className="max-h-[50vh] pr-4">
+				<ScrollArea className="max-h-[60vh] pr-4">
 					<div className="grid gap-6 py-4">
 						{/* Basic Zone Info */}
-						<div className="grid grid-cols-4 items-center gap-4">
-							<Label
-								htmlFor="name"
-								className="text-right"
-							>
-								Zone Name
-							</Label>
-							<Input
-								id="name"
-								name="name"
-								value={formData.name}
-								onChange={handleChange}
-								className="col-span-3"
-								placeholder="e.g., Hot Line"
-							/>
+						<div className="grid gap-4">
+							<div className="grid gap-2">
+								<Label htmlFor="name">
+									Zone Name <span className="text-red-500">*</span>
+								</Label>
+								<Input
+									id="name"
+									name="name"
+									value={formData.name}
+									onChange={handleChange}
+									placeholder="e.g., Hot Line, Grill Station, Bakery"
+								/>
+							</div>
+
+							<div className="grid gap-2">
+								<Label htmlFor="printer">
+									Assigned Printer <span className="text-red-500">*</span>
+								</Label>
+								<Select value={String(formData.printer || "")} onValueChange={handlePrinterChange}>
+									<SelectTrigger>
+										<SelectValue placeholder="Select a printer" />
+									</SelectTrigger>
+									<SelectContent>
+										{printers.map((p) => (
+											<SelectItem key={p.id} value={String(p.id)}>
+												{p.name} ({p.ip_address})
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
 						</div>
 
-						<div className="grid grid-cols-4 items-center gap-4">
-							<Label
-								htmlFor="printerId"
-								className="text-right"
-							>
-								Assigned Printer
-							</Label>
-							<Select
-								value={String(formData.printerId)}
-								onValueChange={handleSelectChange}
-							>
-								<SelectTrigger className="col-span-3">
-									<SelectValue placeholder="Select a printer" />
-								</SelectTrigger>
-								<SelectContent>
-									{printers.map((p) => (
-										<SelectItem
-											key={p.id}
-											value={String(p.id)}
-										>
-											{p.name} ({p.connection_type})
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+						<Separator />
+
+						{/* Settings */}
+						<div className="space-y-4">
+							<Label className="text-sm font-medium">Zone Settings</Label>
+
+							{/* Print All Items Toggle */}
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<div className="flex items-center gap-2">
+										<Label htmlFor="print_all_items">Print All Items</Label>
+										<Badge variant="secondary">Recommended for QC</Badge>
+									</div>
+									<p className="text-xs text-muted-foreground">
+										Print all order items regardless of category
+									</p>
+								</div>
+								<Switch
+									id="print_all_items"
+									checked={formData.print_all_items}
+									onCheckedChange={handlePrintAllChange}
+								/>
+							</div>
+
+							{/* Active Toggle */}
+							<div className="flex items-center justify-between">
+								<div className="space-y-0.5">
+									<Label htmlFor="is_active">Active</Label>
+									<p className="text-xs text-muted-foreground">
+										Enable or disable this kitchen zone
+									</p>
+								</div>
+								<Switch
+									id="is_active"
+									checked={formData.is_active}
+									onCheckedChange={handleActiveChange}
+								/>
+							</div>
 						</div>
 
 						<Separator />
 
 						{/* Category Filtering */}
-						<div>
-							<Label className="text-sm font-medium mb-3 block">
-								Categories to Print
-							</Label>
-							<div className="space-y-3">
-								<div className="flex items-center space-x-2">
-									<Checkbox
-										id="category-ALL"
-										checked={isAllSelected}
-										onCheckedChange={handleSelectAll}
-									/>
-									<Label
-										htmlFor="category-ALL"
-										className="text-sm font-medium"
-									>
-										All Categories
-									</Label>
-									<Badge variant="secondary">Recommended for QC</Badge>
-								</div>
-
+						{!formData.print_all_items && (
+							<div>
+								<Label className="text-sm font-medium mb-3 block">
+									Filter by Categories
+								</Label>
+								<p className="text-xs text-muted-foreground mb-4">
+									Select which product categories should print to this zone ({formData.categories.length} selected)
+								</p>
 								{loading ? (
 									<div className="text-sm text-muted-foreground">
 										Loading categories...
 									</div>
 								) : (
-									<div className="pl-6">
+									<div className="max-h-64 overflow-y-auto border rounded-md p-4">
 										<CategoryTree
 											nodes={categoryTree}
 											selectedCategories={formData.categories}
 											onCategoryChange={handleCategoryChange}
-											disabled={isAllSelected}
+											disabled={false}
 										/>
 									</div>
 								)}
 							</div>
-						</div>
+						)}
 					</div>
 				</ScrollArea>
 
 				<DialogFooter>
-					<Button
-						variant="outline"
-						onClick={() => onOpenChange(false)}
-					>
+					<Button variant="outline" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button onClick={handleSave}>Save Zone</Button>
+					<Button onClick={handleSave}>
+						{zone ? "Update" : "Create"} Zone
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
 	);
-};
+}

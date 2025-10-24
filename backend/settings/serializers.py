@@ -4,6 +4,8 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
+    Printer,
+    KitchenZone,
     PrinterConfiguration,
     StockActionReasonConfig,
 )
@@ -99,7 +101,144 @@ class GlobalSettingsSerializer(BaseModelSerializer):
         return super().update(instance, validated_data)
 
 
+class PrinterSerializer(BaseModelSerializer):
+    """Serializer for Printer model."""
+
+    class Meta:
+        model = Printer
+        fields = [
+            'id',
+            'location',
+            'name',
+            'printer_type',
+            'ip_address',
+            'port',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['tenant', 'created_at', 'updated_at']
+        select_related_fields = ['location']
+
+
+class KitchenZoneSerializer(BaseModelSerializer):
+    """
+    Serializer for KitchenZone model.
+    Returns printer details and category IDs for filtering.
+    """
+    printer_details = PrinterSerializer(source='printer', read_only=True)
+    category_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KitchenZone
+        fields = [
+            'id',
+            'location',
+            'name',
+            'printer',
+            'printer_details',
+            'categories',
+            'category_ids',
+            'print_all_items',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['tenant', 'created_at', 'updated_at']
+        select_related_fields = ['location', 'printer']
+        prefetch_related_fields = ['categories']
+
+    def get_category_ids(self, obj):
+        """Return list of category IDs for frontend filtering."""
+        if obj.print_all_items:
+            return ["ALL"]
+        return list(obj.categories.values_list('id', flat=True))
+
+
+class PrinterConfigResponseSerializer(serializers.Serializer):
+    """
+    Serializer for backward-compatible printer config response.
+    Matches the old JSON structure expected by Electron app.
+    Sources data from relational Printer and KitchenZone models.
+    """
+    receipt_printers = serializers.SerializerMethodField()
+    kitchen_printers = serializers.SerializerMethodField()
+    kitchen_zones = serializers.SerializerMethodField()
+
+    def get_receipt_printers(self, obj):
+        """Return receipt printers in old format: [{name, ip, port}]"""
+        location = obj.get('location')
+        if not location:
+            return []
+
+        printers = Printer.objects.filter(
+            location=location,
+            printer_type='receipt',
+            is_active=True
+        )
+        return [
+            {
+                'name': printer.name,
+                'ip': printer.ip_address,
+                'port': printer.port,
+            }
+            for printer in printers
+        ]
+
+    def get_kitchen_printers(self, obj):
+        """Return kitchen printers in old format: [{name, ip, port}]"""
+        location = obj.get('location')
+        if not location:
+            return []
+
+        printers = Printer.objects.filter(
+            location=location,
+            printer_type='kitchen',
+            is_active=True
+        )
+        return [
+            {
+                'name': printer.name,
+                'ip': printer.ip_address,
+                'port': printer.port,
+            }
+            for printer in printers
+        ]
+
+    def get_kitchen_zones(self, obj):
+        """Return kitchen zones in old format: [{name, printer_name, categories, productTypes}]"""
+        location = obj.get('location')
+        if not location:
+            return []
+
+        zones = KitchenZone.objects.filter(
+            location=location,
+            is_active=True
+        ).select_related('printer').prefetch_related('categories')
+
+        result = []
+        for zone in zones:
+            # Get category IDs
+            if zone.print_all_items:
+                category_ids = ["ALL"]
+            else:
+                category_ids = list(zone.categories.values_list('id', flat=True))
+
+            result.append({
+                'name': zone.name,
+                'printer_name': zone.printer.name,
+                'categories': category_ids,
+                'productTypes': [],  # Kept for backward compatibility, no longer used
+            })
+
+        return result
+
+
 class PrinterConfigurationSerializer(BaseModelSerializer):
+    """
+    DEPRECATED: Use Printer and KitchenZone models/serializers instead.
+    Kept for backward compatibility during migration.
+    """
     class Meta:
         model = PrinterConfiguration
         fields = "__all__"

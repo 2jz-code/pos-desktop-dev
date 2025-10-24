@@ -495,10 +495,150 @@ class GlobalSettings(models.Model):
         return f"Global Settings ({tenant_name})"
 
 
+class Printer(models.Model):
+    """
+    Network printer configuration for a specific location.
+    Replaces JSON-based printer storage with proper relational model.
+    """
+
+    PRINTER_TYPE_CHOICES = [
+        ('receipt', 'Receipt Printer'),
+        ('kitchen', 'Kitchen Printer'),
+    ]
+
+    # Tenant isolation
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE)
+
+    # Location scoping
+    location = models.ForeignKey(
+        'StoreLocation',
+        on_delete=models.CASCADE,
+        related_name='printers',
+        help_text="Store location where this printer is installed"
+    )
+
+    # Printer details
+    name = models.CharField(
+        max_length=100,
+        help_text="Display name (e.g., 'Front Counter Receipt Printer')"
+    )
+    printer_type = models.CharField(
+        max_length=20,
+        choices=PRINTER_TYPE_CHOICES,
+        help_text="Type of printer: receipt or kitchen"
+    )
+
+    # Network configuration
+    ip_address = models.GenericIPAddressField(
+        help_text="IP address of the network printer"
+    )
+    port = models.IntegerField(
+        default=9100,
+        help_text="Port number for printer communication"
+    )
+
+    # Status
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this printer is currently active"
+    )
+
+    # Audit
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ['location', 'printer_type', 'name']
+        unique_together = [['location', 'name']]
+        indexes = [
+            models.Index(fields=['tenant', 'location', 'is_active']),
+            models.Index(fields=['tenant', 'printer_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_printer_type_display()}) - {self.location.name}"
+
+
+class KitchenZone(models.Model):
+    """
+    Kitchen zone with category-based routing for a specific location.
+    Replaces JSON-based kitchen zone storage with proper relational model.
+    """
+
+    # Tenant isolation
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE)
+
+    # Location scoping
+    location = models.ForeignKey(
+        'StoreLocation',
+        on_delete=models.CASCADE,
+        related_name='kitchen_zones',
+        help_text="Store location where this kitchen zone is configured"
+    )
+
+    # Zone details
+    name = models.CharField(
+        max_length=100,
+        help_text="Display name for this kitchen zone (e.g., 'Grill Station', 'Bakery')"
+    )
+
+    # Printer assignment
+    printer = models.ForeignKey(
+        'Printer',
+        on_delete=models.CASCADE,
+        related_name='kitchen_zones',
+        limit_choices_to={'printer_type': 'kitchen'},
+        help_text="Kitchen printer assigned to this zone"
+    )
+
+    # Category filtering
+    categories = models.ManyToManyField(
+        'products.Category',
+        related_name='kitchen_zones',
+        blank=True,
+        help_text="Product categories that should print to this kitchen zone"
+    )
+
+    # Print all items flag
+    print_all_items = models.BooleanField(
+        default=False,
+        help_text="If true, print all order items regardless of category filters"
+    )
+
+    # Settings
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this kitchen zone is currently active"
+    )
+
+    # Audit
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ['location', 'name']
+        unique_together = [['location', 'name']]
+        indexes = [
+            models.Index(fields=['tenant', 'location', 'is_active']),
+            models.Index(fields=['printer', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} - {self.location.name}"
+
+
 class PrinterConfiguration(models.Model):
     """
-    Singleton model for storing printer configurations, centralized in the backend.
-    Now tenant-scoped: one instance per tenant.
+    DEPRECATED: Use Printer and KitchenZone models instead.
+
+    Legacy singleton model for storing printer configurations.
+    Kept for backward compatibility during migration.
     """
 
     tenant = models.OneToOneField(

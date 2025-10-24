@@ -5,6 +5,12 @@ export interface Category {
 	children: Category[];
 }
 
+export interface ProductType {
+	id: number;
+	name: string;
+	description?: string;
+}
+
 export interface WebOrderDefaults {
 	enable_notifications: boolean;
 	play_notification_sound: boolean;
@@ -32,13 +38,59 @@ export interface GlobalSettings {
 	web_order_defaults: WebOrderDefaults;
 }
 
+// === NEW RELATIONAL PRINTER SYSTEM ===
+
+// Printer model (relational)
 export interface Printer {
 	id: number;
+	location: number; // StoreLocation ID
 	name: string;
-	connection_type: string;
+	printer_type: 'receipt' | 'kitchen';
 	ip_address: string;
+	port: number;
+	is_active: boolean;
+	created_at: string;
+	updated_at: string;
 }
 
+// Kitchen Zone model (relational)
+export interface KitchenZone {
+	id: number;
+	location: number; // StoreLocation ID
+	name: string;
+	printer: number; // Printer ID
+	printer_details?: Printer; // Nested printer object
+	categories: number[]; // Category IDs
+	category_ids: (number | string)[]; // For backward compat (includes "ALL")
+	print_all_items: boolean;
+	is_active: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+// DEPRECATED: Old printer config format (for backward compatibility endpoint)
+export interface LegacyPrinterConfig {
+	receipt_printers: Array<{
+		name: string;
+		ip: string;
+		port: number;
+	}>;
+	kitchen_printers: Array<{
+		name: string;
+		ip: string;
+		port: number;
+	}>;
+	kitchen_zones: Array<{
+		name: string;
+		printer_name: string;
+		categories: (number | string)[];
+		productTypes: (number | string)[];
+	}>;
+}
+
+// === LEGACY INTERFACES (DEPRECATED) ===
+
+/** @deprecated Use Printer interface instead */
 export interface Zone {
 	id: number;
 	name: string;
@@ -46,6 +98,7 @@ export interface Zone {
 	categories: (string | number)[];
 }
 
+/** @deprecated Use LegacyPrinterConfig for backward compat endpoint */
 export interface PrinterConfig {
 	id: number;
 	receipt_printers: Printer[];

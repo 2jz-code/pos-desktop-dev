@@ -3,9 +3,9 @@ Signal handlers for the settings app.
 Automatically updates the configuration cache when GlobalSettings are modified.
 """
 
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import GlobalSettings, StoreLocation, PrinterConfiguration
+from .models import GlobalSettings, StoreLocation, Printer, KitchenZone, PrinterConfiguration
 from django.utils import timezone
 from django.db import transaction
 from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
@@ -140,15 +140,62 @@ def handle_store_location_change(sender, instance, created, **kwargs):
     invalidate_cache_pattern('*get_store_locations*')
 
 
+@receiver([post_save, post_delete], sender=Printer)
+@receiver([post_save, post_delete], sender=KitchenZone)
+def broadcast_printer_config_change(sender, instance, **kwargs):
+    """
+    Notify all terminals when printer configuration changes.
+    Terminals can refresh their printer config in real-time.
+    """
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("No channel layer configured for printer config notifications")
+            return
+
+        tenant_id = instance.tenant_id
+        action = "deleted" if kwargs.get('signal') == post_delete else "updated"
+
+        logger.info(f"Broadcasting printer config change: {sender.__name__} {action} (tenant: {tenant_id})")
+
+        # Broadcast to all terminals in this tenant
+        # Note: This assumes terminals are listening to a tenant-wide group
+        # If you have a GlobalPOSConsumer or similar, add group join logic there
+        async_to_sync(channel_layer.group_send)(
+            f"tenant_{tenant_id}_global",  # Broadcast to all terminals in tenant
+            {
+                "type": "system_notification",
+                "data": {
+                    "notification_type": "printer_config_updated",
+                    "message": "Printer configuration has been updated. Please refresh.",
+                    "model": sender.__name__,
+                    "action": action,
+                    "timestamp": str(timezone.now()),
+                }
+            }
+        )
+
+        logger.info(f"Sent printer config update notification to tenant {tenant_id}")
+
+    except Exception as e:
+        logger.warning(f"Failed to send printer config WebSocket notification: {e}")
+
+
 @receiver(post_save, sender=PrinterConfiguration)
 def handle_printer_config_change(sender, instance, **kwargs):
-    """Handle printer configuration updates"""
-    logger.info("Printer configuration updated")
-    
+    """
+    DEPRECATED: Handle legacy printer configuration updates.
+    Kept for backward compatibility.
+    """
+    logger.info("DEPRECATED: PrinterConfiguration updated (use Printer/KitchenZone models instead)")
+
     # Reload app settings to refresh printer config
     from .config import app_settings
     app_settings.reload()
-    
+
     # Invalidate printer-related caches
     invalidate_cache_pattern('*global_settings*')
     invalidate_cache_pattern('*get_cached_global_settings*')
