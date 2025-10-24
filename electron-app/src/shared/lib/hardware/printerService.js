@@ -1,5 +1,6 @@
 import apiClient from "@/shared/lib/apiClient";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 const { hardwareApi } = window;
 
@@ -44,20 +45,96 @@ export const printKitchenTicket = (
 // === NEW: Cloud-based printer configuration management ===
 
 /**
- * Fetches printer configuration from the backend (network printers and kitchen zones)
- * @returns {Promise<object>} The cloud printer configuration
+ * Fetch printer configuration for the terminal's location.
+ * Uses new relational endpoints: /settings/printers/ and /settings/kitchen-zones/
+ *
+ * @returns {Promise<object>} Printer configuration matching old structure for backward compatibility
  */
 export const getCloudPrinterConfig = async () => {
 	try {
-		console.log(
-			"[printerService] Fetching printer config (temporary: no device ID)"
-		);
+		// Get terminal's location ID
+		const locationId = terminalRegistrationService.getLocationId();
 
-		const response = await apiClient.get("settings/printer-config/");
+		if (!locationId) {
+			console.warn("[printerService] No location ID found for terminal");
+			return {
+				receipt_printers: [],
+				kitchen_printers: [],
+				kitchen_zones: [],
+			};
+		}
+
+		console.log(`[printerService] Fetching printer config for location ${locationId}`);
+
+		// Fetch printers and kitchen zones in parallel
+		const [printersResponse, zonesResponse] = await Promise.all([
+			apiClient.get(`settings/printers/?location=${locationId}`),
+			apiClient.get(`settings/kitchen-zones/?location=${locationId}`),
+		]);
+
+		// Handle both paginated and non-paginated responses
+		const printers = Array.isArray(printersResponse.data)
+			? printersResponse.data
+			: printersResponse.data.results || [];
+		const zones = Array.isArray(zonesResponse.data)
+			? zonesResponse.data
+			: zonesResponse.data.results || [];
+
+		// Separate receipt and kitchen printers
+		const receipt_printers = printers
+			.filter((p) => p.printer_type === "receipt" && p.is_active)
+			.map((p) => ({
+				id: p.id,
+				name: p.name,
+				ip_address: p.ip_address, // Keep consistent with zone printer structure
+				port: p.port,
+				connection_type: "network",
+			}));
+
+		const kitchen_printers = printers
+			.filter((p) => p.printer_type === "kitchen" && p.is_active)
+			.map((p) => ({
+				id: p.id,
+				name: p.name,
+				ip_address: p.ip_address, // Keep consistent with zone printer structure
+				port: p.port,
+				connection_type: "network",
+			}));
+
+		// Transform kitchen zones to old format
+		const kitchen_zones = zones
+			.filter((z) => z.is_active)
+			.map((z) => ({
+				id: z.id,
+				name: z.name,
+				printer_name: z.printer_details.name,
+				printer_id: z.printer,
+				categories: z.category_ids,
+				productTypes: [], // No longer used, kept for compatibility
+				// Include full printer details for direct access
+				printer: {
+					id: z.printer_details.id,
+					name: z.printer_details.name,
+					ip_address: z.printer_details.ip_address, // Must be ip_address, not ip
+					port: z.printer_details.port,
+					connection_type: "network",
+				},
+			}));
+
+		const config = {
+			receipt_printers,
+			kitchen_printers,
+			kitchen_zones,
+		};
 
 		console.log("[printerService] Printer config loaded successfully");
-		console.log("[printerService] Config data:", response.data);
-		return response.data;
+		console.log("[printerService] Config:", {
+			receipt_printers: receipt_printers.length,
+			kitchen_printers: kitchen_printers.length,
+			kitchen_zones: kitchen_zones.length,
+		});
+
+		return config;
 	} catch (error) {
 		console.error("[printerService] Error fetching printer config:", error);
 		console.error("[printerService] Full error details:", {
@@ -70,32 +147,18 @@ export const getCloudPrinterConfig = async () => {
 };
 
 /**
- * Gets kitchen zones with their associated network printers from cloud config
+ * Get kitchen zones with their associated printers.
+ * Uses the new config structure where printer is already embedded.
+ *
  * @returns {Promise<Array>} Array of kitchen zones with printer info
  */
 export const getKitchenZonesWithPrinters = async () => {
 	try {
 		const config = await getCloudPrinterConfig();
-		const { kitchen_printers = [], kitchen_zones = [] } = config;
+		const { kitchen_zones = [] } = config;
 
-		// Map kitchen zones to their printers
-		const zonesWithPrinters = kitchen_zones
-			.map((zone) => {
-				const printer = kitchen_printers.find(
-					(p) => p.name === zone.printer_name
-				);
-
-				return {
-					...zone,
-					printer: printer
-						? {
-								...printer,
-								connection_type: "network", // Ensure network type for kitchen printers
-						  }
-						: null,
-				};
-			})
-			.filter((zone) => zone.printer); // Only return zones with valid printers
+		// With new API, printer is already embedded in each zone
+		const zonesWithPrinters = kitchen_zones.filter((zone) => zone.printer);
 
 		console.log(
 			`[printerService] Loaded ${zonesWithPrinters.length} kitchen zones with valid printers`

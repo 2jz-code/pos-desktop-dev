@@ -46,12 +46,14 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 				}
 
 				// Create filter configuration from zone settings
+				// Backend returns ["ALL"] when print_all_items is true, match that behavior
+				const categories = zone.category_ids || zone.categories || [];
 				const filterConfig = {
-					categories: zone.categories || zone.category_ids || [],
+					categories: zone.print_all_items ? ["ALL"] : categories,
 					productTypes: zone.productTypes || [],
 				};
 
-				// If no categories are configured, skip this zone (as per user requirement)
+				// If no categories are configured, skip this zone
 				if (!filterConfig.categories.length) {
 					console.log(
 						`Zone "${zone.name}" has no categories configured, skipping`
