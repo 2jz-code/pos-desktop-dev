@@ -18,7 +18,7 @@ from .serializers import (
 from .google_oauth_service import GoogleOAuthService
 
 
-@method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='10/m', method='POST', block=True), name='post')
 class GoogleOAuthLoginView(APIView):
     """
     Google OAuth login for customers.
@@ -61,7 +61,7 @@ class GoogleOAuthLoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='5/m', method='POST', block=True), name='post')
 class GoogleOAuthLinkView(APIView, CustomerJWTAuthenticationMixin):
     """
     Link Google account to existing customer account.

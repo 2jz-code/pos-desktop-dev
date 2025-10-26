@@ -1,5 +1,6 @@
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseNotFound
 from django.utils.deprecation import MiddlewareMixin
+from django.conf import settings
 from settings.models import GlobalSettings
 from business_hours.models import BusinessHoursProfile
 from business_hours.services import BusinessHoursService
@@ -190,3 +191,41 @@ class BusinessHoursMiddleware(MiddlewareMixin):
             },
             status=503,
         )  # Service Unavailable
+
+
+class AdminHostRestrictionMiddleware(MiddlewareMixin):
+    """
+    Restrict Django admin access to only the system subdomain.
+
+    This ensures Django admin (/admin/*) is ONLY accessible via the configured
+    admin host (e.g., system.bakeajeen.com) and blocked on all other hosts,
+    even if ALB rules are misconfigured.
+
+    The system subdomain is protected by Cloudflare Zero Trust.
+
+    Returns 404 (not 403) to avoid hinting that /admin exists.
+    """
+
+    def __init__(self, get_response):
+        super().__init__(get_response)
+        # Get admin host from environment, fallback to default
+        import os
+        self.admin_allowed_host = os.getenv("ADMIN_HOST", "system.bakeajeen.com")
+
+    def process_request(self, request):
+        # Only check admin paths
+        if not request.path.startswith('/admin/'):
+            return None
+
+        # Get the host from the request
+        host = request.get_host().split(':')[0]  # Remove port if present
+
+        # Block if not from the allowed admin host (return 404 to avoid hinting)
+        if host != self.admin_allowed_host:
+            logger.warning(
+                f"Blocked admin access attempt from unauthorized host: {host} "
+                f"(path: {request.path})"
+            )
+            return HttpResponseNotFound()
+
+        return None

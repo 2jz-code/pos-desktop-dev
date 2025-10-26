@@ -122,7 +122,7 @@ def ratelimited429(request, exception=None):
     return JsonResponse({"error": "Too many requests"}, status=429)
 
 
-@ratelimit(key='ip', rate='60/m', method='GET', block=True)
+@ratelimit(key='core_backend.utils.get_client_ip', rate='60/m', method='GET', block=True)
 @api_view(['GET'])
 @permission_classes([])  # AllowAny
 def issue_csrf_token(request):
