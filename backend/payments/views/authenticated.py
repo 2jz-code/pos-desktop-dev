@@ -45,14 +45,17 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentFilter(django_filters.FilterSet):
-    """Custom filter for payments with support for filtering by payment method and store location."""
+    """Custom filter for payments with support for filtering by payment method, store location, and date range."""
 
     method = django_filters.CharFilter(method="filter_by_method")
     store_location = django_filters.NumberFilter(field_name="order__store_location")
 
     class Meta:
         model = Payment
-        fields = ["status", "method", "store_location"]
+        fields = {
+            "status": ["exact"],
+            "created_at": ["gte", "lte", "exact", "gt", "lt"],  # Support date range filtering
+        }
 
     def filter_by_method(self, queryset, name, value):
         """Filter payments by the method of their transactions."""
@@ -168,7 +171,15 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
 
     # Custom filtering and search configuration (BaseViewSet provides the rest)
     filterset_class = PaymentFilter
-    search_fields = ["payment_number", "order__order_number"]
+    search_fields = [
+        "payment_number",
+        "order__order_number",
+        "transactions__card_last4",
+        "transactions__card_brand",
+        "total_collected",
+        "total_amount_due",
+        "amount_paid",
+    ]
     ordering_fields = ["created_at", "status", "total_collected", "payment_number"]
     ordering = ["-created_at"]  # Override BaseViewSet default to show newest payments first
 

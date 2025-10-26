@@ -3,14 +3,18 @@
  *
  * Provides common data fetching, pagination, and filtering logic for order management.
  * Handles state management for orders list, filters, pagination, and loading states.
+ * Persists state in URL search parameters for reliable navigation persistence.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useListStateWithUrlPersistence } from './useListStateWithUrlPersistence';
 
-interface OrdersFilters {
+export interface OrdersFilters {
 	order_type: string;
 	status: string;
 	search: string;
+	created_at__gte: string; // Start date in ISO format
+	created_at__lte: string; // End date in ISO format
 }
 
 interface PaginationData {
@@ -40,6 +44,7 @@ interface UseOrdersDataReturn {
 
 	// Filters
 	filters: OrdersFilters;
+	searchInput: string;  // Separate search input value for the UI
 	hasFilters: boolean;
 
 	// Actions
@@ -55,6 +60,8 @@ const defaultFilters: OrdersFilters = {
 	order_type: "",
 	status: "",
 	search: "",
+	created_at__gte: "",
+	created_at__lte: "",
 };
 
 // Stable default object to prevent infinite loops
@@ -63,19 +70,37 @@ const DEFAULT_ADDITIONAL_FILTERS = {};
 export function useOrdersData({
 	getAllOrdersService,
 	initialFilters = {},
-	additionalFilters = DEFAULT_ADDITIONAL_FILTERS
+	additionalFilters = DEFAULT_ADDITIONAL_FILTERS,
 }: UseOrdersDataProps): UseOrdersDataReturn {
+	// Use the generic list state hook for URL persistence
+	const {
+		filters,
+		currentPage,
+		setCurrentPage,
+		updateFilter,
+		clearFilters: clearFiltersBase,
+		filtersRef,
+		currentPageRef
+	} = useListStateWithUrlPersistence<OrdersFilters>({
+		defaultFilters,
+		initialFilters
+	});
+
+	// Data state
 	const [orders, setOrders] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [nextUrl, setNextUrl] = useState<string | null>(null);
 	const [prevUrl, setPrevUrl] = useState<string | null>(null);
 	const [count, setCount] = useState(0);
-	const [currentPage, setCurrentPage] = useState(1);
-	const [filters, setFilters] = useState<OrdersFilters>({
-		...defaultFilters,
-		...initialFilters
-	});
+
+	// Separate state for search input (immediate updates for UI)
+	const [searchInput, setSearchInput] = useState(filters.search);
+
+	// Sync searchInput with filters.search
+	useEffect(() => {
+		setSearchInput(filters.search);
+	}, [filters.search]);
 
 	// Use a counter to trigger refetch when additionalFilters actually changes
 	const [additionalFiltersTrigger, setAdditionalFiltersTrigger] = useState(0);
@@ -86,6 +111,9 @@ export function useOrdersData({
 
 	// Track the stringified version of additionalFilters to detect real changes
 	const additionalFiltersStringRef = useRef(JSON.stringify(additionalFilters));
+
+	// Debounce timer ref
+	const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 	// Update refs when props change
 	useEffect(() => {
@@ -106,8 +134,13 @@ export function useOrdersData({
 		async (url: string | null = null) => {
 			try {
 				setLoading(true);
-				// Merge additionalFilters with the main filters (use ref for stable reference)
-				const mergedFilters = { ...filters, ...additionalFiltersRef.current };
+				// Use refs to get the latest values (important for when state updates trigger this)
+				const mergedFilters = { ...filtersRef.current, ...additionalFiltersRef.current };
+
+				// Add page parameter if not using a pagination URL and currentPage > 1
+				if (!url && currentPageRef.current > 1) {
+					mergedFilters.page = currentPageRef.current;
+				}
 
 				// Filter out internal trigger fields (prefixed with _) before sending to API
 				const apiFilters = Object.entries(mergedFilters).reduce((acc, [key, value]) => {
@@ -123,14 +156,14 @@ export function useOrdersData({
 				setPrevUrl(response.previous);
 				setCount(response.count || 0);
 
-				// Extract current page from URL or use page 1 as default
+				// Only update currentPage if we used a pagination URL
+				// Don't reset it when fetching with filters (let state/URL be the source of truth)
 				if (url) {
 					const urlObj = new URL(url);
 					const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
 					setCurrentPage(page);
-				} else {
-					setCurrentPage(1);
 				}
+				// Don't set to 1 when no URL - currentPage already has the right value from state
 
 				setError(null);
 			} catch (err) {
@@ -140,7 +173,7 @@ export function useOrdersData({
 				setLoading(false);
 			}
 		},
-		[filters, additionalFiltersTrigger] // Depend on filters and trigger counter (not additionalFilters directly to prevent infinite loops)
+		[filters, currentPage, additionalFiltersTrigger] // Depend on filters and page to trigger refetch when they change
 	);
 
 	useEffect(() => {
@@ -148,22 +181,55 @@ export function useOrdersData({
 	}, [fetchOrders]);
 
 	const handleNavigate = useCallback((url: string) => {
-		if (url) fetchOrders(url);
+		if (url) {
+			// Extract page number from the pagination URL and update currentPage state
+			try {
+				const urlObj = new URL(url);
+				const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+				setCurrentPage(page);
+			} catch (e) {
+				console.error("Error parsing pagination URL:", e);
+			}
+			// Call fetchOrders with the pagination URL directly
+			fetchOrders(url);
+		}
 	}, [fetchOrders]);
 
 	const handleFilterChange = useCallback((filterName: keyof OrdersFilters, value: string) => {
 		const actualValue = value === "ALL" ? "" : value;
-		setFilters((prev) => ({ ...prev, [filterName]: actualValue }));
-	}, []);
+		updateFilter(filterName, actualValue);
+	}, [updateFilter]);
 
 	const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
 		const value = e.target.value;
-		setFilters((prev) => ({ ...prev, search: value }));
+
+		// Update the input immediately for responsive UI
+		setSearchInput(value);
+
+		// Clear existing timer
+		if (debounceTimerRef.current) {
+			clearTimeout(debounceTimerRef.current);
+		}
+
+		// Set new timer to update filters after 500ms of no typing
+		debounceTimerRef.current = setTimeout(() => {
+			updateFilter('search', value);
+		}, 500);
+	}, [updateFilter]);
+
+	// Cleanup debounce timer on unmount
+	useEffect(() => {
+		return () => {
+			if (debounceTimerRef.current) {
+				clearTimeout(debounceTimerRef.current);
+			}
+		};
 	}, []);
 
 	const clearFilters = useCallback(() => {
-		setFilters({ ...defaultFilters, ...initialFilters });
-	}, [initialFilters]);
+		clearFiltersBase();
+		setSearchInput("");
+	}, [clearFiltersBase]);
 
 	const refetch = useCallback(() => {
 		return fetchOrders();
@@ -185,6 +251,7 @@ export function useOrdersData({
 
 		// Filters
 		filters,
+		searchInput,  // Return the immediate search input value for the UI
 		hasFilters,
 
 		// Actions

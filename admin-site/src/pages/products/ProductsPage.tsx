@@ -597,7 +597,7 @@ export const ProductsPage = () => {
 	};
 
 	const filterControls = (
-		<>
+		<div className="flex items-center gap-2 flex-wrap">
 			<Select
 				value={selectedParentCategory}
 				onValueChange={setSelectedParentCategory}
@@ -667,13 +667,12 @@ export const ProductsPage = () => {
 					variant="outline"
 					size="sm"
 					onClick={handleClearModifierFilter}
-					className="mr-2"
 				>
 					<Tags className="mr-2 h-4 w-4" />
 					Show All Products
 				</Button>
 			)}
-		</>
+		</div>
 	);
 
 	const headerActions = (

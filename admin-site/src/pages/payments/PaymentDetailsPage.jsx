@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -42,6 +42,7 @@ import { generatePaymentTimeline } from "@/utils/paymentTimeline";
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
 	const { tenant } = useAuth();
@@ -187,7 +188,11 @@ const PaymentDetailsPage = () => {
 					</div>
 					<div className="flex items-center gap-3">
 						<Button
-							onClick={() => navigate(`/${tenantSlug}/payments`)}
+							onClick={() => {
+								// Preserve URL parameters when navigating back
+								const backUrl = `/${tenantSlug}/payments${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+								navigate(backUrl);
+							}}
 							variant="outline"
 							size="sm"
 							className="border-border"

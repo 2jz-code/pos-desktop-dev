@@ -36,6 +36,7 @@ from notifications.services import EmailService
 
 logger = logging.getLogger(__name__)
 
+
 class GetPendingOrderView(generics.RetrieveAPIView):
     """
     A view to get the current user's (guest or authenticated) pending order.
@@ -44,7 +45,9 @@ class GetPendingOrderView(generics.RetrieveAPIView):
     """
 
     serializer_class = OrderSerializer
-    authentication_classes = [CustomerCookieJWTAuthentication]  # Customer auth only to prevent admin cookie interference
+    authentication_classes = [
+        CustomerCookieJWTAuthentication
+    ]  # Customer auth only to prevent admin cookie interference
     permission_classes = [AllowAny]  # Let the service layer handle guest/auth logic
 
     def get_object(self):
@@ -57,11 +60,11 @@ class GetPendingOrderView(generics.RetrieveAPIView):
             # Explicitly check for an authenticated user's pending order
             if self.request.user and self.request.user.is_authenticated:
                 order = (
-                    Order.objects.select_related('customer', 'cashier')
+                    Order.objects.select_related("customer", "cashier")
                     .prefetch_related(
-                        'items__product',
-                        'items__product__category',
-                        'applied_discounts__discount'
+                        "items__product",
+                        "items__product__category",
+                        "applied_discounts__discount",
                     )
                     .filter(
                         customer=self.request.user, status=Order.OrderStatus.PENDING
@@ -75,6 +78,7 @@ class GetPendingOrderView(generics.RetrieveAPIView):
 
         return order
 
+
 class OrderViewSet(BaseViewSet):
     """
     A comprehensive ViewSet for handling orders and their items - Admin/Staff only.
@@ -84,14 +88,37 @@ class OrderViewSet(BaseViewSet):
     """
 
     queryset = Order.objects.all()
-    authentication_classes = [CookieJWTAuthentication]  # Admin/staff authentication only
+    authentication_classes = [
+        CookieJWTAuthentication
+    ]  # Admin/staff authentication only
     permission_classes = [IsAuthenticatedOrGuestOrder]
 
     # Custom filtering and search configuration (BaseViewSet provides the rest)
-    filterset_fields = ["status", "payment_status", "order_type", "store_location"]
-    search_fields = ["id", "customer__email", "customer__first_name", "customer__last_name", "cashier__username"]
+    filterset_fields = {
+        "status": ["exact"],
+        "payment_status": ["exact"],
+        "order_type": ["exact"],
+        "store_location": ["exact"],
+        "created_at": ["gte", "lte", "exact", "gt", "lt"],  # Support date range filtering
+    }
+    search_fields = [
+        "order_number",
+        "customer__email",
+        "customer__first_name",
+        "customer__last_name",
+        "guest_email",
+        "guest_first_name",
+        "guest_last_name",
+        "guest_phone",
+        "cashier__username",
+        "items__product__name",  # Search by product name in order items
+        "items__product__barcode",  # Search by product barcode in order items
+        "items__custom_name",  # Search by custom item names
+    ]
     ordering_fields = ["created_at", "grand_total", "order_number"]
-    ordering = ["-created_at"]  # Override BaseViewSet default to show newest orders first
+    ordering = [
+        "-created_at"
+    ]  # Override BaseViewSet default to show newest orders first
 
     def get_queryset(self):
         """
@@ -100,7 +127,7 @@ class OrderViewSet(BaseViewSet):
         queryset = super().get_queryset()
 
         # Add store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
-        store_location_id = getattr(self.request, 'store_location_id', None)
+        store_location_id = getattr(self.request, "store_location_id", None)
         if store_location_id:
             queryset = queryset.filter(store_location_id=store_location_id)
 
@@ -129,14 +156,18 @@ class OrderViewSet(BaseViewSet):
         if user and user.is_authenticated:
             if order_type == Order.OrderType.POS:
                 # For POS orders, the authenticated user is the cashier
-                serializer.save(cashier=user, tenant=self.request.tenant, store_location=store_location)
+                serializer.save(
+                    cashier=user,
+                    tenant=self.request.tenant,
+                    store_location=store_location,
+                )
             else:  # For WEB, APP, etc.
                 # For authenticated customers, check for an existing pending order at this location
                 existing_order = (
                     Order.objects.filter(
                         customer=user,
                         status=Order.OrderStatus.PENDING,
-                        store_location=store_location
+                        store_location=store_location,
                     )
                     .order_by("-created_at")
                     .first()
@@ -147,13 +178,15 @@ class OrderViewSet(BaseViewSet):
                     serializer.instance = existing_order
                 else:
                     # If no pending order, create a new one and set the customer
-                    serializer.save(customer=user, tenant=self.request.tenant, store_location=store_location)
+                    serializer.save(
+                        customer=user,
+                        tenant=self.request.tenant,
+                        store_location=store_location,
+                    )
         else:
             # For guest users, the service layer handles getting or creating
             guest_order = GuestSessionService.create_guest_order(
-                self.request,
-                order_type=order_type,
-                store_location=store_location
+                self.request, order_type=order_type, store_location=store_location
             )
             # Return the existing guest order instead of creating a new one
             serializer.instance = guest_order
@@ -180,7 +213,10 @@ class OrderViewSet(BaseViewSet):
         methods=["post"],
         url_path="add-item",
         permission_classes=[IsGuestOrAuthenticated],
-        authentication_classes=[CustomerCookieJWTAuthentication, CookieJWTAuthentication],
+        authentication_classes=[
+            CustomerCookieJWTAuthentication,
+            CookieJWTAuthentication,
+        ],
     )
     def add_item_to_cart(self, request, *args, **kwargs):
         """
@@ -194,11 +230,11 @@ class OrderViewSet(BaseViewSet):
             - selected_modifiers (optional): List of modifier options
             - notes (optional): Special instructions
         """
-        store_location_id = request.data.get('store_location')
+        store_location_id = request.data.get("store_location")
         if not store_location_id:
             return Response(
                 {"error": "store_location is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # First, get or create the order instance.
@@ -206,7 +242,7 @@ class OrderViewSet(BaseViewSet):
         # We pass the store_location to the serializer
         create_serializer = OrderCreateSerializer(
             data={"order_type": "WEB", "store_location": store_location_id},
-            context={"request": request}
+            context={"request": request},
         )
         create_serializer.is_valid(raise_exception=True)
         self.perform_create(create_serializer)
@@ -224,7 +260,9 @@ class OrderViewSet(BaseViewSet):
                 order=order,
                 product=product,
                 quantity=item_serializer.validated_data.get("quantity", 1),
-                selected_modifiers=item_serializer.validated_data.get("selected_modifiers", []),
+                selected_modifiers=item_serializer.validated_data.get(
+                    "selected_modifiers", []
+                ),
                 notes=item_serializer.validated_data.get("notes", ""),
             )
         except ValueError as e:
@@ -387,26 +425,27 @@ class OrderViewSet(BaseViewSet):
         Required POST data:
             - store_location: ID of the store location for the order
         """
-        store_location_id = request.data.get('store_location')
+        store_location_id = request.data.get("store_location")
         if not store_location_id:
             return Response(
                 {"error": "store_location is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get the store location object
         from settings.models import StoreLocation
+
         try:
-            store_location = StoreLocation.objects.get(id=store_location_id, tenant=request.tenant)
+            store_location = StoreLocation.objects.get(
+                id=store_location_id, tenant=request.tenant
+            )
         except StoreLocation.DoesNotExist:
             return Response(
-                {"error": "Invalid store_location"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Invalid store_location"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         guest_order = GuestSessionService.create_guest_order(
-            request,
-            store_location=store_location
+            request, store_location=store_location
         )
         serializer = self.get_serializer(guest_order)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -530,20 +569,20 @@ class OrderViewSet(BaseViewSet):
         """
         try:
             updated_count = OrderService.mark_items_sent_to_kitchen(pk)
-            return Response({
-                "message": f"Marked {updated_count} items as sent to kitchen",
-                "updated_count": updated_count
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "message": f"Marked {updated_count} items as sent to kitchen",
+                    "updated_count": updated_count,
+                },
+                status=status.HTTP_200_OK,
+            )
         except Order.DoesNotExist:
             return Response(
-                {"error": "Order not found"}, 
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class OrderItemViewSet(BaseViewSet):
     """

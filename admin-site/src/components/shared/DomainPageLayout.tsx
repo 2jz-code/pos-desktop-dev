@@ -118,8 +118,8 @@ export function DomainPageLayout({
 
 							{/* Filter Controls */}
 							{filterControls && (
-								<div className="flex justify-between items-center mb-4">
-									<div className="flex gap-2">{filterControls}</div>
+								<div className="mb-4">
+									{filterControls}
 								</div>
 							)}
 
