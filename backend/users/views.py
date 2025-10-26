@@ -161,7 +161,7 @@ class SetPinView(generics.GenericAPIView):
 
 
 @method_decorator(
-    ratelimit(key="ip", rate="5/m", method="POST", block=True), name="post"
+    ratelimit(key="core_backend.utils.get_client_ip", rate="5/m", method="POST", block=True), name="post"
 )
 class POSLoginView(APIView):
     permission_classes = [
@@ -275,7 +275,7 @@ class POSLoginView(APIView):
 
 
 @method_decorator(
-    ratelimit(key="ip", rate="5/m", method="POST", block=True), name="post"
+    ratelimit(key="core_backend.utils.get_client_ip", rate="5/m", method="POST", block=True), name="post"
 )
 class AdminLoginView(APIView):
     """
@@ -441,7 +441,7 @@ class WebLoginView(TokenObtainPairView):
     ]
 
     @method_decorator(
-        ratelimit(key="ip", rate="5/m", method="POST", block=False), name="post"
+        ratelimit(key="core_backend.utils.get_client_ip", rate="5/m", method="POST", block=False), name="post"
     )
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)

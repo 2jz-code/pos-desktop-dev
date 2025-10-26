@@ -64,12 +64,12 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             return OptimizedOrderSerializer
         return OrderSerializer
     
-    @method_decorator(ratelimit(key='ip', rate='30/m', method='GET', block=True))
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='30/m', method='GET', block=True))
     def list(self, request, *args, **kwargs):
         """List customer orders with rate limiting and optimized serializer"""
         return super().list(request, *args, **kwargs)
     
-    @method_decorator(ratelimit(key='ip', rate='30/m', method='GET', block=True))
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='30/m', method='GET', block=True))
     def retrieve(self, request, *args, **kwargs):
         """Retrieve specific customer order with rate limiting"""
         # Ensure we use the optimized queryset for retrieve as well
@@ -157,7 +157,7 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             )
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
-    @method_decorator(ratelimit(key='ip', rate='30/m', method='POST', block=True))
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='30/m', method='POST', block=True))
     def add_item(self, request):
         """
         Customer-specific add item to cart endpoint.

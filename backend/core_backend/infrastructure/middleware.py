@@ -1,5 +1,6 @@
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseNotFound
 from django.utils.deprecation import MiddlewareMixin
+from django.conf import settings
 from settings.models import GlobalSettings
 from business_hours.models import BusinessHoursProfile
 from business_hours.services import BusinessHoursService
@@ -24,22 +25,22 @@ class BusinessHoursMiddleware(MiddlewareMixin):
 
     # Endpoints that are ALWAYS allowed (browsing, cart management)
     EXEMPT_ENDPOINTS = [
-        "/api/cart/",           # Cart operations - users can add items anytime
-        "/api/products/",       # Product browsing
-        "/api/menu/",           # Menu viewing
-        "/api/categories/",     # Category browsing
+        "/api/cart/",  # Cart operations - users can add items anytime
+        "/api/products/",  # Product browsing
+        "/api/menu/",  # Menu viewing
+        "/api/categories/",  # Category browsing
         "/api/discounts/available/",  # View available discounts
     ]
 
     # Specific endpoints blocked during closed hours for web customers
     # (Order creation and payment processing)
     RESTRICTED_ENDPOINTS = [
-        "/api/orders/create/",          # Order creation
-        "/api/orders/guest-order/",     # Guest order creation
-        "/api/payments/initiate/",      # Payment initiation
-        "/api/payments/guest/",         # Guest payment
-        "/api/orders/online/",          # Online order endpoint
-        "/api/orders/website/",         # Website order endpoint
+        "/api/orders/create/",  # Order creation
+        "/api/orders/guest-order/",  # Guest order creation
+        "/api/payments/initiate/",  # Payment initiation
+        "/api/payments/guest/",  # Guest payment
+        "/api/orders/online/",  # Online order endpoint
+        "/api/orders/website/",  # Website order endpoint
     ]
 
     # Headers that indicate requests from customer website/external sources
@@ -62,7 +63,9 @@ class BusinessHoursMiddleware(MiddlewareMixin):
         store_location = self._get_store_location_from_request(request)
         if not store_location:
             # If no location specified, allow access (will be caught by validation later)
-            logger.warning("No store location in request - skipping business hours check")
+            logger.warning(
+                "No store location in request - skipping business hours check"
+            )
             return None
 
         # Check if business is currently open using BusinessHoursService for this location
@@ -71,7 +74,9 @@ class BusinessHoursMiddleware(MiddlewareMixin):
             business_hours_profile = store_location.business_hours_profile
             if not business_hours_profile:
                 # No business hours configured for this location, allow access
-                logger.warning(f"No business hours profile for location {store_location.name} - allowing access")
+                logger.warning(
+                    f"No business hours profile for location {store_location.name} - allowing access"
+                )
                 return None
 
             service = BusinessHoursService(business_hours_profile)
@@ -79,7 +84,9 @@ class BusinessHoursMiddleware(MiddlewareMixin):
                 return self._business_closed_response(service, store_location)
         except Exception as e:
             # If check fails, log error but allow access
-            logger.error(f"Business hours check failed for location {store_location.id}: {e}")
+            logger.error(
+                f"Business hours check failed for location {store_location.id}: {e}"
+            )
             return None
 
         return None
@@ -91,27 +98,34 @@ class BusinessHoursMiddleware(MiddlewareMixin):
         store_location_id = None
 
         # Try query params first
-        store_location_id = request.GET.get('store_location') or request.GET.get('store_location_id')
+        store_location_id = request.GET.get("store_location") or request.GET.get(
+            "store_location_id"
+        )
 
         # Try request body for POST requests
-        if not store_location_id and request.method == 'POST':
+        if not store_location_id and request.method == "POST":
             try:
                 import json
-                body = json.loads(request.body.decode('utf-8'))
-                store_location_id = body.get('store_location') or body.get('store_location_id')
+
+                body = json.loads(request.body.decode("utf-8"))
+                store_location_id = body.get("store_location") or body.get(
+                    "store_location_id"
+                )
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
         # Try custom header
         if not store_location_id:
-            store_location_id = request.META.get('HTTP_X_STORE_LOCATION')
+            store_location_id = request.META.get("HTTP_X_STORE_LOCATION")
 
         # Try to get the StoreLocation object
         if store_location_id:
             try:
                 return StoreLocation.objects.get(id=store_location_id)
             except (StoreLocation.DoesNotExist, ValueError):
-                logger.warning(f"Invalid store_location_id in request: {store_location_id}")
+                logger.warning(
+                    f"Invalid store_location_id in request: {store_location_id}"
+                )
                 return None
 
         return None
@@ -171,27 +185,31 @@ class BusinessHoursMiddleware(MiddlewareMixin):
             summary = service.get_status_summary()
 
             # Get today's hours for additional context
-            today_hours = summary.get('today_hours', {})
+            today_hours = summary.get("today_hours", {})
 
             response_data = {
                 "error": "BUSINESS_CLOSED",
                 "message": "The business is currently closed.",
-                "current_time": summary.get('current_time'),
-                "timezone": summary.get('timezone'),
+                "current_time": summary.get("current_time"),
+                "timezone": summary.get("timezone"),
                 "location_name": store_location.name,
                 "today_hours": today_hours,
             }
 
             # Add next opening time if available
-            next_opening = summary.get('next_opening')
+            next_opening = summary.get("next_opening")
             if next_opening:
                 response_data["next_opening"] = next_opening
-                response_data["message"] = f"The business is currently closed. We'll be open next at {next_opening}."
+                response_data["message"] = (
+                    f"The business is currently closed. We'll be open next at {next_opening}."
+                )
 
             # Add reason if it's a special closure
-            if today_hours.get('reason'):
-                response_data["closure_reason"] = today_hours['reason']
-                response_data["message"] = f"The business is currently closed due to {today_hours['reason']}."
+            if today_hours.get("reason"):
+                response_data["closure_reason"] = today_hours["reason"]
+                response_data["message"] = (
+                    f"The business is currently closed due to {today_hours['reason']}."
+                )
 
             return JsonResponse(response_data, status=503)  # Service Unavailable
 
@@ -205,3 +223,42 @@ class BusinessHoursMiddleware(MiddlewareMixin):
                 },
                 status=503,
             )
+
+
+class AdminHostRestrictionMiddleware(MiddlewareMixin):
+    """
+    Restrict Django admin access to only the system subdomain.
+
+    This ensures Django admin (/admin/*) is ONLY accessible via the configured
+    admin host (e.g., system.bakeajeen.com) and blocked on all other hosts,
+    even if ALB rules are misconfigured.
+
+    The system subdomain is protected by Cloudflare Zero Trust.
+
+    Returns 404 (not 403) to avoid hinting that /admin exists.
+    """
+
+    def __init__(self, get_response):
+        super().__init__(get_response)
+        # Get admin host from environment, fallback to default
+        import os
+
+        self.admin_allowed_host = os.getenv("ADMIN_HOST", "system.bakeajeen.com")
+
+    def process_request(self, request):
+        # Only check admin paths
+        if not request.path.startswith("/admin/"):
+            return None
+
+        # Get the host from the request
+        host = request.get_host().split(":")[0]  # Remove port if present
+
+        # Block if not from the allowed admin host (return 404 to avoid hinting)
+        if host != self.admin_allowed_host:
+            logger.warning(
+                f"Blocked admin access attempt from unauthorized host: {host} "
+                f"(path: {request.path})"
+            )
+            return HttpResponseNotFound()
+
+        return None

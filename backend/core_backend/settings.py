@@ -89,6 +89,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "core_backend.infrastructure.middleware.AdminHostRestrictionMiddleware",  # Restrict admin to system subdomain only
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -196,8 +197,8 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
-# Use X-Forwarded-For in production, but disable rate limiting if header issues occur
-# RATELIMIT_IP_META_KEY = "HTTP_CF_CONNECTING_IP"
+# For ALB: Use X-Forwarded-For but we'll handle parsing in the decorator
+RATELIMIT_IP_META_KEY = "HTTP_X_FORWARDED_FOR"
 # Default view for blocked rate-limited requests
 RATELIMIT_VIEW = "core_backend.views.ratelimited429"
 

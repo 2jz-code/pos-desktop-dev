@@ -35,12 +35,14 @@ def process_order_completion_inventory(self, order_id):
         set_current_tenant(order.tenant)
 
         # Skip test orders
-        if order.order_number and order.order_number.startswith('TEST-'):
-            logger.info(f"Skipping inventory processing for test order {order.order_number}")
+        if order.order_number and order.order_number.startswith("TEST-"):
+            logger.info(
+                f"Skipping inventory processing for test order {order.order_number}"
+            )
             return {
                 "status": "skipped",
                 "reason": "test_order",
-                "order_number": order.order_number
+                "order_number": order.order_number,
             }
 
         # Process inventory deduction
@@ -51,7 +53,7 @@ def process_order_completion_inventory(self, order_id):
         return {
             "status": "completed",
             "order_id": str(order_id),
-            "order_number": order.order_number
+            "order_number": order.order_number,
         }
 
     except Order.DoesNotExist:
@@ -59,7 +61,7 @@ def process_order_completion_inventory(self, order_id):
         return {
             "status": "failed",
             "error": "Order not found",
-            "order_id": str(order_id)
+            "order_id": str(order_id),
         }
     except Exception as exc:
         logger.error(f"Error processing inventory for order {order_id}: {exc}")
@@ -68,17 +70,21 @@ def process_order_completion_inventory(self, order_id):
     finally:
         # Clean up tenant context
         from tenant.managers import set_current_tenant
+
         set_current_tenant(None)
-          
+
+
 @shared_task
 def daily_low_stock_sweep():
     """
     Daily task to check for items below threshold that haven't been notified.
 
+
     This task runs once daily (typically in the morning) to:
     - Find items below their low stock threshold
     - Send notifications only for items with low_stock_notified=False
     - Act as a safety net for items missed during regular sales
+
 
     Runs in addition to real-time individual notifications during sales.
 
@@ -97,13 +103,16 @@ def daily_low_stock_sweep():
             try:
                 # Set tenant context for this iteration
                 from tenant.managers import set_current_tenant
+
                 set_current_tenant(tenant)
 
                 # Use the service method to send daily summary for this tenant
                 items_notified = InventoryService.send_daily_low_stock_summary()
 
                 if items_notified > 0:
-                    logger.info(f"Tenant {tenant.slug}: {items_notified} items notified")
+                    logger.info(
+                        f"Tenant {tenant.slug}: {items_notified} items notified"
+                    )
                     total_items_notified += items_notified
 
                 tenants_processed += 1
@@ -115,27 +124,27 @@ def daily_low_stock_sweep():
                 # Clear tenant context after each tenant
                 set_current_tenant(None)
 
-        logger.info(f"Daily low stock sweep completed: {total_items_notified} items across {tenants_processed} tenants")
+        logger.info(
+            f"Daily low stock sweep completed: {total_items_notified} items across {tenants_processed} tenants"
+        )
 
         return {
             "status": "completed",
             "items_notified": total_items_notified,
             "tenants_processed": tenants_processed,
-            "message": f"Daily low stock summary sent for {total_items_notified} items across {tenants_processed} tenants"
+            "message": f"Daily low stock summary sent for {total_items_notified} items across {tenants_processed} tenants",
         }
 
     except Exception as exc:
         logger.error(f"Error in daily low stock sweep: {exc}")
-        return {
-            "status": "failed",
-            "error": str(exc)
-        }
+        return {"status": "failed", "status": "failed", "error": str(exc)}
 
 
 @shared_task
 def reset_low_stock_notifications():
     """
     Weekly task to reset notification flags for items that are back above threshold.
+
 
     This provides a safety mechanism to reset flags that might have gotten stuck.
     Runs weekly (typically Sunday night) to clean up any edge cases.
@@ -161,17 +170,19 @@ def reset_low_stock_notifications():
                 # Find items that are notified but now above threshold (tenant-scoped by TenantManager)
                 reset_candidates = InventoryStock.objects.filter(
                     low_stock_notified=True
-                ).select_related('product', 'location')
+                ).select_related("product", "location")
 
                 tenant_reset_count = 0
                 for item in reset_candidates:
                     if item.quantity > item.effective_low_stock_threshold:
                         item.low_stock_notified = False
-                        item.save(update_fields=['low_stock_notified'])
+                        item.save(update_fields=["low_stock_notified"])
                         tenant_reset_count += 1
 
                 if tenant_reset_count > 0:
-                    logger.info(f"Tenant {tenant.slug}: Reset {tenant_reset_count} notification flags")
+                    logger.info(
+                        f"Tenant {tenant.slug}: Reset {tenant_reset_count} notification flags"
+                    )
                     total_reset_count += tenant_reset_count
 
                 tenants_processed += 1
@@ -183,18 +194,17 @@ def reset_low_stock_notifications():
                 # Clear tenant context after each tenant
                 set_current_tenant(None)
 
-        logger.info(f"Reset {total_reset_count} notification flags across {tenants_processed} tenants")
+        logger.info(
+            f"Reset {total_reset_count} notification flags across {tenants_processed} tenants"
+        )
 
         return {
             "status": "completed",
             "flags_reset": total_reset_count,
             "tenants_processed": tenants_processed,
-            "message": f"Reset {total_reset_count} notification flags across {tenants_processed} tenants"
+            "message": f"Reset {total_reset_count} notification flags across {tenants_processed} tenants",
         }
 
     except Exception as exc:
         logger.error(f"Error resetting notification flags: {exc}")
-        return {
-            "status": "failed",
-            "error": str(exc)
-        }
+        return {"status": "failed", "status": "failed", "error": str(exc)}

@@ -29,7 +29,7 @@ from .serializers import (
 )
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='5/m', method='POST', block=True), name='post')
 class CustomerRegisterView(APIView):
     """
     Register a new customer account.
@@ -80,7 +80,7 @@ class CustomerRegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='5/m', method='POST', block=True), name='post')
 class CustomerLoginView(APIView):
     """
     Login for customer accounts.
@@ -210,8 +210,8 @@ class CustomerProfileView(CustomerJWTAuthenticationMixin, RetrieveUpdateAPIView)
     permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     # Throttle profile updates (PATCH/PUT)
-    @method_decorator(ratelimit(key='ip', rate='15/m', method='PATCH', block=True), name='dispatch')
-    @method_decorator(ratelimit(key='ip', rate='15/m', method='PUT', block=True), name='dispatch')
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='15/m', method='PATCH', block=True), name='dispatch')
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='15/m', method='PUT', block=True), name='dispatch')
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)
 
@@ -238,7 +238,7 @@ class CustomerChangePasswordView(CustomerJWTAuthenticationMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
 
     # Throttle password change attempts
-    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='dispatch')
+    @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='5/m', method='POST', block=True), name='dispatch')
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)
 
@@ -288,7 +288,7 @@ class CustomerCurrentUserView(CustomerJWTAuthenticationMixin, APIView):
         return Response(serializer.data)
 
 
-# @method_decorator(ratelimit(key='ip', rate='3/h', method='POST', block=True), name='post')  # Temporarily disabled for testing
+# @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='3/h', method='POST', block=True), name='post')  # Temporarily disabled for testing
 class PasswordResetRequestView(APIView):
     """
     Request a password reset token.
@@ -325,7 +325,7 @@ class PasswordResetRequestView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# @method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')  # Temporarily disabled for testing
+# @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='10/m', method='POST', block=True), name='post')  # Temporarily disabled for testing
 class PasswordResetConfirmView(APIView):
     """
     Confirm password reset with token and new password.
@@ -355,7 +355,7 @@ class PasswordResetConfirmView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='5/m', method='POST', block=True), name='post')
 class EmailVerificationRequestView(CustomerJWTAuthenticationMixin, APIView):
     """
     Request a new email verification token.
@@ -390,7 +390,7 @@ class EmailVerificationRequestView(CustomerJWTAuthenticationMixin, APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True), name='post')
+@method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='10/m', method='POST', block=True), name='post')
 class EmailVerificationConfirmView(APIView):
     """
     Confirm email verification with token.
