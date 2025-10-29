@@ -15,8 +15,9 @@ export const useCategories = () => {
 		select: (data) => {
 			const filtered =
 				data?.filter((category) => {
-					// Filter out grocery category and only show parent categories (no subcategories)
-					return category.name !== "grocery" && category.parent === null;
+					// Only show public parent categories (no subcategories)
+					// Backend already filters by is_public, but we add defensive check
+					return category.is_public !== false && category.parent === null;
 				}) || [];
 
 			// Sort by the backend order field, then by name as fallback
