@@ -137,6 +137,8 @@ const CheckoutFlow = () => {
 						isLoading={isLoading}
 						isAuthenticated={isAuthenticated}
 						user={user}
+						canPlaceOrder={storeStatus.canPlaceOrder}
+						storeStatusLoading={storeStatus.isLoading}
 					/>
 				);
 			case 2:

@@ -243,7 +243,7 @@ class AdminHostRestrictionMiddleware(MiddlewareMixin):
         # Get admin host from environment, fallback to default
         import os
 
-        self.admin_allowed_host = os.getenv("ADMIN_HOST", "system.bakeajeen.com")
+        self.admin_allowed_host = os.getenv("ADMIN_HOST")
 
     def process_request(self, request):
         # Only check admin paths

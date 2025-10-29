@@ -21,6 +21,8 @@ const CustomerInfo = ({
 	isLoading,
 	isAuthenticated,
 	user,
+	canPlaceOrder = true, // Default to true for backwards compatibility
+	storeStatusLoading = false,
 }) => {
 	const [localFormData, setLocalFormData] = useState(formData);
 
@@ -48,6 +50,9 @@ const CustomerInfo = ({
 	}, [isAuthenticated, user, updateFormData]);
 
 	const handleInputChange = (e) => {
+		// Prevent changes if store is closed
+		if (!canPlaceOrder) return;
+
 		const { name, value } = e.target;
 		setLocalFormData((prev) => ({ ...prev, [name]: value }));
 		updateFormData(name, value);
@@ -85,6 +90,9 @@ const CustomerInfo = ({
 	// Using shared formatPhoneNumber from @ajeen/ui
 
 	const handlePhoneChange = (e) => {
+		// Prevent changes if store is closed
+		if (!canPlaceOrder) return;
+
 		const formattedPhone = formatPhoneNumber(e.target.value);
 		setLocalFormData((prev) => ({ ...prev, phone: formattedPhone }));
 		updateFormData("phone", formattedPhone);
@@ -150,6 +158,7 @@ const CustomerInfo = ({
 											placeholder="First Name"
 											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
 											required
+											disabled={!canPlaceOrder || storeStatusLoading}
 										/>
 									</div>
 								</div>
@@ -172,6 +181,7 @@ const CustomerInfo = ({
 											placeholder="Last Name"
 											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
 											required
+											disabled={!canPlaceOrder || storeStatusLoading}
 										/>
 									</div>
 								</div>
@@ -196,6 +206,7 @@ const CustomerInfo = ({
 										placeholder="your.email@example.com"
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
 										required
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 							</div>
@@ -219,6 +230,7 @@ const CustomerInfo = ({
 										placeholder="(555) 123-4567"
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
 										required
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 							</div>
@@ -241,6 +253,7 @@ const CustomerInfo = ({
 										placeholder="Any special instructions or allergies?"
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20 min-h-[80px]"
 										rows={3}
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 							</div>
@@ -268,6 +281,7 @@ const CustomerInfo = ({
 											placeholder="John"
 											required
 											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+											disabled={!canPlaceOrder || storeStatusLoading}
 										/>
 									</div>
 								</div>
@@ -290,6 +304,7 @@ const CustomerInfo = ({
 											placeholder="Doe"
 											required
 											className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+											disabled={!canPlaceOrder || storeStatusLoading}
 										/>
 									</div>
 								</div>
@@ -314,6 +329,7 @@ const CustomerInfo = ({
 										placeholder="john.doe@example.com"
 										required
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 								<p className="text-accent-dark-brown/60 text-sm">
@@ -340,6 +356,7 @@ const CustomerInfo = ({
 										placeholder="(555) 123-4567"
 										required
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20"
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 								<p className="text-accent-dark-brown/60 text-sm">
@@ -365,6 +382,7 @@ const CustomerInfo = ({
 										placeholder="Any special instructions or allergies?"
 										className="pl-10 border-accent-subtle-gray/50 focus:border-primary-green focus:ring-primary-green/20 min-h-[80px]"
 										rows={3}
+										disabled={!canPlaceOrder || storeStatusLoading}
 									/>
 								</div>
 							</div>
@@ -375,13 +393,22 @@ const CustomerInfo = ({
 					<div className="pt-6">
 						<Button
 							type="submit"
-							disabled={!validateForm() || isLoading}
+							disabled={!validateForm() || isLoading || !canPlaceOrder || storeStatusLoading}
 							className="w-full bg-primary-green hover:bg-accent-dark-green text-accent-light-beige py-3 text-base font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{isLoading ? (
 								<div className="flex items-center">
 									<div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-accent-light-beige mr-2"></div>
 									Processing...
+								</div>
+							) : storeStatusLoading ? (
+								<div className="flex items-center">
+									<div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-accent-light-beige mr-2"></div>
+									Checking store hours...
+								</div>
+							) : !canPlaceOrder ? (
+								<div className="flex items-center justify-center">
+									Store Closed - Cannot Place Order
 								</div>
 							) : (
 								<div className="flex items-center justify-center">

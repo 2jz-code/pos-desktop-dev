@@ -5,7 +5,6 @@ import { defineConfig } from "vite";
 import { fileURLToPath } from "url";
 import { visualizer } from "rollup-plugin-visualizer";
 import viteCompression from "vite-plugin-compression";
-import Sitemap from "vite-plugin-sitemap";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,10 +14,8 @@ export default defineConfig({
 	plugins: [
 		react(),
 		tailwindcss(),
-		Sitemap({
-			hostname: "https://bakeajeen.com",
-			dynamicRoutes: [], // We can add dynamic routes (like products) here later if needed
-		}),
+		// Sitemap generation disabled - using static robots.txt in public folder
+		// Dynamic sitemap.xml can be generated server-side if needed
 		// Bundle analyzer - generates stats.html after build
 		visualizer({
 			filename: "dist/stats.html",
@@ -48,6 +45,7 @@ export default defineConfig({
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 		},
+		dedupe: ["react", "react-dom", "react-router-dom"],
 	},
 	build: {
 		// Enable source maps for production debugging

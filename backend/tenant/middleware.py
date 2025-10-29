@@ -52,6 +52,22 @@ class TenantMiddleware:
             response = self.get_response(request)
             return response
 
+        # Skip tenant resolution for authentication and security endpoints
+        # These endpoints must work without tenant context
+        exempt_paths = [
+            '/api/users/login/pos/',                          # POS login
+            '/api/users/login/admin/',                        # Admin login
+            '/api/users/login/web/',                          # Web/customer login
+            '/api/security/csrf/',                            # CSRF token issuance
+            '/api/terminals/pairing/device-authorization/',   # Device/terminal registration
+            '/api/terminals/pairing/token/',                  # Device/terminal token polling (RFC 8628)
+        ]
+        if any(request.path.startswith(path) for path in exempt_paths):
+            request.tenant = None
+            set_current_tenant(None)
+            response = self.get_response(request)
+            return response
+
         try:
             tenant = self.get_tenant_from_request(request)
             request.tenant = tenant
@@ -173,6 +189,24 @@ class TenantMiddleware:
             print(f"✅ [TenantMiddleware] Resolved tenant from custom domain: {host} → {tenant_from_domain.name}")
             request.session['tenant_id'] = str(tenant_from_domain.id)
             return tenant_from_domain
+
+        # 4.7. Check Origin header for custom domain (when using shared API domain)
+        # When frontend at bakeajeen.com calls api.bakeajeen.com, Origin header has bakeajeen.com
+        origin = request.META.get('HTTP_ORIGIN')
+        if origin:
+            try:
+                from urllib.parse import urlparse
+                origin_host = urlparse(origin).netloc
+                if origin_host and origin_host != host:
+                    print(f"🔍 [TenantMiddleware] Checking Origin header: {origin_host}")
+                    tenant_from_origin = self.get_tenant_from_custom_domain(origin_host)
+                    if tenant_from_origin:
+                        print(f"✅ [TenantMiddleware] Resolved tenant from Origin: {origin_host} → {tenant_from_origin.name}")
+                        request.session['tenant_id'] = str(tenant_from_origin.id)
+                        return tenant_from_origin
+            except Exception as e:
+                print(f"⚠️ [TenantMiddleware] Error parsing Origin header: {e}")
+                pass
 
         # 5. Customer subdomain (joespizza.ajeen.com) - Public ordering
         # Extract tenant from subdomain for customer-facing sites

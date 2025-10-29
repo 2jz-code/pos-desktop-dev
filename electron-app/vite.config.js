@@ -78,6 +78,7 @@ export default defineConfig({
 			"@/shared": path.resolve(__dirname, "./src/shared"),
 			"@/domains": path.resolve(__dirname, "./src/domains"),
 		},
+		dedupe: ["react", "react-dom", "react-router-dom"],
 	},
 	build: {
 		// This config is for the renderer process.

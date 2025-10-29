@@ -1,4 +1,6 @@
+# robots.txt for bakeajeen.com
 User-agent: *
 Allow: /
 
-Sitemap: https://bakeajeen.com/sitemap.xml 
+# Sitemap
+Sitemap: https://bakeajeen.com/sitemap.xml

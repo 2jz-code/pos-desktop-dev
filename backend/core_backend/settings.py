@@ -112,8 +112,8 @@ MIDDLEWARE = [
 # Fallback tenant resolution for development and system hosts
 # DEFAULT_TENANT_SLUG: Used for localhost/IPs during local development
 # SYSTEM_TENANT_SLUG: Used for admin.ajeen.com, api.ajeen.com, and bare domain
-DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "myrestaurant")
-SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG", "system")
+DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG")
+SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG")
 
 # ==============================================================================
 # MULTI-TENANCY & SUBSCRIPTIONS (Phase 1 Configuration)
@@ -123,7 +123,7 @@ SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG", "system")
 DEFAULT_FEATURE_ACCESS = True
 
 # Custom domain verification settings
-CUSTOM_DOMAIN_VERIFICATION_METHODS = ['manual', 'txt', 'cname', 'meta', 'file']
+CUSTOM_DOMAIN_VERIFICATION_METHODS = ["manual", "txt", "cname", "meta", "file"]
 CUSTOM_DOMAIN_AUTO_VERIFY = False  # Phase 3: Enable automated verification
 
 # Future Phase 2 settings (commented for now):
@@ -185,14 +185,16 @@ DATABASES = {
 # ==============================================================================
 # Use a separate test database to protect dev data from being deleted during tests
 # This prevents pytest from dropping/recreating your dev database
-if 'test' in sys.argv or 'pytest' in sys.modules:
+if "test" in sys.argv or "pytest" in sys.modules:
     # Override database name for tests
-    db_name = DATABASES['default'].get('NAME', '')
-    if db_name and db_name != ':memory:':
+    db_name = DATABASES["default"].get("NAME", "")
+    if db_name and db_name != ":memory:":
         # Append '_tests' suffix to database name to create separate test database
         # E.g., 'test_ajeen_db' becomes 'test_ajeen_db_tests'
-        DATABASES['default']['NAME'] = f"{db_name}_tests"
-        logger.info(f"Test mode detected - using test database: {DATABASES['default']['NAME']}")
+        DATABASES["default"]["NAME"] = f"{db_name}_tests"
+        logger.info(
+            f"Test mode detected - using test database: {DATABASES['default']['NAME']}"
+        )
 
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
@@ -313,7 +315,7 @@ AUTH_USER_MODEL = "users.User"
 # Silence system checks for multi-tenancy
 # auth.E003: USERNAME_FIELD must be unique - we enforce uniqueness per tenant via DB constraint
 SILENCED_SYSTEM_CHECKS = [
-    'auth.E003',
+    "auth.E003",
 ]
 
 # CORS settings
