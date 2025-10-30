@@ -23,6 +23,9 @@ from decimal import Decimal
 from typing import Union, Dict, Any, List, Optional
 from django.db.models import QuerySet
 
+# Import money precision helpers
+from payments.money import to_minor, from_minor, quantize
+
 
 class OrderCalculator:
     """
@@ -99,16 +102,21 @@ class OrderCalculator:
 
     def calculate_item_level_tax(self, post_discount_subtotal: Optional[Decimal] = None) -> Decimal:
         """
-        Calculate tax with item-level precision (for orders with mixed tax rates).
+        Calculate tax with item-level precision using minor-unit arithmetic.
 
-        This matches the logic in OrderService.recalculate_order_totals() where
-        tax is calculated proportionally per item based on their tax settings.
+        For NEW orders (post-migration):
+        - Computes tax PER LINE in minor units
+        - Stores tax_amount on each OrderItem
+        - Aggregates to Order.tax_total with ZERO penny drift
+
+        For Carts or preview:
+        - Calculates tax but doesn't store (no OrderItem.id yet)
 
         Args:
             post_discount_subtotal: Optional subtotal after discounts.
 
         Returns:
-            Decimal: Total tax across all items
+            Decimal: Total tax across all items (sum of per-line taxes)
         """
         if not self.source.store_location:
             return Decimal('0.00')
@@ -117,6 +125,9 @@ class OrderCalculator:
         if subtotal == 0:
             return Decimal('0.00')
 
+        # Get currency from order/cart
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+
         # Calculate proportional discount rate if discounts applied
         proportional_discount_rate = Decimal('0.0')
         if post_discount_subtotal is not None and post_discount_subtotal < subtotal:
@@ -124,7 +135,8 @@ class OrderCalculator:
             proportional_discount_rate = discount_amount / subtotal
 
         items = self.source.items.all()
-        tax_total = Decimal('0.00')
+        line_tax_amounts_minor = []
+        items_to_update = []  # Collect items for bulk update
 
         for item in items:
             # Get item price (method vs property based on source type)
@@ -136,6 +148,9 @@ class OrderCalculator:
             # Apply proportional discount to this item
             discounted_item_price = item_price * (Decimal('1.0') - proportional_discount_rate)
 
+            # Quantize BEFORE converting to minor units (CRITICAL)
+            discounted_item_price_quantized = quantize(currency, discounted_item_price)
+
             # Get tax rate for this item's product
             product = item.product
 
@@ -146,11 +161,30 @@ class OrderCalculator:
                 # Use location's default tax rate
                 tax_rate = self.source.store_location.get_effective_tax_rate()
 
-            # Calculate tax for this item
-            item_tax = discounted_item_price * tax_rate
-            tax_total += item_tax
+            # Calculate tax on QUANTIZED price (prevents drift)
+            item_tax_decimal = discounted_item_price_quantized * tax_rate
+            item_tax_quantized = quantize(currency, item_tax_decimal)
+            item_tax_minor = to_minor(currency, item_tax_quantized)
 
-        return tax_total.quantize(Decimal('0.01'))
+            # Store tax_amount on OrderItem (for Orders, not Carts)
+            if not self._is_cart and hasattr(item, 'id') and item.id:
+                # Set the tax amount but don't save yet (collect for bulk update)
+                item.tax_amount = from_minor(currency, item_tax_minor)
+                items_to_update.append(item)
+
+            line_tax_amounts_minor.append(item_tax_minor)
+
+        # Bulk update all items with their tax amounts (more efficient + avoids cache issues)
+        if items_to_update:
+            from orders.models import OrderItem
+            OrderItem.objects.bulk_update(items_to_update, ['tax_amount'])
+
+        # Aggregate: sum of minor units, then convert back to Decimal
+        total_tax_minor = sum(line_tax_amounts_minor)
+        tax_total = from_minor(currency, total_tax_minor)
+
+        # Invariant guaranteed: sum(item.tax_amount) == tax_total
+        return tax_total
 
     def calculate_discounts(self) -> Decimal:
         """

@@ -91,6 +91,17 @@ class Payment(models.Model):
         help_text=_("Stripe Payment Intent ID for guest payments"),
     )
 
+    # --- Refund Allocation Policy Snapshot ---
+    allocation_policy_snapshot = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=_(
+            "Policy snapshot for deterministic refund allocation. "
+            "Stores: tip_base (SUBTOTAL/SUBTOTAL_PLUS_TAX), "
+            "surcharge_base, surcharge_applies_to_tip, rounding method, currency."
+        ),
+    )
+
     legacy_id = models.IntegerField(
         unique=True,
         null=True,

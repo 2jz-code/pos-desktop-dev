@@ -471,6 +471,19 @@ class OrderItem(models.Model):
         help_text=_("Price of the product at the time of sale."),
     )
 
+    # Tax amount per line item (for precise refund allocation)
+    tax_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Tax amount calculated for this line item at sale time. "
+            "Used for per-line refund allocation to prevent penny drift. "
+            "NULL for legacy orders (pre-migration) - refund logic uses deterministic fallback."
+        ),
+    )
+
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order item ID from the old system.")
     
     # Kitchen printing tracking

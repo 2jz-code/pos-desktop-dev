@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from django.db import transaction, models
 from django.db.models import Sum
 from django.utils import timezone
@@ -14,6 +14,9 @@ import stripe
 import uuid
 from .signals import payment_completed
 import logging
+
+# Import the money precision helpers
+from .money import to_minor, from_minor, quantize
 
 logger = logging.getLogger(__name__)
 
@@ -561,14 +564,8 @@ class PaymentService:
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             PaymentTransaction.PaymentMethod.CARD_ONLINE,
         ]:
-            from settings.config import app_settings
-
-            # Ensure both operands are Decimal to avoid float/Decimal TypeError
-            amount_decimal = (
-                Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
-            )
-            surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
-            surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            # Use centralized surcharge calculation with banker's rounding
+            surcharge = PaymentService.calculate_surcharge(amount)
 
         # Extract tip from kwargs if provided
         tip = kwargs.get("tip", Decimal("0.00"))
@@ -964,9 +961,17 @@ class PaymentService:
         }
 
     @staticmethod
-    def calculate_surcharge(amount: Decimal) -> Decimal:
+    def calculate_surcharge(amount: Decimal, currency: str = "USD") -> Decimal:
         """
         Calculates the surcharge for a given amount based on the current settings.
+        Uses minor-unit arithmetic for precision (banker's rounding).
+
+        Args:
+            amount: Base amount to calculate surcharge on
+            currency: ISO 4217 currency code (default: USD)
+
+        Returns:
+            Surcharge amount quantized to currency precision
         """
         from settings.config import app_settings
 
@@ -975,7 +980,9 @@ class PaymentService:
             Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
         )
         surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
-        return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        # Use our money.py quantize function for consistent banker's rounding
+        return quantize(currency, surcharge)
 
     @staticmethod
     @transaction.atomic

@@ -72,6 +72,14 @@ class PaymentAdmin(TenantAdminMixin, admin.ModelAdmin):
                 )
             },
         ),
+        (
+            "Refund Allocation Policy",
+            {
+                "fields": ("allocation_policy_snapshot",),
+                "classes": ("collapse",),
+                "description": "Policy snapshot for deterministic refund allocation (tip/surcharge base, rounding method, currency)",
+            },
+        ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
 
