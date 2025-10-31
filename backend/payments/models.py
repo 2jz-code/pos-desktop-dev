@@ -25,17 +25,15 @@ class Payment(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='payments'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="payments"
     )
     store_location = models.ForeignKey(
-        'settings.StoreLocation',
+        "settings.StoreLocation",
         on_delete=models.PROTECT,
-        related_name='payments',
+        related_name="payments",
         null=True,  # Nullable initially for migration, will be required after backfill
         blank=True,
-        help_text='Denormalized from Order for fast location-based queries'
+        help_text="Denormalized from Order for fast location-based queries",
     )
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name="payment_details"
@@ -122,11 +120,24 @@ class Payment(models.Model):
         verbose_name_plural = _("Payments")
         indexes = [
             models.Index(fields=["tenant", "status"], name="payment_tenant_status_idx"),
-            models.Index(fields=["tenant", "order", "status"], name="payment_ten_order_status_idx"),
-            models.Index(fields=["tenant", "created_at"], name="payment_tenant_created_idx"),
-            models.Index(fields=["tenant", "payment_number"], name="payment_tenant_number_idx"),
-            models.Index(fields=["tenant", "store_location", "status"], name="payment_tenant_loc_status_idx"),
-            models.Index(fields=["tenant", "store_location", "created_at"], name="payment_tenant_loc_created_idx"),
+            models.Index(
+                fields=["tenant", "order", "status"],
+                name="payment_ten_order_status_idx",
+            ),
+            models.Index(
+                fields=["tenant", "created_at"], name="payment_tenant_created_idx"
+            ),
+            models.Index(
+                fields=["tenant", "payment_number"], name="payment_tenant_number_idx"
+            ),
+            models.Index(
+                fields=["tenant", "store_location", "status"],
+                name="payment_tenant_loc_status_idx",
+            ),
+            models.Index(
+                fields=["tenant", "store_location", "created_at"],
+                name="payment_tenant_loc_created_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -236,9 +247,7 @@ class PaymentTransaction(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='payment_transactions'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="payment_transactions"
     )
     payment = models.ForeignKey(
         Payment, on_delete=models.CASCADE, related_name="transactions"
@@ -314,12 +323,12 @@ class PaymentTransaction(models.Model):
         verbose_name = _("Payment Transaction")
         verbose_name_plural = _("Payment Transactions")
         indexes = [
-            models.Index(fields=['tenant', 'payment']),
-            models.Index(fields=['tenant', 'method']),
-            models.Index(fields=['tenant', 'status']),
-            models.Index(fields=['tenant', 'transaction_id']),
-            models.Index(fields=['tenant', 'created_at']),
-            models.Index(fields=['tenant', 'payment', 'status'])
+            models.Index(fields=["tenant", "payment"]),
+            models.Index(fields=["tenant", "method"]),
+            models.Index(fields=["tenant", "status"]),
+            models.Index(fields=["tenant", "transaction_id"]),
+            models.Index(fields=["tenant", "created_at"]),
+            models.Index(fields=["tenant", "payment", "status"]),
         ]
 
     def save(self, *args, **kwargs):
@@ -349,9 +358,7 @@ class GiftCard(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='gift_cards'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="gift_cards"
     )
     code = models.CharField(
         max_length=20,
@@ -406,9 +413,9 @@ class GiftCard(models.Model):
         indexes = [
             models.Index(fields=["tenant", "code"]),
             models.Index(fields=["tenant", "status"]),
-            models.Index(fields=['tenant', 'current_balance']),
-            models.Index(fields=['tenant', 'expiry_date']),
-            models.Index(fields=['tenant', 'status', 'current_balance']),
+            models.Index(fields=["tenant", "current_balance"]),
+            models.Index(fields=["tenant", "expiry_date"]),
+            models.Index(fields=["tenant", "status", "current_balance"]),
         ]
         constraints = [
             models.UniqueConstraint(

@@ -17,6 +17,9 @@ import json
 import logging
 from decimal import Decimal
 
+# Import money precision helpers for currency-aware conversions
+from payments.money import from_minor
+
 from .base import BasePaymentView, PAYMENT_MESSAGES
 from ..models import Payment, PaymentTransaction
 
@@ -58,6 +61,9 @@ class StripeWebhookView(BasePaymentView):
         elif event["type"] == "payment_intent.canceled":
             payment_intent = event["data"]["object"]
             self._handle_payment_intent_canceled(payment_intent)
+        elif event["type"] == "charge.refunded":
+            charge = event["data"]["object"]
+            self._handle_charge_refunded(charge)
         elif event["type"] == "refund.updated":
             refund = event["data"]["object"]
             self._handle_refund_updated(refund)
@@ -139,9 +145,41 @@ class StripeWebhookView(BasePaymentView):
         """Handles 'payment_intent.canceled' events."""
         self._handle_failure(payment_intent, event_type="canceled")
 
+    def _handle_charge_refunded(self, charge_object):
+        """
+        Handles 'charge.refunded' events.
+
+        This event is triggered when a charge is refunded (fully or partially).
+        We extract the refund information and process it similarly to refund.updated.
+        """
+        charge_id = charge_object.get("id")
+        payment_intent_id = charge_object.get("payment_intent")
+
+        if not payment_intent_id:
+            logger.warning(
+                f"Webhook 'charge.refunded' received for charge {charge_id} without Payment Intent ID."
+            )
+            return
+
+        # Process each refund in the charge
+        refunds = charge_object.get("refunds", {}).get("data", [])
+        if not refunds:
+            logger.info(f"No refund data found in charge.refunded event for charge {charge_id}")
+            return
+
+        # Process the most recent refund (usually there's only one new refund per event)
+        for refund in refunds:
+            if refund.get("status") == "succeeded":
+                self._handle_refund_updated(refund)
+
     def _handle_refund_updated(self, refund_object):
         """
         Handles the 'refund.updated' event using the Payment Intent ID for a reliable lookup.
+
+        Updated to work with the new refund system:
+        - Validates against total transaction amount (amount + tip + surcharge)
+        - Creates RefundAuditLog for webhook events
+        - Links to existing RefundItem records if available
         """
         if refund_object.get("status") != "succeeded":
             logger.info(
@@ -160,6 +198,7 @@ class StripeWebhookView(BasePaymentView):
         try:
             from django.db import transaction as db_transaction
             from ..services import PaymentService
+            from refunds.models import RefundAuditLog
 
             with db_transaction.atomic():
                 # Find the transaction using the ID we know is stored in our database.
@@ -179,10 +218,20 @@ class StripeWebhookView(BasePaymentView):
                     return
 
                 # Apply the refund logic
-                refunded_amount_in_event = Decimal(refund_object.get("amount", 0)) / 100
+                # Use money.from_minor for currency-aware conversion (supports USD, JPY, KWD, etc.)
+                currency = refund_object.get("currency", "usd").upper()
+                refunded_amount_minor = refund_object.get("amount", 0)
+                refunded_amount_in_event = from_minor(currency, refunded_amount_minor)
                 txn_to_refund.refunded_amount += refunded_amount_in_event
 
-                if txn_to_refund.refunded_amount >= txn_to_refund.amount:
+                # CRITICAL FIX: Check against total transaction amount (amount + tip + surcharge)
+                total_transaction_amount = (
+                    txn_to_refund.amount +
+                    txn_to_refund.tip +
+                    txn_to_refund.surcharge
+                )
+
+                if txn_to_refund.refunded_amount >= total_transaction_amount:
                     txn_to_refund.status = PaymentTransaction.TransactionStatus.REFUNDED
 
                 # Store the raw refund object for auditing
@@ -193,11 +242,27 @@ class StripeWebhookView(BasePaymentView):
 
                 txn_to_refund.save()
 
+                # Create RefundAuditLog for webhook event
+                RefundAuditLog.objects.create(
+                    tenant=txn_to_refund.payment.tenant,
+                    payment=txn_to_refund.payment,
+                    payment_transaction=txn_to_refund,
+                    action='webhook_refund_updated',
+                    source='WEBHOOK',
+                    refund_amount=refunded_amount_in_event,
+                    reason=refund_object.get('reason', ''),
+                    initiated_by=None,  # Webhook, no user
+                    device_info={'webhook_event_id': refund_object.get('id')},
+                    provider_response=refund_object,
+                    status='success',
+                )
+
                 # Update the parent Payment object
                 PaymentService._update_payment_status(txn_to_refund.payment)
 
             logger.info(
-                f"Successfully processed webhook 'refund.updated' for Txn {txn_to_refund.id}"
+                f"Successfully processed webhook 'refund.updated' for Txn {txn_to_refund.id}. "
+                f"Refunded: ${refunded_amount_in_event}, Total refunded: ${txn_to_refund.refunded_amount} / ${total_transaction_amount}"
             )
 
         except PaymentTransaction.DoesNotExist:
@@ -205,7 +270,7 @@ class StripeWebhookView(BasePaymentView):
                 f"Webhook Error: Received refund for PI {payment_intent_id} but could not find matching transaction."
             )
         except Exception as e:
-            logger.error(f"An unexpected error occurred in _handle_refund_updated: {e}")
+            logger.error(f"An unexpected error occurred in _handle_refund_updated: {e}", exc_info=True)
 
     def _handle_unimplemented_event(self, event_data):
         """

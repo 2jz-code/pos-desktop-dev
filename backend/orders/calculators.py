@@ -98,7 +98,11 @@ class OrderCalculator:
         taxable_amount = post_discount_subtotal if post_discount_subtotal is not None else self.calculate_subtotal()
 
         tax_rate = self.source.store_location.get_effective_tax_rate()
-        return (taxable_amount * tax_rate).quantize(Decimal('0.01'))
+        tax_amount = taxable_amount * tax_rate
+
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+        return quantize(currency, tax_amount)
 
     def calculate_item_level_tax(self, post_discount_subtotal: Optional[Decimal] = None) -> Decimal:
         """
@@ -239,7 +243,10 @@ class OrderCalculator:
         tax = self.calculate_item_level_tax(post_discount_subtotal)
 
         grand_total = post_discount_subtotal + tax
-        return grand_total.quantize(Decimal('0.01'))
+
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+        return quantize(currency, grand_total)
 
     def calculate_totals(self) -> Dict[str, Any]:
         """
@@ -265,11 +272,14 @@ class OrderCalculator:
         items = self.source.items.all()
         item_count = sum(item.quantity for item in items)
 
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+
         return {
-            'subtotal': subtotal.quantize(Decimal('0.01')),
-            'discount_total': discount_total.quantize(Decimal('0.01')),
-            'tax_total': tax_total.quantize(Decimal('0.01')),
-            'grand_total': grand_total.quantize(Decimal('0.01')),
+            'subtotal': quantize(currency, subtotal),
+            'discount_total': quantize(currency, discount_total),
+            'tax_total': quantize(currency, tax_total),
+            'grand_total': quantize(currency, grand_total),
             'item_count': item_count,
             'has_location': bool(self.source.store_location),
         }

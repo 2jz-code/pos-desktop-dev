@@ -836,6 +836,170 @@ class PaymentService:
         return self.payment
 
     @transaction.atomic
+    def process_item_level_refund(
+        self,
+        order_items_with_quantities: list[tuple],
+        reason: str | None = None,
+        transaction_id: uuid.UUID | None = None,
+    ) -> dict:
+        """
+        Process a refund for specific order items using RefundCalculator.
+
+        This is the recommended high-level method for processing refunds.
+        It handles the full refund flow:
+        1. Validates the refund using RefundValidator
+        2. Calculates refund amounts using RefundCalculator
+        3. Processes the refund via payment provider
+        4. Creates RefundItem and RefundAuditLog records
+
+        Args:
+            order_items_with_quantities: List of (OrderItem, quantity) tuples
+            reason: Optional reason for the refund
+            transaction_id: Optional specific transaction to refund from
+
+        Returns:
+            Dict containing:
+            {
+                'success': bool,
+                'refund_transaction': PaymentTransaction,
+                'refund_items': List[RefundItem],
+                'audit_log': RefundAuditLog,
+                'total_refunded': Decimal
+            }
+
+        Raises:
+            ValueError: If validation fails
+        """
+        from refunds.services import RefundCalculator, RefundValidator
+        from refunds.models import RefundItem, RefundAuditLog
+
+        # Validate all items first
+        for order_item, quantity in order_items_with_quantities:
+            is_valid, error_message = RefundValidator.validate_item_refund(order_item, quantity)
+            if not is_valid:
+                raise ValueError(f"Validation failed for {order_item.product.name}: {error_message}")
+
+        # Validate payment
+        is_valid, error_message = RefundValidator.validate_payment_refund(self.payment)
+        if not is_valid:
+            raise ValueError(f"Payment validation failed: {error_message}")
+
+        # Calculate refund using RefundCalculator
+        calculator = RefundCalculator(self.payment)
+        refund_calculation = calculator.calculate_multiple_items_refund(order_items_with_quantities)
+        total_refund_amount = refund_calculation['grand_total']
+
+        # Get the transaction to refund from
+        if transaction_id:
+            refund_from_transaction = get_object_or_404(
+                PaymentTransaction,
+                id=transaction_id,
+                payment=self.payment
+            )
+        else:
+            refund_from_transaction = self.payment.transactions.filter(
+                status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+            ).order_by('-created_at').first()
+
+        if not refund_from_transaction:
+            raise ValueError("No successful transaction found to refund")
+
+        # Create audit log (initiated)
+        audit_log = RefundAuditLog.objects.create(
+            tenant=self.payment.tenant,
+            payment=self.payment,
+            payment_transaction=None,  # Will be set after refund
+            action='item_refund_initiated',
+            source='SERVICE',
+            refund_amount=total_refund_amount,
+            reason=reason or '',
+            initiated_by=None,  # Can be set by caller if available
+            status='pending',
+        )
+
+        try:
+            # Process refund via provider
+            refunded_transaction = self.refund_transaction_with_provider(
+                transaction_id=refund_from_transaction.id,
+                amount_to_refund=total_refund_amount,
+                reason=reason
+            )
+
+            # Create RefundItem records for each item
+            refund_items = []
+            for item_data in refund_calculation['items']:
+                refund_item = RefundItem.objects.create(
+                    tenant=self.payment.tenant,
+                    payment_transaction=refunded_transaction,
+                    order_item=item_data['order_item'],
+                    quantity_refunded=item_data['quantity'],
+                    amount_per_unit=item_data['order_item'].price_at_sale,
+                    total_refund_amount=item_data['subtotal'],
+                    tax_refunded=item_data['tax'],
+                    tip_refunded=item_data['tip'],
+                    surcharge_refunded=item_data['surcharge'],
+                    refund_reason=reason or '',
+                )
+                refund_items.append(refund_item)
+
+            # Update audit log (success)
+            audit_log.payment_transaction = refunded_transaction
+            audit_log.status = 'success'
+            audit_log.save(update_fields=['payment_transaction', 'status'])
+
+            return {
+                'success': True,
+                'refund_transaction': refunded_transaction,
+                'refund_items': refund_items,
+                'audit_log': audit_log,
+                'total_refunded': total_refund_amount,
+            }
+
+        except Exception as e:
+            # Update audit log (failed)
+            audit_log.status = 'failed'
+            audit_log.error_message = str(e)
+            audit_log.save(update_fields=['status', 'error_message'])
+            raise
+
+    @transaction.atomic
+    def process_full_order_refund(
+        self,
+        reason: str | None = None,
+        transaction_id: uuid.UUID | None = None,
+    ) -> dict:
+        """
+        Process a full refund for the entire order.
+
+        This is a convenience method that refunds all items in the order.
+        It uses process_item_level_refund() internally.
+
+        Args:
+            reason: Optional reason for the refund
+            transaction_id: Optional specific transaction to refund from
+
+        Returns:
+            Same as process_item_level_refund()
+
+        Raises:
+            ValueError: If validation fails
+        """
+        # Build list of all items with full quantities
+        order_items_with_quantities = [
+            (item, item.quantity) for item in self.payment.order.items.all()
+        ]
+
+        if not order_items_with_quantities:
+            raise ValueError("Order has no items to refund")
+
+        # Use the item-level refund method
+        return self.process_item_level_refund(
+            order_items_with_quantities=order_items_with_quantities,
+            reason=reason,
+            transaction_id=transaction_id
+        )
+
+    @transaction.atomic
     def refund_transaction_with_provider(
         self,
         transaction_id: uuid.UUID,
@@ -854,11 +1018,20 @@ class PaymentService:
             PaymentTransaction.objects.select_related("payment"), id=transaction_id
         )
 
-        # Validation checks remain the same...
-        if (
-            original_transaction.refunded_amount + amount_to_refund
-        ) > original_transaction.amount:
-            raise ValueError("Cannot refund more than the remaining refundable amount.")
+        # Validation: Check against total transaction amount (amount + tip + surcharge)
+        total_transaction_amount = (
+            original_transaction.amount +
+            original_transaction.tip +
+            original_transaction.surcharge
+        )
+
+        if (original_transaction.refunded_amount + amount_to_refund) > total_transaction_amount:
+            raise ValueError(
+                f"Cannot refund ${amount_to_refund}. "
+                f"Total transaction: ${total_transaction_amount}, "
+                f"Already refunded: ${original_transaction.refunded_amount}, "
+                f"Remaining: ${total_transaction_amount - original_transaction.refunded_amount}"
+            )
 
         # Get the strategy
         provider_setting = None

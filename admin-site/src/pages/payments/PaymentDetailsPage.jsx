@@ -36,8 +36,10 @@ import {
 	Clock,
 } from "lucide-react";
 import { RefundDialog } from "@/components/RefundDialog";
+import { ItemRefundDialog } from "@/components/ItemRefundDialog";
 import { Timeline } from "@/components/ui/Timeline";
 import { generatePaymentTimeline } from "@/utils/paymentTimeline";
+import { processItemRefund } from "@/services/api/refundService";
 
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
@@ -50,6 +52,7 @@ const PaymentDetailsPage = () => {
 
 	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
 	const [selectedTransaction, setSelectedTransaction] = useState(null);
+	const [isItemRefundDialogOpen, setItemRefundDialogOpen] = useState(false);
 
 	const {
 		data: payment,
@@ -93,6 +96,47 @@ const PaymentDetailsPage = () => {
 
 	const handleRefundSubmit = (refundDetails) => {
 		processRefund(refundDetails);
+	};
+
+	const { mutate: processItemsRefund, isLoading: isItemRefunding } = useMutation({
+		mutationFn: (refundData) => {
+			// Check if single or multiple items
+			if (refundData.items.length === 1) {
+				// Single item format
+				const item = refundData.items[0];
+				return processItemRefund({
+					order_item_id: item.order_item_id,
+					quantity: item.quantity,
+					reason: refundData.reason,
+				});
+			} else {
+				// Multiple items format
+				return processItemRefund({
+					items: refundData.items,
+					reason: refundData.reason,
+				});
+			}
+		},
+		onSuccess: () => {
+			toast({
+				title: "Success",
+				description: "Item refund processed successfully.",
+			});
+			queryClient.invalidateQueries(["payment", paymentId]);
+			queryClient.invalidateQueries(["payments"]);
+			setItemRefundDialogOpen(false);
+		},
+		onError: (err) => {
+			toast({
+				title: "Refund Error",
+				description: err.response?.data?.error || "Failed to process item refund.",
+				variant: "destructive",
+			});
+		},
+	});
+
+	const handleItemRefundSubmit = (refundData) => {
+		processItemsRefund(refundData);
 	};
 
 	// Generate timeline events - must be before early returns to satisfy Rules of Hooks
@@ -345,6 +389,106 @@ const PaymentDetailsPage = () => {
 							</Card>
 						</div>
 
+						{/* Order Items Table */}
+						{payment.order?.items && payment.order.items.length > 0 && (
+							<div className="mt-6">
+								<Card className="border-border bg-card">
+									<CardHeader className="pb-4">
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-3">
+												<div className="p-2.5 bg-muted rounded-lg">
+													<Receipt className="h-5 w-5 text-foreground" />
+												</div>
+												<div>
+													<CardTitle className="text-lg font-semibold text-foreground">
+														Order Items
+													</CardTitle>
+													<CardDescription className="text-muted-foreground mt-1">
+														Items included in this order
+													</CardDescription>
+												</div>
+											</div>
+											{payment.status === "PAID" && (
+												<Button
+													onClick={() => setItemRefundDialogOpen(true)}
+													variant="outline"
+													size="sm"
+													className="border-border"
+												>
+													Refund Items
+												</Button>
+											)}
+										</div>
+									</CardHeader>
+									<CardContent>
+										<div className="border border-border rounded-lg overflow-hidden">
+											<Table>
+												<TableHeader>
+													<TableRow className="border-border hover:bg-transparent">
+														<TableHead className="font-semibold text-foreground">
+															Item
+														</TableHead>
+														<TableHead className="font-semibold text-foreground text-center">
+															Quantity
+														</TableHead>
+														<TableHead className="font-semibold text-foreground text-center">
+															Refunded
+														</TableHead>
+														<TableHead className="font-semibold text-foreground text-right">
+															Price
+														</TableHead>
+														<TableHead className="font-semibold text-foreground text-right">
+															Total
+														</TableHead>
+													</TableRow>
+												</TableHeader>
+												<TableBody>
+													{payment.order.items.map((item) => {
+														const refundedQty = item.refunded_quantity || 0;
+														const lineTotal = (item.price_at_sale || 0) * item.quantity;
+
+														return (
+															<TableRow
+																key={item.id}
+																className="border-border hover:bg-muted/50"
+															>
+																<TableCell className="font-medium text-foreground">
+																	<div className="space-y-1">
+																		<div>{item.product_name || "Unknown Item"}</div>
+																		{item.notes && (
+																			<div className="text-xs text-muted-foreground">
+																				Note: {item.notes}
+																			</div>
+																		)}
+																	</div>
+																</TableCell>
+																<TableCell className="text-center text-foreground">
+																	{item.quantity}
+																</TableCell>
+																<TableCell className="text-center">
+																	{refundedQty > 0 ? (
+																		<Badge variant="secondary">{refundedQty}</Badge>
+																	) : (
+																		<span className="text-muted-foreground">—</span>
+																	)}
+																</TableCell>
+																<TableCell className="text-right font-medium text-foreground">
+																	{formatCurrency(item.price_at_sale || 0)}
+																</TableCell>
+																<TableCell className="text-right font-semibold text-foreground">
+																	{formatCurrency(lineTotal)}
+																</TableCell>
+															</TableRow>
+														);
+													})}
+												</TableBody>
+											</Table>
+										</div>
+									</CardContent>
+								</Card>
+							</div>
+						)}
+
 						{/* Transaction Details Table */}
 						<div className="mt-6">
 							<Card className="border-border bg-card">
@@ -551,6 +695,16 @@ const PaymentDetailsPage = () => {
 					transaction={selectedTransaction}
 					isRefunding={isRefunding}
 					onSubmit={handleRefundSubmit}
+				/>
+			)}
+
+			{payment?.order?.items && (
+				<ItemRefundDialog
+					isOpen={isItemRefundDialogOpen}
+					onOpenChange={setItemRefundDialogOpen}
+					orderItems={payment.order.items}
+					isProcessing={isItemRefunding}
+					onSubmit={handleItemRefundSubmit}
 				/>
 			)}
 		</div>

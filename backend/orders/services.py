@@ -12,6 +12,9 @@ import hashlib
 import logging
 import time
 
+# Import money precision helper for consistent rounding
+from payments.money import quantize
+
 logger = logging.getLogger(__name__)
 
 class OrderService:
@@ -33,12 +36,14 @@ class OrderService:
         price_ranges = [1, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
 
         tax_matrix = {}
+        # Assume USD for tax matrix (can be extended for multi-currency)
+        currency = 'USD'
         for price in price_ranges:
             price_decimal = Decimal(str(price))
             tax_amount = price_decimal * Decimal(str(tax_rate))
             tax_matrix[price] = {
-                'tax_amount': float(tax_amount.quantize(Decimal("0.01"))),
-                'total_with_tax': float((price_decimal + tax_amount).quantize(Decimal("0.01")))
+                'tax_amount': float(quantize(currency, tax_amount)),
+                'total_with_tax': float(quantize(currency, price_decimal + tax_amount))
             }
 
         return {
