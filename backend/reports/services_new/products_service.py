@@ -39,7 +39,7 @@ class ProductsReportService(BaseReportService):
         end_date: datetime,
         location_id: Optional[int] = None,
         category_id: Optional[int] = None,
-        limit: int = 10,
+        limit: Optional[int] = None,  # None means no limit (fetch all products)
         trend_period: str = "auto",  # "daily", "weekly", "monthly", "auto"
         use_cache: bool = True,
     ) -> Dict[str, Any]:
