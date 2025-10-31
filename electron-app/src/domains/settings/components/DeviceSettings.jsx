@@ -130,8 +130,16 @@ export function DeviceSettings() {
 
 	useEffect(() => {
 		if (registration && storeLocations) {
-			// Use the ID from the nested store_location object
-			const locationId = registration.store_location?.id?.toString() || "";
+			// Handle both formats: store_location as ID (number) or nested object
+			let locationId = "";
+			if (typeof registration.store_location === 'object' && registration.store_location !== null) {
+				// Nested object format: { id: 1, name: "Location Name" }
+				locationId = registration.store_location.id?.toString() || "";
+			} else if (registration.store_location) {
+				// Plain ID format: 1
+				locationId = registration.store_location.toString();
+			}
+
 			terminalForm.reset({
 				nickname: registration.nickname || "",
 				store_location: locationId,
@@ -168,7 +176,12 @@ export function DeviceSettings() {
 
 	const onTerminalSubmit = (data) => {
 		// Include the device_id and selected reader ID in the payload sent to the backend
-		upsertRegistration({ device_id: machineId, ...data, reader_id: selectedReader });
+		// Convert null reader_id to empty string (field has blank=True but not null=True)
+		upsertRegistration({
+			device_id: machineId,
+			...data,
+			reader_id: selectedReader || ""
+		});
 	};
 
 	const isLoading = isMachineIdLoading || isLoadingRegistration;

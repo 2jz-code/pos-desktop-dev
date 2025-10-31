@@ -5,6 +5,7 @@ import {
 	checkAuthStatus,
 	logout as apiLogout, // Aliased import to avoid name collision
 } from "@/services/auth/authService";
+import apiClient from "@/services/api/client";
 
 const AuthContext = createContext(null);
 
@@ -14,7 +15,7 @@ export const AuthProvider = ({ children }) => {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		
+
 		const verifyAuth = async () => {
 			try {
 				const response = await checkAuthStatus();
@@ -34,6 +35,34 @@ export const AuthProvider = ({ children }) => {
 		};
 		verifyAuth();
 	}, []);
+
+	// Proactive token refresh - refreshes tokens before they expire
+	// This prevents session interruptions during admin workflows
+	useEffect(() => {
+		if (!user) return; // Only run if user is logged in
+
+		const REFRESH_INTERVAL_MS = 45 * 60 * 1000; // 45 minutes (before 1-hour expiry)
+
+		const refreshTokenProactively = async () => {
+			try {
+				console.log('[Auth] Proactively refreshing token...');
+				await apiClient.post('/users/token/refresh/');
+				console.log('[Auth] Token refreshed successfully');
+			} catch (error) {
+				console.warn('[Auth] Token refresh failed, user may need to re-login', error);
+				// Don't logout automatically - let the user continue until next 401
+			}
+		};
+
+		// Refresh immediately on login (to reset timer)
+		refreshTokenProactively();
+
+		// Set up interval for periodic refresh
+		const intervalId = setInterval(refreshTokenProactively, REFRESH_INTERVAL_MS);
+
+		// Cleanup interval on logout or unmount
+		return () => clearInterval(intervalId);
+	}, [user]); // Re-run when user changes (login/logout)
 
 	const login = async (email, password) => {
 		setLoading(true);

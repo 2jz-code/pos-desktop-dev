@@ -63,6 +63,22 @@ apiClient.interceptors.request.use(
 			console.warn(`⚠️ [API] No location ID for request to ${config.url}`);
 		}
 
+		// Add X-Tenant header from terminal config
+		// This allows tenant resolution even when JWT is expired (for token refresh)
+		try {
+			const terminalConfig = localStorage.getItem('terminal_config');
+			if (terminalConfig) {
+				const config_parsed = JSON.parse(terminalConfig);
+				const tenantSlug = config_parsed.tenant_slug;
+				if (tenantSlug) {
+					config.headers['X-Tenant'] = tenantSlug;
+					console.log(`🏢 [API] Adding X-Tenant: ${tenantSlug} to ${config.url}`);
+				}
+			}
+		} catch (_) {
+			// If localStorage or parsing fails, proceed without the header
+		}
+
 		// Add CSRF stopgap header on unsafe methods so the backend permits cookie-auth writes
 		const method = (config.method || 'get').toLowerCase();
 		if (!['get', 'head', 'options'].includes(method)) {

@@ -46,32 +46,109 @@ class StripeWebhookView(BasePaymentView):
             event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         except ValueError as e:
             # Invalid payload
+            logger.error(f"Stripe webhook: Invalid payload - {e}")
             return HttpResponse(status=400)
         except stripe.error.SignatureVerificationError as e:
             # Invalid signature
+            logger.error(f"Stripe webhook: Invalid signature - {e}")
             return HttpResponse(status=400)
 
-        # Handle the event
-        if event["type"] == "payment_intent.succeeded":
-            payment_intent = event["data"]["object"]
-            self._handle_payment_intent_succeeded(payment_intent)
-        elif event["type"] == "payment_intent.payment_failed":
-            payment_intent = event["data"]["object"]
-            self._handle_payment_intent_payment_failed(payment_intent)
-        elif event["type"] == "payment_intent.canceled":
-            payment_intent = event["data"]["object"]
-            self._handle_payment_intent_canceled(payment_intent)
-        elif event["type"] == "charge.refunded":
-            charge = event["data"]["object"]
-            self._handle_charge_refunded(charge)
-        elif event["type"] == "refund.updated":
-            refund = event["data"]["object"]
-            self._handle_refund_updated(refund)
-        else:
-            # For any other event types, we can log them for now
-            self._handle_unimplemented_event(event["data"]["object"])
+        # Manually resolve tenant from the event data
+        # This is necessary because webhooks bypass tenant middleware
+        tenant = self._resolve_tenant_from_event(event)
+        if not tenant:
+            logger.error(
+                f"Stripe webhook: Could not resolve tenant from event type {event['type']}"
+            )
+            return HttpResponse(status=400)
 
-        return HttpResponse(status=200)
+        # Set tenant context for this request
+        from tenant.managers import set_current_tenant
+
+        set_current_tenant(tenant)
+        request.tenant = tenant
+
+        try:
+            # Handle the event
+            if event["type"] == "payment_intent.succeeded":
+                payment_intent = event["data"]["object"]
+                self._handle_payment_intent_succeeded(payment_intent)
+            elif event["type"] == "payment_intent.payment_failed":
+                payment_intent = event["data"]["object"]
+                self._handle_payment_intent_payment_failed(payment_intent)
+            elif event["type"] == "payment_intent.canceled":
+                payment_intent = event["data"]["object"]
+                self._handle_payment_intent_canceled(payment_intent)
+            elif event["type"] == "refund.updated":
+                refund = event["data"]["object"]
+                self._handle_refund_updated(refund)
+            else:
+                # For any other event types, we can log them for now
+                self._handle_unimplemented_event(event["data"]["object"])
+
+            return HttpResponse(status=200)
+        finally:
+            # Always clean up tenant context
+            set_current_tenant(None)
+
+    def _resolve_tenant_from_event(self, event):
+        """
+        Resolve tenant from Stripe webhook event data.
+
+        Extracts order_id from PaymentIntent metadata and looks up the
+        Order's tenant. This is necessary because webhooks bypass tenant middleware.
+
+        Args:
+            event: Stripe webhook event object
+
+        Returns:
+            Tenant instance if found, None otherwise
+        """
+        event_data = event.get("data", {}).get("object", {})
+
+        # For payment_intent events, metadata is directly on the object
+        if event["type"].startswith("payment_intent"):
+            order_id = event_data.get("metadata", {}).get("order_id")
+        # For refund events, we need to get the payment_intent first
+        elif event["type"].startswith("refund"):
+            payment_intent_id = event_data.get("payment_intent")
+            if payment_intent_id:
+                # Look up the transaction to get the order
+                try:
+                    from orders.models import Order
+
+                    txn = PaymentTransaction.all_objects.select_related(
+                        "payment__order__tenant"
+                    ).get(transaction_id=payment_intent_id)
+                    return txn.payment.order.tenant
+                except PaymentTransaction.DoesNotExist:
+                    logger.error(
+                        f"Could not find transaction for PI {payment_intent_id}"
+                    )
+                    return None
+        else:
+            logger.warning(
+                f"Unhandled event type for tenant resolution: {event['type']}"
+            )
+            return None
+
+        if not order_id:
+            logger.error(f"No order_id in event metadata for {event['type']}")
+            return None
+
+        try:
+            from orders.models import Order
+
+            # Use all_objects to bypass tenant filtering
+            order = Order.all_objects.select_related("tenant").get(id=order_id)
+            logger.info(f"Resolved tenant {order.tenant.slug} from order {order_id}")
+            return order.tenant
+        except Order.DoesNotExist:
+            logger.error(f"Order {order_id} not found for tenant resolution")
+            return None
+        except Exception as e:
+            logger.error(f"Error resolving tenant from order {order_id}: {e}")
+            return None
 
     def _handle_payment_intent_succeeded(self, payment_intent):
         """
@@ -135,7 +212,9 @@ class StripeWebhookView(BasePaymentView):
             if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
                 PaymentService.confirm_successful_transaction(transaction)
 
-        logger.info(f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}")
+        logger.info(
+            f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}"
+        )
 
     def _handle_payment_intent_payment_failed(self, payment_intent):
         """Handles 'payment_intent.payment_failed' events."""
@@ -164,7 +243,9 @@ class StripeWebhookView(BasePaymentView):
         # Process each refund in the charge
         refunds = charge_object.get("refunds", {}).get("data", [])
         if not refunds:
-            logger.info(f"No refund data found in charge.refunded event for charge {charge_id}")
+            logger.info(
+                f"No refund data found in charge.refunded event for charge {charge_id}"
+            )
             return
 
         # Process the most recent refund (usually there's only one new refund per event)
@@ -226,9 +307,7 @@ class StripeWebhookView(BasePaymentView):
 
                 # CRITICAL FIX: Check against total transaction amount (amount + tip + surcharge)
                 total_transaction_amount = (
-                    txn_to_refund.amount +
-                    txn_to_refund.tip +
-                    txn_to_refund.surcharge
+                    txn_to_refund.amount + txn_to_refund.tip + txn_to_refund.surcharge
                 )
 
                 if txn_to_refund.refunded_amount >= total_transaction_amount:
@@ -247,14 +326,14 @@ class StripeWebhookView(BasePaymentView):
                     tenant=txn_to_refund.payment.tenant,
                     payment=txn_to_refund.payment,
                     payment_transaction=txn_to_refund,
-                    action='webhook_refund_updated',
-                    source='WEBHOOK',
+                    action="webhook_refund_updated",
+                    source="WEBHOOK",
                     refund_amount=refunded_amount_in_event,
-                    reason=refund_object.get('reason', ''),
+                    reason=refund_object.get("reason", ""),
                     initiated_by=None,  # Webhook, no user
-                    device_info={'webhook_event_id': refund_object.get('id')},
+                    device_info={"webhook_event_id": refund_object.get("id")},
                     provider_response=refund_object,
-                    status='success',
+                    status="success",
                 )
 
                 # Update the parent Payment object
@@ -270,7 +349,10 @@ class StripeWebhookView(BasePaymentView):
                 f"Webhook Error: Received refund for PI {payment_intent_id} but could not find matching transaction."
             )
         except Exception as e:
-            logger.error(f"An unexpected error occurred in _handle_refund_updated: {e}", exc_info=True)
+            logger.error(
+                f"An unexpected error occurred in _handle_refund_updated: {e}",
+                exc_info=True,
+            )
 
     def _handle_unimplemented_event(self, event_data):
         """
@@ -289,7 +371,11 @@ class StripeWebhookView(BasePaymentView):
         """
         pi_id = payment_intent.id
         # First, try to find an existing transaction
-        txn = PaymentTransaction.objects.select_related('payment', 'payment__order').filter(transaction_id=pi_id).first()
+        txn = (
+            PaymentTransaction.objects.select_related("payment", "payment__order")
+            .filter(transaction_id=pi_id)
+            .first()
+        )
         if txn:
             return txn
 
@@ -334,7 +420,9 @@ class StripeWebhookView(BasePaymentView):
                 f"Webhook Error: Order {order_id} from PI {pi_id} metadata not found."
             )
         except Exception as e:
-            logger.error(f"Webhook Error: Could not create transaction for PI {pi_id}: {e}")
+            logger.error(
+                f"Webhook Error: Could not create transaction for PI {pi_id}: {e}"
+            )
 
         return None
 
