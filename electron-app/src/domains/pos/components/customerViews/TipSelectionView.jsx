@@ -144,8 +144,8 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 												variant={isSelected ? "default" : "outline"}
 												className={`w-full h-16 sm:h-18 lg:h-20 flex flex-col gap-1 text-base sm:text-lg font-semibold transition-all duration-200 ${
 													isSelected
-														? "bg-gradient-to-br from-[#909373] to-[#5e6650] text-white shadow-lg"
-														: "border-[#d1c7bc] dark:border-slate-600 hover:border-[#a0522d] dark:hover:border-[#a0522d]"
+														? "bg-gradient-to-br from-[#909373] to-[#5e6650] text-white shadow-lg border-transparent"
+														: "bg-[#f3e1ca] dark:bg-slate-800 text-[#5e6650] dark:text-slate-100 border-2 border-[#d1c7bc] dark:border-slate-600 hover:bg-[#e8d4b8] hover:text-[#5e6650] hover:border-[#909373] dark:hover:border-[#909373] hover:shadow-md"
 												}`}
 											>
 												<div className="flex items-center gap-1">
@@ -177,7 +177,7 @@ const TipSelectionView = ({ amountDue, onTipSelect }) => {
 											placeholder="0.00"
 											value={customTip}
 											onChange={setCustomTip}
-											className="w-full text-center text-lg sm:text-xl lg:text-2xl font-semibold border-[#d1c7bc] dark:border-slate-600 h-12 sm:h-14 lg:h-16"
+											className="w-full text-center text-lg sm:text-xl lg:text-2xl font-semibold border-[#d1c7bc] dark:border-slate-600 h-12 sm:h-14 lg:h-16 text-[#5e6650] dark:text-slate-100"
 										/>
 									</div>
 									<Button

@@ -61,6 +61,7 @@ class TenantMiddleware:
             '/api/security/csrf/',                            # CSRF token issuance
             '/api/terminals/pairing/device-authorization/',   # Device/terminal registration
             '/api/terminals/pairing/token/',                  # Device/terminal token polling (RFC 8628)
+            '/api/payments/webhooks/',                        # Payment provider webhooks (Stripe, etc.)
         ]
         if any(request.path.startswith(path) for path in exempt_paths):
             request.tenant = None

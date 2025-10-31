@@ -102,6 +102,20 @@ apiClient.interceptors.request.use(
       // If localStorage is not available or fails, proceed without the header
     }
 
+    // Add tenant header from URL path
+    // Admin URLs are formatted as: admin.bakeajeen.com/{tenant-slug}/...
+    // This allows tenant resolution even when JWT is expired (for token refresh)
+    try {
+      const pathSegments = window.location.pathname.split('/').filter(Boolean);
+      const tenantSlug = pathSegments[0]; // First segment is tenant slug
+      if (tenantSlug && tenantSlug !== 'login') {
+        config.headers = config.headers || {};
+        (config.headers as any)["X-Tenant"] = tenantSlug;
+      }
+    } catch (_) {
+      // If URL parsing fails, proceed without the header
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
