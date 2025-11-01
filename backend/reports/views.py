@@ -127,7 +127,10 @@ class ReportViewSet(viewsets.ViewSet):
             # Get location from middleware (X-Store-Location header) or fall back to query param
             location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             category_id = serializer.validated_data.get("category_id")
-            limit = serializer.validated_data.get("limit", 10)
+            # If limit is None, don't use a limit (fetch all). Otherwise use the provided limit or default to 10
+            limit = serializer.validated_data.get("limit")
+            if limit is None:
+                limit = None  # No limit - fetch all products
             trend_period = request.query_params.get("trend_period", "auto")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
@@ -303,7 +306,7 @@ class ReportViewSet(viewsets.ViewSet):
                 )
             elif report_type == "products":
                 category_id = parameters.get("category_id")
-                limit = parameters.get("limit", 10)
+                limit = parameters.get("limit")  # None means no limit
                 trend_period = parameters.get("trend_period", "auto")
                 report_data = ProductsReportService.generate_products_report(
                     tenant=request.tenant,

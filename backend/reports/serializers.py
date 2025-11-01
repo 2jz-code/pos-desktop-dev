@@ -76,7 +76,7 @@ class ProductReportParameterSerializer(ReportParameterSerializer):
     """Extended parameters for product reports"""
 
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    limit = serializers.IntegerField(default=10, min_value=1, max_value=100)
+    limit = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=1000)
     sort_by = serializers.ChoiceField(
         choices=["revenue", "quantity", "margin"], default="revenue"
     )
