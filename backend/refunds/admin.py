@@ -1,11 +1,13 @@
 from django.contrib import admin
 from .models import RefundItem, RefundAuditLog, ExchangeSession
+from core_backend.admin.mixins import TenantAdminMixin
 
 
 @admin.register(RefundItem)
-class RefundItemAdmin(admin.ModelAdmin):
+class RefundItemAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = [
         'id',
+        'tenant',
         'order_item',
         'quantity_refunded',
         'total_refund_amount',
@@ -14,7 +16,7 @@ class RefundItemAdmin(admin.ModelAdmin):
         'surcharge_refunded',
         'created_at',
     ]
-    list_filter = ['created_at']
+    list_filter = ['created_at', 'tenant']
     search_fields = [
         'order_item__product__name',
         'order_item__order__order_number',
@@ -35,6 +37,10 @@ class RefundItemAdmin(admin.ModelAdmin):
         'created_at',
     ]
 
+    def get_queryset(self, request):
+        """Override to show all tenants' refund items for system admins."""
+        return RefundItem.all_objects.all()
+
     def has_add_permission(self, request):
         # RefundItems should only be created via the refund service
         return False
@@ -45,9 +51,10 @@ class RefundItemAdmin(admin.ModelAdmin):
 
 
 @admin.register(RefundAuditLog)
-class RefundAuditLogAdmin(admin.ModelAdmin):
+class RefundAuditLogAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = [
         'id',
+        'tenant',
         'action',
         'source',
         'refund_amount',
@@ -55,7 +62,7 @@ class RefundAuditLogAdmin(admin.ModelAdmin):
         'initiated_by',
         'created_at',
     ]
-    list_filter = ['action', 'source', 'status', 'created_at']
+    list_filter = ['action', 'source', 'status', 'created_at', 'tenant']
     search_fields = [
         'payment__order__order_number',
         'initiated_by__email',
@@ -78,6 +85,10 @@ class RefundAuditLogAdmin(admin.ModelAdmin):
         'created_at',
     ]
 
+    def get_queryset(self, request):
+        """Override to show all tenants' audit logs for system admins."""
+        return RefundAuditLog.all_objects.all()
+
     def has_add_permission(self, request):
         # Audit logs should only be created via the system
         return False
@@ -88,9 +99,10 @@ class RefundAuditLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(ExchangeSession)
-class ExchangeSessionAdmin(admin.ModelAdmin):
+class ExchangeSessionAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = [
         'id',
+        'tenant',
         'original_order',
         'new_order',
         'refund_amount',
@@ -100,7 +112,7 @@ class ExchangeSessionAdmin(admin.ModelAdmin):
         'processed_by',
         'created_at',
     ]
-    list_filter = ['session_status', 'created_at']
+    list_filter = ['session_status', 'created_at', 'tenant']
     search_fields = [
         'original_order__order_number',
         'new_order__order_number',
@@ -137,3 +149,7 @@ class ExchangeSessionAdmin(admin.ModelAdmin):
             'fields': ('processed_by', 'created_at', 'completed_at')
         }),
     )
+
+    def get_queryset(self, request):
+        """Override to show all tenants' exchange sessions for system admins."""
+        return ExchangeSession.all_objects.all()

@@ -99,6 +99,7 @@ class RefundItem(models.Model):
 
     # Tenant-aware manager
     objects = TenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'refunds_refund_item'
@@ -219,6 +220,7 @@ class RefundAuditLog(models.Model):
 
     # Tenant-aware manager
     objects = TenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'refunds_refund_audit_log'
@@ -345,6 +347,7 @@ class ExchangeSession(models.Model):
 
     # Tenant-aware manager
     objects = TenantManager()
+    all_objects = models.Manager()
 
     class Meta:
         db_table = 'refunds_exchange_session'
