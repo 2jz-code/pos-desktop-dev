@@ -63,6 +63,7 @@ const TransactionDetail = ({ transaction }) => {
 			<span className="font-semibold text-foreground">
 				{formatCurrency(
 					Number.parseFloat(transaction.amount) +
+						Number.parseFloat(transaction.tip || 0) +
 						Number.parseFloat(transaction.surcharge || 0)
 				)}
 			</span>

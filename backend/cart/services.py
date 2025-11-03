@@ -356,6 +356,15 @@ class CartService:
 
         logger.info(f"[CartService.convert_to_order] All cart items converted successfully")
 
+        # Recalculate item-level tax now that OrderItems exist
+        # This populates tax_amount on each OrderItem for precise refund allocation
+        logger.info(f"[CartService.convert_to_order] Recalculating item-level tax for order {order.id}")
+        order_calculator = OrderCalculator(order)
+        post_discount_subtotal = totals['subtotal'] - totals['discount_total']
+        order.tax_total = order_calculator.calculate_item_level_tax(post_discount_subtotal)
+        order.save(update_fields=['tax_total'])
+        logger.info(f"[CartService.convert_to_order] Item-level tax populated on {order.items.count()} order items")
+
         # Delete the cart (it's been converted)
         cart_id_for_logging = cart.id  # Save for logging since cart will be deleted
         logger.info(f"[CartService.convert_to_order] Deleting cart {cart_id_for_logging}")

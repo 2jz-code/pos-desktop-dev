@@ -808,6 +808,15 @@ class OrderService:
             elapsed_ms,
         )
 
+        # Refresh items to get updated tax_amount values from bulk_update
+        # The items relationship is cached, so we need to invalidate it
+        if hasattr(order, '_prefetched_objects_cache') and 'items' in order._prefetched_objects_cache:
+            del order._prefetched_objects_cache['items']
+
+        # Also clear the Django ORM cache for the items relationship
+        if 'items' in order.__dict__:
+            del order.__dict__['items']
+
         return order
 
     @staticmethod

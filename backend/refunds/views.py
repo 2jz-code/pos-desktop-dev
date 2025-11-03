@@ -603,6 +603,7 @@ def process_item_refund(request):
     }
     """
     # Check if this is single item or multiple items request
+    transaction_id = None
     if 'items' in request.data:
         # Multiple items request
         serializer = MultipleItemsRefundRequestSerializer(data=request.data)
@@ -610,6 +611,7 @@ def process_item_refund(request):
 
         items = serializer.validated_data['items']
         reason = serializer.validated_data.get('reason', '')
+        transaction_id = serializer.validated_data.get('transaction_id')
 
         # Get payment from first item (all items should be from same order)
         first_order_item = items[0]['order_item']
@@ -672,7 +674,8 @@ def process_item_refund(request):
     try:
         result = payment_service.process_item_level_refund(
             order_items_with_quantities=items_with_quantities,
-            reason=reason
+            reason=reason,
+            transaction_id=transaction_id
         )
 
         # Update audit log with request metadata

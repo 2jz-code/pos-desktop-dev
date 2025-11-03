@@ -31,6 +31,7 @@ class OrderItemWithRefundSerializer(BaseModelSerializer):
             "quantity",
             "refunded_quantity",
             "price_at_sale",
+            "tax_amount",
             "notes",
             "status",
         ]
@@ -70,6 +71,8 @@ class OrderWithItemsSerializer(BaseModelSerializer):
             "order_type",
             "payment_status",
             "store_location",
+            "subtotal",
+            "tax_total",
             "grand_total",
             "created_at",
             "updated_at",

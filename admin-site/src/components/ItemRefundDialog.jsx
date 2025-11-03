@@ -7,10 +7,16 @@ import {
 	DialogFooter,
 	DialogDescription,
 } from "@/components/ui/dialog";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
 	Table,
 	TableBody,
@@ -25,6 +31,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, ShoppingCart, AlertCircle } from "lucide-react";
 import { calculateItemRefund } from "@/services/api/refundService";
 
+const refundReasons = [
+	{ value: "requested_by_customer", label: "Customer Request" },
+	{ value: "duplicate", label: "Duplicate Transaction" },
+	{ value: "fraudulent", label: "Fraudulent Transaction" },
+];
+
 /**
  * Dialog for refunding individual order items.
  * Shows order items, allows selecting quantity to refund, previews calculation.
@@ -33,11 +45,14 @@ export function ItemRefundDialog({
 	isOpen,
 	onOpenChange,
 	orderItems = [],
+	paymentTransactions = [],
 	onSubmit,
 	isProcessing = false,
 }) {
 	const [selectedItems, setSelectedItems] = useState({});
 	const [reason, setReason] = useState("");
+	const [selectedTransaction, setSelectedTransaction] = useState(null);
+	const [showTransactionSelector, setShowTransactionSelector] = useState(false);
 	const [preview, setPreview] = useState(null);
 	const [isCalculating, setIsCalculating] = useState(false);
 	const [calculationError, setCalculationError] = useState(null);
@@ -48,12 +63,27 @@ export function ItemRefundDialog({
 		if (!isOpen) {
 			setSelectedItems({});
 			setReason("");
+			setSelectedTransaction(null);
+			setShowTransactionSelector(false);
 			setPreview(null);
 			setCalculationError(null);
 		}
 	}, [isOpen]);
 
-	const handleQuantityChange = (orderItemId, quantity) => {
+	// Auto-detect if this is a split payment and show selector accordingly
+	useEffect(() => {
+		if (isOpen && paymentTransactions) {
+			const successfulTransactions = paymentTransactions.filter(
+				txn => txn.status === "SUCCESSFUL"
+			);
+			// Show selector if there are multiple successful transactions
+			if (successfulTransactions.length > 1) {
+				setShowTransactionSelector(true);
+			}
+		}
+	}, [isOpen, paymentTransactions]);
+
+	const handleQuantityChange = (orderItemId, quantity, maxAvailable) => {
 		const numQuantity = parseInt(quantity, 10);
 
 		if (isNaN(numQuantity) || numQuantity < 0) {
@@ -74,9 +104,12 @@ export function ItemRefundDialog({
 			return;
 		}
 
+		// Cap at available quantity
+		const cappedQuantity = Math.min(numQuantity, maxAvailable);
+
 		setSelectedItems({
 			...selectedItems,
-			[orderItemId]: numQuantity,
+			[orderItemId]: cappedQuantity,
 		});
 		setPreview(null); // Clear preview when selection changes
 	};
@@ -93,10 +126,10 @@ export function ItemRefundDialog({
 			return;
 		}
 
-		if (!reason.trim()) {
+		if (!reason) {
 			toast({
 				title: "Reason Required",
-				description: "Please provide a reason for the refund.",
+				description: "Please select a reason for the refund.",
 				variant: "destructive",
 			});
 			return;
@@ -180,10 +213,17 @@ export function ItemRefundDialog({
 			quantity: quantity,
 		}));
 
-		onSubmit({
+		const payload = {
 			items,
-			reason: reason.trim(),
-		});
+			reason: reason,
+		};
+
+		// Include transaction_id if one was specifically selected
+		if (selectedTransaction) {
+			payload.transaction_id = selectedTransaction;
+		}
+
+		onSubmit(payload);
 	};
 
 	const getTotalSelectedQuantity = () => {
@@ -284,9 +324,9 @@ export function ItemRefundDialog({
 															max={available}
 															value={selectedItems[item.id] || ""}
 															onChange={(e) =>
-																handleQuantityChange(item.id, e.target.value)
+																handleQuantityChange(item.id, e.target.value, available)
 															}
-															className="w-20 mx-auto border-border"
+															className="w-20 mx-auto border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
 															placeholder="0"
 														/>
 													) : (
@@ -313,23 +353,27 @@ export function ItemRefundDialog({
 						</Table>
 					</div>
 
-					{/* Reason Input */}
+					{/* Reason Select */}
 					<div className="space-y-2">
 						<Label htmlFor="reason" className="text-sm font-medium text-foreground">
 							Refund Reason <span className="text-destructive">*</span>
 						</Label>
-						<Textarea
-							id="reason"
-							value={reason}
-							onChange={(e) => setReason(e.target.value)}
-							className="border-border bg-background resize-none"
-							placeholder="e.g., Customer request - wrong size"
-							rows={3}
-						/>
+						<Select value={reason} onValueChange={setReason}>
+							<SelectTrigger className="border-border bg-background">
+								<SelectValue placeholder="Select a reason..." />
+							</SelectTrigger>
+							<SelectContent className="border-border bg-background">
+								{refundReasons.map((r) => (
+									<SelectItem key={r.value} value={r.value}>
+										{r.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
 					</div>
 
 					{/* Preview Calculation Button */}
-					{getTotalSelectedQuantity() > 0 && reason.trim() && (
+					{getTotalSelectedQuantity() > 0 && reason && (
 						<div className="flex items-center gap-3">
 							<Button
 								onClick={handleCalculatePreview}
@@ -367,47 +411,127 @@ export function ItemRefundDialog({
 
 					{/* Preview Display */}
 					{preview && preview.refund_breakdown && (
-						<div className="p-4 bg-muted/50 border border-border rounded-lg space-y-3">
-							<div className="flex items-center gap-2">
-								<div className="h-2 w-2 rounded-full bg-green-500" />
-								<h3 className="font-semibold text-foreground">
-									Refund Breakdown
-								</h3>
+						<div className="space-y-4">
+							<div className="p-4 bg-muted/50 border border-border rounded-lg space-y-3">
+								<div className="flex items-center gap-2">
+									<div className="h-2 w-2 rounded-full bg-green-500" />
+									<h3 className="font-semibold text-foreground">
+										Refund Breakdown
+									</h3>
+								</div>
+								<div className="grid grid-cols-2 gap-3">
+									<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
+										<span className="text-muted-foreground">Subtotal</span>
+										<span className="font-semibold text-foreground">
+											{formatCurrency(preview.refund_breakdown.subtotal)}
+										</span>
+									</div>
+									<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
+										<span className="text-muted-foreground">Tax</span>
+										<span className="font-semibold text-foreground">
+											{formatCurrency(preview.refund_breakdown.tax)}
+										</span>
+									</div>
+									<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
+										<span className="text-muted-foreground">Tip</span>
+										<span className="font-semibold text-foreground">
+											{formatCurrency(preview.refund_breakdown.tip)}
+										</span>
+									</div>
+									<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
+										<span className="text-muted-foreground">Surcharge</span>
+										<span className="font-semibold text-foreground">
+											{formatCurrency(preview.refund_breakdown.surcharge)}
+										</span>
+									</div>
+								</div>
+								<div className="flex justify-between items-center p-4 bg-primary/10 rounded-lg border-2 border-primary">
+									<span className="font-bold text-foreground text-lg">
+										Total Refund
+									</span>
+									<span className="font-bold text-foreground text-xl">
+										{formatCurrency(preview.refund_breakdown.total)}
+									</span>
+								</div>
 							</div>
-							<div className="grid grid-cols-2 gap-3">
-								<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
-									<span className="text-muted-foreground">Subtotal</span>
-									<span className="font-semibold text-foreground">
-										{formatCurrency(preview.refund_breakdown.subtotal)}
-									</span>
+
+							{/* Transaction Selector (only for split payments after preview) */}
+							{showTransactionSelector && paymentTransactions && paymentTransactions.length > 1 && (
+								<div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-3">
+									<div className="flex items-start gap-2">
+										<AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+										<div className="flex-1">
+											<Label className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+												Choose Refund Destination
+											</Label>
+											<p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+												This order was paid with multiple cards. Select which card should receive the {formatCurrency(preview.refund_breakdown.total)} refund.
+											</p>
+										</div>
+									</div>
+									<Select
+										value={selectedTransaction || "auto"}
+										onValueChange={(value) => setSelectedTransaction(value === "auto" ? null : value)}
+									>
+										<SelectTrigger className="border-blue-200 dark:border-blue-800 bg-background">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent className="border-border bg-background">
+											<SelectItem value="auto">
+												<div className="flex items-center gap-2">
+													<span className="font-medium">Auto (Most Recent)</span>
+													<Badge variant="outline" className="text-xs">Recommended</Badge>
+												</div>
+											</SelectItem>
+											{paymentTransactions
+												.filter(txn => txn.status === "SUCCESSFUL")
+												.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+												.map((txn) => {
+													const totalAmount = Number.parseFloat(txn.amount || 0) +
+														Number.parseFloat(txn.tip || 0) +
+														Number.parseFloat(txn.surcharge || 0);
+													const refundedAmount = Number.parseFloat(txn.refunded_amount || 0);
+													const availableToRefund = totalAmount - refundedAmount;
+													const refundTotal = preview.refund_breakdown.total;
+													const isInsufficient = availableToRefund < refundTotal;
+
+													return (
+														<SelectItem key={txn.id} value={txn.id} disabled={isInsufficient}>
+															<div className="flex items-center justify-between gap-4 w-full">
+																<div className="flex items-center gap-2">
+																	{txn.card_brand && txn.card_last4 ? (
+																		<>
+																			<span className="font-medium capitalize">
+																				{txn.card_brand}
+																			</span>
+																			<span className="text-muted-foreground font-mono text-xs">
+																				****{txn.card_last4}
+																			</span>
+																		</>
+																	) : (
+																		<span className="font-medium capitalize">
+																			{txn.method.replace("_", " ")}
+																		</span>
+																	)}
+																</div>
+																<div className="flex items-center gap-2">
+																	<span className={`text-sm ${isInsufficient ? 'text-destructive' : 'text-muted-foreground'}`}>
+																		{formatCurrency(availableToRefund)} available
+																	</span>
+																	{isInsufficient && (
+																		<Badge variant="destructive" className="text-xs">
+																			Insufficient
+																		</Badge>
+																	)}
+																</div>
+															</div>
+														</SelectItem>
+													);
+												})}
+										</SelectContent>
+									</Select>
 								</div>
-								<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
-									<span className="text-muted-foreground">Tax</span>
-									<span className="font-semibold text-foreground">
-										{formatCurrency(preview.refund_breakdown.tax)}
-									</span>
-								</div>
-								<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
-									<span className="text-muted-foreground">Tip</span>
-									<span className="font-semibold text-foreground">
-										{formatCurrency(preview.refund_breakdown.tip)}
-									</span>
-								</div>
-								<div className="flex justify-between items-center p-3 bg-background rounded-lg border border-border">
-									<span className="text-muted-foreground">Surcharge</span>
-									<span className="font-semibold text-foreground">
-										{formatCurrency(preview.refund_breakdown.surcharge)}
-									</span>
-								</div>
-							</div>
-							<div className="flex justify-between items-center p-4 bg-primary/10 rounded-lg border-2 border-primary">
-								<span className="font-bold text-foreground text-lg">
-									Total Refund
-								</span>
-								<span className="font-bold text-foreground text-xl">
-									{formatCurrency(preview.refund_breakdown.total)}
-								</span>
-							</div>
+							)}
 						</div>
 					)}
 				</div>
@@ -424,7 +548,7 @@ export function ItemRefundDialog({
 					<Button
 						onClick={handleSubmit}
 						disabled={
-							!preview || isProcessing || isCalculating || !reason.trim()
+							!preview || isProcessing || isCalculating || !reason
 						}
 						className="bg-primary hover:bg-primary/90 text-primary-foreground"
 					>

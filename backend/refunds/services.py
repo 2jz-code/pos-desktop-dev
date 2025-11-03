@@ -252,36 +252,76 @@ class RefundCalculator:
         """
         Calculate proportional tip and surcharge for item in minor units.
 
+        Uses the specified transaction's tip/surcharge, minus any amounts already
+        refunded from previous refunds, and allocates across remaining order items.
+
+        For split payments:
+        - Each refund draws from a SINGLE transaction's tip/surcharge pool
+        - Tracks already-refunded amounts via RefundItem.tip_refunded/surcharge_refunded
+        - Allocates remaining pool proportionally across non-refunded items
+
         Uses allocate_minor() for deterministic penny distribution.
 
         Returns:
             Tuple[int, int]: (tip_minor, surcharge_minor)
         """
-        # Get transaction amounts
-        tip_total_minor = to_minor(self.currency, transaction.tip)
-        surcharge_total_minor = to_minor(self.currency, transaction.surcharge)
+        from refunds.models import RefundItem
+
+        # Calculate already-refunded tip/surcharge from THIS transaction
+        previous_refunds = RefundItem.objects.filter(
+            payment_transaction=transaction
+        )
+
+        already_refunded_tip = sum(
+            refund.tip_refunded for refund in previous_refunds
+        )
+        already_refunded_surcharge = sum(
+            refund.surcharge_refunded for refund in previous_refunds
+        )
+
+        # Calculate REMAINING tip/surcharge available from this transaction
+        remaining_tip = transaction.tip - already_refunded_tip
+        remaining_surcharge = transaction.surcharge - already_refunded_surcharge
+
+        # Convert to minor units
+        tip_total_minor = to_minor(self.currency, remaining_tip)
+        surcharge_total_minor = to_minor(self.currency, remaining_surcharge)
 
         # If no tip or surcharge, short circuit
         if tip_total_minor == 0 and surcharge_total_minor == 0:
             return (0, 0)
 
         # Build weights for allocation (all items in order)
-        # Weight = item subtotal (including this item at refund quantity)
+        # Weight = item subtotal MINUS already refunded quantities
+        from refunds.models import RefundItem
+
         weights = []
         this_item_index = None
 
         for idx, item in enumerate(self.order.items.all()):
+            # Calculate already-refunded quantity for this item
+            already_refunded = sum(
+                refund.quantity_refunded
+                for refund in RefundItem.objects.filter(order_item=item)
+            )
+            remaining_quantity = item.quantity - already_refunded
+
             if item.id == order_item.id:
                 # This is the item being refunded - use refund quantity
                 item_subtotal_minor = self._calculate_item_subtotal(item, quantity)
                 this_item_index = idx
             else:
-                # Other items - use full quantity
-                item_subtotal_minor = to_minor(self.currency, item.total_price)
+                # Other items - use remaining quantity (after previous refunds)
+                if remaining_quantity > 0:
+                    price_per_unit = item.price_at_sale
+                    price_per_unit_minor = to_minor(self.currency, price_per_unit)
+                    item_subtotal_minor = price_per_unit_minor * remaining_quantity
+                else:
+                    item_subtotal_minor = 0
 
             weights.append(item_subtotal_minor)
 
-        # Allocate tip across items
+        # Allocate tip and surcharge proportionally across items
         tip_allocations = allocate_minor(weights, tip_total_minor)
         surcharge_allocations = allocate_minor(weights, surcharge_total_minor)
 

@@ -101,20 +101,38 @@ function createMainWindow() {
 
 function createCustomerWindow() {
 	const displays = screen.getAllDisplays();
+	const primaryDisplay = screen.getPrimaryDisplay();
 	const secondaryDisplay = displays.find(
-		(display) => display.id !== screen.getPrimaryDisplay().id
+		(display) => display.id !== primaryDisplay.id
 	);
 
-	if (!secondaryDisplay) {
-		console.log("No secondary display found, not creating customer window.");
-		return;
+	let windowConfig = {};
+
+	if (secondaryDisplay) {
+		// Secondary display exists - use it in fullscreen
+		console.log("Secondary display found, creating customer window on second monitor.");
+		windowConfig = {
+			x: secondaryDisplay.bounds.x,
+			y: secondaryDisplay.bounds.y,
+			fullscreen: true,
+		};
+	} else {
+		// No secondary display - create windowed on primary display
+		console.log("No secondary display found, creating customer window on primary display.");
+		const windowWidth = 800;
+		const windowHeight = 600;
+		windowConfig = {
+			x: primaryDisplay.bounds.x + (primaryDisplay.bounds.width - windowWidth) / 2,
+			y: primaryDisplay.bounds.y + (primaryDisplay.bounds.height - windowHeight) / 2,
+			width: windowWidth,
+			height: windowHeight,
+			fullscreen: false,
+		};
 	}
 
 	customerWindow = new BrowserWindow({
 		icon: path.join(process.env.PUBLIC, "logo.png"),
-		x: secondaryDisplay.bounds.x,
-		y: secondaryDisplay.bounds.y,
-		fullscreen: true,
+		...windowConfig,
 		webPreferences: {
 			preload: path.join(__dirname, "../dist-electron/preload.js"),
 			nodeIntegration: false,

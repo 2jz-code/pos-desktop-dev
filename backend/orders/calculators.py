@@ -155,14 +155,28 @@ class OrderCalculator:
             # Quantize BEFORE converting to minor units (CRITICAL)
             discounted_item_price_quantized = quantize(currency, discounted_item_price)
 
-            # Get tax rate for this item's product
+            # Get tax rate for this item's product (hierarchical lookup)
             product = item.product
+            tax_rate = None
 
-            # Check if product uses custom tax rate
-            if hasattr(product, 'tax') and product.tax:
-                tax_rate = product.tax.rate
-            else:
-                # Use location's default tax rate
+            # 1. Check if product has direct taxes assigned (M2M)
+            if hasattr(product, 'taxes'):
+                product_taxes = product.taxes.all()
+                if product_taxes.exists():
+                    # Use the first tax rate (or sum if multiple taxes)
+                    tax_rate = sum(t.rate for t in product_taxes)
+
+            # 2. If no product taxes, check product_type's default_taxes
+            if tax_rate is None and hasattr(product, 'product_type') and product.product_type:
+                product_type = product.product_type
+                if hasattr(product_type, 'default_taxes'):
+                    product_type_taxes = product_type.default_taxes.all()
+                    if product_type_taxes.exists():
+                        # Use the sum of default taxes from product type
+                        tax_rate = sum(t.rate for t in product_type_taxes)
+
+            # 3. If still no tax rate, use location's default tax rate
+            if tax_rate is None:
                 tax_rate = self.source.store_location.get_effective_tax_rate()
 
             # Calculate tax on QUANTIZED price (prevents drift)

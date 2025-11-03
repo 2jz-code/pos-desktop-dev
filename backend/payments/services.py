@@ -355,14 +355,30 @@ class PaymentService:
             "total"
         ] or Decimal("0.00")
 
+        # Calculate total tips from successful/refunded transactions
+        total_tips = paid_transactions.aggregate(total=Sum("tip"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Calculate total surcharges from successful/refunded transactions
+        total_surcharges = paid_transactions.aggregate(total=Sum("surcharge"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Calculate total collected (base + tips + surcharges)
+        total_collected = total_paid_gross + total_tips + total_surcharges
+
         # Calculate the total refunded amount on-the-fly from all associated transactions.
         total_refunded = payment.transactions.aggregate(total=Sum("refunded_amount"))[
             "total"
         ] or Decimal("0.00")
 
-        # Update the amount_paid field to the GROSS total
+        # Update all payment totals
         payment.amount_paid = total_paid_gross
-        payment.save(update_fields=["amount_paid", "updated_at"])
+        payment.total_tips = total_tips
+        payment.total_surcharges = total_surcharges
+        payment.total_collected = total_collected
+        payment.save(update_fields=["amount_paid", "total_tips", "total_surcharges", "total_collected", "updated_at"])
 
         return payment
 
@@ -472,10 +488,15 @@ class PaymentService:
             "total"
         ] or Decimal("0.00")
 
+        # Calculate the total collected (base amount + tips + surcharges) to compare against refunds
+        # This is necessary because refunds include tips and surcharges, not just the base amount
+        total_collected = payment.amount_paid + payment.total_tips + payment.total_surcharges
+
         # Determine the correct status based on gross paid and total refunded
         target_status = None
         if total_refunded > 0:
-            if total_refunded >= payment.amount_paid:
+            # Compare refunded amount against total collected (including tips and surcharges)
+            if total_refunded >= total_collected:
                 target_status = "REFUNDED"
             else:
                 target_status = "PARTIALLY_REFUNDED"
