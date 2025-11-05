@@ -837,6 +837,11 @@ class ProductCreateSerializer(BaseModelSerializer):
         category_id = validated_data.pop("category_id", None)
         tax_ids = validated_data.pop("tax_ids", None)
 
+        # Check if track_inventory is being enabled
+        was_tracking = instance.track_inventory
+        will_track = validated_data.get('track_inventory', was_tracking)
+        newly_enabled = not was_tracking and will_track
+
         # Standard model fields update
         for field, value in validated_data.items():
             setattr(instance, field, value)
@@ -867,5 +872,49 @@ class ProductCreateSerializer(BaseModelSerializer):
                 instance.taxes.set(taxes)
             else:
                 instance.taxes.set(Tax.objects.filter(id__in=tax_ids))
+
+        # Create initial stock record if inventory tracking was just enabled
+        if newly_enabled:
+            from inventory.models import InventoryStock, Location
+            from settings.models import StoreLocation
+
+            # Get current store location from request context
+            store_location_id = getattr(request, 'store_location_id', None) if request else None
+
+            if store_location_id:
+                store_location = StoreLocation.objects.filter(id=store_location_id, tenant=tenant).first()
+            else:
+                # Fallback to first store location for this tenant
+                store_location = StoreLocation.objects.filter(tenant=tenant).first()
+
+            if not store_location:
+                # Can't create stock without a store location
+                return instance
+
+            # Get default inventory location for this store, or create one
+            if store_location.default_inventory_location:
+                location = store_location.default_inventory_location
+            else:
+                # Create a default location for this store if none exists
+                location, created = Location.objects.get_or_create(
+                    name="Main Storage",
+                    tenant=tenant,
+                    store_location=store_location,
+                    defaults={"description": "Default inventory location"},
+                )
+                if created:
+                    store_location.default_inventory_location = location
+                    store_location.save()
+
+            # Create stock record with quantity 0 if it doesn't exist
+            InventoryStock.objects.get_or_create(
+                product=instance,
+                location=location,
+                defaults={
+                    "tenant": tenant,
+                    "quantity": 0,
+                    "store_location": location.store_location
+                }
+            )
 
         return instance

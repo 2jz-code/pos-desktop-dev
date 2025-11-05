@@ -196,6 +196,29 @@ class OrderSerializer(BaseModelSerializer):
     customer_phone = serializers.ReadOnlyField()
     customer_display_name = serializers.ReadOnlyField()
 
+    def to_internal_value(self, data):
+        """
+        Override to populate missing constraint fields from instance for partial updates.
+
+        For partial updates (PATCH), UniqueConstraint validators with conditions need
+        all condition fields to be present in the attrs dict. We populate missing
+        fields from the existing instance so validators can access them.
+        """
+        attrs = super().to_internal_value(data)
+
+        # For partial updates, add fields from instance that validators need
+        if self.partial and self.instance:
+            condition_fields = set()
+            for validator in self.get_validators():
+                if hasattr(validator, 'condition_fields'):
+                    condition_fields.update(validator.condition_fields)
+
+            for field in condition_fields:
+                if field not in attrs and hasattr(self.instance, field):
+                    attrs[field] = getattr(self.instance, field)
+
+        return attrs
+
     class Meta:
         model = Order
         fields = "__all__"

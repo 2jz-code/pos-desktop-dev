@@ -910,6 +910,12 @@ class PaymentService:
         refund_calculation = calculator.calculate_multiple_items_refund(order_items_with_quantities)
         total_refund_amount = refund_calculation['grand_total']
 
+        # PHASE 1 MVP: Detect split payments
+        successful_transactions = self.payment.transactions.filter(
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+        )
+        is_split_payment = successful_transactions.count() > 1
+
         # Get the transaction to refund from
         if transaction_id:
             refund_from_transaction = get_object_or_404(
@@ -918,9 +924,7 @@ class PaymentService:
                 payment=self.payment
             )
         else:
-            refund_from_transaction = self.payment.transactions.filter(
-                status=PaymentTransaction.TransactionStatus.SUCCESSFUL
-            ).order_by('-created_at').first()
+            refund_from_transaction = successful_transactions.order_by('-created_at').first()
 
         if not refund_from_transaction:
             raise ValueError("No successful transaction found to refund")
@@ -939,12 +943,106 @@ class PaymentService:
         )
 
         try:
-            # Process refund via provider
-            refunded_transaction = self.refund_transaction_with_provider(
-                transaction_id=refund_from_transaction.id,
-                amount_to_refund=total_refund_amount,
-                reason=reason
-            )
+            if is_split_payment:
+                # SPLIT PAYMENT: Mark original transactions as REFUNDED (cash refund to customer)
+                logger.info(f"Split payment detected for Payment {self.payment.id}, marking transactions as REFUNDED (cash refund)")
+
+                # Calculate how much to refund from each transaction proportionally
+                total_paid = sum(txn.amount + txn.tip + txn.surcharge for txn in successful_transactions)
+
+                # We'll link RefundItems to the primary transaction (most recent)
+                # but mark ALL transactions as REFUNDED
+                primary_transaction = successful_transactions.order_by('-created_at').first()
+
+                # Mark all transactions as REFUNDED with updated refunded_amount
+                # Use Decimal arithmetic to avoid floating point errors
+                from decimal import Decimal, ROUND_HALF_UP
+
+                total_paid_decimal = Decimal(str(total_paid))
+                total_refund_decimal = Decimal(str(total_refund_amount))
+
+                # Allocate refund across transactions, respecting each transaction's limits
+                transactions_list = list(successful_transactions)
+                remaining_to_allocate = total_refund_decimal
+
+                # First pass: Calculate proportional amounts and cap to transaction totals
+                allocations = []
+                for txn in transactions_list:
+                    txn_total = txn.amount + txn.tip + txn.surcharge
+                    txn_total_decimal = Decimal(str(txn_total))
+                    txn_amount_decimal = Decimal(str(txn.amount))
+
+                    # Maximum that can be refunded from this transaction
+                    max_refundable = txn_total_decimal - Decimal(str(txn.refunded_amount))
+
+                    allocations.append({
+                        'transaction': txn,
+                        'total': txn_total_decimal,
+                        'max_refundable': max_refundable,
+                        'amount': txn_amount_decimal,
+                        'allocated': Decimal('0.00')
+                    })
+
+                # Calculate total base amounts for proportion
+                total_amounts = sum(a['amount'] for a in allocations)
+
+                # Allocate proportionally, capping at max_refundable
+                for alloc in allocations:
+                    if total_amounts > 0:
+                        proportion = alloc['amount'] / total_amounts
+                        ideal_allocation = (total_refund_decimal * proportion).quantize(
+                            Decimal('0.01'), rounding=ROUND_HALF_UP
+                        )
+                        # Cap at max refundable
+                        alloc['allocated'] = min(ideal_allocation, alloc['max_refundable'])
+                    else:
+                        alloc['allocated'] = Decimal('0.00')
+
+                    remaining_to_allocate -= alloc['allocated']
+
+                # If there's remaining amount due to capping, redistribute to transactions with headroom
+                if remaining_to_allocate > 0:
+                    for alloc in allocations:
+                        if remaining_to_allocate <= 0:
+                            break
+
+                        headroom = alloc['max_refundable'] - alloc['allocated']
+                        if headroom > 0:
+                            additional = min(headroom, remaining_to_allocate)
+                            alloc['allocated'] += additional
+                            remaining_to_allocate -= additional
+
+                # Apply allocations to transactions
+                for alloc in allocations:
+                    txn = alloc['transaction']
+                    txn_refund_amount = alloc['allocated']
+
+                    # Update transaction
+                    txn.refunded_amount += txn_refund_amount
+                    txn.refund_reason = f"CASH refund for split payment. Items refunded. Original reason: {reason or 'N/A'}"
+
+                    # If fully refunded, mark as REFUNDED status
+                    if txn.refunded_amount >= alloc['total']:
+                        txn.status = PaymentTransaction.TransactionStatus.REFUNDED
+
+                    txn.save(update_fields=['refunded_amount', 'refund_reason', 'status'])
+
+                    logger.info(f"Marked transaction {txn.id} as {txn.status}, refunded ${txn_refund_amount}")
+
+                # Use the primary transaction for RefundItem linkage
+                refunded_transaction = primary_transaction
+
+                # Update payment status to reflect refunds
+                PaymentService._update_payment_status(self.payment)
+            else:
+                # SINGLE CARD: Process refund via provider (Stripe/Clover)
+                logger.info(f"Single card payment for Payment {self.payment.id}, refunding to card")
+
+                refunded_transaction = self.refund_transaction_with_provider(
+                    transaction_id=refund_from_transaction.id,
+                    amount_to_refund=total_refund_amount,
+                    reason=reason
+                )
 
             # Create RefundItem records for each item
             refund_items = []

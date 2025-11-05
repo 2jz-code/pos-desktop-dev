@@ -59,9 +59,9 @@ class ProductService:
             product.taxes.set(taxes)
 
         # Create initial stock record if tracking inventory
-        if kwargs.get("track_inventory", False):
+        if product.track_inventory:
             from inventory.models import InventoryStock, Location
-            from settings.models import GlobalSettings
+            from settings.models import StoreLocation
 
             # Use provided location or default location
             if location_id:
@@ -70,27 +70,33 @@ class ProductService:
                 except Location.DoesNotExist:
                     raise ValueError(f"Location with ID {location_id} not found or does not belong to this tenant")
             else:
-                # Get default location from settings (filtered by tenant)
-                settings = GlobalSettings.objects.filter(tenant=tenant).first()
-                if settings and settings.default_inventory_location:
-                    # Verify the default location belongs to this tenant
-                    if settings.default_inventory_location.tenant != tenant:
-                        raise ValueError("Default inventory location does not belong to this tenant")
-                    location = settings.default_inventory_location
+                # Get first store location for this tenant
+                store_location = StoreLocation.objects.filter(tenant=tenant).first()
+                if not store_location:
+                    raise ValueError("No store location found for this tenant. Please create a store location first.")
+
+                # Get or create default inventory location for this store
+                if store_location.default_inventory_location:
+                    location = store_location.default_inventory_location
                 else:
-                    # Create a default location for this tenant if none exists
+                    # Create a default location for this store if none exists
                     location, created = Location.objects.get_or_create(
                         name="Main Storage",
                         tenant=tenant,
+                        store_location=store_location,
                         defaults={"description": "Default inventory location"},
                     )
-                    if created and settings:
-                        settings.default_inventory_location = location
-                        settings.save()
+                    if created:
+                        store_location.default_inventory_location = location
+                        store_location.save()
 
             # Create the stock record
             InventoryStock.objects.create(
-                product=product, location=location, quantity=float(initial_stock), tenant=tenant
+                product=product,
+                location=location,
+                store_location=location.store_location,  # Denormalized from location
+                quantity=float(initial_stock),
+                tenant=tenant
             )
 
         return product

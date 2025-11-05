@@ -39,6 +39,7 @@ class InventoryService:
                 tenant=tenant,
                 product=product,
                 location=location,
+                store_location=location.store_location,  # Denormalized from location
                 user=user,
                 operation_type=operation_type,
                 quantity_change=quantity_change,
@@ -185,7 +186,13 @@ class InventoryService:
 
         tenant = get_current_tenant()
         stock, created = InventoryStock.objects.get_or_create(
-            product=product, location=location, defaults={"tenant": tenant, "quantity": Decimal("0.0")}
+            product=product,
+            location=location,
+            defaults={
+                "tenant": tenant,
+                "quantity": Decimal("0.0"),
+                "store_location": location.store_location  # Denormalized from location
+            }
         )
 
         # Track previous quantity for notification logic and history
@@ -562,6 +569,7 @@ class InventoryService:
                             tenant=tenant,
                             product=recipe_item.product,
                             location=location,
+                            store_location=location.store_location,  # Denormalized from location
                             quantity=Decimal('0')
                         )
                         logger.info(f"Prepared {total_needed} units fresh for product_id {recipe_item.product.id}")

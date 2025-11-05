@@ -39,7 +39,7 @@ def update_payment_totals(sender, instance, **kwargs):
     Only includes successful and refunded transactions in calculations.
     """
     payment = instance.payment
-    
+
     # Aggregate totals from only successful and refunded transactions
     # This matches the logic in PaymentService._recalculate_payment_amounts()
     aggregates = payment.transactions.filter(
