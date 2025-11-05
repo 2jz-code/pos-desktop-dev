@@ -302,13 +302,14 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 					formData.initial_quantity &&
 					parseFloat(formData.initial_quantity) !== 0
 				) {
-					// Adjust stock using inventory service
-					await inventoryService.adjustStock(
-						productId,
-						parseInt(formData.location_id),
-						parseFloat(formData.initial_quantity),
-						"Initial stock adjustment via product edit"
-					);
+					// Adjust stock using inventory service with structured reason
+					await inventoryService.adjustStockWithReasons({
+						product_id: productId,
+						location_id: parseInt(formData.location_id),
+						quantity: parseFloat(formData.initial_quantity),
+						reason_id: 3, // Manual Adjustment - Add Stock
+						detailed_reason: "Initial stock adjustment via product edit"
+					});
 					toast({
 						title: "Stock Adjusted",
 						description: `Stock updated for ${savedProduct.name}.`,

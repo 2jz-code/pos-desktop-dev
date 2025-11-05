@@ -6,17 +6,17 @@ import {
 	DialogTitle,
 	DialogFooter,
 	DialogDescription,
-} from "@/components/ui/dialog";
+} from "@/shared/components/ui/dialog";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@/shared/components/ui/select";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
 import {
 	Table,
 	TableBody,
@@ -24,12 +24,12 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+} from "@/shared/components/ui/table";
+import { Badge } from "@/shared/components/ui/badge";
 import { formatCurrency } from "@ajeen/ui";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/shared/components/ui/use-toast";
 import { Loader2, ShoppingCart, AlertCircle } from "lucide-react";
-import { calculateItemRefund } from "@/services/api/refundService";
+import { calculateItemRefund } from "@/domains/payments/services/refundService";
 
 const refundReasons = [
 	{ value: "requested_by_customer", label: "Customer Request" },
@@ -76,7 +76,7 @@ export function ItemRefundDialog({
 			return false;
 		}
 		const successfulTransactions = paymentTransactions.filter(
-			(txn) => txn.status === "SUCCESSFUL"
+			(txn) => txn.status === "SUCCESSFUL" || txn.status === "REFUNDED"
 		);
 		return successfulTransactions.length > 1;
 	};
@@ -85,7 +85,7 @@ export function ItemRefundDialog({
 	useEffect(() => {
 		if (isOpen && paymentTransactions) {
 			const successfulTransactions = paymentTransactions.filter(
-				(txn) => txn.status === "SUCCESSFUL"
+				(txn) => txn.status === "SUCCESSFUL" || txn.status === "REFUNDED"
 			);
 			// Only show selector for SINGLE card payments
 			// Split payments will refund to cash automatically
@@ -267,7 +267,7 @@ export function ItemRefundDialog({
 			open={isOpen}
 			onOpenChange={onOpenChange}
 		>
-			<DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+			<DialogContent className="sm:max-w-6xl max-h-[95vh] overflow-hidden flex flex-col w-[95vw]">
 				<DialogHeader>
 					<div className="flex items-center gap-3">
 						<div className="p-2.5 bg-muted rounded-lg">

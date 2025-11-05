@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	getPaymentById,
-	refundTransaction,
 } from "@/domains/payments/services/paymentService";
+import { processItemRefund } from "@/domains/payments/services/refundService";
+import { openCashDrawer } from "@/shared/lib/hardware/cashDrawerService";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { Button } from "@/shared/components/ui/button";
 import {
 	Card,
@@ -33,8 +35,10 @@ import {
 	DollarSign,
 	ExternalLink,
 	RefreshCw,
+	ShoppingCart,
 } from "lucide-react";
-import { RefundDialog } from "@/domains/payments/components/RefundDialog";
+import { ItemRefundDialog } from "@/domains/payments/components/ItemRefundDialog";
+import { RefundSuccessDialog } from "@/domains/payments/components/RefundSuccessDialog";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 
 // Import your card logos (ensure paths are correct)
@@ -57,9 +61,11 @@ const PaymentDetailsPage = () => {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const { printers, receiptPrinterId } = useSettingsStore();
 
 	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
-	const [selectedTransaction, setSelectedTransaction] = useState(null);
+	const [refundSuccessData, setRefundSuccessData] = useState(null);
+	const [isRefundSuccessDialogOpen, setRefundSuccessDialogOpen] = useState(false);
 
 	const {
 		data: payment,
@@ -76,16 +82,62 @@ const PaymentDetailsPage = () => {
 
 	const { mutate: processRefund, isLoading: isRefunding } = useMutation({
 		mutationFn: (refundData) => {
-			return refundTransaction(paymentId, refundData);
+			return processItemRefund(refundData);
 		},
-		onSuccess: () => {
-			toast({
-				title: "Success",
-				description: "Refund processed successfully.",
-			});
+		onSuccess: async (response) => {
+			// Close the refund dialog
+			setRefundDialogOpen(false);
+
+			// Check if this is a split payment refund
+			const successfulTransactions = payment?.transactions?.filter(
+				(txn) => txn.status === "SUCCESSFUL" || txn.status === "REFUNDED"
+			) || [];
+			const isSplitPayment = successfulTransactions.length > 1;
+
+			// Check if this was originally a cash payment
+			const isCashPayment = successfulTransactions.some(
+				(txn) => txn.method === "CASH"
+			);
+
+			// Determine refund method (cash if split payment OR original payment was cash)
+			let refundMethod = 'CARD';
+			if (isSplitPayment) {
+				refundMethod = 'CASH'; // Split payments refund to cash
+			} else if (isCashPayment) {
+				refundMethod = 'CASH'; // Cash payments refund to cash
+			}
+
+			// Prepare success dialog data
+			const successData = {
+				total_refunded: response.total_refunded || response.refund_amount || 0,
+				refund_items: response.refund_items || [],
+				is_split_payment: isSplitPayment,
+				refund_method: refundMethod,
+			};
+
+			// Open cash drawer for cash refunds
+			if (refundMethod === 'CASH') {
+				try {
+					const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+					if (receiptPrinter) {
+						await openCashDrawer(receiptPrinter);
+					} else {
+						console.warn("No receipt printer configured for cash drawer opening");
+					}
+				} catch (error) {
+					console.error("Failed to open cash drawer for refund:", error);
+					// Don't fail the refund if cash drawer fails to open
+				}
+			}
+
+			// Show success dialog with refund details
+			setRefundSuccessData(successData);
+			setRefundSuccessDialogOpen(true);
+
+			// Invalidate queries to refresh data
 			queryClient.invalidateQueries(["payment", paymentId]);
 			queryClient.invalidateQueries(["payments"]);
-			setRefundDialogOpen(false);
+			queryClient.invalidateQueries(["orders"]);
 		},
 		onError: (err) => {
 			toast({
@@ -96,8 +148,7 @@ const PaymentDetailsPage = () => {
 		},
 	});
 
-	const handleOpenRefundDialog = (transaction) => {
-		setSelectedTransaction(transaction);
+	const handleOpenRefundDialog = () => {
 		setRefundDialogOpen(true);
 	};
 
@@ -185,7 +236,7 @@ const PaymentDetailsPage = () => {
 			{/* Main Content */}
 			<div className="flex-1 min-h-0 p-4">
 				<ScrollArea className="h-full">
-					<div className="pb-6">
+					<div className="pb-6 space-y-4 lg:space-y-6">
 						<div className="grid grid-cols-1 xl:grid-cols-4 gap-4 lg:gap-6">
 							{/* Payment Summary Card */}
 							<Card className="xl:col-span-1 border-border/60 bg-card/80">
@@ -324,9 +375,6 @@ const PaymentDetailsPage = () => {
 													<TableHead className="font-semibold text-foreground">
 														Refunded
 													</TableHead>
-													<TableHead className="text-right font-semibold text-foreground">
-														Actions
-													</TableHead>
 												</TableRow>
 											</TableHeader>
 											<TableBody>
@@ -438,27 +486,13 @@ const PaymentDetailsPage = () => {
 																	<TableCell className="text-foreground">
 																		{formatCurrency(txn.refunded_amount || 0)}
 																	</TableCell>
-																	<TableCell className="text-right">
-																		{isRefundable && (
-																			<Button
-																				size="sm"
-																				variant="outline"
-																				onClick={() =>
-																					handleOpenRefundDialog(txn)
-																				}
-																				disabled={isRefunding}
-																			>
-																				Refund
-																			</Button>
-																		)}
-																	</TableCell>
 																</TableRow>
 															);
 														})
 												) : (
 													<TableRow>
 														<TableCell
-															colSpan="6"
+															colSpan="5"
 															className="text-center py-8 text-muted-foreground"
 														>
 															No transactions found.
@@ -471,19 +505,125 @@ const PaymentDetailsPage = () => {
 								</CardContent>
 							</Card>
 						</div>
+
+						{/* Order Items Card */}
+						{payment.order?.items && payment.order.items.length > 0 && (
+							<Card className="border-border/60 bg-card/80">
+								<CardHeader>
+									<div className="flex items-center justify-between">
+										<div className="flex items-center gap-3">
+											<div className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+												<ShoppingCart className="h-4 w-4" />
+											</div>
+											<div>
+												<CardTitle className="text-base font-semibold text-foreground">
+													Order Items
+												</CardTitle>
+												<CardDescription className="text-muted-foreground">
+													Items purchased in this order
+												</CardDescription>
+											</div>
+										</div>
+										<Button
+											onClick={handleOpenRefundDialog}
+											variant="outline"
+											size="sm"
+											disabled={isRefunding || !payment.order?.items?.some(
+												(item) => (item.quantity - (item.refunded_quantity || 0)) > 0
+											)}
+										>
+											Refund Items
+										</Button>
+									</div>
+								</CardHeader>
+								<CardContent>
+									<div className="border border-border/60 rounded-lg overflow-hidden">
+										<Table>
+											<TableHeader>
+												<TableRow className="hover:bg-transparent">
+													<TableHead className="font-semibold text-foreground">
+														Item
+													</TableHead>
+													<TableHead className="font-semibold text-foreground text-center">
+														Quantity
+													</TableHead>
+													<TableHead className="font-semibold text-foreground text-center">
+														Refunded
+													</TableHead>
+													<TableHead className="font-semibold text-foreground text-right">
+														Price
+													</TableHead>
+													<TableHead className="font-semibold text-foreground text-right">
+														Total
+													</TableHead>
+												</TableRow>
+											</TableHeader>
+											<TableBody>
+												{payment.order.items.map((item) => {
+													const refundedQty = item.refunded_quantity || 0;
+													const hasRefunds = refundedQty > 0;
+
+													return (
+														<TableRow
+															key={item.id}
+															className="hover:bg-muted/40"
+														>
+															<TableCell className="font-medium text-foreground">
+																<div className="space-y-1">
+																	<div>{item.product_name || "Unknown Item"}</div>
+																	{item.notes && (
+																		<div className="text-xs text-muted-foreground">
+																			Note: {item.notes}
+																		</div>
+																	)}
+																</div>
+															</TableCell>
+															<TableCell className="text-center text-foreground">
+																{item.quantity}
+															</TableCell>
+															<TableCell className="text-center">
+																{hasRefunds ? (
+																	<Badge variant="secondary">{refundedQty}</Badge>
+																) : (
+																	<span className="text-muted-foreground">—</span>
+																)}
+															</TableCell>
+															<TableCell className="text-right font-medium text-foreground">
+																{formatCurrency(item.price_at_sale || 0)}
+															</TableCell>
+															<TableCell className="text-right font-medium text-foreground">
+																{formatCurrency((item.price_at_sale || 0) * item.quantity)}
+															</TableCell>
+														</TableRow>
+													);
+												})}
+											</TableBody>
+										</Table>
+									</div>
+								</CardContent>
+							</Card>
+						)}
 					</div>
 				</ScrollArea>
 			</div>
 
-			{selectedTransaction && (
-				<RefundDialog
-					isOpen={isRefundDialogOpen}
-					onOpenChange={setRefundDialogOpen}
-					transaction={selectedTransaction}
-					isRefunding={isRefunding}
-					onSubmit={handleRefundSubmit}
-				/>
-			)}
+			{/* Item Refund Dialog */}
+			<ItemRefundDialog
+				isOpen={isRefundDialogOpen}
+				onOpenChange={setRefundDialogOpen}
+				orderItems={payment?.order?.items || []}
+				paymentTransactions={payment?.transactions || []}
+				onSubmit={handleRefundSubmit}
+				isProcessing={isRefunding}
+			/>
+
+			{/* Refund Success Dialog */}
+			<RefundSuccessDialog
+				isOpen={isRefundSuccessDialogOpen}
+				onOpenChange={setRefundSuccessDialogOpen}
+				refundData={refundSuccessData}
+				paymentTransactions={payment?.transactions || []}
+			/>
 		</div>
 	);
 };

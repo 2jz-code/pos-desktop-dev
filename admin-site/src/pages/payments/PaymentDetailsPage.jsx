@@ -21,9 +21,25 @@ import {
 	RotateCw,
 	AlertCircle,
 } from "lucide-react";
-import { RefundDialog } from "@/components/RefundDialog";
 import { ItemRefundDialog } from "@/components/ItemRefundDialog";
+import { RefundSuccessDialog } from "@/components/RefundSuccessDialog";
 import { processItemRefund } from "@/services/api/refundService";
+
+// Helper function to get card logo path
+const getCardLogoPath = (cardBrand) => {
+	if (!cardBrand) return '/images/card-logos/generic.svg';
+
+	const brand = cardBrand.toLowerCase();
+	const logoMap = {
+		'visa': '/images/card-logos/visa.svg',
+		'mastercard': '/images/card-logos/mastercard.svg',
+		'amex': '/images/card-logos/amex.svg',
+		'american express': '/images/card-logos/amex.svg',
+		'discover': '/images/card-logos/discover.svg',
+	};
+
+	return logoMap[brand] || '/images/card-logos/generic.svg';
+};
 
 const PaymentDetailsPage = () => {
 	const { paymentId } = useParams();
@@ -35,9 +51,9 @@ const PaymentDetailsPage = () => {
 	const tenantSlug = tenant?.slug || '';
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
-	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
-	const [selectedTransaction, setSelectedTransaction] = useState(null);
 	const [isItemRefundDialogOpen, setItemRefundDialogOpen] = useState(false);
+	const [isRefundSuccessDialogOpen, setRefundSuccessDialogOpen] = useState(false);
+	const [refundSuccessData, setRefundSuccessData] = useState(null);
 
 	const {
 		data: payment,
@@ -61,37 +77,6 @@ const PaymentDetailsPage = () => {
 		});
 	};
 
-	const { mutate: processRefund, isLoading: isRefunding } = useMutation({
-		mutationFn: (refundData) => {
-			return refundTransaction(paymentId, refundData);
-		},
-		onSuccess: () => {
-			toast({
-				title: "Success",
-				description: "Refund processed successfully.",
-			});
-			queryClient.invalidateQueries(["payment", paymentId]);
-			queryClient.invalidateQueries(["payments"]);
-			setRefundDialogOpen(false);
-		},
-		onError: (err) => {
-			toast({
-				title: "Refund Error",
-				description: err.response?.data?.error || "Failed to process refund.",
-				variant: "destructive",
-			});
-		},
-	});
-
-	const handleOpenRefundDialog = (transaction) => {
-		setSelectedTransaction(transaction);
-		setRefundDialogOpen(true);
-	};
-
-	const handleRefundSubmit = (refundDetails) => {
-		processRefund(refundDetails);
-	};
-
 	const { mutate: processItemsRefund, isLoading: isItemRefunding } = useMutation({
 		mutationFn: (refundData) => {
 			if (refundData.items.length === 1) {
@@ -108,14 +93,43 @@ const PaymentDetailsPage = () => {
 				});
 			}
 		},
-		onSuccess: () => {
-			toast({
-				title: "Success",
-				description: "Item refund processed successfully.",
-			});
+		onSuccess: (response) => {
+			// Close the refund dialog
+			setItemRefundDialogOpen(false);
+
+			// Check if this is a split payment refund
+			const successfulTransactions = payment?.transactions?.filter(
+				(txn) => txn.status === "SUCCESSFUL"
+			) || [];
+			const isSplitPayment = successfulTransactions.length > 1;
+
+			// Check if this was originally a cash payment
+			const isCashPayment = successfulTransactions.some(
+				(txn) => txn.method === "CASH"
+			);
+
+			// Determine refund method (cash if split payment OR original payment was cash)
+			let refundMethod = 'CARD';
+			if (isSplitPayment) {
+				refundMethod = 'CASH'; // Split payments refund to cash
+			} else if (isCashPayment) {
+				refundMethod = 'CASH'; // Cash payments refund to cash
+			}
+
+			// Prepare success dialog data
+			const successData = {
+				total_refunded: response.total_refunded || response.refund_amount || 0,
+				refund_items: response.refund_items || [],
+				is_split_payment: isSplitPayment,
+				refund_method: refundMethod,
+			};
+
+			setRefundSuccessData(successData);
+			setRefundSuccessDialogOpen(true);
+
+			// Invalidate queries to refresh data
 			queryClient.invalidateQueries(["payment", paymentId]);
 			queryClient.invalidateQueries(["payments"]);
-			setItemRefundDialogOpen(false);
 		},
 		onError: (err) => {
 			toast({
@@ -130,15 +144,22 @@ const PaymentDetailsPage = () => {
 		processItemsRefund(refundData);
 	};
 
-	// Get primary payment method from successful transaction (must be before early returns)
+	// Get primary payment method (must be before early returns)
 	const primaryPaymentMethod = useMemo(() => {
-		if (!payment?.transactions) return "N/A";
-		const successfulTxn = payment.transactions.find(txn => txn.status === "SUCCESSFUL");
-		if (successfulTxn) {
-			return successfulTxn.method.replace("_", " ");
+		if (!payment?.transactions || payment.transactions.length === 0) return "N/A";
+
+		// Check if it's a split payment (multiple transactions)
+		const nonFailedTransactions = payment.transactions.filter(
+			txn => txn.status !== "FAILED"
+		);
+
+		if (nonFailedTransactions.length > 1) {
+			return "SPLIT";
 		}
-		// Fallback to first transaction if no successful one
-		return payment.transactions[0]?.method.replace("_", " ") || "N/A";
+
+		// Single payment - use the transaction's method (regardless of status)
+		const transaction = nonFailedTransactions[0] || payment.transactions[0];
+		return transaction?.method.replace("_", " ") || "N/A";
 	}, [payment?.transactions]);
 
 	if (isLoading)
@@ -516,11 +537,11 @@ const PaymentDetailsPage = () => {
 												<thead className="bg-muted/30">
 													<tr className="text-xs text-muted-foreground uppercase tracking-wider">
 														<th className="text-left px-4 py-3 font-semibold">Method</th>
+														<th className="text-right px-4 py-3 font-semibold w-[100px]">Amount</th>
 														<th className="text-left px-4 py-3 font-semibold">Card Details</th>
 														<th className="text-left px-4 py-3 font-semibold w-[120px]">Status</th>
 														<th className="text-left px-4 py-3 font-semibold w-[100px]">Time</th>
 														<th className="text-right px-4 py-3 font-semibold w-[120px]">Refunded</th>
-														<th className="text-right px-4 py-3 font-semibold w-[120px]">Actions</th>
 													</tr>
 												</thead>
 												<tbody className="divide-y divide-border/40">
@@ -532,8 +553,6 @@ const PaymentDetailsPage = () => {
 																return new Date(b.created_at) - new Date(a.created_at);
 															})
 															.map((txn, index) => {
-																const refundableAmount = Number.parseFloat(txn.amount) - Number.parseFloat(txn.refunded_amount || 0);
-																const isRefundable = txn.status === "SUCCESSFUL" && refundableAmount > 0;
 																const isFailed = txn.status === "FAILED" || txn.status === "CANCELED";
 
 																return (
@@ -555,14 +574,22 @@ const PaymentDetailsPage = () => {
 																				</Badge>
 																			</div>
 																		</td>
+																		<td className="px-4 py-3 text-right">
+																			<span className="font-semibold text-sm text-foreground">
+																				{formatCurrency(Number.parseFloat(txn.amount) + Number.parseFloat(txn.tip || 0) + Number.parseFloat(txn.surcharge || 0))}
+																			</span>
+																		</td>
 																		<td className="px-4 py-3">
 																			{txn.card_brand && txn.card_last4 ? (
-																				<div className="flex items-center gap-2">
-																					<div className="h-5 w-8 bg-muted rounded flex items-center justify-center">
-																						<span className="text-xs font-bold text-muted-foreground">
-																							{txn.card_brand.substring(0, 2).toUpperCase()}
-																						</span>
-																					</div>
+																				<div className="flex items-center gap-2.5">
+																					<img
+																						src={getCardLogoPath(txn.card_brand)}
+																						alt={txn.card_brand}
+																						className="h-6 w-auto object-contain"
+																						onError={(e) => {
+																							e.target.src = '/images/card-logos/generic.svg';
+																						}}
+																					/>
 																					<span className="font-mono text-sm text-foreground">
 																						****{txn.card_last4}
 																					</span>
@@ -599,19 +626,6 @@ const PaymentDetailsPage = () => {
 																				<span className="text-muted-foreground text-sm">—</span>
 																			)}
 																		</td>
-																		<td className="px-4 py-3 text-right">
-																			{isRefundable && (
-																				<Button
-																					size="sm"
-																					variant="outline"
-																					onClick={() => handleOpenRefundDialog(txn)}
-																					disabled={isRefunding}
-																					className="text-xs"
-																				>
-																					Refund
-																				</Button>
-																			)}
-																		</td>
 																	</tr>
 																);
 															})
@@ -633,16 +647,6 @@ const PaymentDetailsPage = () => {
 				</ScrollArea>
 			</div>
 
-			{selectedTransaction && (
-				<RefundDialog
-					isOpen={isRefundDialogOpen}
-					onOpenChange={setRefundDialogOpen}
-					transaction={selectedTransaction}
-					isRefunding={isRefunding}
-					onSubmit={handleRefundSubmit}
-				/>
-			)}
-
 			{payment?.order?.items && (
 				<ItemRefundDialog
 					isOpen={isItemRefundDialogOpen}
@@ -653,6 +657,13 @@ const PaymentDetailsPage = () => {
 					onSubmit={handleItemRefundSubmit}
 				/>
 			)}
+
+			<RefundSuccessDialog
+				isOpen={isRefundSuccessDialogOpen}
+				onOpenChange={setRefundSuccessDialogOpen}
+				refundData={refundSuccessData}
+				paymentTransactions={payment?.transactions || []}
+			/>
 		</div>
 	);
 };
