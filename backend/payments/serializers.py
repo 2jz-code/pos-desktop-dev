@@ -4,7 +4,10 @@ from django.db import models
 from .models import Payment, PaymentTransaction, Order, GiftCard
 from .services import PaymentService
 from django.shortcuts import get_object_or_404
-from orders.serializers import SimpleOrderSerializer, OrderItemSerializer
+from orders.serializers import (
+    UnifiedOrderSerializer,
+    OrderItemSerializer
+)
 from orders.models import OrderItem
 from core_backend.base import BaseModelSerializer
 
@@ -57,8 +60,8 @@ class OrderItemWithRefundSerializer(BaseModelSerializer):
 
 class OrderWithItemsSerializer(BaseModelSerializer):
     """
-    Order serializer for payment details that includes items.
-    This extends SimpleOrderSerializer to add items without causing circular imports.
+    Order serializer for payment details that includes items with refund information.
+    Used within PaymentSerializer to avoid circular imports.
     """
     items = OrderItemWithRefundSerializer(many=True, read_only=True)
 

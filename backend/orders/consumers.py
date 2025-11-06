@@ -8,7 +8,7 @@ from asgiref.sync import sync_to_async
 
 from .models import Order, OrderItem, Product
 from .services import OrderService
-from .serializers import OrderSerializer
+from .serializers import UnifiedOrderSerializer
 
 # No longer need DjangoJSONEncoder if we pre-process the data
 # from django.core.serializers.json import DjangoJSONEncoder
@@ -753,4 +753,5 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def serialize_order(self, order):
-        return OrderSerializer(order).data
+        # Use 'detail' view mode for WebSocket updates to include all order data
+        return UnifiedOrderSerializer(order, context={'view_mode': 'detail'}).data

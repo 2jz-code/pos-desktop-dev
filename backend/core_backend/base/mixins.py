@@ -2,10 +2,8 @@ from rest_framework.viewsets import ViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status, serializers
-from django.db import models
 from django.db.models import Prefetch
 from .permissions import CanArchiveRecords, CanUnarchiveRecords, CanForceDelete, CanViewArchived
-from django.db.models.fields.related import ForwardManyToOneDescriptor, ForwardOneToOneDescriptor
 
 
 class OptimizedQuerysetMixin(ViewSetMixin):
@@ -278,4 +276,126 @@ class ArchivingViewSetMixin(ViewSetMixin):
             },
             status=status.HTTP_200_OK
         )
+
+
+class TenantScopedQuerysetMixin:
+    """
+    Automatically filters queryset by request.tenant.
+
+    Usage:
+        class ProductViewSet(TenantScopedQuerysetMixin, BaseViewSet):
+            # Queryset is automatically tenant-filtered
+
+    For global access (admin/background jobs), set:
+        allow_global_access = True
+
+    Example:
+        class ProductAdminViewSet(TenantScopedQuerysetMixin, BaseViewSet):
+            allow_global_access = True  # Superuser can see all tenants
+    """
+
+    # Override in viewset to allow superuser/admin/background job access
+    allow_global_access = False
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # Only filter if model has tenant field
+        if not hasattr(qs.model, 'tenant'):
+            return qs  # Model is not tenant-aware, skip filtering
+
+        # Check if request has tenant context
+        if not hasattr(self.request, 'tenant'):
+            # FAIL LOUD: No tenant context when model requires it
+            if not self.allow_global_access:
+                raise ValueError(
+                    f"{self.__class__.__name__} requires tenant context. "
+                    f"Set allow_global_access=True for admin/background jobs."
+                )
+            return qs  # Allow global access for admin/background jobs
+
+        # Normal tenant filtering
+        if self.request.tenant:
+            qs = qs.filter(tenant=self.request.tenant)
+        elif self.request.user.is_superuser or self.request.user.is_staff:
+            # Superuser/staff can access all tenants
+            # (Admin interface scenario)
+            pass  # Return unfiltered queryset
+        elif not self.allow_global_access:
+            # FAIL LOUD: Tenant-aware model but no tenant and not admin
+            raise ValueError(
+                f"{self.__class__.__name__}: No tenant context for non-admin user. "
+                f"This likely indicates a middleware issue."
+            )
+
+        return qs
+
+
+class FieldsetQueryParamsMixin:
+    """
+    Parses standard query params and injects into serializer context.
+
+    Supported params:
+    - ?view=list|detail|pos|sync (selects fieldset)
+    - ?fields=id,name,price (ad-hoc field filtering)
+    - ?expand=category,taxes (relationship expansion)
+
+    Usage:
+        class ProductViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
+            serializer_class = ProductSerializer  # Uses FieldsetMixin
+
+            # Optional: Override default view mode logic
+            def _get_default_view_mode(self):
+                action = getattr(self, 'action', None)
+                if action == 'list' and self.is_pos_request():
+                    return 'pos'
+                return super()._get_default_view_mode()
+
+    Note: Name changed from QueryParamsMixin to FieldsetQueryParamsMixin for clarity.
+    """
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+
+        # Smart default: map action → view_mode automatically
+        default_view = self._get_default_view_mode()
+        view_mode = self.request.query_params.get('view', default_view)
+
+        fields_param = self.request.query_params.get('fields', '')
+        expand_param = self.request.query_params.get('expand', '')
+
+        # Convert to appropriate types
+        requested_fields = [f.strip() for f in fields_param.split(',') if f.strip()]
+        expand = {e.strip() for e in expand_param.split(',') if e.strip()}
+
+        context.update({
+            'view_mode': view_mode,
+            'requested_fields': requested_fields if requested_fields else None,
+            'expand': expand,
+        })
+
+        return context
+
+    def _get_default_view_mode(self):
+        """
+        Override this to change default view mode per action or client type.
+
+        Examples:
+            # Different view for POS vs web
+            if self.request.headers.get('X-Client-Type') == 'POS':
+                return 'pos'
+
+            # Different view based on action
+            if self.action == 'list':
+                return 'list'
+        """
+        action = getattr(self, 'action', None)
+
+        # Smart defaults
+        if action == 'list':
+            return 'list'
+        elif action in ['retrieve', 'create', 'update', 'partial_update']:
+            return 'detail'
+        else:
+            return 'detail'
 

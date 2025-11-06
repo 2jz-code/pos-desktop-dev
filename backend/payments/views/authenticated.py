@@ -17,7 +17,7 @@ import logging
 import stripe
 import django_filters
 
-from orders.serializers import OrderSerializer
+from orders.serializers import UnifiedOrderSerializer
 from orders.models import Order
 from customers.authentication import CustomerCookieJWTAuthentication
 from core_backend.base import BaseViewSet
@@ -462,8 +462,8 @@ class CompleteUserPaymentView(BasePaymentView, AuthenticatedOrderAccessMixin):
 
             # Serialize both payment and order data
             payment_serializer = PaymentSerializer(completed_payment)
-            order_serializer = OrderSerializer(
-                completed_order, context={"request": request}
+            order_serializer = UnifiedOrderSerializer(
+                completed_order, context={"request": request, "view_mode": "detail"}
             )
 
             return Response(

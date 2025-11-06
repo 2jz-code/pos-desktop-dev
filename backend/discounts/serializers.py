@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from core_backend.base import BaseModelSerializer, BasicProductSerializer, BasicCategorySerializer
+from core_backend.base import BaseModelSerializer
 from core_backend.base.serializers import TenantFilteredSerializerMixin
 from .models import Discount
 from orders.models import Order
@@ -11,9 +11,9 @@ class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     Serializes Discount objects, including details about what they apply to.
     """
 
-    # --- FIX: Use nested serializers for readable names on the frontend ---
-    applicable_products = BasicProductSerializer(many=True, read_only=True)
-    applicable_categories = BasicCategorySerializer(many=True, read_only=True)
+    # Use unified serializers with 'reference' fieldset for minimal representation
+    applicable_products = serializers.SerializerMethodField()
+    applicable_categories = serializers.SerializerMethodField()
 
     # These fields are for writing data back from the frontend
     # They accept a list of IDs.
@@ -85,6 +85,30 @@ class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
             data['code'] = None
 
         return data
+
+    def get_applicable_products(self, obj):
+        """
+        Return minimal product info using unified ProductSerializer with 'reference' fieldset.
+        Returns: id, name, barcode only
+        """
+        from products.serializers import ProductSerializer
+        products = obj.applicable_products.all()
+        return ProductSerializer(
+            products,
+            many=True,
+            context={'view_mode': 'reference'}
+        ).data
+
+    def get_applicable_categories(self, obj):
+        """
+        Return minimal category info.
+        Returns: id, name, order
+        """
+        from products.serializers import CategorySerializer
+        categories = obj.applicable_categories.all()
+        # CategorySerializer doesn't have fieldsets yet, but we can use it directly
+        # It returns more fields than BasicCategorySerializer, but that's acceptable
+        return CategorySerializer(categories, many=True, context=self.context).data
 
 
 # Sync-specific serializer that sends simple field values instead of nested objects

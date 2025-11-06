@@ -1108,8 +1108,8 @@ class ProductAnalyticsService:
         Get usage analytics for a specific modifier set.
         Extracted from ModifierSetViewSet.get_usage_analytics()
         """
-        from .serializers import BasicProductSerializer  # Import here to avoid circular imports
-        
+        from .serializers import ProductSerializer  # Import here to avoid circular imports
+
         # Get basic usage statistics
         product_count = modifier_set.product_modifier_sets.count()
 
@@ -1119,12 +1119,20 @@ class ProductAnalyticsService:
         ).all()
         products = [pms.product for pms in product_modifier_sets]
 
+        # Serialize products using unified serializer with 'reference' fieldset
+        # Returns: id, name, barcode only (no price)
+        products_data = ProductSerializer(
+            products,
+            many=True,
+            context={'view_mode': 'reference'}
+        ).data
+
         # Calculate analytics data
         usage_data = {
             "modifier_set_id": modifier_set.id,
             "modifier_set_name": modifier_set.name,
             "product_count": product_count,
-            "products": BasicProductSerializer(products, many=True).data,
+            "products": products_data,
             "is_used": product_count > 0,
             "usage_level": ProductAnalyticsService._get_usage_level(product_count),
             "option_count": modifier_set.options.count(),

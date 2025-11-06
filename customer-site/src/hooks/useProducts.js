@@ -5,11 +5,9 @@ import { productsAPI } from "../api/products";
 const normalizeProductData = (product) => {
 	return {
 		...product,
-		category: product.category
-			? Array.isArray(product.category)
-				? product.category
-				: [product.category]
-			: [],
+		// category_id is now returned as a number (e.g., 8)
+		// category_display_name is available for simple display
+		// Full category details should be looked up from allCategories cache
 		price:
 			typeof product.price === "string"
 				? parseFloat(product.price)

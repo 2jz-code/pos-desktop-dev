@@ -19,9 +19,6 @@ from users.permissions import ReadOnlyForCashiers, IsAdminOrHigher
 from .serializers import (
     ProductSerializer,
     ProductCreateSerializer,
-    ProductSyncSerializer,
-    OptimizedProductSerializer,
-    POSProductSerializer,
     CategorySerializer,
     CategoryBulkUpdateSerializer,
     TaxSerializer,
@@ -29,12 +26,12 @@ from .serializers import (
     ModifierSetSerializer,
     ModifierOptionSerializer,
     ProductModifierSetSerializer,
-    BasicProductSerializer,
 )
 from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from core_backend.base.viewsets import BaseViewSet
+from core_backend.base.mixins import FieldsetQueryParamsMixin
 
 
 class ProductModifierSetViewSet(BaseViewSet):
@@ -276,7 +273,19 @@ class ModifierOptionViewSet(BaseViewSet):
 # Create your views here.
 
 
-class ProductViewSet(BaseViewSet):
+class ProductViewSet(FieldsetQueryParamsMixin, BaseViewSet):
+    """
+    ProductViewSet with standardized query param support.
+
+    Supports:
+    - ?view=list|pos|sync|detail (fieldset selection)
+    - ?fields=id,name,price (ad-hoc field filtering)
+    - ?expand=category,taxes,product_type (relationship expansion)
+
+    Backward compatible:
+    - ?sync=true → view_mode='sync'
+    - ?for_website=true → view_mode='detail'
+    """
     # Base queryset - archiving will be handled by ArchivingViewSetMixin
     queryset = Product.objects.all()
     permission_classes = [
@@ -376,22 +385,43 @@ class ProductViewSet(BaseViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
-        # Use sync serializer if sync=true parameter is present
+        """
+        Return serializer class based on action.
+        Only ProductCreateSerializer is separate (write logic).
+        All read operations use ProductSerializer with view_mode context.
+        """
+        if self.action in ["create", "update", "partial_update"]:
+            return ProductCreateSerializer
+        return ProductSerializer
+
+    def _get_default_view_mode(self):
+        """
+        Override FieldsetQueryParamsMixin to provide smart defaults.
+
+        Backward compatible with legacy query params:
+        - ?sync=true → 'sync'
+        - ?for_website=true → 'detail'
+        - Default list → 'pos'
+        - Default retrieve → 'detail'
+
+        New standardized param ?view= takes precedence over legacy params.
+        """
+        # Check legacy query params for backward compatibility
         is_sync_request = self.request.query_params.get("sync") == "true"
-
-        if is_sync_request and self.action in ["list", "retrieve"]:
-            return ProductSyncSerializer
-
-        # Check if this is for the customer website - use full serializer with description
         is_for_website = self.request.query_params.get("for_website") == "true"
 
-        if self.action == "list":
+        if is_sync_request and self.action in ["list", "retrieve"]:
+            return 'sync'
+        elif self.action == "list":
             if is_for_website:
-                return ProductSerializer  # Full serializer with description for customer site
-            return POSProductSerializer  # Lightweight POS serializer with modifier detection
-        elif self.action in ["create", "update", "partial_update"]:
-            return ProductCreateSerializer
-        return ProductSerializer  # Full detail view
+                return 'detail'  # Full detail for website
+            else:
+                return 'pos'  # POS terminal view
+        elif self.action == "retrieve":
+            return 'detail'
+        else:
+            # Fallback to parent's default behavior
+            return super()._get_default_view_mode()
 
     @action(detail=False, methods=["get"], url_path="by-name/(?P<name>[^/.]+)")
     def get_by_name(self, request, name=None):
