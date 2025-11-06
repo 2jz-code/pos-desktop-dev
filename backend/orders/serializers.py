@@ -187,7 +187,7 @@ class UnifiedOrderSerializer(
                 'id', 'order_number', 'status', 'order_type', 'payment_status',
                 'dining_preference', 'store_location',
                 # Financial fields
-                'subtotal', 'tax_total', 'total_discounts_amount', 'grand_total',
+                'subtotal', 'tax_total', 'total_discounts_amount', 'surcharges_total', 'grand_total',
                 'total_with_tip', 'amount_paid', 'total_tips', 'total_surcharges', 'total_collected',
                 # Relationships (nested)
                 'customer', 'cashier', 'items', 'applied_discounts',

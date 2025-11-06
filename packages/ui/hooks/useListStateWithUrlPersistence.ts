@@ -117,18 +117,23 @@ export function useListStateWithUrlPersistence<TFilters extends Record<string, a
 			return;
 		}
 
-		const params = new URLSearchParams();
+		// Start with current URL params to preserve non-managed params
+		const params = new URLSearchParams(window.location.search);
 
-		// Add all non-empty filters to URL
+		// Update managed filter params (remove if empty, set if has value)
 		Object.entries(filters).forEach(([key, value]) => {
 			if (value && value !== '') {
 				params.set(key, String(value));
+			} else {
+				params.delete(key);
 			}
 		});
 
-		// Add page if > 1
+		// Update page param
 		if (currentPage > 1) {
 			params.set('page', currentPage.toString());
+		} else {
+			params.delete('page');
 		}
 
 		const newUrl = params.toString();

@@ -41,8 +41,12 @@ export interface Discount {
 	is_active: boolean;
 	start_date: string | null;
 	end_date: string | null;
-	applicable_products: Product[];
-	applicable_categories: Category[];
+	// API returns IDs by default
+	applicable_product_ids: number[];
+	applicable_category_ids: number[];
+	// Nested objects only returned with ?expand=applicable_products,applicable_categories
+	applicable_products?: Product[];
+	applicable_categories?: Category[];
 	usage_limit: number | null;
 	used_count: number;
 }

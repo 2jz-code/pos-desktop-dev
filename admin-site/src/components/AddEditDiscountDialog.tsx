@@ -80,10 +80,9 @@ export default function AddEditDiscountDialog({
 						? new Date(discount.start_date)
 						: null,
 					end_date: discount.end_date ? new Date(discount.end_date) : null,
-					applicable_product_ids:
-						discount.applicable_products?.map((p) => p.id) || [],
-					applicable_category_ids:
-						discount.applicable_categories?.map((c) => c.id) || [],
+					// API now returns IDs directly instead of nested objects
+					applicable_product_ids: discount.applicable_product_ids || [],
+					applicable_category_ids: discount.applicable_category_ids || [],
 				};
 			} else {
 				return {
@@ -166,12 +165,12 @@ export default function AddEditDiscountDialog({
 	};
 
 	const productOptions =
-		products?.data.map((p: { id: number; name: string }) => ({
+		products?.data?.map((p: { id: number; name: string }) => ({
 			value: p.id,
 			label: p.name,
 		})) || [];
 	const categoryOptions =
-		categories?.data.results.map((c: { id: number; name: string }) => ({
+		categories?.data?.results?.map((c: { id: number; name: string }) => ({
 			value: c.id,
 			label: c.name,
 		})) || [];

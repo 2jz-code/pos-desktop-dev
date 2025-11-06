@@ -708,7 +708,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
             'detail': [
                 'id', 'name', 'description', 'price', 'barcode',
                 'category_id', 'category_display_name', 'is_uncategorized',
-                'product_type_id',
+                'product_type_id', 'tax_ids',
                 'is_active', 'is_public', 'track_inventory',
                 'image', 'image_url', 'original_filename',
                 'modifier_groups',

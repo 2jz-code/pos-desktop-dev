@@ -42,6 +42,8 @@ export { usePagination } from '../hooks/usePagination';
 export { useOrdersData } from '../hooks/useOrdersData';
 export { usePaymentsData } from '../hooks/usePaymentsData';
 export type { PaymentFilters } from '../hooks/usePaymentsData';
+export { useProductsData } from '../hooks/useProductsData';
+export type { ProductsFilters } from '../hooks/useProductsData';
 export { useOrderActions } from '../hooks/useOrderActions';
 export { useListStateWithUrlPersistence } from '../hooks/useListStateWithUrlPersistence';
 export { useDebounce } from '../hooks/useDebounce';

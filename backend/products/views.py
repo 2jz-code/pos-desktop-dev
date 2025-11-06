@@ -295,8 +295,7 @@ class ProductViewSet(FieldsetQueryParamsMixin, BaseViewSet):
     filterset_class = ProductFilter
     search_fields = ["name", "description", "barcode"]
 
-    @property
-    def paginator(self):
+    def paginate_queryset(self, queryset):
         """
         Disable pagination for website and POS requests.
         POS needs all products at once for the product grid.
@@ -310,7 +309,7 @@ class ProductViewSet(FieldsetQueryParamsMixin, BaseViewSet):
         # 2. Fetching only active products (is_active=true) - POS use case
         if is_for_website or is_active_filter:
             return None
-        return super().paginator
+        return super().paginate_queryset(queryset)
 
     def get_queryset(self):
         """
@@ -367,21 +366,16 @@ class ProductViewSet(FieldsetQueryParamsMixin, BaseViewSet):
 
     def list(self, request, *args, **kwargs):
         # Cache for common POS queries (tenant-scoped via TenantManager)
+        # Note: Only cache non-paginated requests (for POS/website)
         query_params = dict(request.GET.items())
 
-        # Cache unfiltered requests
-        if not query_params:
-            products = ProductService.get_cached_products_list()
-            serializer = self.get_serializer(products, many=True)
-            return Response(serializer.data)
-
-        # Cache the most common POS query: ?is_active=true
+        # Cache the most common POS query: ?is_active=true (returns all products, no pagination)
         if query_params == {"is_active": "true"}:
             products = ProductService.get_cached_active_products_list()
             serializer = self.get_serializer(products, many=True)
             return Response(serializer.data)
 
-        # Fall back to optimized queryset for filtered requests
+        # For all other requests (including unfiltered ones), use standard pagination
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):

@@ -4,11 +4,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
+from core_backend.base.mixins import FieldsetQueryParamsMixin
 from orders.models import Order
 from .models import Discount
 from .serializers import (
-    DiscountSerializer,
-    DiscountSyncSerializer,
+    UnifiedDiscountSerializer,
     DiscountApplySerializer,
 )
 from .services import DiscountService, DiscountValidationService
@@ -54,30 +54,38 @@ class ApplyDiscountView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class DiscountViewSet(BaseViewSet):
+class DiscountViewSet(FieldsetQueryParamsMixin, BaseViewSet):
     """
     A ViewSet for viewing and editing discounts.
     Provides list, create, retrieve, update, and destroy actions.
     Supports filtering by 'type', 'is_active', and 'scope'.
     Supports delta sync with modified_since parameter.
 
+    Supports query params (via FieldsetQueryParamsMixin):
+    - ?view=list|detail|sync|reference (selects fieldset)
+    - ?fields=id,name,type (ad-hoc field filtering)
+    - ?expand=applicable_products,applicable_categories (relationship expansion)
+
+    Backward compatibility:
+    - ?sync=true → automatically uses 'sync' view mode
+
     Note: ArchivingViewSetMixin handles include_archived parameter automatically.
     Default queryset should use .all(), not .with_archived().
     """
 
     queryset = Discount.objects.all()
-    serializer_class = DiscountSerializer
+    serializer_class = UnifiedDiscountSerializer
     filterset_class = DiscountFilter
     ordering = ['-start_date']
 
-    def get_serializer_class(self):
-        # Use sync serializer if sync=true parameter is present
-        is_sync_request = self.request.query_params.get("sync") == "true"
+    def _get_default_view_mode(self):
+        """Override to provide backward compatibility for ?sync=true"""
+        # Backward compatibility: ?sync=true → use 'sync' view mode
+        if self.request.query_params.get("sync") == "true":
+            return 'sync'
 
-        if is_sync_request and self.action in ["list", "retrieve"]:
-            return DiscountSyncSerializer
-
-        return DiscountSerializer
+        # Standard behavior from parent
+        return super()._get_default_view_mode()
 
     def perform_create(self, serializer):
         """Set tenant on discount creation"""
@@ -106,7 +114,7 @@ class DiscountViewSet(BaseViewSet):
 
         return base_queryset
 
-class AvailableDiscountListView(ReadOnlyBaseViewSet):
+class AvailableDiscountListView(FieldsetQueryParamsMixin, ReadOnlyBaseViewSet):
     """
     Provides a read-only list of all currently active discounts.
     This view is optimized to prefetch related fields to avoid N+1 queries.
@@ -114,7 +122,7 @@ class AvailableDiscountListView(ReadOnlyBaseViewSet):
     Note: TenantManager automatically filters by current tenant.
     """
     queryset = Discount.objects.all()  # Will be filtered by TenantManager and is_active
-    serializer_class = DiscountSerializer
+    serializer_class = UnifiedDiscountSerializer
 
     def get_queryset(self):
         """Filter for only active, non-archived discounts"""
