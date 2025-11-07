@@ -21,6 +21,7 @@ from orders.serializers import UnifiedOrderSerializer
 from orders.models import Order
 from customers.authentication import CustomerCookieJWTAuthentication
 from core_backend.base import BaseViewSet
+from core_backend.base.mixins import TenantScopedQuerysetMixin, FieldsetQueryParamsMixin
 from core_backend.pagination import StandardPagination
 from .base import (
     BasePaymentView,
@@ -31,11 +32,11 @@ from .base import (
 from .terminal import TerminalPaymentViewSet
 from ..models import Payment, PaymentTransaction
 from ..serializers import (
-    PaymentSerializer,
+    UnifiedPaymentSerializer,
+    UnifiedGiftCardSerializer,
     ProcessPaymentSerializer,
     RefundTransactionSerializer,
     SurchargeCalculationSerializer,
-    GiftCardSerializer,
     GiftCardValidationSerializer,
     GiftCardPaymentSerializer,
 )
@@ -187,15 +188,16 @@ class AuthenticatedOrderAccessMixin(OrderAccessMixin):
         return True
 
 
-class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
+class PaymentViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, TerminalPaymentViewSet, BaseViewSet):
     """
     ViewSet for handling authenticated user payments.
     Provides list, retrieve, and other standard actions with user-specific filtering.
     Includes terminal payment functionality via TerminalPaymentViewSet mixin.
+    Supports fieldset-based query params: ?view=list|detail, ?fields=, ?expand=
     (Now with automated query optimization via BaseViewSet)
     """
 
-    serializer_class = PaymentSerializer
+    serializer_class = UnifiedPaymentSerializer
     permission_classes = [IsAuthenticated]
     queryset = Payment.objects.all()
 
@@ -212,6 +214,17 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
     ]
     ordering_fields = ["created_at", "status", "total_collected", "payment_number"]
     ordering = ["-created_at"]  # Override BaseViewSet default to show newest payments first
+
+    def _get_default_view_mode(self):
+        """
+        Define default view mode based on action.
+        Used by FieldsetQueryParamsMixin for fieldset selection.
+        """
+        if self.action == 'list':
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'  # Default to detail for all other actions
 
     def get_queryset(self):
         """
@@ -276,7 +289,7 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
                 method=request.data.get("method"),
             )
 
-            serializer = PaymentSerializer(payment)
+            serializer = UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Error adding payment to order {pk}: {e}")
@@ -338,7 +351,7 @@ class PaymentViewSet(TerminalPaymentViewSet, BaseViewSet):
                     reason=reason,
                 )
             )
-            response_serializer = PaymentSerializer(updated_transaction.payment)
+            response_serializer = UnifiedPaymentSerializer(updated_transaction.payment, context={'view_mode': 'detail'})
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         except PaymentTransaction.DoesNotExist:
             return self.create_error_response(
@@ -461,7 +474,7 @@ class CompleteUserPaymentView(BasePaymentView, AuthenticatedOrderAccessMixin):
             completed_order = completed_payment.order
 
             # Serialize both payment and order data
-            payment_serializer = PaymentSerializer(completed_payment)
+            payment_serializer = UnifiedPaymentSerializer(completed_payment, context={'view_mode': 'detail'})
             order_serializer = UnifiedOrderSerializer(
                 completed_order, context={"request": request, "view_mode": "detail"}
             )
@@ -504,7 +517,7 @@ class PaymentProcessView(generics.GenericAPIView):
         try:
             # The serializer's `create` method now returns the full Payment object
             payment = serializer.save()
-            response_serializer = PaymentSerializer(payment)
+            response_serializer = UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -540,7 +553,7 @@ class CreatePaymentView(BasePaymentView):
             },
         )
 
-        serializer = PaymentSerializer(payment)
+        serializer = UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
         # Return 201 if created, 200 if it already existed.
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return self.create_success_response(serializer.data, status_code)
@@ -552,7 +565,7 @@ class PaymentDetailView(generics.RetrieveAPIView):
     """
 
     queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
+    serializer_class = UnifiedPaymentSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "order__id"  # Look up payments by the order ID
 
@@ -611,7 +624,7 @@ class GiftCardPaymentView(generics.GenericAPIView):
                 payment = serializer.save()
 
                 # Return the payment details
-                payment_serializer = PaymentSerializer(payment)
+                payment_serializer = UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
                 return Response(payment_serializer.data, status=status.HTTP_201_CREATED)
 
             except ValueError as e:
@@ -633,7 +646,7 @@ class GiftCardListView(generics.ListAPIView):
     Lists all gift cards (admin only).
     """
 
-    serializer_class = GiftCardSerializer
+    serializer_class = UnifiedGiftCardSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = StandardPagination
 
@@ -680,8 +693,7 @@ class DeliveryPaymentView(BasePaymentView):
             payment = PaymentService.create_delivery_payment(order, platform_id)
 
             # Return the payment details
-            from ..serializers import PaymentSerializer
-            payment_serializer = PaymentSerializer(payment)
+            payment_serializer = UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
             return Response(payment_serializer.data, status=status.HTTP_201_CREATED)
 
         except ValueError as e:

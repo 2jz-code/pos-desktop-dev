@@ -31,10 +31,10 @@ from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from core_backend.base.viewsets import BaseViewSet
-from core_backend.base.mixins import FieldsetQueryParamsMixin
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 
 
-class ProductModifierSetViewSet(BaseViewSet):
+class ProductModifierSetViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ProductModifierSet.objects.all()
     serializer_class = ProductModifierSetSerializer
     permission_classes = [IsAdminOrHigher]
@@ -197,7 +197,7 @@ class ProductModifierSetViewSet(BaseViewSet):
             )
 
 
-class ModifierSetViewSet(BaseViewSet):
+class ModifierSetViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ModifierSet.objects.all()
     serializer_class = ModifierSetSerializer
     permission_classes = [IsAdminOrHigher]
@@ -260,7 +260,7 @@ class ModifierSetViewSet(BaseViewSet):
             )
 
 
-class ModifierOptionViewSet(BaseViewSet):
+class ModifierOptionViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ModifierOption.objects.all()
     serializer_class = ModifierOptionSerializer
     permission_classes = [IsAdminOrHigher]
@@ -273,7 +273,7 @@ class ModifierOptionViewSet(BaseViewSet):
 # Create your views here.
 
 
-class ProductViewSet(FieldsetQueryParamsMixin, BaseViewSet):
+class ProductViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     ProductViewSet with standardized query param support.
 
@@ -547,12 +547,17 @@ def barcode_lookup(request, barcode):
         )
 
 
-class CategoryViewSet(BaseViewSet):
+class CategoryViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     A viewset for viewing categories.
     Can be filtered by parent_id to get child categories, or with `?parent=null` to get top-level categories.
     Supports delta sync with modified_since parameter.
     Supports archiving with include_archived parameter.
+
+    Supports query params (via FieldsetQueryParamsMixin):
+    - ?view=list|detail|reference (selects fieldset)
+    - ?fields=id,name,order (ad-hoc field filtering)
+    - ?expand=parent (relationship expansion)
     """
 
     queryset = Category.objects.all()
@@ -595,7 +600,7 @@ class CategoryViewSet(BaseViewSet):
             except (ValueError, TypeError):
                 pass
 
-        # Apply parent filtering
+        # Apply parent filtering (if requesting specific parent's children)
         parent_id = self.request.query_params.get("parent")
         if parent_id is not None:
             if parent_id == "null":
@@ -608,8 +613,9 @@ class CategoryViewSet(BaseViewSet):
                     queryset = queryset.filter(parent_id=parent_id).order_by("order", "name")
                 except ValueError:
                     queryset = queryset.none()
-        elif is_for_website:
-            # Website: Hierarchical ordering - parents first, then children grouped
+        else:
+            # Hierarchical ordering for all non-filtered requests
+            # Parents first (sorted by order), then children grouped under their parent
             queryset = queryset.annotate(
                 hierarchical_order=models.Case(
                     models.When(parent__isnull=True, then=models.F("order")),
@@ -617,9 +623,6 @@ class CategoryViewSet(BaseViewSet):
                     output_field=models.FloatField(),
                 )
             ).order_by("hierarchical_order", "name")
-        else:
-            # Admin/POS: Simple flat ordering
-            queryset = queryset.order_by("order", "name")
 
         return queryset
 
@@ -665,13 +668,21 @@ class CategoryViewSet(BaseViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TaxViewSet(BaseViewSet):
+class TaxViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = Tax.objects.all()
     serializer_class = TaxSerializer
     permission_classes = [IsAdminOrHigher]
 
 
-class ProductTypeViewSet(BaseViewSet):
+class ProductTypeViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
+    """
+    A viewset for viewing and editing product types.
+
+    Supports query params (via FieldsetQueryParamsMixin):
+    - ?view=list|detail|reference (selects fieldset)
+    - ?fields=id,name,description (ad-hoc field filtering)
+    - ?expand=default_taxes (relationship expansion)
+    """
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]

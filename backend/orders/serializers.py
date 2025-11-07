@@ -328,7 +328,9 @@ class OrderCustomerInfoSerializer(BaseModelSerializer):
 # --- Service-driven Serializers ---
 
 
-class OrderCreateSerializer(BaseModelSerializer):
+class OrderCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
+    from settings.models import StoreLocation
+
     guest_first_name = serializers.CharField(
         required=False, allow_blank=True, max_length=150
     )
@@ -338,24 +340,12 @@ class OrderCreateSerializer(BaseModelSerializer):
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Dynamically set store_location field with tenant-filtered queryset
-        from settings.models import StoreLocation
-        request = self.context.get('request')
-
-        # IMPORTANT: Tenant context is required - no fallback to all locations
-        if request and hasattr(request, 'tenant'):
-            queryset = StoreLocation.objects.filter(tenant=request.tenant)
-        else:
-            # If no tenant context, use empty queryset to prevent cross-tenant access
-            queryset = StoreLocation.objects.none()
-
-        self.fields['store_location'] = serializers.PrimaryKeyRelatedField(
-            queryset=queryset,
-            required=True,
-            help_text="Store location where this order is placed (REQUIRED)"
-        )
+    # TenantFilteredSerializerMixin will automatically filter this queryset by tenant
+    store_location = serializers.PrimaryKeyRelatedField(
+        queryset=StoreLocation.objects.all(),  # Mixin auto-filters by tenant
+        required=True,
+        help_text="Store location where this order is placed (REQUIRED)"
+    )
 
     class Meta:
         model = Order

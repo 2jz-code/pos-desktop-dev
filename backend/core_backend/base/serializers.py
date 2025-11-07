@@ -79,11 +79,17 @@ class FieldsetMixin:
         fieldsets = getattr(self.Meta, 'fieldsets', {})
 
         if view_mode and view_mode in fieldsets:
+            fieldset_value = fieldsets[view_mode]
+
+            # If fieldset is '__all__', skip filtering (return all fields)
+            if fieldset_value == '__all__':
+                return
+
             # Get required fields that must always be included
             required_fields = getattr(self.Meta, 'required_fields', {'id'})
 
             # Combine fieldset + required
-            allowed = set(fieldsets[view_mode]) | required_fields
+            allowed = set(fieldset_value) | required_fields
             existing = set(self.fields.keys())
 
             for field_name in existing - allowed:
@@ -210,66 +216,6 @@ class TenantFilteredSerializerMixin:
                 model = field.queryset.model
                 if hasattr(model, 'tenant'):  # Only filter tenant-aware models
                     field.queryset = model.objects.filter(tenant=tenant)
-
-
-# Common lightweight serializers used across multiple apps
-# DEPRECATED: These will be replaced by fieldsets['minimal'] in app-specific serializers
-class BasicProductSerializer(serializers.ModelSerializer):
-    """
-    Lightweight product serializer for dropdowns and references.
-
-    DEPRECATED: Use ProductSerializer with fieldsets['minimal'] instead.
-    This class will be removed once all apps migrate to the fieldset pattern.
-
-    Example migration:
-        # Old:
-        BasicProductSerializer(products, many=True)
-
-        # New:
-        ProductSerializer(products, many=True, context={'view_mode': 'minimal'})
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "BasicProductSerializer is deprecated. Use ProductSerializer with "
-            "fieldsets['minimal'] instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        super().__init__(*args, **kwargs)
-
-    class Meta:
-        model = Product
-        fields = ["id", "name", "barcode", "price"]
-
-
-class BasicCategorySerializer(serializers.ModelSerializer):
-    """
-    Lightweight category serializer for dropdowns and references.
-
-    DEPRECATED: Use CategorySerializer with fieldsets['minimal'] instead.
-    This class will be removed once all apps migrate to the fieldset pattern.
-
-    Example migration:
-        # Old:
-        BasicCategorySerializer(categories, many=True)
-
-        # New:
-        CategorySerializer(categories, many=True, context={'view_mode': 'minimal'})
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "BasicCategorySerializer is deprecated. Use CategorySerializer with "
-            "fieldsets['minimal'] instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        super().__init__(*args, **kwargs)
-
-    class Meta:
-        model = Category
-        fields = ["id", "name", "order"]
 
 
 class TimestampedSerializer(serializers.ModelSerializer):

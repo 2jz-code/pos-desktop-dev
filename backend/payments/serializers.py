@@ -10,13 +10,257 @@ from orders.serializers import (
 )
 from orders.models import OrderItem
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import FieldsetMixin, TenantFilteredSerializerMixin
 
 
-class PaymentTransactionSerializer(BaseModelSerializer):
+# ============================================================================
+# UNIFIED READ SERIALIZERS (Fieldset-based)
+# ============================================================================
+
+class UnifiedPaymentTransactionSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for PaymentTransaction model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal transaction info (id, amount, method, status)
+    - list: Simple + additional details (tip, surcharge, card info, created_at)
+    - detail: All fields except provider_response (debugging field, not for frontend)
+
+    Usage:
+        # List view
+        UnifiedPaymentTransactionSerializer(txn, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedPaymentTransactionSerializer(txn, context={'view_mode': 'detail'})
+    """
+
     class Meta:
         model = PaymentTransaction
-        fields = "__all__"
+        exclude = ['provider_response']  # Exclude large debugging field from API
 
+        fieldsets = {
+            'simple': [
+                'id',
+                'amount',
+                'method',
+                'status',
+            ],
+            'list': [
+                'id',
+                'amount',
+                'method',
+                'status',
+                'tip',
+                'surcharge',
+                'card_brand',
+                'card_last4',
+                'created_at',
+            ],
+            'detail': '__all__',  # All fields except provider_response
+        }
+
+        required_fields = {'id'}
+
+
+class UnifiedGiftCardSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for GiftCard model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal gift card info (id, code, current_balance, status)
+    - list: Simple + additional details (is_valid, original_balance, dates)
+    - detail: All fields (default)
+
+    Usage:
+        # List view
+        UnifiedGiftCardSerializer(card, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedGiftCardSerializer(card, context={'view_mode': 'detail'})
+    """
+
+    is_valid = serializers.ReadOnlyField()
+
+    class Meta:
+        model = GiftCard
+        fields = '__all__'
+        read_only_fields = [
+            'id',
+            'issued_date',
+            'last_used_date',
+            'created_at',
+            'updated_at',
+            'is_valid',
+        ]
+
+        fieldsets = {
+            'simple': [
+                'id',
+                'code',
+                'current_balance',
+                'status',
+            ],
+            'list': [
+                'id',
+                'code',
+                'current_balance',
+                'status',
+                'is_valid',
+                'original_balance',
+                'issued_date',
+                'expiry_date',
+            ],
+            'detail': '__all__',  # All fields
+        }
+
+        required_fields = {'id'}
+
+
+class UnifiedPaymentSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for Payment model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal payment info (id, status, totals, payment_number)
+    - list: Simple + additional details (balance_due, change_due, created_at, order_number)
+    - detail: All fields + nested relationships (default)
+
+    Expandable:
+    - transactions: Expands transaction_ids to full transaction objects
+
+    Usage:
+        # List view
+        UnifiedPaymentSerializer(payment, context={'view_mode': 'list'})
+
+        # Detail view (includes nested order & transactions)
+        UnifiedPaymentSerializer(payment, context={'view_mode': 'detail'})
+
+        # Expand transactions
+        UnifiedPaymentSerializer(
+            payment,
+            context={'view_mode': 'detail', 'expand': {'transactions'}}
+        )
+    """
+
+    # Nested serializers for detail view
+    transactions = UnifiedPaymentTransactionSerializer(many=True, read_only=True)
+    order = serializers.SerializerMethodField()
+
+    # Computed fields
+    balance_due = serializers.SerializerMethodField()
+    change_due = serializers.SerializerMethodField()
+    transaction_count = serializers.SerializerMethodField()
+    primary_method = serializers.SerializerMethodField()
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = '__all__'
+        select_related_fields = ['order', 'order__store_location']
+        prefetch_related_fields = ['transactions', 'order__items', 'order__items__product']
+        read_only_fields = [
+            'id',
+            'balance_due',
+            'change_due',
+            'transaction_count',
+            'primary_method',
+            'created_at',
+            'updated_at',
+            'transactions',
+            'order_number',
+            'payment_number',
+        ]
+
+        fieldsets = {
+            'simple': [
+                'id',
+                'status',
+                'total_amount_due',
+                'amount_paid',
+                'payment_number',
+            ],
+            'list': [
+                'id',
+                'status',
+                'payment_number',
+                'order_number',
+                'store_location',
+                'total_collected',
+                'transaction_count',
+                'primary_method',
+                'created_at',
+            ],
+            'detail': '__all__',  # All fields including nested
+        }
+
+        required_fields = {'id'}
+
+    def get_order(self, obj: Payment):
+        """
+        Returns the order with items including refund information.
+        Only included in detail view mode.
+        """
+        view_mode = self.context.get('view_mode')
+        if view_mode == 'detail':
+            # Use the specialized OrderWithItemsSerializer for payment-specific order view
+            return OrderWithItemsSerializer(obj.order, context=self.context).data
+        return None
+
+    def get_balance_due(self, obj: Payment) -> Decimal:
+        """
+        Calculates the remaining balance for the payment.
+        """
+        balance = obj.total_amount_due - obj.amount_paid
+        return max(Decimal("0.00"), balance)
+
+    def get_change_due(self, obj: Payment) -> Decimal:
+        """
+        Calculates the change due to the customer ONLY if the order is fully paid.
+        """
+        if obj.status == Payment.PaymentStatus.PAID:
+            overpayment = obj.amount_paid - obj.total_amount_due
+            return max(Decimal("0.00"), overpayment)
+        return Decimal("0.00")
+
+    def get_transaction_count(self, obj: Payment) -> int:
+        """
+        Returns the count of transactions associated with this payment.
+        """
+        return obj.transactions.count()
+
+    def get_primary_method(self, obj: Payment) -> str:
+        """
+        Returns the primary payment method for this payment.
+        - If multiple successful transactions: "SPLIT"
+        - If single successful transaction: that method
+        - If no successful transactions: first transaction's method or "N/A"
+        """
+        transactions = obj.transactions.all()
+
+        if not transactions:
+            return "N/A"
+
+        # Find transactions that actually processed payment (successful or refunded)
+        processed_transactions = [
+            t for t in transactions
+            if t.status in [PaymentTransaction.TransactionStatus.SUCCESSFUL, PaymentTransaction.TransactionStatus.REFUNDED]
+        ]
+
+        if not processed_transactions:
+            # No successful payments, show method of first attempted transaction
+            return transactions[0].method.replace("_", " ") if transactions[0].method else "N/A"
+
+        # Check if it's a split payment (multiple processed transactions)
+        if len(processed_transactions) > 1:
+            return "SPLIT"
+
+        # Single payment - return the method of the processed transaction
+        return processed_transactions[0].method.replace("_", " ") if processed_transactions[0].method else "N/A"
+
+
+# ============================================================================
+# SPECIALIZED READ SERIALIZERS (Payment-specific views)
+# ============================================================================
 
 class OrderItemWithRefundSerializer(BaseModelSerializer):
     """
@@ -85,51 +329,9 @@ class OrderWithItemsSerializer(BaseModelSerializer):
         prefetch_related_fields = ["items", "items__product"]
 
 
-class PaymentSerializer(BaseModelSerializer):
-    transactions = PaymentTransactionSerializer(many=True, read_only=True)
-    order = OrderWithItemsSerializer(read_only=True)
-
-    balance_due = serializers.SerializerMethodField()
-    change_due = serializers.SerializerMethodField()
-    order_number = serializers.CharField(source="order.order_number", read_only=True)
-
-    class Meta:
-        model = Payment
-        fields = "__all__"
-        select_related_fields = ["order", "order__store_location"]
-        prefetch_related_fields = ["transactions", "order__items", "order__items__product"]
-        read_only_fields = [
-            "id",
-            "balance_due",
-            "change_due",
-            "created_at",
-            "updated_at",
-            "transactions",
-            "order_number",  # Keep if applicable
-            "payment_number",
-        ]
-
-    def get_balance_due(self, obj: Payment) -> Decimal:
-        """
-        Calculates the remaining balance for the payment.
-        """
-        # The 'obj' is the Payment instance being serialized.
-        balance = obj.total_amount_due - obj.amount_paid
-        # Ensure balance doesn't go below zero for representation purposes.
-        return max(Decimal("0.00"), balance)
-
-    def get_change_due(self, obj: Payment) -> Decimal:
-        """
-        Calculates the change due to the customer ONLY if the order is fully paid.
-        """
-        if obj.status == Payment.PaymentStatus.PAID:
-            # Change is calculated as the amount overpaid.
-            overpayment = obj.amount_paid - obj.total_amount_due
-            return max(Decimal("0.00"), overpayment)
-
-        # If the payment is not fully paid, no change is due.
-        return Decimal("0.00")
-
+# ============================================================================
+# WRITE/ACTION SERIALIZERS (Keep as-is)
+# ============================================================================
 
 class InitiateTerminalPaymentSerializer(serializers.Serializer):
     """
@@ -225,25 +427,6 @@ class SurchargeCalculationSerializer(serializers.Serializer):
         if 'amount' in data and 'amounts' in data:
             raise serializers.ValidationError("Provide either 'amount' or 'amounts', not both.")
         return data
-
-
-class GiftCardSerializer(BaseModelSerializer):
-    """
-    Serializer for GiftCard model - used for display purposes.
-    """
-    is_valid = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = GiftCard
-        fields = "__all__"
-        read_only_fields = [
-            "id",
-            "issued_date",
-            "last_used_date",
-            "created_at",
-            "updated_at",
-            "is_valid",
-        ]
 
 
 class GiftCardValidationSerializer(serializers.Serializer):

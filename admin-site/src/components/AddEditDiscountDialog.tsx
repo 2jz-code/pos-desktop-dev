@@ -169,8 +169,11 @@ export default function AddEditDiscountDialog({
 			value: p.id,
 			label: p.name,
 		})) || [];
+
+	// Handle both paginated and non-paginated category responses
+	const categoryData = categories?.data?.results || categories?.data || [];
 	const categoryOptions =
-		categories?.data?.results?.map((c: { id: number; name: string }) => ({
+		categoryData.map((c: { id: number; name: string }) => ({
 			value: c.id,
 			label: c.name,
 		})) || [];

@@ -20,7 +20,7 @@ from .serializers import (
     OrderCustomerInfoSerializer,
 )
 from .services import OrderService, GuestSessionService
-from core_backend.base.mixins import FieldsetQueryParamsMixin
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from .permissions import (
     IsAuthenticatedOrGuestOrder,
     IsGuestOrAuthenticated,
@@ -79,7 +79,7 @@ class GetPendingOrderView(generics.RetrieveAPIView):
         return order
 
 
-class OrderViewSet(FieldsetQueryParamsMixin, BaseViewSet):
+class OrderViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     A comprehensive ViewSet for handling orders and their items - Admin/Staff only.
     Provides CRUD for orders and cart management functionalities.
@@ -598,7 +598,7 @@ class OrderViewSet(FieldsetQueryParamsMixin, BaseViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class OrderItemViewSet(BaseViewSet):
+class OrderItemViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     """
     A ViewSet for managing a specific item within an order.
     """

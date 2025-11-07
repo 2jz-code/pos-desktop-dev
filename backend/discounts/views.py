@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
-from core_backend.base.mixins import FieldsetQueryParamsMixin
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from orders.models import Order
 from .models import Discount
 from .serializers import (
@@ -54,7 +54,7 @@ class ApplyDiscountView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class DiscountViewSet(FieldsetQueryParamsMixin, BaseViewSet):
+class DiscountViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     A ViewSet for viewing and editing discounts.
     Provides list, create, retrieve, update, and destroy actions.
@@ -114,7 +114,7 @@ class DiscountViewSet(FieldsetQueryParamsMixin, BaseViewSet):
 
         return base_queryset
 
-class AvailableDiscountListView(FieldsetQueryParamsMixin, ReadOnlyBaseViewSet):
+class AvailableDiscountListView(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, ReadOnlyBaseViewSet):
     """
     Provides a read-only list of all currently active discounts.
     This view is optimized to prefetch related fields to avoid N+1 queries.

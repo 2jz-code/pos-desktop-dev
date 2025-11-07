@@ -5,7 +5,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core_backend.base import ReadOnlyBaseViewSet
-from core_backend.base.mixins import FieldsetQueryParamsMixin
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from orders.models import Order
 from orders.serializers import (
     UnifiedOrderSerializer,
@@ -21,6 +21,7 @@ from django.db.models import Count
 
 class CustomerOrderViewSet(
     CustomerJWTAuthenticationMixin,
+    TenantScopedQuerysetMixin,
     FieldsetQueryParamsMixin,  # NEW: fieldset query params support
     ReadOnlyBaseViewSet
 ):

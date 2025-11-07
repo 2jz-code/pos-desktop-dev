@@ -272,48 +272,23 @@ class FinalProductModifierSetSerializer(serializers.Serializer):
 # --- Existing Serializers ---
 
 
-class BasicCategorySerializer(BaseModelSerializer):
-    class Meta:
-        model = Category
-        fields = ["id", "name", "order"]
-
-
-class BasicProductSerializer(BaseModelSerializer):
-    """
-    DEPRECATED: Use ProductSerializer with fieldsets['reference'] instead.
-
-    This class is kept for backward compatibility but will be removed in a future version.
-
-    Migration:
-        # Old:
-        BasicProductSerializer(products, many=True)
-
-        # New:
-        ProductSerializer(products, many=True, context={'view_mode': 'reference'})
-    """
-
-    def __init__(self, *args, **kwargs):
-        import warnings
-        warnings.warn(
-            "BasicProductSerializer is deprecated. Use ProductSerializer with "
-            "fieldsets['reference'] instead (context={'view_mode': 'reference'}).",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        super().__init__(*args, **kwargs)
-
-    class Meta:
-        model = Product
-        fields = ["id", "name", "barcode"]
-
-
 class BasicTaxSerializer(BaseModelSerializer):
     class Meta:
         model = Tax
         fields = ["id", "name", "rate"]
 
 
-class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
+class ProductTypeSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified ProductType serializer using FieldsetMixin for dynamic field control.
+
+    Usage:
+    - List view: context={'view_mode': 'list'}
+    - Detail view: context={'view_mode': 'detail'} or no view_mode
+    - FK references: context={'view_mode': 'reference'}
+    - Expand relationships: context={'expand': {'default_taxes'}}
+    """
+
     default_taxes = BasicTaxSerializer(many=True, read_only=True)
     default_taxes_ids = serializers.PrimaryKeyRelatedField(
         source="default_taxes",
@@ -347,7 +322,40 @@ class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
             "max_quantity_per_item",
             "exclude_from_discounts",
         ]
+
+        # View mode fieldsets
+        fieldsets = {
+            # Minimal reference (for FK references)
+            'reference': [
+                'id', 'name'
+            ],
+
+            # Lightweight list view
+            'list': [
+                'id', 'name', 'description', 'is_active'
+            ],
+
+            # Full detail view (default) - all fields for editing
+            'detail': [
+                'id', 'name', 'description', 'is_active',
+                'inventory_behavior', 'stock_enforcement', 'allow_negative_stock',
+                'tax_inclusive', 'default_taxes', 'default_taxes_ids',
+                'pricing_method', 'default_markup_percent',
+                'standard_prep_minutes',
+                'max_quantity_per_item', 'exclude_from_discounts',
+            ],
+        }
+
+        # Expandable relationships (?expand=default_taxes)
+        expandable = {
+            'default_taxes': (BasicTaxSerializer, {'source': 'default_taxes', 'many': True}),
+        }
+
+        # Optimization hints
         prefetch_related_fields = ["default_taxes"]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
 
     def create(self, validated_data):
         """Create product type with tenant validation"""
@@ -398,16 +406,31 @@ class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
         return instance
 
 
-class CategorySerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
-    # Use SerializerMethodField to avoid deprecated BasicCategorySerializer
-    parent = serializers.SerializerMethodField()
+class CategorySerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified Category serializer using FieldsetMixin for dynamic field control.
+
+    Replaces:
+    - BasicCategorySerializer → fieldsets['reference']
+
+    Usage:
+    - List view: context={'view_mode': 'list'}
+    - Detail view: context={'view_mode': 'detail'} or no view_mode
+    - FK references: context={'view_mode': 'reference'}
+    - Expand relationships: context={'expand': {'parent'}}
+    """
+
+    # parent_id handles both read and write - maps directly to the parent_id column
+    # DRF automatically converts between ID and FK object
     parent_id = serializers.PrimaryKeyRelatedField(
-        source="parent",
         queryset=Category.objects.all(),  # Mixin auto-filters by tenant
+        source="parent",  # Maps to the parent ForeignKey
         allow_null=True,
         required=False,
-        write_only=True,
     )
+
+    # Nested parent object (for detail view with full parent data)
+    parent = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
@@ -421,8 +444,39 @@ class CategorySerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
             "is_public",
             "is_active",
         ]
+
+        # View mode fieldsets
+        fieldsets = {
+            # Minimal reference (replaces BasicCategorySerializer)
+            # IMPORTANT: Includes parent_id for hierarchical ordering
+            'reference': [
+                'id', 'name', 'order', 'parent_id'
+            ],
+
+            # Lightweight list view
+            # Includes both parent_id (for logic) and parent (for display)
+            'list': [
+                'id', 'name', 'order', 'parent_id', 'parent', 'is_active', 'is_public'
+            ],
+
+            # Full detail view (default)
+            'detail': [
+                'id', 'name', 'description', 'parent', 'parent_id',
+                'order', 'is_public', 'is_active'
+            ],
+        }
+
+        # Expandable relationships (?expand=parent)
+        expandable = {
+            'parent': (None, {'source': 'parent', 'many': False}),  # Uses SerializerMethodField
+        }
+
+        # Optimization hints
         select_related_fields = ["parent"]
         prefetch_related_fields = ["children"]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
 
     def get_parent(self, obj):
         """Return minimal parent info (id, name, order) without using deprecated serializer"""
@@ -825,7 +879,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
         return None
 
 
-class ProductCreateSerializer(BaseModelSerializer):
+class ProductCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     category_id = serializers.IntegerField(write_only=True, required=False)
     tax_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False

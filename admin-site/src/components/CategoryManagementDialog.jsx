@@ -118,7 +118,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				? {
 						name: category.name,
 						description: category.description || "",
-						parent: category.parent ? category.parent.id.toString() : "none",
+						parent: category.parent_id ? category.parent_id.toString() : "none",
 						order: category.order || 0,
 						is_public:
 							category.is_public !== undefined ? category.is_public : true,
@@ -208,7 +208,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 	const renderCategoryOptions = (parentId = null, level = 0) => {
 		return categories
-			.filter((c) => (c.parent?.id || null) === parentId)
+			.filter((c) => (c.parent_id || null) === parentId)
 			.filter((c) => !editingCategory || c.id !== editingCategory.id) // Don't allow setting self as parent
 			.flatMap((c) => [
 				<SelectItem
@@ -229,7 +229,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 	const flattenedCategories = (parentId = null, level = 0) => {
 		return categories
-			.filter((c) => (c.parent?.id || null) === parentId)
+			.filter((c) => (c.parent_id || null) === parentId)
 			.flatMap((c) => [
 				{ ...c, level },
 				...flattenedCategories(c.id, level + 1),
@@ -239,7 +239,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	// Build hierarchical list for drag-and-drop
 	const buildHierarchicalList = () => {
 		const parentCategories = categories
-			.filter((cat) => !cat.parent)
+			.filter((cat) => !cat.parent_id)
 			.sort((a, b) => (a.order || 0) - (b.order || 0));
 		const hierarchicalList = [];
 
@@ -248,7 +248,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 			// Add children of this parent
 			const children = categories
-				.filter((cat) => cat.parent?.id === parent.id)
+				.filter((cat) => cat.parent_id === parent.id)
 				.sort((a, b) => (a.order || 0) - (b.order || 0));
 
 			children.forEach((child) => {
@@ -297,7 +297,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		// For children, ensure they stay within the same parent group
 		if (
 			!isSourceParent &&
-			sourceItem.parent?.id !== destinationItem.parent?.id
+			sourceItem.parent_id !== destinationItem.parent_id
 		) {
 			toast({
 				title: "Invalid Move",
@@ -312,8 +312,8 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		let updatedCategories;
 		if (isSourceParent) {
 			// Reordering parent categories
-			const parentCategories = categories.filter((cat) => !cat.parent);
-			const childCategories = categories.filter((cat) => cat.parent);
+			const parentCategories = categories.filter((cat) => !cat.parent_id);
+			const childCategories = categories.filter((cat) => cat.parent_id);
 
 			// Find original parent indices
 			const parentSourceIndex = parentCategories.findIndex(
@@ -336,12 +336,12 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 			updatedCategories = [...updatedParents, ...childCategories];
 		} else {
 			// Reordering child categories within the same parent
-			const parentId = sourceItem.parent.id;
+			const parentId = sourceItem.parent_id;
 			const siblingCategories = categories.filter(
-				(cat) => cat.parent?.id === parentId
+				(cat) => cat.parent_id === parentId
 			);
 			const otherCategories = categories.filter(
-				(cat) => cat.parent?.id !== parentId
+				(cat) => cat.parent_id !== parentId
 			);
 
 			const siblingSourceIndex = siblingCategories.findIndex(
@@ -374,9 +374,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		// Save the new order to backend - use sequential updates to avoid race conditions
 		try {
 			const categoriesToUpdate = isSourceParent
-				? updatedCategories.filter((cat) => !cat.parent)
+				? updatedCategories.filter((cat) => !cat.parent_id)
 				: updatedCategories.filter(
-						(cat) => cat.parent?.id === sourceItem.parent.id
+						(cat) => cat.parent_id === sourceItem.parent_id
 				  );
 
 			// Use bulk update API for better performance
@@ -384,7 +384,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				id: category.id,
 				name: category.name,
 				description: category.description || "",
-				parent_id: category.parent?.id || null,
+				parent_id: category.parent_id || null,
 				order: category.order,
 				is_public: category.is_public !== undefined ? category.is_public : true
 			}));
@@ -599,7 +599,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 										{/* Parent */}
 										<div className="w-[100px]">
-											{category.parent?.name ? (
+											{category.parent ? (
 												<Badge
 													variant="outline"
 													className="text-xs"
