@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Order, OrderItem, OrderDiscount, OrderItemModifier
-from users.serializers import UserSerializer
+from users.serializers import UnifiedUserSerializer
 from discounts.models import Discount
 from products.serializers import ProductSerializer
 from .services import OrderService
@@ -35,7 +35,9 @@ class OrderItemSerializer(BaseModelSerializer):
         model = OrderItem
         fields = "__all__"
         select_related_fields = ["product", "order"]
-        prefetch_related_fields = ["selected_modifiers_snapshot"]  # Fix: prefetch for modifier calculations
+        prefetch_related_fields = [
+            "selected_modifiers_snapshot"
+        ]  # Fix: prefetch for modifier calculations
 
     def get_product(self, obj):
         """
@@ -45,7 +47,7 @@ class OrderItemSerializer(BaseModelSerializer):
         if obj.product:
             # Use unified ProductSerializer with order_item view mode
             context = self.context.copy() if self.context else {}
-            context['view_mode'] = 'order_item'
+            context["view_mode"] = "order_item"
             return ProductSerializer(obj.product, context=context).data
         return None
 
@@ -89,9 +91,7 @@ class OrderDiscountSerializer(BaseModelSerializer):
 
 
 class UnifiedOrderSerializer(
-    FieldsetMixin,
-    TenantFilteredSerializerMixin,
-    BaseModelSerializer
+    FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer
 ):
     """
     Unified serializer for Order that consolidates SimpleOrderSerializer,
@@ -121,8 +121,8 @@ class UnifiedOrderSerializer(
 
     # Nested serializers for detail mode
     items = OrderItemSerializer(many=True, read_only=True)
-    cashier = UserSerializer(read_only=True)
-    customer = UserSerializer(read_only=True)
+    cashier = UnifiedUserSerializer(read_only=True)
+    customer = UnifiedUserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
 
     # SerializerMethodFields (lazy imports for circular dependency)
@@ -145,7 +145,9 @@ class UnifiedOrderSerializer(
     customer_email = serializers.ReadOnlyField()
     customer_phone = serializers.ReadOnlyField()
     customer_display_name = serializers.ReadOnlyField()
-    payment_in_progress = serializers.ReadOnlyField(source="payment_in_progress_derived")
+    payment_in_progress = serializers.ReadOnlyField(
+        source="payment_in_progress_derived"
+    )
 
     class Meta:
         model = Order
@@ -166,62 +168,108 @@ class UnifiedOrderSerializer(
         # Define view modes
         fieldsets = {
             # Minimal reference (breaks circular import with payments)
-            'simple': [
-                'id', 'order_number', 'status', 'order_type',
-                'payment_status', 'store_location', 'grand_total',
-                'created_at', 'updated_at'
+            "simple": [
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "store_location",
+                "grand_total",
+                "created_at",
+                "updated_at",
             ],
-
             # Lightweight list view (POS/admin)
-            'list': [
-                'id', 'order_number', 'status', 'order_type',
-                'payment_status', 'store_location',
-                'total_with_tip', 'total_collected', 'item_count',
-                'cashier_name', 'customer_display_name',
-                'created_at', 'updated_at', 'payment_in_progress'
+            "list": [
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "store_location",
+                "total_with_tip",
+                "total_collected",
+                "item_count",
+                "cashier_name",
+                "customer_display_name",
+                "created_at",
+                "updated_at",
+                "payment_in_progress",
             ],
-
             # Full detail (default) - includes all fields
-            'detail': [
+            "detail": [
                 # Core fields
-                'id', 'order_number', 'status', 'order_type', 'payment_status',
-                'dining_preference', 'store_location',
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "dining_preference",
+                "store_location",
                 # Financial fields
-                'subtotal', 'tax_total', 'total_discounts_amount', 'surcharges_total', 'grand_total',
-                'total_with_tip', 'amount_paid', 'total_tips', 'total_surcharges', 'total_collected',
+                "subtotal",
+                "tax_total",
+                "total_discounts_amount",
+                "surcharges_total",
+                "grand_total",
+                "total_with_tip",
+                "amount_paid",
+                "total_tips",
+                "total_surcharges",
+                "total_collected",
                 # Relationships (nested)
-                'customer', 'cashier', 'items', 'applied_discounts',
-                'payment_details', 'store_location_details',
+                "customer",
+                "cashier",
+                "items",
+                "applied_discounts",
+                "payment_details",
+                "store_location_details",
                 # Customer info
-                'is_guest_order', 'customer_display_name', 'customer_email', 'customer_phone',
-                'guest_first_name', 'guest_last_name', 'guest_email', 'guest_phone',
-                'guest_session_key',
+                "is_guest_order",
+                "customer_display_name",
+                "customer_email",
+                "customer_phone",
+                "guest_first_name",
+                "guest_last_name",
+                "guest_email",
+                "guest_phone",
+                "guest_session_key",
                 # Metadata
-                'created_at', 'updated_at', 'legacy_id'
+                "created_at",
+                "updated_at",
+                "legacy_id",
             ],
         }
 
         # Define expandable relationships
         expandable = {
-            'customer': (UserSerializer, {'source': 'customer', 'many': False}),
-            'cashier': (UserSerializer, {'source': 'cashier', 'many': False}),
-            'items': (OrderItemSerializer, {'source': 'items', 'many': True}),
-            'applied_discounts': (OrderDiscountSerializer, {'source': 'applied_discounts', 'many': True}),
+            "customer": (UnifiedUserSerializer, {"source": "customer", "many": False}),
+            "cashier": (UnifiedUserSerializer, {"source": "cashier", "many": False}),
+            "items": (OrderItemSerializer, {"source": "items", "many": True}),
+            "applied_discounts": (
+                OrderDiscountSerializer,
+                {"source": "applied_discounts", "many": True},
+            ),
             # payment_details and store_location_details use lazy imports via SerializerMethodFields
         }
 
         # Optimization fields
-        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
+        select_related_fields = [
+            "customer",
+            "cashier",
+            "payment_details",
+            "store_location",
+        ]
         prefetch_related_fields = [
-            'items__product__category',
-            'items__product__product_type',
-            'items__selected_modifiers_snapshot',
-            'applied_discounts__discount',
-            'payment_details__transactions'
+            "items__product__category",
+            "items__product__product_type",
+            "items__selected_modifiers_snapshot",
+            "applied_discounts__discount",
+            "payment_details__transactions",
         ]
 
         # Fields that must always be included
-        required_fields = {'id', 'order_number'}
+        required_fields = {"id", "order_number"}
 
     def to_internal_value(self, data):
         """
@@ -237,7 +285,7 @@ class UnifiedOrderSerializer(
         if self.partial and self.instance:
             condition_fields = set()
             for validator in self.get_validators():
-                if hasattr(validator, 'condition_fields'):
+                if hasattr(validator, "condition_fields"):
                     condition_fields.update(validator.condition_fields)
 
             for field in condition_fields:
@@ -252,10 +300,10 @@ class UnifiedOrderSerializer(
         """
         Lazily import PaymentSerializer to avoid circular dependency.
         """
-        from payments.serializers import PaymentSerializer
+        from payments.serializers import UnifiedPaymentSerializer
 
         if hasattr(obj, "payment_details") and obj.payment_details:
-            return PaymentSerializer(obj.payment_details).data
+            return UnifiedPaymentSerializer(obj.payment_details).data
         return None
 
     def get_store_location_details(self, obj):
@@ -344,7 +392,7 @@ class OrderCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     store_location = serializers.PrimaryKeyRelatedField(
         queryset=StoreLocation.objects.all(),  # Mixin auto-filters by tenant
         required=True,
-        help_text="Store location where this order is placed (REQUIRED)"
+        help_text="Store location where this order is placed (REQUIRED)",
     )
 
     class Meta:
@@ -420,10 +468,11 @@ class UpdateOrderItemSerializer(BaseModelSerializer):
         """
         Update the order item quantity using the service layer for consistent stock validation.
         """
-        new_quantity = validated_data.get('quantity', instance.quantity)
+        new_quantity = validated_data.get("quantity", instance.quantity)
 
         try:
             from .services import OrderService
+
             OrderService.update_item_quantity(instance, new_quantity)
             return instance
         except ValueError as e:

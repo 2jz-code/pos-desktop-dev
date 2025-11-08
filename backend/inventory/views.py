@@ -9,32 +9,43 @@ from rest_framework.decorators import api_view, permission_classes
 from users.permissions import IsAdminOrHigher
 from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from .serializers import (
-    LocationSerializer,
-    FullInventoryStockSerializer,
-    OptimizedInventoryStockSerializer,
-    RecipeSerializer,
+    # Unified serializers
+    UnifiedLocationSerializer,
+    UnifiedInventoryStockSerializer,
+    UnifiedRecipeSerializer,
+    UnifiedStockHistoryEntrySerializer,
+    # Action serializers
     StockAdjustmentSerializer,
     StockTransferSerializer,
     BulkStockAdjustmentSerializer,
     BulkStockTransferSerializer,
-    StockHistoryEntrySerializer,
 )
 from .services import InventoryService
 from products.models import Product
 from settings.config import app_settings
 from core_backend.base.viewsets import BaseViewSet, ReadOnlyBaseViewSet
 from core_backend.base import SerializerOptimizedMixin
+from core_backend.base.mixins import TenantScopedQuerysetMixin, FieldsetQueryParamsMixin
+from core_backend.pagination import StandardPagination
 
 # Create your views here.
 
 # --- Model-based Views ---
 
 
-class LocationViewSet(BaseViewSet):
+class LocationViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     queryset = Location.objects.all()
-    serializer_class = LocationSerializer
+    serializer_class = UnifiedLocationSerializer
     permission_classes = [IsAdminOrHigher]
     filterset_fields = ["store_location"]
+
+    def _get_default_view_mode(self):
+        """Return appropriate view mode based on action"""
+        if self.action == 'list':
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'
 
     def get_queryset(self):
         # Call super() to leverage tenant context from BaseViewSet
@@ -62,25 +73,42 @@ class LocationViewSet(BaseViewSet):
         serializer.save(tenant=tenant, store_location=store_location)
 
 
-class RecipeViewSet(BaseViewSet):
+class RecipeViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     queryset = Recipe.objects.all()
-    serializer_class = RecipeSerializer
+    serializer_class = UnifiedRecipeSerializer
     permission_classes = [IsAdminOrHigher]
+
+    def _get_default_view_mode(self):
+        """Return appropriate view mode based on action"""
+        if self.action == 'list':
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'
 
     def get_queryset(self):
         # Call super() to leverage tenant context from BaseViewSet
         return super().get_queryset()
 
     def perform_create(self, serializer):
-        # Note: RecipeSerializer.create() already handles tenant assignment
+        # Note: UnifiedRecipeSerializer.create() already handles tenant assignment
         # No need to pass it here as it would be redundant
         serializer.save()
 
 
-class InventoryStockViewSet(BaseViewSet):
+class InventoryStockViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     queryset = InventoryStock.objects.all()
+    serializer_class = UnifiedInventoryStockSerializer
     permission_classes = [IsAdminOrHigher]
     filterset_fields = ["store_location", "location", "product"]
+
+    def _get_default_view_mode(self):
+        """Return appropriate view mode based on action"""
+        if self.action == 'list':
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'
 
     def get_queryset(self):
         # Call super() to leverage tenant context from BaseViewSet
@@ -100,19 +128,20 @@ class InventoryStockViewSet(BaseViewSet):
 
         serializer.save(tenant=tenant, store_location=store_location)
 
-    def get_serializer_class(self):
-        """Use optimized serializer for list view to reduce N+1 queries"""
-        if self.action == "list":
-            return OptimizedInventoryStockSerializer
-        return FullInventoryStockSerializer
-
 
 class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
-    serializer_class = OptimizedInventoryStockSerializer
+    serializer_class = UnifiedInventoryStockSerializer
     permission_classes = [IsAdminOrHigher]
+    pagination_class = StandardPagination
 
     # Base queryset that the mixin will optimize
     queryset = InventoryStock.objects.filter(archived_at__isnull=True)
+
+    def get_serializer_context(self):
+        """Add view_mode to serializer context"""
+        context = super().get_serializer_context()
+        context['view_mode'] = 'list'  # Always use list view for this endpoint
+        return context
 
     def get_queryset(self):
         """
@@ -143,8 +172,14 @@ class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
 
 
 class ProductStockListView(SerializerOptimizedMixin, generics.ListAPIView):
-    serializer_class = FullInventoryStockSerializer
+    serializer_class = UnifiedInventoryStockSerializer
     permission_classes = [IsAdminOrHigher]
+
+    def get_serializer_context(self):
+        """Add view_mode to serializer context"""
+        context = super().get_serializer_context()
+        context['view_mode'] = 'detail'  # Use detail view for product-specific stock
+        return context
 
     def get_queryset(self):
         product_id = self.kwargs.get("product_id")
@@ -211,7 +246,7 @@ class AdjustStockView(APIView):
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
         mutable_data['user_id'] = request.user.id
-        serializer = StockAdjustmentSerializer(data=mutable_data)
+        serializer = StockAdjustmentSerializer(data=mutable_data, context={'request': request})
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -237,7 +272,7 @@ class TransferStockView(APIView):
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
         mutable_data['user_id'] = request.user.id
-        serializer = StockTransferSerializer(data=mutable_data)
+        serializer = StockTransferSerializer(data=mutable_data, context={'request': request})
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -259,7 +294,7 @@ class BulkAdjustStockView(APIView):
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
         mutable_data['user_id'] = request.user.id
-        serializer = BulkStockAdjustmentSerializer(data=mutable_data)
+        serializer = BulkStockAdjustmentSerializer(data=mutable_data, context={'request': request})
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -281,7 +316,7 @@ class BulkTransferStockView(APIView):
     def post(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
         mutable_data['user_id'] = request.user.id
-        serializer = BulkStockTransferSerializer(data=mutable_data)
+        serializer = BulkStockTransferSerializer(data=mutable_data, context={'request': request})
         if serializer.is_valid():
             try:
                 serializer.save()
@@ -431,7 +466,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     Uses SerializerOptimizedMixin for automatic query optimization.
     """
     queryset = StockHistoryEntry.objects.all()
-    serializer_class = StockHistoryEntrySerializer
+    serializer_class = UnifiedStockHistoryEntrySerializer
     permission_classes = [IsAdminOrHigher]
 
     # Enable search and filtering via filter backends
@@ -442,12 +477,27 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     search_fields = ['product__name', 'product__barcode', 'reason', 'notes', 'reference_id']
     ordering = ['-timestamp']
 
+    def get_serializer_context(self):
+        """Add view_mode to serializer context"""
+        context = super().get_serializer_context()
+        context['view_mode'] = 'list'  # Use list view for history list
+        return context
+
     def get_queryset(self):
         """
         Re-evaluate queryset at request time to ensure tenant context is applied.
+
+        IMPORTANT: Explicitly filter by tenant for security and consistency with playbook.
         """
-        # Re-evaluate queryset at request time to pick up tenant context
-        self.queryset = StockHistoryEntry.objects.all()
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            # Fail loud if no tenant context
+            return StockHistoryEntry.objects.none()
+
+        # Re-evaluate queryset at request time with explicit tenant filter
+        self.queryset = StockHistoryEntry.objects.filter(tenant=tenant)
 
         # Get the optimized queryset from SerializerOptimizedMixin
         queryset = super().get_queryset()
@@ -508,27 +558,44 @@ def get_related_stock_operations(request, reference_id):
     """
     Get all stock operations that share the same reference_id.
     Useful for viewing grouped operations like bulk transfers or corrections.
+
+    IMPORTANT: Explicitly filter by tenant for security and consistency with playbook.
     """
+    from tenant.managers import get_current_tenant
+
     if not reference_id or not reference_id.strip():
         return Response(
-            {"error": "Reference ID is required"}, 
+            {"error": "Reference ID is required"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    # Get all operations with the same reference_id
-    related_operations = StockHistoryEntry.objects.select_related(
+
+    tenant = get_current_tenant()
+    if not tenant:
+        return Response(
+            {"error": "Tenant context is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Get all operations with the same reference_id (explicitly filtered by tenant)
+    related_operations = StockHistoryEntry.objects.filter(
+        tenant=tenant
+    ).select_related(
         'product__category', 'product__product_type', 'location', 'user'
     ).filter(
         reference_id__iexact=reference_id.strip()
     ).order_by('-timestamp')
-    
+
     if not related_operations.exists():
         return Response(
-            {"error": "No operations found with this reference ID"}, 
+            {"error": "No operations found with this reference ID"},
             status=status.HTTP_404_NOT_FOUND
         )
-    
-    serializer = StockHistoryEntrySerializer(related_operations, many=True)
+
+    serializer = UnifiedStockHistoryEntrySerializer(
+        related_operations,
+        many=True,
+        context={'view_mode': 'detail'}  # Use detail view for related operations
+    )
     return Response({
         "reference_id": reference_id,
         "count": related_operations.count(),

@@ -151,11 +151,11 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 					name: product.name || "",
 					description: product.description || "",
 					price: product.price ? product.price.toString() : "",
-					category_id: product.category?.id
-						? product.category.id.toString()
+					category_id: product.category_id
+						? product.category_id.toString()
 						: "",
-					product_type_id: product.product_type?.id
-						? product.product_type.id.toString()
+					product_type_id: product.product_type_id
+						? product.product_type_id.toString()
 						: "",
 					track_inventory: product.track_inventory || false,
 					initial_quantity: "", // Not editable after creation

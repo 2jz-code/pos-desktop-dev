@@ -23,10 +23,18 @@ class InventoryService {
 	/**
 	 * Get all inventory stock levels
 	 * @param {Object} filters - Filter options {store_location, location, search, is_low_stock, is_expiring_soon}
+	 * @param {string|null} url - Optional pagination URL (contains all filter params)
 	 * @returns {Promise} API response with all stock records
 	 */
-	async getAllStock(filters = {}) {
+	async getAllStock(filters = {}, url = null) {
 		try {
+			// If URL is provided, use it directly (for pagination)
+			if (url) {
+				const response = await apiClient.get(url);
+				return response.data;
+			}
+
+			// Otherwise, build the request with filters
 			const params = new URLSearchParams();
 			if (filters.store_location) {
 				params.append("store_location", filters.store_location);
@@ -42,6 +50,12 @@ class InventoryService {
 			}
 			if (filters.is_expiring_soon) {
 				params.append("is_expiring_soon", filters.is_expiring_soon);
+			}
+			if (filters.page) {
+				params.append("page", filters.page);
+			}
+			if (filters.page_size) {
+				params.append("page_size", filters.page_size);
 			}
 
 			const response = await apiClient.get("/inventory/stock/", { params });
@@ -79,6 +93,9 @@ class InventoryService {
 			const params = new URLSearchParams();
 			if (filters.store_location) {
 				params.append("store_location", filters.store_location);
+			}
+			if (filters.page_size) {
+				params.append("page_size", filters.page_size);
 			}
 			const response = await apiClient.get("/inventory/locations/", { params });
 			return response.data;

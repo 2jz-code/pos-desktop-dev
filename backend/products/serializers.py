@@ -660,6 +660,13 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
     # ID fields (default representation)
     category_id = serializers.IntegerField(source="category.id", read_only=True, allow_null=True)
     product_type_id = serializers.IntegerField(source="product_type.id", read_only=True, allow_null=True)
+    tax_ids = serializers.PrimaryKeyRelatedField(
+        source="taxes",
+        many=True,
+        queryset=Tax.objects.all(),  # TenantFilteredSerializerMixin will filter by tenant
+        required=False,
+        help_text="Tax IDs to assign to this product"
+    )
 
     # Computed fields
     image_url = serializers.SerializerMethodField()
@@ -699,6 +706,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
             # Relationship IDs (default)
             "category_id",
             "product_type_id",
+            "tax_ids",
 
             # Relationship nested (via SerializerMethodField for custom formatting)
             "category",
@@ -739,7 +747,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
             # Sync to Electron (replaces ProductSyncSerializer)
             'sync': [
                 'id', 'name', 'description', 'price', 'barcode',
-                'category_id', 'product_type_id',
+                'category_id', 'product_type_id', 'tax_ids',
                 'is_active', 'is_public', 'track_inventory',
                 'created_at', 'updated_at'
             ],
@@ -799,22 +807,40 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
         return ProductImageService.get_image_url(obj, self.context.get("request"))
 
     def get_has_modifiers(self, obj):
-        """Check if product has any modifier sets"""
-        return hasattr(obj, 'product_modifier_sets') and obj.product_modifier_sets.exists()
+        """
+        Check if product has any modifier sets.
+        Uses prefetched cache to avoid N+1 queries.
+        """
+        if not hasattr(obj, 'product_modifier_sets'):
+            return False
+        # Cache the prefetched relation to avoid .exists() query
+        modifier_sets = list(obj.product_modifier_sets.all())
+        return len(modifier_sets) > 0
 
     def get_modifier_summary(self, obj):
-        """Return count of modifier groups"""
-        if hasattr(obj, 'product_modifier_sets'):
-            return obj.product_modifier_sets.count()
-        return 0
+        """
+        Return count of modifier groups.
+        Uses prefetched cache to avoid N+1 queries.
+        """
+        if not hasattr(obj, 'product_modifier_sets'):
+            return 0
+        # Cache the prefetched relation to avoid .count() query
+        modifier_sets = list(obj.product_modifier_sets.all())
+        return len(modifier_sets)
 
     def get_modifier_groups(self, obj):
         """
         Get modifier groups using service layer.
         Returns full nested structure with options and triggers.
+        Uses prefetched cache to avoid N+1 queries.
         """
         # Quick check - if no modifier sets, return empty array immediately
-        if not hasattr(obj, 'product_modifier_sets') or not obj.product_modifier_sets.exists():
+        # Use prefetched cache instead of .exists()
+        if not hasattr(obj, 'product_modifier_sets'):
+            return []
+
+        modifier_sets = list(obj.product_modifier_sets.all())
+        if not modifier_sets:
             return []
 
         try:

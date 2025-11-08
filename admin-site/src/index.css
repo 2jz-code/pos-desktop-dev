@@ -4,3 +4,21 @@
 
 /* Import shared design tokens from workspace */
 @import "@ajeen/ui/styles";
+
+/* Adjust base font size for more compact, modern feel (similar to Stripe, Linear) */
+:root {
+	font-size: 14px;
+}
+
+/* Ensure proper scaling for different screen sizes */
+@media (min-width: 1920px) {
+	:root {
+		font-size: 14px; /* Slightly larger on very large screens */
+	}
+}
+
+@media (max-width: 768px) {
+	:root {
+		font-size: 16px; /* Larger on mobile for better readability */
+	}
+}

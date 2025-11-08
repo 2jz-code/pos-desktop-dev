@@ -1,5 +1,9 @@
 from rest_framework import serializers
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import (
+    TenantFilteredSerializerMixin,
+    FieldsetMixin,
+)
 from .models import User
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
@@ -7,27 +11,118 @@ from rest_framework_simplejwt.serializers import (
 )
 
 
-class UserSerializer(BaseModelSerializer):
+class UnifiedUserSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for User model with fieldset support.
+
+    Supports multiple view modes via ?view= param:
+    - list: Lightweight for list endpoints (default for list action)
+    - detail: Full representation (default for retrieve action)
+    - reference: Minimal for nested serializers/FK references
+
+    Usage:
+        GET /api/users/              → list mode (lightweight)
+        GET /api/users/?view=detail  → detail mode
+        GET /api/users/1/            → detail mode (default for retrieve)
+        GET /api/users/?fields=id,email → only specified fields
+
+    Replaces: UserSerializer
+    """
+
     class Meta:
         model = User
-        fields = (
+        fields = [
+            # Core identification
             "id",
             "email",
             "username",
+
+            # Personal info
             "first_name",
             "last_name",
             "phone_number",
+
+            # Role & permissions
             "role",
             "is_pos_staff",
             "is_active",
-        )
-        read_only_fields = ("id",)
-        # User model typically has no FK relationships to optimize
-        select_related_fields = []
+            "is_staff",
+
+            # Timestamps
+            "date_joined",
+            "updated_at",
+
+            # Tenant (read-only, auto-set)
+            "tenant",
+        ]
+
+        # Fieldsets for different view modes
+        fieldsets = {
+            # Minimal for FK references/dropdowns
+            'reference': [
+                'id',
+                'first_name',
+                'last_name',
+                'email',
+            ],
+
+            # Lightweight list view
+            'list': [
+                'id',
+                'email',
+                'username',
+                'first_name',
+                'last_name',
+                'role',
+                'is_pos_staff',
+                'is_active',
+            ],
+
+            # Full detail view
+            'detail': [
+                'id',
+                'email',
+                'username',
+                'first_name',
+                'last_name',
+                'phone_number',
+                'role',
+                'is_pos_staff',
+                'is_active',
+                'is_staff',
+                'date_joined',
+                'updated_at',
+                'tenant',
+            ],
+        }
+
+        # No expandable relationships for User (no nested objects needed)
+        expandable = {}
+
+        # Optimization hints
+        select_related_fields = ["tenant"]  # Fetch tenant data if needed
         prefetch_related_fields = []
 
+        # Required fields (always included)
+        required_fields = {'id'}
 
-class UserRegistrationSerializer(BaseModelSerializer):
+        # Read-only fields
+        read_only_fields = ("id", "tenant", "date_joined", "updated_at")
+
+
+class UserCreateSerializer(BaseModelSerializer):
+    """
+    SEPARATE WRITE SERIALIZER - DO NOT DELETE
+
+    Kept separate from UnifiedUserSerializer because:
+    - Handles password hashing via User.objects.create_user()
+    - Different field requirements (password is write-only)
+    - Password field not exposed in read operations
+
+    For read operations, use UnifiedUserSerializer instead.
+
+    Renamed from: UserRegistrationSerializer
+    """
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
     class Meta:
@@ -102,8 +197,11 @@ class TenantSelectionSerializer(serializers.Serializer):
 class WebLoginSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-        # Add user data to the response
-        data["user"] = UserSerializer(self.user).data
+        # Add user data to the response using UnifiedUserSerializer with detail view
+        data["user"] = UnifiedUserSerializer(
+            self.user,
+            context={'view_mode': 'detail'}
+        ).data
         return data
 
 

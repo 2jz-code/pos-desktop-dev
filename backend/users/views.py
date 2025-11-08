@@ -3,6 +3,7 @@ from django.shortcuts import render
 # Removed: from django.utils.dateparse import parse_datetime (moved to service)
 from rest_framework import generics, permissions, status, viewsets
 from core_backend.base.viewsets import BaseViewSet
+from core_backend.base.mixins import TenantScopedQuerysetMixin, FieldsetQueryParamsMixin
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
@@ -21,8 +22,8 @@ from .models import User
 from .services import UserService
 from core_backend.auth.cookies import AuthCookieService
 from .serializers import (
-    UserSerializer,
-    UserRegistrationSerializer,
+    UnifiedUserSerializer,  # NEW: Unified read serializer with fieldset support
+    UserCreateSerializer,   # Renamed from UserRegistrationSerializer
     SetPinSerializer,
     POSLoginSerializer,
     AdminLoginSerializer,
@@ -42,17 +43,35 @@ from .permissions import (
 # Create your views here.
 
 
-class UserViewSet(BaseViewSet):
+class UserViewSet(
+    TenantScopedQuerysetMixin,       # NEW: Automatic tenant filtering
+    FieldsetQueryParamsMixin,        # NEW: Parse ?view, ?fields, ?expand
+    BaseViewSet                      # Includes archive/unarchive + OptimizedQuerysetMixin
+):
     """
-    ViewSet for managing users with archive/unarchive functionality.
-    Inherits from BaseViewSet which provides:
-    - Archive/unarchive actions
-    - ?include_archived query parameter support
-    - Automatic soft delete instead of hard delete
+    ViewSet for managing users with dynamic fieldsets and tenant scoping.
+
+    Inherits from:
+    - TenantScopedQuerysetMixin: Automatic tenant filtering
+    - QueryParamsMixin: Support for ?view=, ?fields=, ?expand=
+    - BaseViewSet: Archive/unarchive actions + soft delete
+
+    Query Parameters:
+    - ?view=list|detail|reference: Select fieldset (defaults: list for list action, detail for retrieve)
+    - ?fields=id,email,name: Filter to specific fields
+    - ?role=ADMIN: Filter by role
+    - ?is_pos_staff=true: Filter POS staff
+    - ?include_archived=true: Include archived users
+
+    Examples:
+        GET /api/users/              → list view (lightweight)
+        GET /api/users/?view=detail  → detail view
+        GET /api/users/1/            → detail view (default for retrieve)
+        GET /api/users/?fields=id,email → only id and email
     """
 
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = UnifiedUserSerializer  # NEW: Single unified serializer
     permission_classes = [permissions.IsAuthenticated, CanEditUserDetails]
 
     # Search and filter configuration
@@ -63,8 +82,10 @@ class UserViewSet(BaseViewSet):
 
     def get_queryset(self):
         """
-        Custom queryset with filtering logic from UserService.
+        Queryset with tenant scoping (from TenantScopedQuerysetMixin)
+        plus additional filtering logic from UserService.
         """
+        # TenantScopedQuerysetMixin applies tenant filtering first
         queryset = super().get_queryset()
 
         # Apply additional filtering via service if needed
@@ -100,10 +121,12 @@ class UserViewSet(BaseViewSet):
     def get_serializer_class(self):
         """
         Use different serializers for different actions.
+        Create uses UserCreateSerializer (handles password hashing).
+        Update/read operations use UnifiedUserSerializer (respects ?view= param).
         """
-        if self.action == "create":
-            return UserRegistrationSerializer
-        return self.serializer_class
+        if self.action == 'create':
+            return UserCreateSerializer
+        return self.serializer_class  # UnifiedUserSerializer for reads and updates
 
     def perform_create(self, serializer):
         """
@@ -125,13 +148,17 @@ class UserViewSet(BaseViewSet):
     def set_pin(self, request, pk=None):
         """
         Set PIN for a user.
+        Returns updated user data serialized with detail view.
         """
         user = self.get_object()
         pin = request.data.get("pin")
 
         try:
             result = UserService.set_user_pin(user.id, pin, request.user)
-            return Response(result, status=status.HTTP_200_OK)
+            # Return updated user with detail view
+            user.refresh_from_db()
+            serializer = self.get_serializer(user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except PermissionError as e:
@@ -258,7 +285,7 @@ class POSLoginView(APIView):
         # Step 8: Generate tokens and return user data
         tokens = UserService.generate_tokens_for_user(user)
         response = Response({
-            "user": UserSerializer(user).data,
+            "user": UnifiedUserSerializer(user, context={'view_mode': 'detail'}).data,
             "tenant": {
                 "id": str(user.tenant.id),
                 "name": user.tenant.name,
@@ -321,7 +348,7 @@ class AdminLoginView(APIView):
         tokens = UserService.generate_tokens_for_user(user)
 
         response = Response({
-            "user": UserSerializer(user).data,
+            "user": UnifiedUserSerializer(user, context={'view_mode': 'detail'}).data,
             "tenant": {
                 "id": str(user.tenant.id),
                 "name": user.tenant.name,
@@ -412,7 +439,7 @@ class TenantSelectionView(APIView):
         tokens = UserService.generate_tokens_for_user(user)
 
         response = Response({
-            "user": UserSerializer(user).data,
+            "user": UnifiedUserSerializer(user, context={'view_mode': 'detail'}).data,
             "tenant": {
                 "id": str(user.tenant.id),
                 "name": user.tenant.name,
@@ -571,7 +598,7 @@ class CurrentUserView(APIView):
 
     def get(self, request):
         user = request.user
-        serializer = UserSerializer(user)
+        serializer = UnifiedUserSerializer(user, context={'view_mode': 'detail'})
 
         # Return user + tenant info (matching login response format)
         return Response({

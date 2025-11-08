@@ -17,9 +17,9 @@ from core_backend.auth.cookies import AuthCookieService
 from users.permissions import RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission
 from .authentication import CustomerCookieJWTAuthentication, CustomerJWTAuthenticationMixin
 from .serializers import (
+    UnifiedCustomerSerializer,
     CustomerRegistrationSerializer,
     CustomerLoginSerializer,
-    CustomerProfileSerializer,
     ChangePasswordSerializer,
     CustomerTokenRefreshSerializer,
     PasswordResetRequestSerializer,
@@ -204,10 +204,17 @@ class CustomerProfileView(CustomerJWTAuthenticationMixin, RetrieveUpdateAPIView)
     """
     Retrieve and update customer profile.
     Requires customer authentication.
+    Uses UnifiedCustomerSerializer with 'detail' view mode for full profile.
     """
-    serializer_class = CustomerProfileSerializer
+    serializer_class = UnifiedCustomerSerializer
     authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated, RequiresAntiCSRFHeader, DoubleSubmitCSRFPremission]
+
+    def get_serializer_context(self):
+        """Add view_mode='detail' to serializer context for full profile"""
+        context = super().get_serializer_context()
+        context['view_mode'] = 'detail'
+        return context
 
     # Throttle profile updates (PATCH/PUT)
     @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='15/m', method='PATCH', block=True), name='dispatch')
@@ -276,6 +283,7 @@ class CustomerChangePasswordView(CustomerJWTAuthenticationMixin, APIView):
 class CustomerCurrentUserView(CustomerJWTAuthenticationMixin, APIView):
     """
     Get current authenticated customer information.
+    Uses UnifiedCustomerSerializer with 'detail' view mode for full profile.
     """
     authentication_classes = [CustomerCookieJWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -283,8 +291,8 @@ class CustomerCurrentUserView(CustomerJWTAuthenticationMixin, APIView):
     def get(self, request):
         # Get authenticated customer
         customer = self.ensure_customer_authenticated()
-        
-        serializer = CustomerProfileSerializer(customer)
+
+        serializer = UnifiedCustomerSerializer(customer, context={'view_mode': 'detail'})
         return Response(serializer.data)
 
 

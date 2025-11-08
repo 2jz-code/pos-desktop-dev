@@ -67,7 +67,7 @@ export default function AddEditDiscountDialog({
 
 	const { data: categories, isLoading: isLoadingCategories } = useQuery({
 		queryKey: ["categories"],
-		queryFn: () => categoryService.getCategories(),
+		queryFn: () => categoryService.getCategories({ view: 'reference' }),
 		enabled: isOpen,
 	});
 

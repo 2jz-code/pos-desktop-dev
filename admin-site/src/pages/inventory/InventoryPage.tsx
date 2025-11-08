@@ -62,6 +62,7 @@ import StockTransferDialog from "@/components/StockTransferDialog";
 import { StockMetadataEditDialog } from "@/components/StockMetadataEditDialog";
 import { useDebounce } from "@ajeen/ui";
 import { useConfirmation } from "@/components/ui/confirmation-dialog";
+import { PaginationControls } from "@/components/ui/pagination";
 
 interface Product {
 	id: number;
@@ -254,20 +255,51 @@ export const InventoryPage = () => {
 			queryFn: () => inventoryService.getDashboardData(dashboardFilters),
 		});
 
+	const [stockPage, setStockPage] = useState(1);
+	const stockPageSize = 25;
+
 	const stockQueryFilters = useMemo(
 		() => ({
 			location: selectedLocation,
 			search: debouncedSearchQuery,
 			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
 			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
+			page: stockPage,
 		}),
-		[selectedLocationId, selectedLocation, debouncedSearchQuery, stockFilter]
+		[selectedLocationId, selectedLocation, debouncedSearchQuery, stockFilter, stockPage]
 	);
 
-	const { data: stockData, isLoading: stockLoading } = useQuery<StockItem[]>({
+	const { data: stockResponse, isLoading: stockLoading, refetch: refetchStock } = useQuery<{
+		count: number;
+		next: string | null;
+		previous: string | null;
+		results: StockItem[];
+	}>({
 		queryKey: ["inventory-stock", selectedLocationId, stockQueryFilters],
-		queryFn: () => inventoryService.getAllStock(stockQueryFilters),
+		queryFn: () => inventoryService.getAllStock(stockQueryFilters, null),
 	});
+
+	const stockData = stockResponse?.results || [];
+	const stockNextUrl = stockResponse?.next || null;
+	const stockPrevUrl = stockResponse?.previous || null;
+	const stockCount = stockResponse?.count || 0;
+
+	// Reset page to 1 when filters change
+	useEffect(() => {
+		setStockPage(1);
+	}, [selectedLocation, debouncedSearchQuery, stockFilter]);
+
+	// Handle pagination navigation
+	const handleStockNavigate = async (url: string) => {
+		try {
+			// Extract page from URL
+			const urlObj = new URL(url);
+			const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+			setStockPage(page);
+		} catch (e) {
+			console.error("Error parsing pagination URL:", e);
+		}
+	};
 
 	const locationsFilters = useMemo(
 		() => ({}),
@@ -790,20 +822,19 @@ export const InventoryPage = () => {
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="flex-grow overflow-hidden min-h-0">
-							<div className="h-full flex flex-col">
-								{/* Table Header */}
-								<div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 font-medium text-sm text-muted-foreground rounded-t-lg flex-shrink-0 border-b border-border">
-									<div className="col-span-3">Product</div>
-									<div className="col-span-2">Location</div>
-									<div className="col-span-2 text-right">Quantity</div>
-									<div className="col-span-2">Expiration</div>
-									<div className="col-span-2">Status</div>
-									<div className="col-span-1 text-right">Actions</div>
-								</div>
+						<CardContent className="flex-grow overflow-hidden min-h-0 flex flex-col">
+							{/* Table Header */}
+							<div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 font-medium text-sm text-muted-foreground rounded-t-lg flex-shrink-0 border-b border-border">
+								<div className="col-span-3">Product</div>
+								<div className="col-span-2">Location</div>
+								<div className="col-span-2 text-right">Quantity</div>
+								<div className="col-span-2">Expiration</div>
+								<div className="col-span-2">Status</div>
+								<div className="col-span-1 text-right">Actions</div>
+							</div>
 
-								{/* Table Body */}
-								<div ref={tableContainerRef} className="overflow-y-auto flex-grow min-h-0 divide-y divide-border">
+							{/* Table Body - Scrollable */}
+							<div ref={tableContainerRef} className="overflow-y-auto flex-grow min-h-0 divide-y divide-border">
 									{stockLoading ? (
 										<div className="flex justify-center items-center h-full">
 											<RefreshCw className="h-6 w-6 animate-spin" />
@@ -1007,7 +1038,18 @@ export const InventoryPage = () => {
 											</p>
 										</div>
 									)}
-								</div>
+							</div>
+
+							{/* Pagination - Fixed at bottom */}
+							<div className="flex-shrink-0 border-t border-border">
+								<PaginationControls
+									prevUrl={stockPrevUrl}
+									nextUrl={stockNextUrl}
+									onNavigate={handleStockNavigate}
+									count={stockCount}
+									currentPage={stockPage}
+									pageSize={stockPageSize}
+								/>
 							</div>
 						</CardContent>
 					</Card>

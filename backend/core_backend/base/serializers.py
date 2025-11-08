@@ -177,7 +177,9 @@ class TenantFilteredSerializerMixin:
         if not request:
             # This is acceptable for read-only serializers or nested serializers
             # But for write operations, we need request context
-            if hasattr(self, 'instance') and self.instance is None:
+            # Don't warn if this is a read-only field (nested serializer on GET)
+            is_read_only = getattr(self, 'read_only', False)
+            if hasattr(self, 'instance') and self.instance is None and not is_read_only:
                 # This is a write operation (create), warn if no request
                 import logging
                 logger = logging.getLogger(__name__)

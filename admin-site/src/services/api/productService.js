@@ -76,10 +76,11 @@ export const getAllActiveProducts = () => {
 };
 
 // Get all products (handles pagination automatically)
+// Uses 'reference' view for minimal data (id, name, barcode only)
 export const getAllProducts = async (params = {}) => {
 	let allProducts = [];
 	let nextUrl = "/products/";
-	let requestParams = { ...params, limit: 1000 }; // Request large batches to minimize requests
+	let requestParams = { ...params, limit: 1000, view: 'reference' }; // Request large batches with minimal fields
 	
 	while (nextUrl) {
 		try {
