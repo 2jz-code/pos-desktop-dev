@@ -1,6 +1,11 @@
 from django.shortcuts import render
 from rest_framework import viewsets, status, generics
 from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
+from core_backend.base.mixins import (
+    TenantScopedQuerysetMixin,
+    FieldsetQueryParamsMixin,
+    ArchivingViewSetMixin,
+)
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -16,19 +21,16 @@ from .models import (
 )
 from .serializers import (
     GlobalSettingsSerializer,
-    StoreLocationSerializer,
+    UnifiedStoreLocationSerializer,
     TerminalLocationSerializer,
     PrinterSerializer,
     KitchenZoneSerializer,
     PrinterConfigResponseSerializer,
-    PrinterConfigurationSerializer,
-    StockActionReasonConfigSerializer,
-    StockActionReasonConfigListSerializer,
+    UnifiedStockActionReasonConfigSerializer,
 )
 from .permissions import SettingsReadOnlyOrOwnerAdmin, FinancialSettingsReadAccess
 from users.permissions import StockReasonOwnerPermission
 from payments.strategies import StripeTerminalStrategy
-from core_backend.base.mixins import ArchivingViewSetMixin
 from .services import (
     SettingsService,
     PrinterConfigurationService,
@@ -38,10 +40,11 @@ from .services import (
 
 # Create your views here.
 
-class GlobalSettingsViewSet(BaseViewSet):
+class GlobalSettingsViewSet(FieldsetQueryParamsMixin, BaseViewSet):
     """
     API endpoint for viewing and editing the application's single GlobalSettings object.
     Provides convenient endpoints for different settings sections.
+    Supports ?fields= query param for custom field selection.
     """
 
     queryset = GlobalSettings.objects.all()
@@ -184,10 +187,11 @@ class GlobalSettingsViewSet(BaseViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-class PrinterViewSet(BaseViewSet):
+class PrinterViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     API endpoint for managing network printers.
     Scoped to current location based on query parameters.
+    Supports ?view=, ?fields=, ?expand= query params.
     """
     queryset = Printer.objects.all()
     serializer_class = PrinterSerializer
@@ -195,8 +199,8 @@ class PrinterViewSet(BaseViewSet):
     filterset_fields = ['location', 'printer_type', 'is_active']
 
     def get_queryset(self):
-        """Filter by tenant and optionally by location."""
-        queryset = super().get_queryset()
+        """Filter by tenant (via mixin) and optionally by location."""
+        queryset = super().get_queryset()  # Already tenant-filtered by TenantScopedQuerysetMixin
 
         # Filter by location if provided
         location_id = self.request.query_params.get('location')
@@ -210,10 +214,11 @@ class PrinterViewSet(BaseViewSet):
         serializer.save(tenant=self.request.tenant)
 
 
-class KitchenZoneViewSet(BaseViewSet):
+class KitchenZoneViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     API endpoint for managing kitchen zones.
     Scoped to current location based on query parameters.
+    Supports ?view=, ?fields=, ?expand= query params.
     """
     queryset = KitchenZone.objects.all()
     serializer_class = KitchenZoneSerializer
@@ -221,8 +226,8 @@ class KitchenZoneViewSet(BaseViewSet):
     filterset_fields = ['location', 'is_active']
 
     def get_queryset(self):
-        """Filter by tenant and optionally by location."""
-        queryset = super().get_queryset()
+        """Filter by tenant (via mixin) and optionally by location."""
+        queryset = super().get_queryset()  # Already tenant-filtered by TenantScopedQuerysetMixin
 
         # Filter by location if provided
         location_id = self.request.query_params.get('location')
@@ -329,20 +334,33 @@ class PrinterConfigurationViewSet(BaseViewSet):
 # WebOrderSettings ViewSet REMOVED - settings now managed directly on StoreLocation
 
 
-class StoreLocationViewSet(BaseViewSet):
+class StoreLocationViewSet(FieldsetQueryParamsMixin, BaseViewSet):
     """
     API endpoint for managing primary Store Locations.
 
-    Phase 5 Enhancement: Uses lightweight serializer for list actions
-    and detailed serializer for individual location operations.
-    All locations are explicit - no default location concept.
+    Uses UnifiedStoreLocationSerializer with fieldsets for different views:
+    - list action: Returns 'list' fieldset (lightweight for location selection)
+    - retrieve/detail: Returns 'detail' fieldset (full including receipt customization)
+
+    Supports ?view=reference|list|detail, ?fields=, ?expand= query params.
 
     Permissions: AllowAny for list/retrieve (guest checkout needs to select location)
                  IsAuthenticated for create/update/delete (admin only)
     """
 
     queryset = StoreLocation.objects.all()
-    serializer_class = StoreLocationSerializer
+    serializer_class = UnifiedStoreLocationSerializer
+
+    def _get_default_view_mode(self):
+        """
+        Return default view mode based on action.
+        List action uses 'list' fieldset, others use 'detail'.
+        """
+        if self.action == 'list':
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'
 
     def get_permissions(self):
         """
@@ -354,13 +372,6 @@ class StoreLocationViewSet(BaseViewSet):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
         return [IsAuthenticated()]
-
-    def get_serializer_class(self):
-        """Use lightweight serializer for list action, detailed for others"""
-        if self.action == 'list':
-            from .serializers import StoreLocationListSerializer
-            return StoreLocationListSerializer
-        return StoreLocationSerializer
 
     def perform_create(self, serializer):
         from tenant.managers import get_current_tenant
@@ -417,28 +428,42 @@ class SyncStripeLocationsView(APIView):
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class StockActionReasonConfigViewSet(BaseViewSet):
+class StockActionReasonConfigViewSet(FieldsetQueryParamsMixin, BaseViewSet):
     """
     ViewSet for managing stock action reason configurations.
     - List/Read: Available to all authenticated POS staff
     - Create/Update/Delete: Only available to owners
     - System reasons cannot be deleted and have limited editing
+
+    Uses UnifiedStockActionReasonConfigSerializer with fieldsets:
+    - list/active_reasons: Returns 'list' fieldset (lightweight for dropdowns)
+    - retrieve/detail: Returns 'detail' fieldset (full with validation info)
+
+    Supports ?view=reference|list|detail, ?fields= query params.
+
+    IMPORTANT: Uses custom tenant filtering (system reasons + tenant-specific reasons).
+    Does not use TenantScopedQuerysetMixin.
     """
-    
+
     queryset = StockActionReasonConfig.objects.all().order_by('category', 'name')
-    serializer_class = StockActionReasonConfigSerializer
+    serializer_class = UnifiedStockActionReasonConfigSerializer
     permission_classes = [StockReasonOwnerPermission]
     filterset_fields = ['category', 'is_system_reason', 'is_active']
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'category', 'created_at']
     ordering = ['category', 'name']
-    
-    def get_serializer_class(self):
-        """Use list serializer for list actions and dropdown endpoints"""
-        if self.action == 'list' or self.action == 'active_reasons':
-            return StockActionReasonConfigListSerializer
-        return StockActionReasonConfigSerializer
-    
+
+    def _get_default_view_mode(self):
+        """
+        Return default view mode based on action.
+        List and active_reasons use 'list' fieldset, others use 'detail'.
+        """
+        if self.action in ['list', 'active_reasons']:
+            return 'list'
+        elif self.action == 'retrieve':
+            return 'detail'
+        return 'detail'
+
     def get_queryset(self):
         """Return global system reasons + tenant-specific custom reasons"""
         from tenant.managers import get_current_tenant
@@ -464,16 +489,16 @@ class StockActionReasonConfigViewSet(BaseViewSet):
     def active_reasons(self, request):
         """
         Endpoint to get only active reasons for use in dropdowns.
-        Returns a simplified list of active stock action reasons.
+        Returns a simplified list of active stock action reasons using 'list' fieldset.
         """
         queryset = self.get_queryset().filter(is_active=True)
-        
+
         # Apply category filter if specified
         category = request.query_params.get('category')
         if category:
             queryset = queryset.filter(category=category)
-        
-        serializer = StockActionReasonConfigListSerializer(queryset, many=True)
+
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])

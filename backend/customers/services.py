@@ -161,26 +161,6 @@ class CustomerAuthService:
         }
 
     @staticmethod
-    def set_customer_auth_cookies(response, access_token, refresh_token):
-        """
-        Set authentication cookies for customer session.
-        
-        DEPRECATED: Use core_backend.auth.cookies.AuthCookieService.set_customer_auth_cookies instead
-        """
-        from core_backend.auth.cookies import AuthCookieService
-        return AuthCookieService.set_customer_auth_cookies(response, access_token, refresh_token)
-
-    @staticmethod
-    def clear_customer_auth_cookies(response):
-        """
-        Clear customer authentication cookies.
-        
-        DEPRECATED: Use core_backend.auth.cookies.AuthCookieService.clear_customer_auth_cookies instead
-        """
-        from core_backend.auth.cookies import AuthCookieService
-        return AuthCookieService.clear_customer_auth_cookies(response)
-
-    @staticmethod
     def get_customer_profile(customer):
         """
         Get customer profile information.
