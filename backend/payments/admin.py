@@ -48,7 +48,7 @@ class PaymentAdmin(TenantAdminMixin, admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "created_at")
-    search_fields = ("id", "order__id")
+    search_fields = ("id", "order__id", "order__order_number")
     readonly_fields = (
         "id",
         "created_at",
@@ -58,6 +58,7 @@ class PaymentAdmin(TenantAdminMixin, admin.ModelAdmin):
         "total_collected",
     )
     inlines = [PaymentTransactionInline]
+    autocomplete_fields = ["order"]  # Use autocomplete for better UX
     fieldsets = (
         (None, {"fields": ("id", "order", "status")}),
         (
@@ -90,6 +91,29 @@ class PaymentAdmin(TenantAdminMixin, admin.ModelAdmin):
             'order',
             'order__customer'
         ).prefetch_related('transactions')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Customize foreign key fields to scope by tenant.
+        Orders are filtered to match the payment's tenant.
+        """
+        if db_field.name == "order":
+            from orders.models import Order
+            # Get the payment object if we're editing
+            payment_id = request.resolver_match.kwargs.get('object_id')
+            if payment_id:
+                try:
+                    payment = Payment.all_objects.get(pk=payment_id)
+                    # Scope orders to the payment's tenant
+                    kwargs["queryset"] = Order.all_objects.filter(
+                        tenant=payment.tenant
+                    ).select_related('tenant', 'customer')
+                except Payment.DoesNotExist:
+                    kwargs["queryset"] = Order.all_objects.none()
+            else:
+                # Creating new payment - show all orders (tenant will be set via FK)
+                kwargs["queryset"] = Order.all_objects.select_related('tenant', 'customer')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(PaymentTransaction)

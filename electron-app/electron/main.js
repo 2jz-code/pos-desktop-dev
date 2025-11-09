@@ -56,6 +56,15 @@ let customerWindow;
 let lastKnownState = null;
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
+// Health check configuration
+const HEALTH_CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
+const HEALTH_CHECK_TIMEOUT_MS = 5000; // Expect response within 5 seconds
+let healthCheckInterval = null;
+let lastPongTimestamp = Date.now();
+let waitingForPong = false;
+let consecutiveFailures = 0; // Track failures for graduated recovery
+let lastRecoveryAttemptTime = 0;
+
 function createMainWindow() {
 	const primaryDisplay = screen.getPrimaryDisplay();
 	// Use default session for proper cookie sharing with backend
@@ -109,23 +118,41 @@ function createCustomerWindow() {
 	);
 
 	if (!secondaryDisplay) {
-		console.log("No secondary display found, not creating customer window.");
-		return;
-	}
+		// For single-screen testing: create a smaller window on primary display
+		const primaryDisplay = screen.getPrimaryDisplay();
+		const { width, height } = primaryDisplay.workAreaSize;
 
-	customerWindow = new BrowserWindow({
-		icon: path.join(process.env.PUBLIC, "logo.png"),
-		x: secondaryDisplay.bounds.x,
-		y: secondaryDisplay.bounds.y,
-		fullscreen: true,
-		webPreferences: {
-			preload: path.join(__dirname, "../dist-electron/preload.js"),
-			nodeIntegration: false,
-			contextIsolation: true,
-			enableRemoteModule: false,
-			// Remove hardwareAcceleration override - let app-level settings handle it
-		},
-	});
+		customerWindow = new BrowserWindow({
+			icon: path.join(process.env.PUBLIC, "logo.png"),
+			x: Math.floor(width * 0.25), // Centered-ish
+			y: Math.floor(height * 0.1),
+			width: Math.floor(width * 0.5), // Half the screen width
+			height: Math.floor(height * 0.8), // 80% of screen height
+			fullscreen: false,
+			title: "Customer Display (Testing)",
+			webPreferences: {
+				preload: path.join(__dirname, "../dist-electron/preload.js"),
+				nodeIntegration: false,
+				contextIsolation: true,
+				enableRemoteModule: false,
+			},
+		});
+	} else {
+		// Dual-screen setup: fullscreen on secondary display
+		customerWindow = new BrowserWindow({
+			icon: path.join(process.env.PUBLIC, "logo.png"),
+			x: secondaryDisplay.bounds.x,
+			y: secondaryDisplay.bounds.y,
+			fullscreen: true,
+			webPreferences: {
+				preload: path.join(__dirname, "../dist-electron/preload.js"),
+				nodeIntegration: false,
+				contextIsolation: true,
+				enableRemoteModule: false,
+				// Remove hardwareAcceleration override - let app-level settings handle it
+			},
+		});
+	}
 
 	if (VITE_DEV_SERVER_URL) {
 		customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
@@ -133,10 +160,172 @@ function createCustomerWindow() {
 		customerWindow.loadFile(path.join(process.env.DIST, "customer.html"));
 	}
 
+	// Start health checks once the page is loaded
+	customerWindow.webContents.on("did-finish-load", () => {
+		// Give it a moment to initialize before starting health checks
+		setTimeout(() => {
+			startHealthCheck();
+		}, 2000);
+	});
+
 	customerWindow.on("closed", () => {
+		stopHealthCheck();
 		customerWindow = null;
 	});
+
+	// === Customer Display Auto-Recovery ===
+	// Listen for unresponsive renderer (freeze/hang)
+	customerWindow.on("unresponsive", () => {
+		console.error(
+			"[Main Process] Customer display renderer is unresponsive. Attempting to reload..."
+		);
+		if (customerWindow && !customerWindow.isDestroyed()) {
+			try {
+				customerWindow.webContents.reload();
+			} catch (error) {
+				console.error(
+					"[Main Process] Failed to reload unresponsive customer display:",
+					error
+				);
+				recreateCustomerWindow();
+			}
+		}
+	});
+
+	// Listen for renderer crashes (both natural crashes and forced crashes)
+	customerWindow.webContents.on("render-process-gone", (event, details) => {
+		console.error(
+			"[Main Process] Customer display renderer crashed:",
+			details.reason,
+			"Exit code:",
+			details.exitCode
+		);
+
+		// Stop health checks for the crashed window
+		stopHealthCheck();
+
+		// Recreate the window after a crash
+		setTimeout(() => {
+			recreateCustomerWindow();
+		}, 1000); // Short delay before recreating
+	});
 }
+
+// Helper function to recreate the customer window
+function recreateCustomerWindow() {
+	// Stop health checks
+	stopHealthCheck();
+
+	// Close existing window if it exists
+	if (customerWindow && !customerWindow.isDestroyed()) {
+		try {
+			customerWindow.close();
+		} catch (error) {
+			console.error(
+				"[Main Process] Error closing existing customer window:",
+				error
+			);
+		}
+	}
+
+	customerWindow = null;
+
+	// Wait a bit before recreating
+	setTimeout(() => {
+		createCustomerWindow();
+	}, 500);
+}
+
+// Health check system - actively ping customer display to verify it's responsive
+function startHealthCheck() {
+	// Clear any existing interval
+	stopHealthCheck();
+
+	// Reset state
+	lastPongTimestamp = Date.now();
+	waitingForPong = false;
+	consecutiveFailures = 0; // Reset failure counter on fresh start
+
+	healthCheckInterval = setInterval(() => {
+		if (!customerWindow || customerWindow.isDestroyed()) {
+			stopHealthCheck();
+			return;
+		}
+
+		const now = Date.now();
+		const timeSinceLastPong = now - lastPongTimestamp;
+
+		// If we sent a ping and haven't received a pong within timeout
+		if (waitingForPong && timeSinceLastPong > HEALTH_CHECK_TIMEOUT_MS) {
+			consecutiveFailures++;
+			lastRecoveryAttemptTime = now;
+
+			console.error(
+				`[Main Process] Customer display health check FAILED - no pong for ${Math.round(timeSinceLastPong / 1000)}s (failure ${consecutiveFailures})`
+			);
+
+			// Graduated recovery strategy
+			if (consecutiveFailures === 1) {
+				// First failure: Try graceful reload
+				try {
+					customerWindow.webContents.reload();
+					// Reset wait state to check if reload worked
+					waitingForPong = false;
+					lastPongTimestamp = now;
+				} catch (error) {
+					console.error(
+						"[Main Process] Graceful reload failed:",
+						error
+					);
+					// Escalate immediately if reload throws an error
+					consecutiveFailures = 2;
+				}
+			}
+
+			if (consecutiveFailures >= 2) {
+				// Second failure or reload failed: Nuclear option
+				console.error(
+					"[Main Process] Graceful reload failed. Forcing crash & recreate..."
+				);
+
+				// Stop health checks - we're recreating the window
+				stopHealthCheck();
+
+				try {
+					customerWindow.webContents.forcefullyCrashRenderer();
+				} catch (error) {
+					console.error(
+						"[Main Process] Failed to crash renderer:",
+						error
+					);
+					recreateCustomerWindow();
+				}
+
+				// Reset failure counter since we're doing a full recreate
+				consecutiveFailures = 0;
+			}
+			return;
+		}
+
+		// Send ping
+		customerWindow.webContents.send("CUSTOMER_HEALTH_CHECK_PING");
+		waitingForPong = true;
+	}, HEALTH_CHECK_INTERVAL_MS);
+}
+
+function stopHealthCheck() {
+	if (healthCheckInterval) {
+		clearInterval(healthCheckInterval);
+		healthCheckInterval = null;
+	}
+}
+
+// Handle pong response from customer display
+ipcMain.on("CUSTOMER_HEALTH_CHECK_PONG", () => {
+	lastPongTimestamp = Date.now();
+	waitingForPong = false;
+	consecutiveFailures = 0; // Reset failure counter on successful pong
+});
 
 // === IPC Handlers for Window Communication ===
 

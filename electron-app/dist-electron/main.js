@@ -439,6 +439,12 @@ let mainWindow;
 let customerWindow;
 let lastKnownState = null;
 const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
+const HEALTH_CHECK_INTERVAL_MS = 1e4;
+const HEALTH_CHECK_TIMEOUT_MS = 5e3;
+let healthCheckInterval = null;
+let lastPongTimestamp = Date.now();
+let waitingForPong = false;
+let consecutiveFailures = 0;
 function createMainWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const persistentSession = session.defaultSession;
@@ -483,31 +489,164 @@ function createCustomerWindow() {
     (display) => display.id !== screen.getPrimaryDisplay().id
   );
   if (!secondaryDisplay) {
-    console.log("No secondary display found, not creating customer window.");
-    return;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+    customerWindow = new BrowserWindow({
+      icon: path.join(process$1.env.PUBLIC, "logo.png"),
+      x: Math.floor(width * 0.25),
+      // Centered-ish
+      y: Math.floor(height * 0.1),
+      width: Math.floor(width * 0.5),
+      // Half the screen width
+      height: Math.floor(height * 0.8),
+      // 80% of screen height
+      fullscreen: false,
+      title: "Customer Display (Testing)",
+      webPreferences: {
+        preload: path.join(__dirname, "../dist-electron/preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        enableRemoteModule: false
+      }
+    });
+  } else {
+    customerWindow = new BrowserWindow({
+      icon: path.join(process$1.env.PUBLIC, "logo.png"),
+      x: secondaryDisplay.bounds.x,
+      y: secondaryDisplay.bounds.y,
+      fullscreen: true,
+      webPreferences: {
+        preload: path.join(__dirname, "../dist-electron/preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        enableRemoteModule: false
+        // Remove hardwareAcceleration override - let app-level settings handle it
+      }
+    });
   }
-  customerWindow = new BrowserWindow({
-    icon: path.join(process$1.env.PUBLIC, "logo.png"),
-    x: secondaryDisplay.bounds.x,
-    y: secondaryDisplay.bounds.y,
-    fullscreen: true,
-    webPreferences: {
-      preload: path.join(__dirname, "../dist-electron/preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false
-      // Remove hardwareAcceleration override - let app-level settings handle it
-    }
-  });
   if (VITE_DEV_SERVER_URL) {
     customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
   } else {
     customerWindow.loadFile(path.join(process$1.env.DIST, "customer.html"));
   }
+  customerWindow.webContents.on("did-finish-load", () => {
+    setTimeout(() => {
+      startHealthCheck();
+    }, 2e3);
+  });
   customerWindow.on("closed", () => {
+    stopHealthCheck();
     customerWindow = null;
   });
+  customerWindow.on("unresponsive", () => {
+    console.error(
+      "[Main Process] Customer display renderer is unresponsive. Attempting to reload..."
+    );
+    if (customerWindow && !customerWindow.isDestroyed()) {
+      try {
+        customerWindow.webContents.reload();
+      } catch (error) {
+        console.error(
+          "[Main Process] Failed to reload unresponsive customer display:",
+          error
+        );
+        recreateCustomerWindow();
+      }
+    }
+  });
+  customerWindow.webContents.on("render-process-gone", (event, details) => {
+    console.error(
+      "[Main Process] Customer display renderer crashed:",
+      details.reason,
+      "Exit code:",
+      details.exitCode
+    );
+    stopHealthCheck();
+    setTimeout(() => {
+      recreateCustomerWindow();
+    }, 1e3);
+  });
 }
+function recreateCustomerWindow() {
+  stopHealthCheck();
+  if (customerWindow && !customerWindow.isDestroyed()) {
+    try {
+      customerWindow.close();
+    } catch (error) {
+      console.error(
+        "[Main Process] Error closing existing customer window:",
+        error
+      );
+    }
+  }
+  customerWindow = null;
+  setTimeout(() => {
+    createCustomerWindow();
+  }, 500);
+}
+function startHealthCheck() {
+  stopHealthCheck();
+  lastPongTimestamp = Date.now();
+  waitingForPong = false;
+  consecutiveFailures = 0;
+  healthCheckInterval = setInterval(() => {
+    if (!customerWindow || customerWindow.isDestroyed()) {
+      stopHealthCheck();
+      return;
+    }
+    const now = Date.now();
+    const timeSinceLastPong = now - lastPongTimestamp;
+    if (waitingForPong && timeSinceLastPong > HEALTH_CHECK_TIMEOUT_MS) {
+      consecutiveFailures++;
+      console.error(
+        `[Main Process] Customer display health check FAILED - no pong for ${Math.round(timeSinceLastPong / 1e3)}s (failure ${consecutiveFailures})`
+      );
+      if (consecutiveFailures === 1) {
+        try {
+          customerWindow.webContents.reload();
+          waitingForPong = false;
+          lastPongTimestamp = now;
+        } catch (error) {
+          console.error(
+            "[Main Process] Graceful reload failed:",
+            error
+          );
+          consecutiveFailures = 2;
+        }
+      }
+      if (consecutiveFailures >= 2) {
+        console.error(
+          "[Main Process] Graceful reload failed. Forcing crash & recreate..."
+        );
+        stopHealthCheck();
+        try {
+          customerWindow.webContents.forcefullyCrashRenderer();
+        } catch (error) {
+          console.error(
+            "[Main Process] Failed to crash renderer:",
+            error
+          );
+          recreateCustomerWindow();
+        }
+        consecutiveFailures = 0;
+      }
+      return;
+    }
+    customerWindow.webContents.send("CUSTOMER_HEALTH_CHECK_PING");
+    waitingForPong = true;
+  }, HEALTH_CHECK_INTERVAL_MS);
+}
+function stopHealthCheck() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
+  }
+}
+ipcMain.on("CUSTOMER_HEALTH_CHECK_PONG", () => {
+  lastPongTimestamp = Date.now();
+  waitingForPong = false;
+  consecutiveFailures = 0;
+});
 ipcMain.on("to-customer-display", (event, { channel, data }) => {
   if (channel === "POS_TO_CUSTOMER_STATE") {
     lastKnownState = data;

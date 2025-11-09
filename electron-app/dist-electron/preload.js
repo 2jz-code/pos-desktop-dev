@@ -3,7 +3,9 @@ console.log("--- [Preload] Preload script started ---");
 const validIpcChannels = [
   "POS_TO_CUSTOMER_STATE",
   "CUSTOMER_TO_POS_TIP",
-  "CUSTOMER_REQUESTS_STATE"
+  "CUSTOMER_REQUESTS_STATE",
+  "CUSTOMER_HEALTH_CHECK_PING"
+  // Health check from main process
 ];
 const validInvokeChannels = [
   "discover-printers",
@@ -85,6 +87,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   requestInitialState: () => {
     ipcRenderer.send("CUSTOMER_REQUESTS_STATE");
+  },
+  /**
+   * Sends a health check pong response back to the main process.
+   * Called in response to CUSTOMER_HEALTH_CHECK_PING.
+   */
+  sendHealthCheckPong: () => {
+    ipcRenderer.send("CUSTOMER_HEALTH_CHECK_PONG");
   },
   onMessage: (channel, callback) => {
     if (validIpcChannels.includes(channel)) {

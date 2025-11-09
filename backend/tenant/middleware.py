@@ -108,7 +108,6 @@ class TenantMiddleware:
         """
         host = request.get_host().split(':')[0]  # Remove port if present
         subdomain = self.extract_subdomain(host)
-        print(f"🌐 [TenantMiddleware] host='{host}', subdomain='{subdomain}'")
 
         # 1. Superuser override (?tenant=slug) - Admin/debugging only
         if request.user.is_authenticated and request.user.is_superuser:
@@ -169,16 +168,12 @@ class TenantMiddleware:
         # Used when customer sites (jimmys-pizza.mydomain.com) call shared API (api.mydomain.com)
         tenant_header = request.META.get('HTTP_X_TENANT')
         if tenant_header:
-            print(f"🔍 [TenantMiddleware] X-Tenant header found: '{tenant_header}'")
             try:
                 tenant = Tenant.objects.get(slug=tenant_header)
-                print(f"✅ [TenantMiddleware] Found tenant from header: {tenant.name} (id={tenant.id})")
                 # Store in session for subsequent requests
                 request.session['tenant_id'] = str(tenant.id)
                 return tenant
             except Tenant.DoesNotExist:
-                print(f"❌ [TenantMiddleware] Tenant '{tenant_header}' not found in database")
-                print(f"   Available tenants: {list(Tenant.objects.values_list('slug', flat=True))}")
                 raise TenantNotFoundError(
                     f"Tenant '{tenant_header}' not found. Check X-Tenant header value."
                 )
@@ -187,7 +182,6 @@ class TenantMiddleware:
         # Allows customers to use their own domains instead of subdomains
         tenant_from_domain = self.get_tenant_from_custom_domain(host)
         if tenant_from_domain:
-            print(f"✅ [TenantMiddleware] Resolved tenant from custom domain: {host} → {tenant_from_domain.name}")
             request.session['tenant_id'] = str(tenant_from_domain.id)
             return tenant_from_domain
 
@@ -199,30 +193,23 @@ class TenantMiddleware:
                 from urllib.parse import urlparse
                 origin_host = urlparse(origin).netloc
                 if origin_host and origin_host != host:
-                    print(f"🔍 [TenantMiddleware] Checking Origin header: {origin_host}")
                     tenant_from_origin = self.get_tenant_from_custom_domain(origin_host)
                     if tenant_from_origin:
-                        print(f"✅ [TenantMiddleware] Resolved tenant from Origin: {origin_host} → {tenant_from_origin.name}")
                         request.session['tenant_id'] = str(tenant_from_origin.id)
                         return tenant_from_origin
-            except Exception as e:
-                print(f"⚠️ [TenantMiddleware] Error parsing Origin header: {e}")
+            except Exception:
                 pass
 
         # 5. Customer subdomain (joespizza.ajeen.com) - Public ordering
         # Extract tenant from subdomain for customer-facing sites
         if subdomain and subdomain not in ['www', 'api']:
-            print(f"🔍 [TenantMiddleware] Attempting customer subdomain lookup: '{subdomain}'")
             try:
                 # Don't filter by is_active - let line 60 check handle it
                 tenant = Tenant.objects.get(slug=subdomain)
-                print(f"✅ [TenantMiddleware] Found tenant: {tenant.name} (id={tenant.id})")
                 # Store in session for subsequent guest requests
                 request.session['tenant_id'] = str(tenant.id)
                 return tenant
             except Tenant.DoesNotExist:
-                print(f"❌ [TenantMiddleware] Tenant '{subdomain}' not found in database")
-                print(f"   Available tenants: {list(Tenant.objects.values_list('slug', flat=True))}")
                 raise TenantNotFoundError(
                     f"Tenant '{subdomain}' not found. "
                     f"Check subdomain spelling or contact support."
@@ -387,9 +374,8 @@ class TenantMiddleware:
         except CustomDomain.DoesNotExist:
             # No custom domain found for this host
             return None
-        except Exception as e:
-            # Log error but don't break request flow
-            print(f"❌ [TenantMiddleware] Error resolving custom domain: {e}")
+        except Exception:
+            # Error resolving custom domain, but don't break request flow
             return None
 
     def get_fallback_tenant_slug(self, host, subdomain):

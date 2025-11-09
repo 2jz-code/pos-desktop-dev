@@ -1,10 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 
+// Heartbeat configuration - send updates every 10 seconds even if state hasn't changed
+const HEARTBEAT_INTERVAL_MS = 10000;
+
 export const useSyncToCustomerDisplay = () => {
 	const location = useLocation();
+	const heartbeatIntervalRef = useRef(null);
 	const customerDisplayState = usePosStore((state) => {
 		const isPaymentActive =
 			state.tenderState &&
@@ -40,6 +44,7 @@ export const useSyncToCustomerDisplay = () => {
 		};
 	}, shallow);
 
+	// Send state updates when the state changes
 	useEffect(() => {
 		if (window.electronAPI) {
 			window.electronAPI.sendToCustomerDisplay(
@@ -48,4 +53,22 @@ export const useSyncToCustomerDisplay = () => {
 			);
 		}
 	}, [customerDisplayState]);
+
+	// Send periodic heartbeats to keep customer display alive
+	useEffect(() => {
+		if (window.electronAPI) {
+			heartbeatIntervalRef.current = setInterval(() => {
+				window.electronAPI.sendToCustomerDisplay(
+					"POS_TO_CUSTOMER_STATE",
+					customerDisplayState
+				);
+			}, HEARTBEAT_INTERVAL_MS);
+
+			return () => {
+				if (heartbeatIntervalRef.current) {
+					clearInterval(heartbeatIntervalRef.current);
+				}
+			};
+		}
+	}, [customerDisplayState]); // Re-create interval when state reference changes
 };
