@@ -120,7 +120,7 @@ export const PaymentsTableView = ({
                   <div className="space-y-1">
                     <div className="font-mono text-sm">#{payment.payment_number}</div>
                     <div className="text-xs text-muted-foreground">
-                      {payment.transactions?.length || 0} transaction{payment.transactions?.length === 1 ? '' : 's'}
+                      {payment.transaction_count || 0} transaction{payment.transaction_count === 1 ? '' : 's'}
                     </div>
                   </div>
                 </TableCell>
@@ -128,10 +128,10 @@ export const PaymentsTableView = ({
                 <TableCell>
                   <div className="space-y-1">
                     <div className="font-medium">
-                      {payment.order ? `#${payment.order_number}` : "N/A"}
+                      {payment.order_number ? `#${payment.order_number}` : "N/A"}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {payment.order ? "Order Payment" : "Standalone"}
+                      {payment.order_number ? "Order Payment" : "Standalone"}
                     </div>
                   </div>
                 </TableCell>
@@ -141,7 +141,7 @@ export const PaymentsTableView = ({
                     variant="outline"
                     className="text-xs"
                   >
-                    {getPaymentMethod(payment.transactions)}
+                    {payment.primary_method || "N/A"}
                   </Badge>
                 </TableCell>
 

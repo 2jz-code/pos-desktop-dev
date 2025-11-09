@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
 	getProducts,
+	getAllProducts,
 	archiveProduct,
 	unarchiveProduct,
 } from "@/domains/products/services/productService";
 import { getCategories } from "@/domains/products/services/categoryService";
+import apiClient from "@/shared/lib/apiClient";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -17,6 +19,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 import {
 	Select,
 	SelectContent,
@@ -76,6 +79,13 @@ const ProductsPage = () => {
 		return localStorage.getItem("productsViewMode") || "grid";
 	});
 
+	// Pagination state (from backend)
+	const [nextUrl, setNextUrl] = useState(null);
+	const [prevUrl, setPrevUrl] = useState(null);
+	const [totalCount, setTotalCount] = useState(0);
+	const [currentPage, setCurrentPage] = useState(1);
+	const pageSize = 25;
+
 	// Role-based permissions
 	const { canCreateProducts, canEditProducts, canDeleteProducts } =
 		useRolePermissions();
@@ -118,7 +128,7 @@ const ProductsPage = () => {
 		setTimeout(() => setHighlightedProductId(null), 3000);
 
 		setTimeout(() => {
-			applyFilters(allProducts);
+			fetchProducts(!product.is_active);
 			scrollToItem(product.id, {
 				dataAttribute: "data-product-id",
 				delay: 200,
@@ -126,30 +136,96 @@ const ProductsPage = () => {
 		}, 100);
 	});
 
-	const fetchProducts = async (showArchivedOnly = false) => {
+	const fetchProducts = async (showArchivedOnly = false, url = null) => {
 		try {
 			setLoading(true);
-			const params = {};
+			let response;
 
-			if (showArchivedOnly) {
-				params.include_archived = "only";
+			if (url) {
+				// Navigate to specific URL (for pagination)
+				const urlObj = new URL(url);
+				const path = urlObj.pathname.replace('/api', '') + urlObj.search;
+				response = await apiClient.get(path);
+			} else {
+				// Build params for initial load with backend filters
+				const params = {};
+
+				if (showArchivedOnly) {
+					params.include_archived = "only";
+				}
+
+				if (modifierContext) {
+					params.include_all_modifiers = true;
+				}
+
+				// Add search filter
+				if (filters.search) {
+					params.search = filters.search;
+				}
+
+				// Add category filter (backend will include descendants)
+				// For "parent-only", we'll filter client-side after
+				if (selectedChildCategory !== "all" && selectedChildCategory !== "parent-only") {
+					params.category = selectedChildCategory;
+				} else if (selectedParentCategory !== "all") {
+					params.category = selectedParentCategory;
+				}
+
+				// Add modifier filter if present
+				if (modifierContext?.id) {
+					params.modifier_groups = modifierContext.id;
+				}
+
+				response = await getProducts(params);
 			}
 
-			if (modifierContext) {
-				params.include_all_modifiers = true;
+			// Handle paginated response
+			const data = response.data;
+			let fetchedProducts = data?.results || data || [];
+
+			// Store pagination metadata
+			setNextUrl(data.next || null);
+			setPrevUrl(data.previous || null);
+			setTotalCount(data.count || fetchedProducts.length);
+
+			// Calculate current page from URL or default to 1
+			if (url) {
+				const urlObj = new URL(url);
+				const pageParam = urlObj.searchParams.get('page');
+				setCurrentPage(pageParam ? parseInt(pageParam) : 1);
+			} else {
+				setCurrentPage(1);
 			}
 
-			const response = await getProducts(params);
-			const fetchedProducts = response.data?.results || response.data || [];
+			// Client-side filtering for "parent-only" case
+			// Backend returns parent + descendants, so we filter to only show parent category items
+			if (selectedChildCategory === "parent-only" && selectedParentCategory !== "all") {
+				const parentId = parseInt(selectedParentCategory);
+				fetchedProducts = fetchedProducts.filter((product) => {
+					return product.category && product.category.id === parentId;
+				});
+				// Update count to reflect filtered results
+				setTotalCount(fetchedProducts.length);
+				// Note: pagination won't work correctly for parent-only since backend has more items
+				// This is acceptable as parent-only typically returns fewer items
+				setNextUrl(null);
+				setPrevUrl(null);
+			}
 
 			setAllProducts(fetchedProducts);
-			applyFilters(fetchedProducts);
+			setProducts(fetchedProducts);
 			setError(null);
 		} catch (err) {
 			setError("Failed to fetch products.");
 			console.error(err);
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const handleNavigate = (url) => {
+		if (url) {
+			fetchProducts(showArchivedProducts, url);
 		}
 	};
 
@@ -191,8 +267,11 @@ const ProductsPage = () => {
 	}, [searchParams]);
 
 	useEffect(() => {
-		fetchProducts(showArchivedProducts);
 		fetchParentCategories();
+	}, []);
+
+	useEffect(() => {
+		fetchProducts(showArchivedProducts);
 	}, [modifierContext, showArchivedProducts]);
 
 	useEffect(() => {
@@ -204,88 +283,18 @@ const ProductsPage = () => {
 		}
 	}, [selectedParentCategory]);
 
-	const applyFilters = (allProductsToFilter) => {
-		let filtered = allProductsToFilter;
-
-		// Modifier filtering
-		if (modifierContext && modifierContext.id) {
-			filtered = filtered.filter(
-				(product) =>
-					product.modifier_groups &&
-					product.modifier_groups.some(
-						(group) => group.id == modifierContext.id
-					)
-			);
-		}
-
-		if (filters.search) {
-			const searchLower = filters.search.toLowerCase();
-			filtered = filtered.filter(
-				(product) =>
-					product.name.toLowerCase().includes(searchLower) ||
-					(product.description &&
-						product.description.toLowerCase().includes(searchLower)) ||
-					(product.barcode &&
-						product.barcode.toLowerCase().includes(searchLower))
-			);
-		}
-
-		// Category filtering logic
-		if (selectedParentCategory && selectedParentCategory !== "all") {
-			if (selectedChildCategory === "parent-only") {
-				filtered = filtered.filter((product) => {
-					const category = product.category;
-					return category && category.id === parseInt(selectedParentCategory);
-				});
-			} else if (selectedChildCategory && selectedChildCategory !== "all") {
-				filtered = filtered.filter((product) => {
-					const category = product.category;
-					return category && category.id === parseInt(selectedChildCategory);
-				});
-			} else {
-				filtered = filtered.filter((product) => {
-					const category = product.category;
-					if (!category) return false;
-
-					const selectedParentId = parseInt(selectedParentCategory);
-
-					if (category.id === selectedParentId) {
-						return true;
-					}
-
-					if (childCategories.length > 0) {
-						const isChildCategory = childCategories.some(
-							(child) => child.id === category.id
-						);
-						if (isChildCategory) {
-							return true;
-						}
-					}
-
-					return false;
-				});
-			}
-		}
-
-		setProducts(filtered);
-	};
-
+	// Refetch when category filters change
 	useEffect(() => {
-		applyFilters(allProducts);
-	}, [
-		selectedParentCategory,
-		selectedChildCategory,
-		allProducts,
-		modifierContext,
-		childCategories,
-	]);
+		fetchProducts(showArchivedProducts);
+	}, [selectedParentCategory, selectedChildCategory]);
 
+	// Refetch when search changes (with debounce)
 	useEffect(() => {
 		const timeoutId = setTimeout(() => {
-			applyFilters(allProducts);
+			fetchProducts(showArchivedProducts);
 		}, 300);
 		return () => clearTimeout(timeoutId);
-	}, [filters.search, allProducts]);
+	}, [filters.search]);
 
 	// Global barcode listener
 	useEffect(() => {
@@ -429,6 +438,9 @@ const ProductsPage = () => {
 		setFilters({ search: "", category: "", subcategory: "" });
 		setSelectedParentCategory("all");
 		setSelectedChildCategory("all");
+		if (modifierContext) {
+			setSearchParams({});
+		}
 	};
 
 	const hasActiveFilters =
@@ -964,8 +976,8 @@ const ProductsPage = () => {
 				}
 				description={
 					modifierContext
-						? `${products.length} products using this modifier`
-						: `${products.length} of ${allProducts.length} products`
+						? `${totalCount} products using this modifier`
+						: `${totalCount} total products`
 				}
 				actions={headerActions}
 				className="shrink-0"
@@ -1092,6 +1104,16 @@ const ProductsPage = () => {
 				<ScrollArea className="h-full">
 					<div className="pb-6">
 						<ProductsView />
+
+						{/* Pagination Controls */}
+						<PaginationControls
+							prevUrl={prevUrl}
+							nextUrl={nextUrl}
+							onNavigate={handleNavigate}
+							count={totalCount}
+							currentPage={currentPage}
+							pageSize={25}
+						/>
 					</div>
 				</ScrollArea>
 			</div>

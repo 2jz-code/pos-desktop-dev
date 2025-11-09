@@ -674,6 +674,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
     modifier_summary = serializers.SerializerMethodField()
     modifier_groups = serializers.SerializerMethodField()
     category_display_name = serializers.ReadOnlyField()
+    product_type_display_name = serializers.ReadOnlyField()
     is_uncategorized = serializers.ReadOnlyField()
 
     # POS/Order-specific nested representations (hierarchical)
@@ -718,6 +719,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
             "modifier_summary",
             "modifier_groups",
             "category_display_name",
+            "product_type_display_name",
             "is_uncategorized",
 
             # Image fields
@@ -770,7 +772,7 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
             'detail': [
                 'id', 'name', 'description', 'price', 'barcode',
                 'category_id', 'category_display_name', 'is_uncategorized',
-                'product_type_id', 'tax_ids',
+                'product_type_id', 'product_type_display_name', 'tax_ids',
                 'is_active', 'is_public', 'track_inventory',
                 'image', 'image_url', 'original_filename',
                 'modifier_groups',

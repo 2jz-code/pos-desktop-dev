@@ -42,7 +42,7 @@ export const ProductDetailsPage = () => {
 
 	const fetchProduct = async () => {
 		if (!productId) return;
-		
+
 		try {
 			setLoading(true);
 			const response = await getProductById(productId);
@@ -288,23 +288,15 @@ export const ProductDetailsPage = () => {
 									<div className="grid grid-cols-2 gap-4">
 										<div>
 											<span className="text-sm text-muted-foreground block mb-2">Category</span>
-											{product.category ? (
-												<Badge variant="outline" className="text-sm">
-													{product.category.name}
-												</Badge>
-											) : (
-												<span className="text-sm text-muted-foreground">Uncategorized</span>
-											)}
+											<Badge variant="outline" className="text-sm">
+												{product.category_display_name || "Uncategorized"}
+											</Badge>
 										</div>
 										<div>
 											<span className="text-sm text-muted-foreground block mb-2">Product Type</span>
-											{product.product_type ? (
-												<Badge variant="default" className="text-sm">
-													{product.product_type.name}
-												</Badge>
-											) : (
-												<span className="text-sm text-muted-foreground">No Type</span>
-											)}
+											<Badge variant="default" className="text-sm">
+												{product.product_type_display_name || "No Type"}
+											</Badge>
 										</div>
 									</div>
 								</CardContent>

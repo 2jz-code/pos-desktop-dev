@@ -443,6 +443,11 @@ class Product(SoftDeleteMixin):
         """Return True if product has no category assigned."""
         return self.category is None
 
+    @property
+    def product_type_display_name(self):
+        """Return product type name or 'No Type' if product_type is None."""
+        return self.product_type.name if self.product_type else "No Type"
+
 
 class ModifierSet(models.Model):
     class SelectionType(models.TextChoices):

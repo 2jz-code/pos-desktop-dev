@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProductById, archiveProduct, unarchiveProduct } from "@/domains/products/services/productService";
+import { getProductTypes } from "@/domains/products/services/productTypeService";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
@@ -365,24 +366,20 @@ const ProductDetailsPage = () => {
 
 									{/* Tags and Categories */}
 									<div className="flex items-center gap-2 flex-wrap">
-										{product.category && (
-											<Badge
-												variant="outline"
-												className="rounded-full border-border/60 bg-transparent px-3 py-1"
-											>
-												<Tags className="mr-1 h-3 w-3" />
-												{product.category.name}
-											</Badge>
-										)}
-										{product.product_type && (
-											<Badge
-												variant="secondary"
-												className="rounded-full px-3 py-1"
-											>
-												<Tag className="mr-1 h-3 w-3" />
-												{product.product_type.name}
-											</Badge>
-										)}
+										<Badge
+											variant="outline"
+											className="rounded-full border-border/60 bg-transparent px-3 py-1"
+										>
+											<Tags className="mr-1 h-3 w-3" />
+											{product.category_display_name || "Uncategorized"}
+										</Badge>
+										<Badge
+											variant="secondary"
+											className="rounded-full px-3 py-1"
+										>
+											<Tag className="mr-1 h-3 w-3" />
+											{product.product_type_display_name || "No Type"}
+										</Badge>
 										{product.track_inventory && (
 											<Badge
 												variant="outline"
@@ -452,20 +449,16 @@ const ProductDetailsPage = () => {
 
 								{/* Category */}
 								<InfoCard icon={Tags} title="Category">
-									{product.category ? (
-										<span className="text-foreground font-medium">{product.category.name}</span>
-									) : (
-										<span className="text-muted-foreground italic">No category assigned</span>
-									)}
+									<span className="text-foreground font-medium">
+										{product.category_display_name || "Uncategorized"}
+									</span>
 								</InfoCard>
 
 								{/* Product Type */}
 								<InfoCard icon={Tag} title="Product Type">
-									{product.product_type ? (
-										<span className="text-foreground font-medium">{product.product_type.name}</span>
-									) : (
-										<span className="text-muted-foreground italic">No type assigned</span>
-									)}
+									<span className="text-foreground font-medium">
+										{product.product_type_display_name || "No Type"}
+									</span>
 								</InfoCard>
 
 								{/* Inventory Tracking */}

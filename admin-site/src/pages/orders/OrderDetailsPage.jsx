@@ -632,11 +632,11 @@ const OrderDetailsPage = () => {
 									)}
 								</div>
 								{payment_details &&
-								payment_details.transactions?.filter((txn) => txn.status === "SUCCESSFUL")
+								payment_details.transactions?.filter((txn) => !["FAILED", "CANCELED"].includes(txn.status))
 									.length > 0 ? (
 									<div className="space-y-0">
 										{payment_details.transactions
-											.filter((txn) => txn.status === "SUCCESSFUL")
+											.filter((txn) => !["FAILED", "CANCELED"].includes(txn.status))
 											.map((txn) => (
 												<TransactionDetail key={txn.id} transaction={txn} />
 											))}

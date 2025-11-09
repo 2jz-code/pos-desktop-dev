@@ -50,33 +50,40 @@ apiClient.interceptors.request.use(
 
 		config.headers = config.headers || {};
 
+		// Read terminal config from localStorage for both location and tenant
+		let terminalConfig = null;
+		try {
+			const terminalConfigStr = localStorage.getItem('terminal_config');
+			if (terminalConfigStr) {
+				terminalConfig = JSON.parse(terminalConfigStr);
+			}
+		} catch (_) {
+			// If localStorage or parsing fails, proceed without the config
+		}
+
 		// Add X-Store-Location header for location-scoped filtering
 		// Skip for terminal registration/pairing endpoints (they don't need location context)
 		const skipLocationHeader =
 			config.url?.includes('/terminals/pairing/') ||
 			config.url?.includes('/terminals/registrations/by-fingerprint/');
 
-		if (!skipLocationHeader && cachedLocationId) {
-			config.headers['X-Store-Location'] = cachedLocationId;
-			console.log(`📍 [API] Adding X-Store-Location: ${cachedLocationId} to ${config.url}`);
-		} else if (!skipLocationHeader && !cachedLocationId) {
-			console.warn(`⚠️ [API] No location ID for request to ${config.url}`);
+		if (!skipLocationHeader) {
+			// Use cachedLocationId if set, otherwise try to get from terminal_config
+			const locationId = cachedLocationId || terminalConfig?.location_id;
+
+			if (locationId) {
+				config.headers['X-Store-Location'] = locationId;
+				console.log(`📍 [API] Adding X-Store-Location: ${locationId} to ${config.url}`);
+			} else {
+				console.warn(`⚠️ [API] No location ID for request to ${config.url}`);
+			}
 		}
 
 		// Add X-Tenant header from terminal config
 		// This allows tenant resolution even when JWT is expired (for token refresh)
-		try {
-			const terminalConfig = localStorage.getItem('terminal_config');
-			if (terminalConfig) {
-				const config_parsed = JSON.parse(terminalConfig);
-				const tenantSlug = config_parsed.tenant_slug;
-				if (tenantSlug) {
-					config.headers['X-Tenant'] = tenantSlug;
-					console.log(`🏢 [API] Adding X-Tenant: ${tenantSlug} to ${config.url}`);
-				}
-			}
-		} catch (_) {
-			// If localStorage or parsing fails, proceed without the header
+		if (terminalConfig?.tenant_slug) {
+			config.headers['X-Tenant'] = terminalConfig.tenant_slug;
+			console.log(`🏢 [API] Adding X-Tenant: ${terminalConfig.tenant_slug} to ${config.url}`);
 		}
 
 		// Add CSRF stopgap header on unsafe methods so the backend permits cookie-auth writes

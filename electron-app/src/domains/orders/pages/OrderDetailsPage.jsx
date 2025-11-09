@@ -457,7 +457,7 @@ const OrderDetailsPage = () => {
                   </div>
                   {order.payment_details &&
                   order.payment_details.transactions?.filter(
-                    (txn) => txn.status === "SUCCESSFUL"
+                    (txn) => !["FAILED", "CANCELED"].includes(txn.status)
                   ).length > 0 ? (
                     <div className="space-y-4">
                       {permissions.canAccessPayments() && (
@@ -473,7 +473,7 @@ const OrderDetailsPage = () => {
                       )}
                       <div className="space-y-3">
                         {order.payment_details.transactions
-                          .filter((txn) => txn.status === "SUCCESSFUL")
+                          .filter((txn) => !["FAILED", "CANCELED"].includes(txn.status))
                           .map((txn) => (
                             <TransactionDetail key={txn.id} transaction={txn} />
                           ))}
@@ -526,7 +526,7 @@ const OrderDetailsPage = () => {
                   </div>
                   {order.payment_details &&
                   order.payment_details.transactions?.filter(
-                    (txn) => txn.status === "SUCCESSFUL"
+                    (txn) => !["FAILED", "CANCELED"].includes(txn.status)
                   ).length > 0 ? (
                     <div className="space-y-4">
                       {permissions.canAccessPayments() && (
@@ -542,7 +542,7 @@ const OrderDetailsPage = () => {
                       )}
                       <div className="space-y-3">
                         {order.payment_details.transactions
-                          .filter((txn) => txn.status === "SUCCESSFUL")
+                          .filter((txn) => !["FAILED", "CANCELED"].includes(txn.status))
                           .map((txn) => (
                             <TransactionDetail key={txn.id} transaction={txn} />
                           ))}

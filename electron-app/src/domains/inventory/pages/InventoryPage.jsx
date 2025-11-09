@@ -51,6 +51,7 @@ import { useInventoryBarcode } from "@/shared/hooks";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { useDebounce, useScrollToScannedItem } from "@ajeen/ui";
 import { formatCurrency } from "@ajeen/ui";
+import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 
 // Import dialog components
 import StockAdjustmentDialog from "@/domains/inventory/components/StockAdjustmentDialog";
@@ -100,6 +101,10 @@ const InventoryPage = () => {
 	const [selectedLocation, setSelectedLocation] = useState(null);
 	const [stockFilter, setStockFilter] = useState("all"); // all, low_stock, expiring_soon
 	const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+	// Pagination state
+	const [stockPage, setStockPage] = useState(1);
+	const stockPageSize = 25;
 
 	const queryClient = useQueryClient();
 
@@ -212,14 +217,37 @@ const InventoryPage = () => {
 			search: debouncedSearchQuery,
 			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
 			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
+			page: stockPage,
 		}),
-		[selectedLocation, debouncedSearchQuery, stockFilter]
+		[selectedLocation, debouncedSearchQuery, stockFilter, stockPage]
 	);
 
-	const { data: stockData, isLoading: stockLoading } = useQuery({
+	const { data: stockResponse, isLoading: stockLoading } = useQuery({
 		queryKey: ["inventory-stock", stockQueryFilters],
-		queryFn: () => getAllStock(stockQueryFilters),
+		queryFn: () => getAllStock(stockQueryFilters, null),
 	});
+
+	const stockData = stockResponse?.results || [];
+	const stockNextUrl = stockResponse?.next || null;
+	const stockPrevUrl = stockResponse?.previous || null;
+	const stockCount = stockResponse?.count || 0;
+
+	// Reset page to 1 when filters change
+	React.useEffect(() => {
+		setStockPage(1);
+	}, [selectedLocation, debouncedSearchQuery, stockFilter]);
+
+	// Handle pagination navigation
+	const handleStockNavigate = async (url) => {
+		try {
+			// Extract page from URL
+			const urlObj = new URL(url);
+			const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+			setStockPage(page);
+		} catch (e) {
+			console.error("Error parsing pagination URL:", e);
+		}
+	};
 
 	const { data: locations, isLoading: locationsLoading } = useQuery({
 		queryKey: ["inventory-locations"],
@@ -735,17 +763,31 @@ const InventoryPage = () => {
 									</div>
 								</div>
 						</CardHeader>
-						<CardContent ref={tableContainerRef} className="flex-grow overflow-y-auto min-h-0">
-							<StandardTable
-								headers={stockTableHeaders}
-								data={stockData}
-								loading={stockLoading}
-								emptyMessage="No stock found. Try adjusting your filters."
-								renderRow={renderStockRow}
-								getRowProps={(item) => ({
-									'data-product-id': item.product.id,
-								})}
-							/>
+						<CardContent className="flex-grow flex flex-col overflow-hidden min-h-0">
+							<div ref={tableContainerRef} className="flex-grow overflow-y-auto min-h-0">
+								<StandardTable
+									headers={stockTableHeaders}
+									data={stockData}
+									loading={stockLoading}
+									emptyMessage="No stock found. Try adjusting your filters."
+									renderRow={renderStockRow}
+									getRowProps={(item) => ({
+										'data-product-id': item.product.id,
+									})}
+								/>
+							</div>
+
+							{/* Pagination Controls */}
+							<div className="flex-shrink-0 border-t border-border pt-4">
+								<PaginationControls
+									prevUrl={stockPrevUrl}
+									nextUrl={stockNextUrl}
+									onNavigate={handleStockNavigate}
+									count={stockCount}
+									currentPage={stockPage}
+									pageSize={stockPageSize}
+								/>
+							</div>
 						</CardContent>
 					</Card>
 				</TabsContent>
