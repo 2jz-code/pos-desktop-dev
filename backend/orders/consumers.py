@@ -212,17 +212,10 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     notes=payload.get("notes", ""),
                     force_add=True
                 )
-                # No need to recalculate - add_item_to_order already does it
-                # After adding items, the prefetched items are stale, so we need to refetch
-                def get_fresh_order():
-                    return Order.objects.prefetch_related(
-                        'items__product',
-                        'items__selected_modifiers_snapshot',
-                        'applied_discounts__discount'
-                    ).get(id=self.order_id, tenant=self.tenant)
-
-                fresh_order = await sync_to_async(get_fresh_order)()
-                self._cached_order_instance = fresh_order
+                # Use recalculate_and_cache_order for consistency with other operations
+                # This will use the _recalculated_order_instance attribute set by add_item_to_order
+                # (avoiding redundant recalculation) and properly cache the serialized payload
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully force-added {quantity} of {product.name}"
                 )
@@ -264,18 +257,10 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 await sync_to_async(OrderService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
-                # No need to recalculate - add_item_to_order already does it
-                # After adding items, the prefetched items are stale, so we need to refetch
-                # or use the recalculated instance which has fresh data
-                def get_fresh_order():
-                    return Order.objects.prefetch_related(
-                        'items__product',
-                        'items__selected_modifiers_snapshot',
-                        'applied_discounts__discount'
-                    ).get(id=self.order_id, tenant=self.tenant)
-
-                fresh_order = await sync_to_async(get_fresh_order)()
-                self._cached_order_instance = fresh_order
+                # Use recalculate_and_cache_order for consistency with other operations
+                # This will use the _recalculated_order_instance attribute set by add_item_to_order
+                # (avoiding redundant recalculation) and properly cache the serialized payload
+                await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}"
                 )

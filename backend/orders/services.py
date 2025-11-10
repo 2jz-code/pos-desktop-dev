@@ -738,21 +738,14 @@ class OrderService:
         """
         start_time = time.monotonic()
 
-        # Optimization: Check if order already has necessary data prefetched (from WebSocket consumer)
-        # This avoids redundant database query when order was just fetched with proper prefetching
+        # Prefetched relations on the Order instance become stale immediately after we mutate
+        # related objects (e.g. adding/removing items via the WebSocket consumer). Always fetch
+        # a fresh copy so calculations operate on accurate data.
         original_order_reference = order
-        needs_refetch = not (
-            hasattr(order, '_prefetched_objects_cache') and
-            'items' in order._prefetched_objects_cache
-        )
-
-        if needs_refetch:
-            # Re-fetch the full order context to ensure data is fresh
-            # FIX: Add select_related for product to prevent N+1 queries when accessing item.product.price
-            order = Order.objects.prefetch_related(
-                "items__product__taxes", "applied_discounts__discount"
-            ).select_related().get(id=order.id, tenant=order.tenant)
-            setattr(original_order_reference, "_recalculated_order_instance", order)
+        order = Order.objects.prefetch_related(
+            "items__product__taxes", "applied_discounts__discount"
+        ).select_related("store_location").get(id=order.id, tenant=order.tenant)
+        setattr(original_order_reference, "_recalculated_order_instance", order)
 
         # Pre-fetch items with related data to prevent N+1 queries
         items_queryset = order.items.select_related("product", "product__product_type").prefetch_related("product__taxes").all()
