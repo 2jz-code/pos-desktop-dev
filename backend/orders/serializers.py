@@ -41,13 +41,25 @@ class OrderItemSerializer(BaseModelSerializer):
 
     def get_product(self, obj):
         """
-        Return product using unified ProductSerializer with 'order_item' fieldset.
+        Return product using unified ProductSerializer with appropriate fieldset.
         This replaces the old OrderItemProductSerializer.
+
+        For websocket context, uses 'websocket_item' fieldset with minimal fields
+        needed by frontend: id, name, price, image_url, modifier_groups.
         """
         if obj.product:
-            # Use unified ProductSerializer with order_item view mode
+            # Use unified ProductSerializer with appropriate view mode
             context = self.context.copy() if self.context else {}
-            context["view_mode"] = "order_item"
+
+            # Optimize for websocket: use minimal fieldset with only frontend-needed fields
+            parent_view_mode = self.context.get("view_mode")
+            if parent_view_mode == "websocket":
+                # Lightweight: id, name, price, image_url, modifier_groups (frontend needs these)
+                context["view_mode"] = "websocket_item"
+            else:
+                # Full representation with all fields
+                context["view_mode"] = "order_item"
+
             return ProductSerializer(obj.product, context=context).data
         return None
 
@@ -195,6 +207,28 @@ class UnifiedOrderSerializer(
                 "created_at",
                 "updated_at",
                 "payment_in_progress",
+            ],
+            # Optimized for WebSocket real-time updates
+            # Only includes fields actively used by frontend (electron-app/src/domains/pos/store/cartSlice.js)
+            # Analysis: cartSocket.js setCartFromSocket() only reads:
+            #   - items, id, order_number, status, grand_total, subtotal, tax_total,
+            #     total_discounts_amount, applied_discounts, guest_first_name, dining_preference
+            "websocket": [
+                # Core fields (used by cartSlice.js)
+                "id",                      # → orderId
+                "order_number",            # → orderNumber
+                "status",                  # → orderStatus
+                "dining_preference",       # → used in resumeCart
+                # Financial fields (used by cartSlice.js)
+                "subtotal",                # → subtotal
+                "tax_total",               # → taxAmount
+                "total_discounts_amount",  # → totalDiscountsAmount
+                "grand_total",             # → total
+                # Relationships (used by cart UI)
+                "items",                   # → items array
+                "applied_discounts",       # → appliedDiscounts
+                # Customer info (used in resumeCart)
+                "guest_first_name",        # → used when resuming order
             ],
             # Full detail (default) - includes all fields
             "detail": [

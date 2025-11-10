@@ -18,18 +18,11 @@ const getReconnectDelay = (attempt) => {
 
 const scheduleReconnect = (orderId) => {
 	if (!_shouldAttemptReconnect || _retryCount >= MAX_RETRIES) {
-		console.log(
-			"WebSocket: Not attempting reconnect (explicitly closed or max retries reached)."
-		);
 		return;
 	}
 
 	const delay = getReconnectDelay(_retryCount + 1);
-	console.log(
-		`WebSocket: Attempting reconnect in ${delay / 1000} seconds (attempt ${
-			_retryCount + 1
-		}/${MAX_RETRIES})...`
-	);
+	console.log(`⏱️ [TIMING] Reconnecting in ${delay / 1000}s (attempt ${_retryCount + 1}/${MAX_RETRIES})`);
 
 	_reconnectTimeoutId = setTimeout(() => {
 		_retryCount++;
@@ -51,9 +44,7 @@ const processMessageQueue = () => {
 		socket &&
 		socket.readyState === WebSocket.OPEN
 	) {
-		console.log(
-			`WebSocket: Processing ${_messageQueue.length} queued messages`
-		);
+		console.log(`⏱️ [TIMING] Processing ${_messageQueue.length} queued messages`);
 		const queuedMessages = [..._messageQueue];
 		_messageQueue = []; // Clear the queue
 
@@ -74,15 +65,13 @@ const connect = (orderId) => {
 		(socket.readyState === WebSocket.OPEN ||
 			socket.readyState === WebSocket.CONNECTING)
 	) {
-		console.log(
-			"WebSocket already open or connecting. Skipping initialization."
-		);
+		console.log(`⏱️ [TIMING] WebSocket already ${socket.readyState === WebSocket.OPEN ? 'open' : 'connecting'}, skipping`);
 		return Promise.resolve(); // Return a resolved promise if already connected
 	}
 
 	// Ensure the store is set before connecting
 	if (!store) {
-		console.error("Zustand store is not set for WebSocket service.");
+		console.error("❌ Zustand store is not set for WebSocket service.");
 		return Promise.reject(new Error("Store is not set."));
 	}
 
@@ -94,12 +83,14 @@ const connect = (orderId) => {
 	const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8001/";
 	const url = `${wsBaseUrl}ws/cart/${orderId}/`;
 
+	console.log(`⏱️ [TIMING] Initiating WebSocket connection for order: ${orderId.substring(0, 8)}`);
+
 	// Return a promise that resolves on connection or rejects on error
 	return new Promise((resolve, reject) => {
 		socket = new WebSocket(url);
 
 		socket.onopen = () => {
-			console.log("WebSocket connected.");
+			console.log(`⏱️ [TIMING] ✅ WebSocket CONNECTED`);
 			if (store) {
 				// Assumes store.getState().cart exists and has setSocketConnected
 				store.getState().setSocketConnected(true);
@@ -115,32 +106,23 @@ const connect = (orderId) => {
 
 		socket.onmessage = (event) => {
 			const data = JSON.parse(event.data);
-			console.log("WebSocket message received in cartSocket.js:", data); // ADDED LOG
+
 			if (data.type === "cart_update") {
-				// Ensure it's a cart update message
-				console.log(
-					"Processing cart_update message in cartSocket.js:",
-					data.payload
-				); // ADDED LOG
+				console.log(`⏱️ [TIMING] Received cart_update from server`);
 				if (store) {
 					// Check if this is a response to a pending operation or a general update
 					const operationId = data.operationId;
 					if (!operationId || store.getState().isPendingOperation(operationId)) {
 						// Apply the update
 						store.getState().setCartFromSocket(data.payload);
-						
+
 						// Remove from pending operations if it was tracked
 						if (operationId) {
 							store.getState().removePendingOperation(operationId);
-							console.log(`Operation ${operationId} completed and removed from pending`);
 						}
-					} else {
-						console.log(`Ignoring cart update for non-pending operation: ${operationId}`);
 					}
 				} else {
-					console.error(
-						"Store is not set in cartSocket.js, cannot dispatch cart update."
-					);
+					console.error("❌ Store is not set, cannot dispatch cart update.");
 				}
 			} else if (data.type === "error") {
 				// Handle error messages from backend
@@ -205,7 +187,7 @@ const connect = (orderId) => {
 		};
 
 		socket.onclose = (event) => {
-			console.log("WebSocket disconnected.", event);
+			console.log(`⏱️ [TIMING] ❌ WebSocket disconnected (code: ${event.code})`);
 			if (store) {
 				store.getState().setSocketConnected(false);
 			}
@@ -217,7 +199,7 @@ const connect = (orderId) => {
 		};
 
 		socket.onerror = (error) => {
-			console.error("WebSocket error:", error);
+			console.error("❌ WebSocket error:", error);
 			if (store) {
 				store.getState().setSocketConnected(false);
 			}
@@ -232,6 +214,7 @@ const connect = (orderId) => {
  * This is the 'disconnect' method of the exported cartSocket object.
  */
 const disconnect = () => {
+	console.log(`⏱️ [TIMING] disconnect() called, socket state: ${socket ? `readyState=${socket.readyState}` : 'null'}`);
 	// Set this flag to false when we explicitly want to close the socket
 	_shouldAttemptReconnect = false;
 	clearReconnectTimeout(); // Ensure no pending reconnects
@@ -244,8 +227,8 @@ const disconnect = () => {
 			socket.readyState === WebSocket.OPEN ||
 			socket.readyState === WebSocket.CONNECTING
 		) {
+			console.log(`⏱️ [TIMING] Closing socket with readyState: ${socket.readyState}`);
 			socket.close();
-			console.log("WebSocket closing initiated by client.");
 		}
 		socket = null;
 	}
@@ -258,17 +241,16 @@ const disconnect = () => {
  */
 const sendMessage = (message) => {
 	if (socket && socket.readyState === WebSocket.OPEN) {
+		console.log(`⏱️ [TIMING] Sending ${message.type} to server`);
 		socket.send(JSON.stringify(message));
 	} else {
-		console.log("WebSocket not ready. Queuing message:", message);
+		console.log(`⏱️ [TIMING] WebSocket not ready, queuing ${message.type}`);
 		_messageQueue.push(message);
 
 		// If the socket is connecting, messages will be processed when it opens
 		// If the socket is closed/error, we should probably handle reconnection
 		if (!socket || socket.readyState === WebSocket.CLOSED) {
-			console.warn(
-				"WebSocket is closed. Message queued but connection may need to be re-established."
-			);
+			console.warn("⚠️ WebSocket is closed. Message queued but may need reconnection.");
 		}
 	}
 };

@@ -760,6 +760,13 @@ class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelS
                 'id', 'name', 'barcode'
             ],
 
+            # WebSocket cart updates - minimal fields needed by frontend
+            # Used by: electron-app CartItem.jsx, GroupedCartItem.jsx
+            # Frontend needs: id, name, price (for display), image_url (for UI), modifier_groups (for editing)
+            'websocket_item': [
+                'id', 'name', 'price', 'image_url', 'modifier_groups'
+            ],
+
             # Order item representation (for OrderItemSerializer.product field)
             'order_item': [
                 'id', 'name', 'price', 'description', 'barcode',
