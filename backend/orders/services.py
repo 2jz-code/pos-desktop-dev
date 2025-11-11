@@ -585,7 +585,12 @@ class OrderService:
 
         order.payment_status = Order.PaymentStatus.PAID
         order.status = Order.OrderStatus.COMPLETED
-        order.save(update_fields=["status", "payment_status", "surcharges_total", "updated_at"])
+
+        # Set completed_at to current time for accurate reporting
+        from django.utils import timezone
+        order.completed_at = timezone.now()
+
+        order.save(update_fields=["status", "payment_status", "surcharges_total", "completed_at", "updated_at"])
 
         return order
 
@@ -1179,7 +1184,8 @@ class GuestSessionService:
                 if order.status == Order.OrderStatus.PENDING:
                     # This prevents the order from being reused in future sessions
                     order.status = Order.OrderStatus.COMPLETED
-                    order.save(update_fields=["status"])
+                    order.completed_at = timezone.now()
+                    order.save(update_fields=["status", "completed_at"])
             except Order.DoesNotExist:
                 pass
 

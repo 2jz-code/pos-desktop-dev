@@ -347,8 +347,10 @@ class PaymentService:
         """
         order = payment.order
         if order.status != Order.OrderStatus.COMPLETED:
+            from django.utils import timezone
             order.status = Order.OrderStatus.COMPLETED
-            order.save(update_fields=["status"])
+            order.completed_at = timezone.now()
+            order.save(update_fields=["status", "completed_at"])
 
         # PERFORMANCE FIX: Defer signal emission until AFTER transaction commits
         # This prevents inventory processing and email sending from blocking the payment transaction
@@ -751,9 +753,11 @@ class PaymentService:
             payment.save(update_fields=["status"])
 
             # Update order status to completed
+            from django.utils import timezone
             order = payment.order
             order.status = Order.OrderStatus.COMPLETED
-            order.save(update_fields=["status"])
+            order.completed_at = timezone.now()
+            order.save(update_fields=["status", "completed_at"])
 
             # Handle payment completion (signals, etc.)
             # Note: _handle_payment_completion now defers heavy operations via transaction.on_commit
@@ -1281,10 +1285,12 @@ class PaymentService:
         )
 
         # Update order status
+        from django.utils import timezone
         order.status = Order.OrderStatus.COMPLETED
+        order.completed_at = timezone.now()
         order.payment_status = Order.PaymentStatus.PAID
         order.order_type = platform_id
-        order.save(update_fields=["status", "payment_status", "order_type"])
+        order.save(update_fields=["status", "completed_at", "payment_status", "order_type"])
 
         # Emit payment completed signal
         payment_completed.send(sender=PaymentService, payment=payment, order=order)

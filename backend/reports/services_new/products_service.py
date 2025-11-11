@@ -357,7 +357,7 @@ class ProductsReportService(BaseReportService):
         filters = {
             "order__tenant": tenant,
             "order__status": Order.OrderStatus.COMPLETED,
-            "order__created_at__range": (start_date, end_date),
+            "order__completed_at__range": (start_date, end_date),
             "order__subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
         }
 
@@ -478,7 +478,7 @@ class ProductsReportService(BaseReportService):
         if actual_period == "weekly":
             product_trends = (
                 trend_items
-                .annotate(period=TruncWeek("order__created_at"))
+                .annotate(period=TruncWeek("order__completed_at"))
                 .values("product__name", "period")
                 .annotate(sold=Sum("quantity"))
                 .order_by("period")
@@ -486,7 +486,7 @@ class ProductsReportService(BaseReportService):
         elif actual_period == "monthly":
             product_trends = (
                 trend_items
-                .annotate(period=TruncMonth("order__created_at"))
+                .annotate(period=TruncMonth("order__completed_at"))
                 .values("product__name", "period")
                 .annotate(sold=Sum("quantity"))
                 .order_by("period")
@@ -494,7 +494,7 @@ class ProductsReportService(BaseReportService):
         else:  # daily
             product_trends = (
                 trend_items
-                .annotate(period=TimezoneUtils.trunc_date_local("order__created_at"))
+                .annotate(period=TimezoneUtils.trunc_date_local("order__completed_at"))
                 .values("product__name", "period")
                 .annotate(sold=Sum("quantity"))
                 .order_by("period")
@@ -917,7 +917,7 @@ class ProductsReportService(BaseReportService):
         # Get base queryset - same logic as main report but no limit
         filters = {
             'order__status': Order.OrderStatus.COMPLETED,
-            'order__created_at__range': (start_date, end_date),
+            'order__completed_at__range': (start_date, end_date),
             'order__subtotal__gt': 0,
         }
 

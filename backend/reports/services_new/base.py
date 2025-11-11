@@ -159,7 +159,7 @@ class BaseReportService:
 
             # Today's metrics
             today_orders = Order.objects.filter(
-                created_at__gte=today_start,
+                completed_at__gte=today_start,
                 **base_filters
             )
 
@@ -172,7 +172,7 @@ class BaseReportService:
             # This week's metrics
             week_start = today_start - timedelta(days=now.weekday())
             week_orders = Order.objects.filter(
-                created_at__gte=week_start,
+                completed_at__gte=week_start,
                 **base_filters
             )
 

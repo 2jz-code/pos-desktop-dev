@@ -104,7 +104,7 @@ class SummaryReportService(BaseReportService):
         filters = {
             "tenant": tenant,
             "status": Order.OrderStatus.COMPLETED,
-            "created_at__range": (start_date, end_date),
+            "completed_at__range": (start_date, end_date),
             "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
         }
 
@@ -170,7 +170,7 @@ class SummaryReportService(BaseReportService):
         filters = {
             "tenant": tenant,
             "status": Order.OrderStatus.COMPLETED,
-            "created_at__range": (previous_start, previous_end),
+            "completed_at__range": (previous_start, previous_end),
             "subtotal__gt": 0,
         }
 
@@ -256,7 +256,7 @@ class SummaryReportService(BaseReportService):
         
         daily_sales = (
             orders_queryset.annotate(
-                date=SummaryReportService._trunc_date_local("created_at")
+                date=SummaryReportService._trunc_date_local("completed_at")
             )
             .values("date")
             .annotate(sales=Sum("grand_total"), transactions=Count("id"))
@@ -320,7 +320,7 @@ class SummaryReportService(BaseReportService):
         """Calculate hourly performance data."""
         
         hourly_data = (
-            orders_queryset.annotate(hour=Extract("created_at", "hour"))
+            orders_queryset.annotate(hour=Extract("completed_at", "hour"))
             .values("hour")
             .annotate(sales=Sum("grand_total"), orders=Count("id"))
             .order_by("hour")
@@ -377,7 +377,7 @@ class SummaryReportService(BaseReportService):
         filters = {
             "tenant": tenant,
             "status": Order.OrderStatus.COMPLETED,
-            "created_at__range": (start_time, end_time),
+            "completed_at__range": (start_time, end_time),
             "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
         }
 
@@ -405,7 +405,7 @@ class SummaryReportService(BaseReportService):
         item_filters = {
             "order__tenant": tenant,
             "order__status": Order.OrderStatus.COMPLETED,
-            "order__created_at__range": (start_time, end_time),
+            "order__completed_at__range": (start_time, end_time),
             "order__subtotal__gt": 0,
         }
 

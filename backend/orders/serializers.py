@@ -206,6 +206,7 @@ class UnifiedOrderSerializer(
                 "customer_display_name",
                 "created_at",
                 "updated_at",
+                "completed_at",
                 "payment_in_progress",
             ],
             # Optimized for WebSocket real-time updates
@@ -271,6 +272,7 @@ class UnifiedOrderSerializer(
                 # Metadata
                 "created_at",
                 "updated_at",
+                "completed_at",
                 "legacy_id",
             ],
         }

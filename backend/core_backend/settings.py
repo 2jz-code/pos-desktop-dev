@@ -59,7 +59,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party apps
-    "debug_toolbar",
     "django_extensions",
     "rest_framework",
     "django_filters",
@@ -102,10 +101,14 @@ MIDDLEWARE = [
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     # Global CSRF enforcement for API endpoints (cookie-JWT flows)
     "core_backend.infrastructure.csrf_api_middleware.CSRFApiMiddleware",
 ]
+
+# Debug toolbar - only in development
+if DEBUG:
+    INSTALLED_APPS.append("debug_toolbar")
+    MIDDLEWARE.append("debug_toolbar.middleware.DebugToolbarMiddleware")
 
 # ==============================================================================
 # MULTI-TENANCY CONFIGURATION
