@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Mail, Clock, MapPin, Coffee, Phone } from "lucide-react";
@@ -10,6 +11,68 @@ import { formatPhoneNumber } from "@ajeen/ui";
 const OrderConfirmation = ({ orderData, surchargeDisplay }) => {
 	const navigate = useNavigate();
 	const { data: storeInfo } = useStoreInfo();
+	const hasPushedGA4Ref = useRef(false);
+
+	// GA4 Purchase Event Tracking
+	useEffect(() => {
+		// Only fire once per order and only when orderData is available
+		if (!orderData || hasPushedGA4Ref.current) return;
+		hasPushedGA4Ref.current = true;
+
+		try {
+			const orderId = orderData.order_number || orderData.id;
+
+			// Calculate total collected (most accurate from payment details)
+			const totalCollected = orderData.payment_details?.total_collected
+				?? orderData.grand_total
+				?? 0;
+			const value = Number(totalCollected);
+			const tax = Number(orderData.tax_total ?? 0);
+
+			// Build items array following GA4 spec
+			const items = (orderData.items || []).map((item, idx) => ({
+				item_id: item.product?.sku || item.product?.id || item.product_id || `item-${idx}`,
+				item_name: item.product?.name || item.product_name || "Unknown Item",
+				item_category: item.product?.category?.name,
+				item_variant: item.selected_modifiers_snapshot?.map(m => m.name).join(", ") || undefined,
+				price: Number(item.price_at_sale ?? item.total_price ?? 0),
+				quantity: item.quantity,
+			}));
+
+			// Push to dataLayer for GTM
+			window.dataLayer = window.dataLayer || [];
+			window.dataLayer.push({
+				event: "purchase",
+				ecommerce: {
+					transaction_id: orderId,
+					affiliation: orderData.store_location_details?.name,
+					value,
+					tax,
+					shipping: 0,
+					currency: orderData.currency || "USD",
+					coupon: orderData.discount_code || undefined,
+					items,
+				},
+			});
+
+			// Also call gtag directly if available (for non-GTM setups)
+			if (typeof window.gtag === "function") {
+				window.gtag("event", "purchase", {
+					transaction_id: orderId,
+					affiliation: orderData.store_location_details?.name,
+					value,
+					tax,
+					shipping: 0,
+					currency: orderData.currency || "USD",
+					items,
+				});
+			}
+
+			console.log("GA4 purchase event pushed:", { orderId, value, items });
+		} catch (err) {
+			console.error("Failed to push GA4 purchase event:", err);
+		}
+	}, [orderData]);
 
 	if (!orderData) {
 		return (

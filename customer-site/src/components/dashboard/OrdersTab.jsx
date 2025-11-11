@@ -104,8 +104,8 @@ const OrdersTab = () => {
 	};
 
 	const handleViewDetails = (orderId) => {
-		// Navigate to checkout page in confirmation mode with the order ID
-		navigate(`/checkout?step=confirmation&orderId=${orderId}`);
+		// Navigate to dedicated confirmation page with the order ID
+		navigate(`/confirmation/${orderId}`);
 	};
 
 	const OrderStatusBadge = ({ status }) => {

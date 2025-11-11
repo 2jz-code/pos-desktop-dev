@@ -126,7 +126,7 @@ function App() {
 														element={<DashboardPage />}
 													/>
 													<Route
-														path="/confirmation"
+														path="/confirmation/:orderId"
 														element={<ConfirmationPage />}
 													/>
 													<Route

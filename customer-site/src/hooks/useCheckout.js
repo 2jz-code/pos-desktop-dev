@@ -395,17 +395,16 @@ export const useCheckout = (initialStep = 0) => {
 
 				toast.success("Payment successful!");
 
-				// Clear cart and navigate with order data
+				// Clear cart and navigate with order ID
 				setCheckoutCompleted(true);
 				queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
 
-				// Pass order data in URL to avoid the 404 API call issue
-				const orderDataParam = encodeURIComponent(
-					JSON.stringify(completionResponse.order)
-				);
-				navigate(
-					`/checkout?step=confirmation&orderId=${cart.id}&orderData=${orderDataParam}`
-				);
+				// Cache order data in sessionStorage for faster initial load
+				const orderId = completionResponse.order.id;
+				sessionStorage.setItem(`order_${orderId}`, JSON.stringify(completionResponse.order));
+
+				// Navigate to confirmation with clean URL
+				navigate(`/confirmation/${orderId}`);
 			} catch (err) {
 				console.error("Authenticated checkout error:", err);
 				setError(err.message || "Payment failed. Please try again.");
@@ -487,17 +486,15 @@ export const useCheckout = (initialStep = 0) => {
 
 					toast.success("Payment successful!");
 
-					// Clear cart and navigate with order data
+					// Clear cart and navigate with order ID
 					setCheckoutCompleted(true);
 					queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
 
-					// Pass order data in URL to avoid the 404 API call issue
-					const orderDataParam = encodeURIComponent(
-						JSON.stringify(completionResponse.order)
-					);
-					navigate(
-						`/checkout?step=confirmation&orderId=${orderId}&orderData=${orderDataParam}`
-					);
+					// Cache order data in sessionStorage for faster initial load
+					sessionStorage.setItem(`order_${orderId}`, JSON.stringify(completionResponse.order));
+
+					// Navigate to confirmation with clean URL
+					navigate(`/confirmation/${orderId}`);
 				} else {
 					throw new Error("Payment was not completed successfully");
 				}
