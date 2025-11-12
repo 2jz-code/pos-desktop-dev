@@ -1,5 +1,5 @@
 from rest_framework import viewsets, filters
-from django_filters.rest_framework import DjangoFilterBackend
+from core_backend.filter_backends import ProjectFilterBackend
 from .mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin
 from ..pagination import StandardPagination
 
@@ -25,7 +25,7 @@ class BaseViewSet(OptimizedQuerysetMixin, ArchivingViewSetMixin, viewsets.ModelV
     
     # Standard filter backends
     filter_backends = [
-        DjangoFilterBackend,
+        ProjectFilterBackend,  # Custom backend with FlexibleDateTimeFilter
         filters.SearchFilter,
         filters.OrderingFilter,
     ]
@@ -74,7 +74,7 @@ class ReadOnlyBaseViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet)
 
     pagination_class = StandardPagination
     filter_backends = [
-        DjangoFilterBackend,
+        ProjectFilterBackend,  # Custom backend with FlexibleDateTimeFilter
         filters.SearchFilter,
         filters.OrderingFilter,
     ]

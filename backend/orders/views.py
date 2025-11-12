@@ -20,6 +20,7 @@ from .serializers import (
     OrderCustomerInfoSerializer,
 )
 from .services import OrderService, GuestSessionService
+from .filters import OrderFilter
 from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from .permissions import (
     IsAuthenticatedOrGuestOrder,
@@ -100,14 +101,8 @@ class OrderViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseView
     ]  # Admin/staff authentication only
     permission_classes = [IsAuthenticatedOrGuestOrder]
 
-    # Custom filtering and search configuration (BaseViewSet provides the rest)
-    filterset_fields = {
-        "status": ["exact"],
-        "payment_status": ["exact"],
-        "order_type": ["exact"],
-        "store_location": ["exact"],
-        "created_at": ["gte", "lte", "exact", "gt", "lt"],  # Support date range filtering
-    }
+    # Custom filtering with OR logic for date ranges
+    filterset_class = OrderFilter
     search_fields = [
         "order_number",
         "customer__email",
