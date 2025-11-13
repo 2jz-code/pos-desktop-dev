@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from django.db import transaction, models
 from django.db.models import Sum
 from django.utils import timezone
@@ -14,6 +14,9 @@ import stripe
 import uuid
 from .signals import payment_completed
 import logging
+
+# Import the money precision helpers
+from .money import to_minor, from_minor, quantize
 
 logger = logging.getLogger(__name__)
 
@@ -352,14 +355,30 @@ class PaymentService:
             "total"
         ] or Decimal("0.00")
 
+        # Calculate total tips from successful/refunded transactions
+        total_tips = paid_transactions.aggregate(total=Sum("tip"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Calculate total surcharges from successful/refunded transactions
+        total_surcharges = paid_transactions.aggregate(total=Sum("surcharge"))[
+            "total"
+        ] or Decimal("0.00")
+
+        # Calculate total collected (base + tips + surcharges)
+        total_collected = total_paid_gross + total_tips + total_surcharges
+
         # Calculate the total refunded amount on-the-fly from all associated transactions.
         total_refunded = payment.transactions.aggregate(total=Sum("refunded_amount"))[
             "total"
         ] or Decimal("0.00")
 
-        # Update the amount_paid field to the GROSS total
+        # Update all payment totals
         payment.amount_paid = total_paid_gross
-        payment.save(update_fields=["amount_paid", "updated_at"])
+        payment.total_tips = total_tips
+        payment.total_surcharges = total_surcharges
+        payment.total_collected = total_collected
+        payment.save(update_fields=["amount_paid", "total_tips", "total_surcharges", "total_collected", "updated_at"])
 
         return payment
 
@@ -469,10 +488,15 @@ class PaymentService:
             "total"
         ] or Decimal("0.00")
 
+        # Calculate the total collected (base amount + tips + surcharges) to compare against refunds
+        # This is necessary because refunds include tips and surcharges, not just the base amount
+        total_collected = payment.amount_paid + payment.total_tips + payment.total_surcharges
+
         # Determine the correct status based on gross paid and total refunded
         target_status = None
         if total_refunded > 0:
-            if total_refunded >= payment.amount_paid:
+            # Compare refunded amount against total collected (including tips and surcharges)
+            if total_refunded >= total_collected:
                 target_status = "REFUNDED"
             else:
                 target_status = "PARTIALLY_REFUNDED"
@@ -561,14 +585,8 @@ class PaymentService:
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             PaymentTransaction.PaymentMethod.CARD_ONLINE,
         ]:
-            from settings.config import app_settings
-
-            # Ensure both operands are Decimal to avoid float/Decimal TypeError
-            amount_decimal = (
-                Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
-            )
-            surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
-            surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            # Use centralized surcharge calculation with banker's rounding
+            surcharge = PaymentService.calculate_surcharge(amount)
 
         # Extract tip from kwargs if provided
         tip = kwargs.get("tip", Decimal("0.00"))
@@ -839,6 +857,268 @@ class PaymentService:
         return self.payment
 
     @transaction.atomic
+    def process_item_level_refund(
+        self,
+        order_items_with_quantities: list[tuple],
+        reason: str | None = None,
+        transaction_id: uuid.UUID | None = None,
+    ) -> dict:
+        """
+        Process a refund for specific order items using RefundCalculator.
+
+        This is the recommended high-level method for processing refunds.
+        It handles the full refund flow:
+        1. Validates the refund using RefundValidator
+        2. Calculates refund amounts using RefundCalculator
+        3. Processes the refund via payment provider
+        4. Creates RefundItem and RefundAuditLog records
+
+        Args:
+            order_items_with_quantities: List of (OrderItem, quantity) tuples
+            reason: Optional reason for the refund
+            transaction_id: Optional specific transaction to refund from
+
+        Returns:
+            Dict containing:
+            {
+                'success': bool,
+                'refund_transaction': PaymentTransaction,
+                'refund_items': List[RefundItem],
+                'audit_log': RefundAuditLog,
+                'total_refunded': Decimal
+            }
+
+        Raises:
+            ValueError: If validation fails
+        """
+        from refunds.services import RefundCalculator, RefundValidator
+        from refunds.models import RefundItem, RefundAuditLog
+
+        # Validate all items first
+        for order_item, quantity in order_items_with_quantities:
+            is_valid, error_message = RefundValidator.validate_item_refund(order_item, quantity)
+            if not is_valid:
+                raise ValueError(f"Validation failed for {order_item.product.name}: {error_message}")
+
+        # Validate payment
+        is_valid, error_message = RefundValidator.validate_payment_refund(self.payment)
+        if not is_valid:
+            raise ValueError(f"Payment validation failed: {error_message}")
+
+        # Calculate refund using RefundCalculator
+        calculator = RefundCalculator(self.payment)
+        refund_calculation = calculator.calculate_multiple_items_refund(order_items_with_quantities)
+        total_refund_amount = refund_calculation['grand_total']
+
+        # PHASE 1 MVP: Detect split payments
+        successful_transactions = self.payment.transactions.filter(
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+        )
+        is_split_payment = successful_transactions.count() > 1
+
+        # Get the transaction to refund from
+        if transaction_id:
+            refund_from_transaction = get_object_or_404(
+                PaymentTransaction,
+                id=transaction_id,
+                payment=self.payment
+            )
+        else:
+            refund_from_transaction = successful_transactions.order_by('-created_at').first()
+
+        if not refund_from_transaction:
+            raise ValueError("No successful transaction found to refund")
+
+        # Create audit log (initiated)
+        audit_log = RefundAuditLog.objects.create(
+            tenant=self.payment.tenant,
+            payment=self.payment,
+            payment_transaction=None,  # Will be set after refund
+            action='item_refund_initiated',
+            source='SERVICE',
+            refund_amount=total_refund_amount,
+            reason=reason or '',
+            initiated_by=None,  # Can be set by caller if available
+            status='pending',
+        )
+
+        try:
+            if is_split_payment:
+                # SPLIT PAYMENT: Mark original transactions as REFUNDED (cash refund to customer)
+                logger.info(f"Split payment detected for Payment {self.payment.id}, marking transactions as REFUNDED (cash refund)")
+
+                # Calculate how much to refund from each transaction proportionally
+                total_paid = sum(txn.amount + txn.tip + txn.surcharge for txn in successful_transactions)
+
+                # We'll link RefundItems to the primary transaction (most recent)
+                # but mark ALL transactions as REFUNDED
+                primary_transaction = successful_transactions.order_by('-created_at').first()
+
+                # Mark all transactions as REFUNDED with updated refunded_amount
+                # Use Decimal arithmetic to avoid floating point errors
+                from decimal import Decimal, ROUND_HALF_UP
+
+                total_paid_decimal = Decimal(str(total_paid))
+                total_refund_decimal = Decimal(str(total_refund_amount))
+
+                # Allocate refund across transactions, respecting each transaction's limits
+                transactions_list = list(successful_transactions)
+                remaining_to_allocate = total_refund_decimal
+
+                # First pass: Calculate proportional amounts and cap to transaction totals
+                allocations = []
+                for txn in transactions_list:
+                    txn_total = txn.amount + txn.tip + txn.surcharge
+                    txn_total_decimal = Decimal(str(txn_total))
+                    txn_amount_decimal = Decimal(str(txn.amount))
+
+                    # Maximum that can be refunded from this transaction
+                    max_refundable = txn_total_decimal - Decimal(str(txn.refunded_amount))
+
+                    allocations.append({
+                        'transaction': txn,
+                        'total': txn_total_decimal,
+                        'max_refundable': max_refundable,
+                        'amount': txn_amount_decimal,
+                        'allocated': Decimal('0.00')
+                    })
+
+                # Calculate total base amounts for proportion
+                total_amounts = sum(a['amount'] for a in allocations)
+
+                # Allocate proportionally, capping at max_refundable
+                for alloc in allocations:
+                    if total_amounts > 0:
+                        proportion = alloc['amount'] / total_amounts
+                        ideal_allocation = (total_refund_decimal * proportion).quantize(
+                            Decimal('0.01'), rounding=ROUND_HALF_UP
+                        )
+                        # Cap at max refundable
+                        alloc['allocated'] = min(ideal_allocation, alloc['max_refundable'])
+                    else:
+                        alloc['allocated'] = Decimal('0.00')
+
+                    remaining_to_allocate -= alloc['allocated']
+
+                # If there's remaining amount due to capping, redistribute to transactions with headroom
+                if remaining_to_allocate > 0:
+                    for alloc in allocations:
+                        if remaining_to_allocate <= 0:
+                            break
+
+                        headroom = alloc['max_refundable'] - alloc['allocated']
+                        if headroom > 0:
+                            additional = min(headroom, remaining_to_allocate)
+                            alloc['allocated'] += additional
+                            remaining_to_allocate -= additional
+
+                # Apply allocations to transactions
+                for alloc in allocations:
+                    txn = alloc['transaction']
+                    txn_refund_amount = alloc['allocated']
+
+                    # Update transaction
+                    txn.refunded_amount += txn_refund_amount
+                    txn.refund_reason = f"CASH refund for split payment. Items refunded. Original reason: {reason or 'N/A'}"
+
+                    # If fully refunded, mark as REFUNDED status
+                    if txn.refunded_amount >= alloc['total']:
+                        txn.status = PaymentTransaction.TransactionStatus.REFUNDED
+
+                    txn.save(update_fields=['refunded_amount', 'refund_reason', 'status'])
+
+                    logger.info(f"Marked transaction {txn.id} as {txn.status}, refunded ${txn_refund_amount}")
+
+                # Use the primary transaction for RefundItem linkage
+                refunded_transaction = primary_transaction
+
+                # Update payment status to reflect refunds
+                PaymentService._update_payment_status(self.payment)
+            else:
+                # SINGLE CARD: Process refund via provider (Stripe/Clover)
+                logger.info(f"Single card payment for Payment {self.payment.id}, refunding to card")
+
+                refunded_transaction = self.refund_transaction_with_provider(
+                    transaction_id=refund_from_transaction.id,
+                    amount_to_refund=total_refund_amount,
+                    reason=reason
+                )
+
+            # Create RefundItem records for each item
+            refund_items = []
+            for item_data in refund_calculation['items']:
+                refund_item = RefundItem.objects.create(
+                    tenant=self.payment.tenant,
+                    payment_transaction=refunded_transaction,
+                    order_item=item_data['order_item'],
+                    quantity_refunded=item_data['quantity'],
+                    amount_per_unit=item_data['order_item'].price_at_sale,
+                    total_refund_amount=item_data['subtotal'],
+                    tax_refunded=item_data['tax'],
+                    tip_refunded=item_data['tip'],
+                    surcharge_refunded=item_data['surcharge'],
+                    refund_reason=reason or '',
+                )
+                refund_items.append(refund_item)
+
+            # Update audit log (success)
+            audit_log.payment_transaction = refunded_transaction
+            audit_log.status = 'success'
+            audit_log.save(update_fields=['payment_transaction', 'status'])
+
+            return {
+                'success': True,
+                'refund_transaction': refunded_transaction,
+                'refund_items': refund_items,
+                'audit_log': audit_log,
+                'total_refunded': total_refund_amount,
+            }
+
+        except Exception as e:
+            # Update audit log (failed)
+            audit_log.status = 'failed'
+            audit_log.error_message = str(e)
+            audit_log.save(update_fields=['status', 'error_message'])
+            raise
+
+    @transaction.atomic
+    def process_full_order_refund(
+        self,
+        reason: str | None = None,
+        transaction_id: uuid.UUID | None = None,
+    ) -> dict:
+        """
+        Process a full refund for the entire order.
+
+        This is a convenience method that refunds all items in the order.
+        It uses process_item_level_refund() internally.
+
+        Args:
+            reason: Optional reason for the refund
+            transaction_id: Optional specific transaction to refund from
+
+        Returns:
+            Same as process_item_level_refund()
+
+        Raises:
+            ValueError: If validation fails
+        """
+        # Build list of all items with full quantities
+        order_items_with_quantities = [
+            (item, item.quantity) for item in self.payment.order.items.all()
+        ]
+
+        if not order_items_with_quantities:
+            raise ValueError("Order has no items to refund")
+
+        # Use the item-level refund method
+        return self.process_item_level_refund(
+            order_items_with_quantities=order_items_with_quantities,
+            reason=reason,
+            transaction_id=transaction_id
+        )
+
+    @transaction.atomic
     def refund_transaction_with_provider(
         self,
         transaction_id: uuid.UUID,
@@ -857,11 +1137,20 @@ class PaymentService:
             PaymentTransaction.objects.select_related("payment"), id=transaction_id
         )
 
-        # Validation checks remain the same...
-        if (
-            original_transaction.refunded_amount + amount_to_refund
-        ) > original_transaction.amount:
-            raise ValueError("Cannot refund more than the remaining refundable amount.")
+        # Validation: Check against total transaction amount (amount + tip + surcharge)
+        total_transaction_amount = (
+            original_transaction.amount +
+            original_transaction.tip +
+            original_transaction.surcharge
+        )
+
+        if (original_transaction.refunded_amount + amount_to_refund) > total_transaction_amount:
+            raise ValueError(
+                f"Cannot refund ${amount_to_refund}. "
+                f"Total transaction: ${total_transaction_amount}, "
+                f"Already refunded: ${original_transaction.refunded_amount}, "
+                f"Remaining: ${total_transaction_amount - original_transaction.refunded_amount}"
+            )
 
         # Get the strategy
         provider_setting = None
@@ -964,9 +1253,17 @@ class PaymentService:
         }
 
     @staticmethod
-    def calculate_surcharge(amount: Decimal) -> Decimal:
+    def calculate_surcharge(amount: Decimal, currency: str = "USD") -> Decimal:
         """
         Calculates the surcharge for a given amount based on the current settings.
+        Uses minor-unit arithmetic for precision (banker's rounding).
+
+        Args:
+            amount: Base amount to calculate surcharge on
+            currency: ISO 4217 currency code (default: USD)
+
+        Returns:
+            Surcharge amount quantized to currency precision
         """
         from settings.config import app_settings
 
@@ -975,7 +1272,9 @@ class PaymentService:
             Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
         )
         surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
-        return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        # Use our money.py quantize function for consistent banker's rounding
+        return quantize(currency, surcharge)
 
     @staticmethod
     @transaction.atomic

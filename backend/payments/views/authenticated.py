@@ -72,35 +72,65 @@ class PaymentFilter(django_filters.FilterSet):
                 )
             ).filter(successful_transaction_count__gt=1)
         else:
-            # Single method payments - include both successful and refunded transactions
-            return (
-                queryset.filter(
-                    transactions__method=value.upper(),
-                    transactions__status__in=[
-                        PaymentTransaction.TransactionStatus.SUCCESSFUL,
-                        PaymentTransaction.TransactionStatus.REFUNDED
-                    ]
-                )
-                .annotate(
-                    successful_transaction_count=models.Count(
-                        "transactions",
-                        filter=models.Q(transactions__status=PaymentTransaction.TransactionStatus.SUCCESSFUL)
-                    ),
-                    processed_transaction_count=models.Count(
-                        "transactions",
-                        filter=models.Q(
-                            transactions__status__in=[
-                                PaymentTransaction.TransactionStatus.SUCCESSFUL,
-                                PaymentTransaction.TransactionStatus.REFUNDED
-                            ]
+            # Handle "Card" filter to include both terminal and online card payments
+            if value.upper() == "CARD_TERMINAL":
+                # For card filter, ensure ALL processed transactions are card (not split with cash)
+                return (
+                    queryset.annotate(
+                        processed_transaction_count=models.Count(
+                            "transactions",
+                            filter=models.Q(
+                                transactions__status__in=[
+                                    PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                                    PaymentTransaction.TransactionStatus.REFUNDED
+                                ]
+                            )
+                        ),
+                        card_transaction_count=models.Count(
+                            "transactions",
+                            filter=models.Q(
+                                transactions__status__in=[
+                                    PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                                    PaymentTransaction.TransactionStatus.REFUNDED
+                                ],
+                                transactions__method__in=[
+                                    PaymentTransaction.PaymentMethod.CARD_TERMINAL,
+                                    PaymentTransaction.PaymentMethod.CARD_ONLINE
+                                ]
+                            )
                         )
                     )
+                    .filter(
+                        processed_transaction_count=1,  # Exactly 1 processed payment
+                        card_transaction_count=1         # That 1 payment must be card
+                    )
                 )
-                .filter(
-                    successful_transaction_count__lte=1,  # At most 1 successful (not split)
-                    processed_transaction_count__gte=1     # At least 1 processed payment
+            else:
+                # Other methods (CASH, GIFT_CARD, etc.)
+                return (
+                    queryset.filter(
+                        transactions__method=value.upper(),
+                        transactions__status__in=[
+                            PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                            PaymentTransaction.TransactionStatus.REFUNDED
+                        ]
+                    )
+                    .annotate(
+                        processed_transaction_count=models.Count(
+                            "transactions",
+                            filter=models.Q(
+                                transactions__status__in=[
+                                    PaymentTransaction.TransactionStatus.SUCCESSFUL,
+                                    PaymentTransaction.TransactionStatus.REFUNDED
+                                ]
+                            )
+                        )
+                    )
+                    .filter(
+                        processed_transaction_count=1  # Exactly 1 processed payment
+                    )
+                    .distinct()
                 )
-            )
 
 
 class SurchargeCalculationView(APIView):

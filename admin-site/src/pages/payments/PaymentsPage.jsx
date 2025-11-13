@@ -213,22 +213,18 @@ const PaymentsPage = () => {
 		const processedTransactions = transactions.filter(
 			transaction => transaction.status === "SUCCESSFUL" || transaction.status === "REFUNDED"
 		);
-		
+
 		if (processedTransactions.length === 0) {
 			// No successful payments, show method of any attempted transaction
 			return transactions[0].method.replace("_", " ") || "N/A";
 		}
-		
-		// Only count successful transactions for split determination
-		const successfulTransactions = processedTransactions.filter(
-			transaction => transaction.status === "SUCCESSFUL"
-		);
-		
-		if (successfulTransactions.length > 1) {
+
+		// Check if it's a split payment (multiple processed transactions)
+		if (processedTransactions.length > 1) {
 			return "SPLIT";
 		}
-		
-		// Return the method of the processed payment (successful or refunded)
+
+		// Single payment - return the method of the processed transaction
 		return processedTransactions[0].method.replace("_", " ") || "N/A";
 	};
 

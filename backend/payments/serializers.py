@@ -1,9 +1,11 @@
 from rest_framework import serializers
 from decimal import Decimal
+from django.db import models
 from .models import Payment, PaymentTransaction, Order, GiftCard
 from .services import PaymentService
 from django.shortcuts import get_object_or_404
-from orders.serializers import SimpleOrderSerializer
+from orders.serializers import SimpleOrderSerializer, OrderItemSerializer
+from orders.models import OrderItem
 from core_backend.base import BaseModelSerializer
 
 
@@ -13,9 +15,76 @@ class PaymentTransactionSerializer(BaseModelSerializer):
         fields = "__all__"
 
 
+class OrderItemWithRefundSerializer(BaseModelSerializer):
+    """
+    OrderItem serializer that includes refund information.
+    """
+    product_name = serializers.SerializerMethodField()
+    refunded_quantity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "quantity",
+            "refunded_quantity",
+            "price_at_sale",
+            "tax_amount",
+            "notes",
+            "status",
+        ]
+
+    def get_product_name(self, obj):
+        """Get the product name or custom name."""
+        if obj.product:
+            return obj.product.name
+        return obj.custom_name or "Custom Item"
+
+    def get_refunded_quantity(self, obj):
+        """Calculate total refunded quantity from RefundItem records."""
+        from refunds.models import RefundItem
+
+        total_refunded = RefundItem.objects.filter(
+            order_item=obj
+        ).aggregate(
+            total=models.Sum('quantity_refunded')
+        )['total'] or 0
+
+        return total_refunded
+
+
+class OrderWithItemsSerializer(BaseModelSerializer):
+    """
+    Order serializer for payment details that includes items.
+    This extends SimpleOrderSerializer to add items without causing circular imports.
+    """
+    items = OrderItemWithRefundSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "order_number",
+            "status",
+            "order_type",
+            "payment_status",
+            "store_location",
+            "subtotal",
+            "tax_total",
+            "grand_total",
+            "created_at",
+            "updated_at",
+            "items",
+        ]
+        select_related_fields = ["store_location"]
+        prefetch_related_fields = ["items", "items__product"]
+
+
 class PaymentSerializer(BaseModelSerializer):
     transactions = PaymentTransactionSerializer(many=True, read_only=True)
-    order = SimpleOrderSerializer(read_only=True)
+    order = OrderWithItemsSerializer(read_only=True)
 
     balance_due = serializers.SerializerMethodField()
     change_due = serializers.SerializerMethodField()
@@ -24,8 +93,8 @@ class PaymentSerializer(BaseModelSerializer):
     class Meta:
         model = Payment
         fields = "__all__"
-        select_related_fields = ["order"]
-        prefetch_related_fields = ["transactions"]
+        select_related_fields = ["order", "order__store_location"]
+        prefetch_related_fields = ["transactions", "order__items", "order__items__product"]
         read_only_fields = [
             "id",
             "balance_due",

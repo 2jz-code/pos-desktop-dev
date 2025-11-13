@@ -506,10 +506,12 @@ def store_location_tenant_a(tenant_a):
     return StoreLocation.objects.create(
         tenant=tenant_a,
         name='Main Location',
-        address='123 Pizza St, New York, NY 10001',
+        address_line1='123 Pizza St',
+        city='New York',
+        state='NY',
+        postal_code='10001',
         phone='555-0100',
-        email='info@pizza.com',
-        is_default=True
+        email='info@pizza.com'
     )
 
 
@@ -519,10 +521,12 @@ def store_location_tenant_b(tenant_b):
     return StoreLocation.objects.create(
         tenant=tenant_b,
         name='Main Location',
-        address='456 Burger Ave, Los Angeles, CA 90001',
+        address_line1='456 Burger Ave',
+        city='Los Angeles',
+        state='CA',
+        postal_code='90001',
         phone='555-0200',
-        email='info@burger.com',
-        is_default=True
+        email='info@burger.com'
     )
 
 

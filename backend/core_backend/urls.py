@@ -58,6 +58,7 @@ urlpatterns = [
     # The 'orders' app itself registers its base endpoint as 'orders'.
     path("api/", include("orders.urls")),  # This ensures the final path is /api/orders/
     path("api/payments/", include("payments.urls")),
+    path("api/refunds/", include("refunds.urls")),
     path("api/", include("discounts.urls")),
     path("api/settings/", include("settings.urls")),
     path("api/terminals/", include("terminals.urls")),

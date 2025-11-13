@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "cart",  # Shopping cart (ephemeral, converts to orders)
     "orders",
     "payments",
+    "refunds",  # Refund and exchange system
     "discounts",
     "users.apps.UsersConfig",
     "customers.apps.CustomersConfig",

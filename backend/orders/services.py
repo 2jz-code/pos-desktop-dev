@@ -12,6 +12,9 @@ import hashlib
 import logging
 import time
 
+# Import money precision helper for consistent rounding
+from payments.money import quantize
+
 logger = logging.getLogger(__name__)
 
 class OrderService:
@@ -33,12 +36,14 @@ class OrderService:
         price_ranges = [1, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
 
         tax_matrix = {}
+        # Assume USD for tax matrix (can be extended for multi-currency)
+        currency = 'USD'
         for price in price_ranges:
             price_decimal = Decimal(str(price))
             tax_amount = price_decimal * Decimal(str(tax_rate))
             tax_matrix[price] = {
-                'tax_amount': float(tax_amount.quantize(Decimal("0.01"))),
-                'total_with_tax': float((price_decimal + tax_amount).quantize(Decimal("0.01")))
+                'tax_amount': float(quantize(currency, tax_amount)),
+                'total_with_tax': float(quantize(currency, price_decimal + tax_amount))
             }
 
         return {
@@ -802,6 +807,15 @@ class OrderService:
             discount_count,
             elapsed_ms,
         )
+
+        # Refresh items to get updated tax_amount values from bulk_update
+        # The items relationship is cached, so we need to invalidate it
+        if hasattr(order, '_prefetched_objects_cache') and 'items' in order._prefetched_objects_cache:
+            del order._prefetched_objects_cache['items']
+
+        # Also clear the Django ORM cache for the items relationship
+        if 'items' in order.__dict__:
+            del order.__dict__['items']
 
         return order
 

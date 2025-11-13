@@ -23,6 +23,9 @@ from decimal import Decimal
 from typing import Union, Dict, Any, List, Optional
 from django.db.models import QuerySet
 
+# Import money precision helpers
+from payments.money import to_minor, from_minor, quantize
+
 
 class OrderCalculator:
     """
@@ -95,20 +98,29 @@ class OrderCalculator:
         taxable_amount = post_discount_subtotal if post_discount_subtotal is not None else self.calculate_subtotal()
 
         tax_rate = self.source.store_location.get_effective_tax_rate()
-        return (taxable_amount * tax_rate).quantize(Decimal('0.01'))
+        tax_amount = taxable_amount * tax_rate
+
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+        return quantize(currency, tax_amount)
 
     def calculate_item_level_tax(self, post_discount_subtotal: Optional[Decimal] = None) -> Decimal:
         """
-        Calculate tax with item-level precision (for orders with mixed tax rates).
+        Calculate tax with item-level precision using minor-unit arithmetic.
 
-        This matches the logic in OrderService.recalculate_order_totals() where
-        tax is calculated proportionally per item based on their tax settings.
+        For NEW orders (post-migration):
+        - Computes tax PER LINE in minor units
+        - Stores tax_amount on each OrderItem
+        - Aggregates to Order.tax_total with ZERO penny drift
+
+        For Carts or preview:
+        - Calculates tax but doesn't store (no OrderItem.id yet)
 
         Args:
             post_discount_subtotal: Optional subtotal after discounts.
 
         Returns:
-            Decimal: Total tax across all items
+            Decimal: Total tax across all items (sum of per-line taxes)
         """
         if not self.source.store_location:
             return Decimal('0.00')
@@ -117,6 +129,9 @@ class OrderCalculator:
         if subtotal == 0:
             return Decimal('0.00')
 
+        # Get currency from order/cart
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+
         # Calculate proportional discount rate if discounts applied
         proportional_discount_rate = Decimal('0.0')
         if post_discount_subtotal is not None and post_discount_subtotal < subtotal:
@@ -124,7 +139,8 @@ class OrderCalculator:
             proportional_discount_rate = discount_amount / subtotal
 
         items = self.source.items.all()
-        tax_total = Decimal('0.00')
+        line_tax_amounts_minor = []
+        items_to_update = []  # Collect items for bulk update
 
         for item in items:
             # Get item price (method vs property based on source type)
@@ -136,21 +152,57 @@ class OrderCalculator:
             # Apply proportional discount to this item
             discounted_item_price = item_price * (Decimal('1.0') - proportional_discount_rate)
 
-            # Get tax rate for this item's product
-            product = item.product
+            # Quantize BEFORE converting to minor units (CRITICAL)
+            discounted_item_price_quantized = quantize(currency, discounted_item_price)
 
-            # Check if product uses custom tax rate
-            if hasattr(product, 'tax') and product.tax:
-                tax_rate = product.tax.rate
-            else:
-                # Use location's default tax rate
+            # Get tax rate for this item's product (hierarchical lookup)
+            product = item.product
+            tax_rate = None
+
+            # 1. Check if product has direct taxes assigned (M2M)
+            if hasattr(product, 'taxes'):
+                product_taxes = product.taxes.all()
+                if product_taxes.exists():
+                    # Use the first tax rate (or sum if multiple taxes)
+                    tax_rate = sum(t.rate for t in product_taxes)
+
+            # 2. If no product taxes, check product_type's default_taxes
+            if tax_rate is None and hasattr(product, 'product_type') and product.product_type:
+                product_type = product.product_type
+                if hasattr(product_type, 'default_taxes'):
+                    product_type_taxes = product_type.default_taxes.all()
+                    if product_type_taxes.exists():
+                        # Use the sum of default taxes from product type
+                        tax_rate = sum(t.rate for t in product_type_taxes)
+
+            # 3. If still no tax rate, use location's default tax rate
+            if tax_rate is None:
                 tax_rate = self.source.store_location.get_effective_tax_rate()
 
-            # Calculate tax for this item
-            item_tax = discounted_item_price * tax_rate
-            tax_total += item_tax
+            # Calculate tax on QUANTIZED price (prevents drift)
+            item_tax_decimal = discounted_item_price_quantized * tax_rate
+            item_tax_quantized = quantize(currency, item_tax_decimal)
+            item_tax_minor = to_minor(currency, item_tax_quantized)
 
-        return tax_total.quantize(Decimal('0.01'))
+            # Store tax_amount on OrderItem (for Orders, not Carts)
+            if not self._is_cart and hasattr(item, 'id') and item.id:
+                # Set the tax amount but don't save yet (collect for bulk update)
+                item.tax_amount = from_minor(currency, item_tax_minor)
+                items_to_update.append(item)
+
+            line_tax_amounts_minor.append(item_tax_minor)
+
+        # Bulk update all items with their tax amounts (more efficient + avoids cache issues)
+        if items_to_update:
+            from orders.models import OrderItem
+            OrderItem.objects.bulk_update(items_to_update, ['tax_amount'])
+
+        # Aggregate: sum of minor units, then convert back to Decimal
+        total_tax_minor = sum(line_tax_amounts_minor)
+        tax_total = from_minor(currency, total_tax_minor)
+
+        # Invariant guaranteed: sum(item.tax_amount) == tax_total
+        return tax_total
 
     def calculate_discounts(self) -> Decimal:
         """
@@ -205,7 +257,10 @@ class OrderCalculator:
         tax = self.calculate_item_level_tax(post_discount_subtotal)
 
         grand_total = post_discount_subtotal + tax
-        return grand_total.quantize(Decimal('0.01'))
+
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+        return quantize(currency, grand_total)
 
     def calculate_totals(self) -> Dict[str, Any]:
         """
@@ -231,11 +286,14 @@ class OrderCalculator:
         items = self.source.items.all()
         item_count = sum(item.quantity for item in items)
 
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(self.source, 'currency', 'USD') or 'USD'
+
         return {
-            'subtotal': subtotal.quantize(Decimal('0.01')),
-            'discount_total': discount_total.quantize(Decimal('0.01')),
-            'tax_total': tax_total.quantize(Decimal('0.01')),
-            'grand_total': grand_total.quantize(Decimal('0.01')),
+            'subtotal': quantize(currency, subtotal),
+            'discount_total': quantize(currency, discount_total),
+            'tax_total': quantize(currency, tax_total),
+            'grand_total': quantize(currency, grand_total),
             'item_count': item_count,
             'has_location': bool(self.source.store_location),
         }

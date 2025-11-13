@@ -13,17 +13,18 @@ import {
 	formatKitchenTicket,
 } from "./receipt-formatter.js";
 import sound from "sound-play";
-import deviceFingerprintService from "./device-fingerprint.js";
 // Offline services removed - moving to online-only architecture
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Environment-based configuration
-const isDev = process.env.NODE_ENV === 'development';
+const isDev = process.env.NODE_ENV === "development";
 
 // Hardware acceleration and display fixes - MUST be set before app.whenReady()
-console.log("[Main Process] Configuring hardware acceleration and display settings...");
+console.log(
+	"[Main Process] Configuring hardware acceleration and display settings..."
+);
 
 // Basic hardware acceleration fixes for better performance and vsync
 app.commandLine.appendSwitch("--enable-gpu-rasterization");
@@ -35,7 +36,9 @@ if (!isDev) {
 	// Production mode - stable and secure settings
 	app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
 	app.commandLine.appendSwitch("--force-color-profile", "srgb");
-	console.log("[Main Process] Production mode - stable display features enabled");
+	console.log(
+		"[Main Process] Production mode - stable display features enabled"
+	);
 } else {
 	// Development mode - additional debugging and permissive settings
 	app.commandLine.appendSwitch("--ignore-certificate-errors");
@@ -69,11 +72,11 @@ function createMainWindow() {
 			nodeIntegration: false,
 			contextIsolation: true,
 			enableRemoteModule: false,
-			
+
 			// Production security settings
 			allowRunningInsecureContent: false,
 			webSecurity: true,
-			
+
 			experimentalFeatures: false,
 		},
 	});
@@ -123,7 +126,6 @@ function createCustomerWindow() {
 			// Remove hardwareAcceleration override - let app-level settings handle it
 		},
 	});
-
 
 	if (VITE_DEV_SERVER_URL) {
 		customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
@@ -502,18 +504,15 @@ ipcMain.handle("get-machine-id", () => {
 	return machineIdSync({ original: true });
 });
 
-// IPC handler for getting hardware-based device fingerprint
-ipcMain.handle("get-device-fingerprint", () => {
-	return deviceFingerprintService.getDeviceFingerprint();
-});
-
 ipcMain.on("shutdown-app", () => {
 	app.quit();
 });
 
 app.whenReady().then(async () => {
 	console.log("[Main Process] Starting Electron app - online-only mode");
-	console.log("[Main Process] Hardware acceleration and display settings applied at startup");
+	console.log(
+		"[Main Process] Hardware acceleration and display settings applied at startup"
+	);
 
 	createMainWindow();
 	createCustomerWindow();

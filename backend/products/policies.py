@@ -4,6 +4,9 @@ from typing import Dict, Any, Optional, Iterable
 
 from .models import ProductType, Tax
 
+# Import money precision helper for consistent rounding
+from payments.money import quantize
+
 
 @dataclass(frozen=True)
 class PolicyResult:
@@ -128,7 +131,10 @@ class ProductTypePolicy:
         # Calculate base price: display_price / (1 + tax_rate)
         if total_tax_rate > 0:
             base_price = display_price / (1 + total_tax_rate)
-            return base_price.quantize(Decimal('0.01'))
+            # Use money.quantize for currency-aware rounding (banker's rounding)
+            # Note: Currently assumes USD, but ready for multi-currency support
+            currency = 'USD'  # TODO: Get from product or store settings when multi-currency is added
+            return quantize(currency, base_price)
 
         return display_price
 

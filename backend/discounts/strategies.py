@@ -6,6 +6,9 @@ from orders.models import Order
 from .models import Discount
 import logging
 
+# Import money precision helper for consistent rounding
+from payments.money import quantize
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +48,9 @@ class OrderPercentageDiscountStrategy(DiscountStrategy):
 
         discount_percentage = Decimal(discount.value) / Decimal("100")
         discount_amount = discountable_subtotal * discount_percentage
-        return discount_amount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, discount_amount)
 
 
 class OrderFixedAmountDiscountStrategy(DiscountStrategy):
@@ -72,7 +77,9 @@ class OrderFixedAmountDiscountStrategy(DiscountStrategy):
             return Decimal("0.00")
 
         discount_amount = min(discountable_subtotal, Decimal(discount.value))
-        return discount_amount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, discount_amount)
 
 
 class ProductPercentageDiscountStrategy(DiscountStrategy):
@@ -101,7 +108,9 @@ class ProductPercentageDiscountStrategy(DiscountStrategy):
                 total_discount += item.total_price * discount_percentage
 
         logger.debug("Product discount calculation completed")
-        return total_discount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, total_discount)
 
 
 class CategoryPercentageDiscountStrategy(DiscountStrategy):
@@ -130,7 +139,9 @@ class CategoryPercentageDiscountStrategy(DiscountStrategy):
                 total_discount += item.total_price * discount_percentage
 
         logger.debug("Category discount calculation completed")
-        return total_discount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, total_discount)
 
 
 # --- Other strategies (Fixed Amount, BOGO) would have similar logging ---
@@ -154,7 +165,9 @@ class ProductFixedAmountDiscountStrategy(DiscountStrategy):
 
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
-        return total_discount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, total_discount)
 
 
 class CategoryFixedAmountDiscountStrategy(DiscountStrategy):
@@ -176,7 +189,9 @@ class CategoryFixedAmountDiscountStrategy(DiscountStrategy):
 
             item_discount = min(item.total_price, Decimal(discount.value))
             total_discount += item_discount
-        return total_discount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, total_discount)
 
 
 class BuyXGetYDiscountStrategy(DiscountStrategy):
@@ -230,4 +245,6 @@ class BuyXGetYDiscountStrategy(DiscountStrategy):
         for i in range(num_items_to_discount):
             total_discount += eligible_items_prices[i]
 
-        return total_discount.quantize(Decimal("0.01"))
+        # Use money.quantize for currency-aware rounding (banker's rounding)
+        currency = getattr(order, 'currency', 'USD') or 'USD'
+        return quantize(currency, total_discount)

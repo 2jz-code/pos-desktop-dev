@@ -59,11 +59,18 @@ class CashPaymentStrategy(PaymentStrategy):
         """
         For cash payments, an "external" refund means a manual cash payout.
         We update the transaction status and refunded amount.
+
+        Args:
+            amount: The TOTAL refund amount including tip + surcharge + base amount
         """
         transaction.refunded_amount += amount
         transaction.refund_reason = reason
-        # If the refunded amount equals the original transaction amount, mark as fully refunded
-        if transaction.refunded_amount >= transaction.amount:
+
+        # Calculate total transaction amount (amount + tip + surcharge)
+        total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+
+        # If the refunded amount equals the total transaction amount, mark as fully refunded
+        if transaction.refunded_amount >= total_transaction_amount:
             transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
         else:
             # For partial refunds, we might need a new status or more complex logic
@@ -302,6 +309,9 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         """
         Creates a refund object via the Stripe API. It now reliably finds the
         Charge ID from the Payment Intent ID stored in transaction_id.
+
+        Args:
+            amount: The TOTAL refund amount including tip + surcharge + base amount
         """
         if not transaction.transaction_id or not transaction.transaction_id.startswith(
             "pi_"
@@ -331,6 +341,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                 )
 
             # Create the refund using the correct Charge ID.
+            # Amount already includes tip + surcharge from the refund calculation
             return stripe.Refund.create(
                 charge=charge_id_to_refund,
                 amount=int(amount * 100),
@@ -435,34 +446,41 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
     ):
         """
         Create refund using Clover REST API.
+
+        Args:
+            amount: The TOTAL refund amount including tip + surcharge + base amount
         """
         if not hasattr(self, 'clover_api'):
             raise ValueError("Clover API not initialized")
-        
+
         if not transaction.transaction_id:
             raise ValueError("No Clover payment ID found for refund")
-            
+
         try:
+            # Amount already includes tip + surcharge from the refund calculation
             amount_cents = int(amount * 100)
-            
+
             # Create refund in Clover
             clover_refund = self.clover_api.refund_payment(
                 payment_id=transaction.transaction_id,
                 amount_cents=amount_cents,
                 reason=reason
             )
-            
+
             # Update transaction record
             transaction.refunded_amount += amount
             transaction.refund_reason = reason
-            
-            if transaction.refunded_amount >= transaction.amount:
+
+            # Calculate total transaction amount (amount + tip + surcharge)
+            total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+
+            if transaction.refunded_amount >= total_transaction_amount:
                 transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-            
+
             # Update provider response with refund info
             if "refunds" not in transaction.provider_response:
                 transaction.provider_response["refunds"] = []
-            
+
             transaction.provider_response["refunds"].append({
                 "id": clover_refund.get('id'),
                 "amount": clover_refund.get('amount'),
@@ -470,12 +488,12 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
                 "status": clover_refund.get('state', 'processed'),
                 "created_time": clover_refund.get('createdTime')
             })
-            
+
             transaction.save()
-            
+
             logger.info(f"Clover refund created: {clover_refund.get('id')}")
             return transaction
-            
+
         except Exception as e:
             logger.error(f"Clover refund failed: {e}")
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
@@ -556,11 +574,15 @@ class StripeOnlineStrategy(PaymentStrategy):
         """
         Refunds a Stripe Online payment transaction.
         Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
+
+        Args:
+            amount: The TOTAL refund amount including tip + surcharge + base amount
         """
         stripe.api_key = settings.STRIPE_SECRET_KEY
         if not transaction.transaction_id:
             raise ValueError("Stripe transaction ID is missing for refund.")
 
+        # Amount already includes tip + surcharge from the refund calculation
         amount_cents = int(amount * 100)
 
         try:
@@ -585,8 +607,13 @@ class StripeOnlineStrategy(PaymentStrategy):
                 transaction.provider_response.get("refunds", []) + [refund.to_dict()]
             )
 
+            # Calculate total transaction amount (amount + tip + surcharge)
+            total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+
             if refund.status == "succeeded":
-                transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
+                # Only mark as REFUNDED if total refunded >= total transaction
+                if transaction.refunded_amount >= total_transaction_amount:
+                    transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
             elif refund.status == "pending":
                 transaction.status = PaymentTransaction.TransactionStatus.PENDING
             else:
@@ -676,45 +703,51 @@ class GiftCardPaymentStrategy(PaymentStrategy):
     ):
         """
         Refund a gift card payment by adding the amount back to the gift card balance.
+
+        Args:
+            amount: The TOTAL refund amount including tip + surcharge + base amount
         """
         from django.db import transaction as db_transaction
-        
+
         try:
             # Get the gift card code from the original transaction
             provider_response = transaction.provider_response
             if not provider_response or 'gift_card_code' not in provider_response:
                 raise ValueError("Cannot determine gift card for refund")
-            
+
             gift_card_code = provider_response['gift_card_code']
             gift_card = GiftCard.objects.get(code=gift_card_code)
-            
+
             # Use atomic transaction to ensure consistency
             with db_transaction.atomic():
-                # Add the refund amount back to the gift card
+                # Add the refund amount back to the gift card (includes tip + surcharge)
                 gift_card.current_balance += amount
-                
+
                 # If the gift card was fully redeemed but now has balance, reactivate it
                 if gift_card.status == GiftCard.GiftCardStatus.REDEEMED and gift_card.current_balance > 0:
                     gift_card.status = GiftCard.GiftCardStatus.ACTIVE
-                
+
                 gift_card.save()
-                
+
                 # Update the transaction record
                 transaction.refunded_amount += amount
                 transaction.refund_reason = reason
-                
-                # If the refunded amount equals the original transaction amount, mark as fully refunded
-                if transaction.refunded_amount >= transaction.amount:
+
+                # Calculate total transaction amount (amount + tip + surcharge)
+                total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+
+                # If the refunded amount equals the total transaction amount, mark as fully refunded
+                if transaction.refunded_amount >= total_transaction_amount:
                     transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-                
+
                 transaction.save()
-                
+
             return transaction
-            
+
         except GiftCard.DoesNotExist:
             logger.error("Gift card not found for refund")
             raise ValueError(f"Gift card {gift_card_code} not found for refund")
-            
+
         except Exception as e:
             logger.error(f"Gift card refund error: {e}")
             raise e

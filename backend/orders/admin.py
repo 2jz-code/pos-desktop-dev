@@ -25,8 +25,8 @@ class OrderItemModifierInline(admin.TabularInline):
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
-    readonly_fields = ("price_at_sale", "get_line_item_total")
-    fields = ("product", "quantity", "price_at_sale", "get_line_item_total")
+    readonly_fields = ("price_at_sale", "tax_amount", "get_line_item_total")
+    fields = ("product", "quantity", "price_at_sale", "tax_amount", "get_line_item_total")
     autocomplete_fields = ("product",)
 
     def get_queryset(self, request):
@@ -254,7 +254,7 @@ class OrderItemAdmin(TenantAdminMixin, admin.ModelAdmin):
     Admin configuration for the OrderItem model.
     """
 
-    list_display = ("id", "get_order_number", "get_order_created_at", "product", "quantity", "price_at_sale", "get_line_item_total", "status")
+    list_display = ("id", "get_order_number", "get_order_created_at", "product", "quantity", "price_at_sale", "get_tax_amount_formatted", "get_line_item_total", "status")
     list_filter = ("status", "order__status", "order__created_at", "order__order_type")
     search_fields = (
         "order__order_number",
@@ -262,8 +262,30 @@ class OrderItemAdmin(TenantAdminMixin, admin.ModelAdmin):
         "id",
     )
     autocomplete_fields = ("order", "product")
-    readonly_fields = ("get_line_item_total",)
+    readonly_fields = ("get_line_item_total", "get_tax_amount_formatted")
     inlines = [OrderItemModifierInline]
+    fieldsets = (
+        (
+            "Order Item Details",
+            {
+                "fields": ("order", "product", "quantity", "price_at_sale", "status", "notes")
+            },
+        ),
+        (
+            "Financial Breakdown",
+            {
+                "fields": ("tax_amount", "get_line_item_total"),
+                "description": "Per-line tax amount for refund allocation. NULL for legacy orders.",
+            },
+        ),
+        (
+            "Custom Item Fields",
+            {
+                "fields": ("custom_name", "custom_price"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
     ordering = ("-order__created_at", "-id")  # Most recent orders first, then most recent items
     list_per_page = 50
     date_hierarchy = "order__created_at"
@@ -286,6 +308,13 @@ class OrderItemAdmin(TenantAdminMixin, admin.ModelAdmin):
     get_order_created_at.short_description = "Order Date"
     get_order_created_at.admin_order_field = "order__created_at"
     
+    def get_tax_amount_formatted(self, obj):
+        """Display the tax amount, or NULL indicator for legacy orders."""
+        if obj.tax_amount is not None:
+            return f"${obj.tax_amount:.2f}"
+        return "NULL (legacy)"
+    get_tax_amount_formatted.short_description = "Tax Amount"
+
     def get_line_item_total(self, obj):
         """Display the line item total (quantity * price_at_sale)."""
         if obj.quantity is not None and obj.price_at_sale is not None:
