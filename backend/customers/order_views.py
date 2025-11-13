@@ -5,8 +5,13 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core_backend.base import ReadOnlyBaseViewSet
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from orders.models import Order
-from orders.serializers import OrderSerializer, AddItemSerializer, OrderCreateSerializer, OptimizedOrderSerializer
+from orders.serializers import (
+    UnifiedOrderSerializer,
+    AddItemSerializer,
+    OrderCreateSerializer,
+)
 from orders.services import OrderService
 from .authentication import CustomerCookieJWTAuthentication, CustomerJWTAuthenticationMixin
 from django.utils.decorators import method_decorator
@@ -14,14 +19,25 @@ from django_ratelimit.decorators import ratelimit
 from django.db.models import Count
 
 
-class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
+class CustomerOrderViewSet(
+    CustomerJWTAuthenticationMixin,
+    TenantScopedQuerysetMixin,
+    FieldsetQueryParamsMixin,  # NEW: fieldset query params support
+    ReadOnlyBaseViewSet
+):
     """
     Customer-specific order viewset.
     Only allows customers to view their own orders.
     Uses CustomerCookieJWTAuthentication exclusively to avoid conflicts with admin auth.
+
+    Now with unified serializer pattern:
+    - Uses UnifiedOrderSerializer with fieldsets (list, detail)
+    - Supports ?view=list|detail query param
+    - Supports ?expand=items,payment_details query param
+    - Supports ?fields=id,order_number query param
     """
     queryset = Order.objects.all()
-    serializer_class = OrderSerializer
+    serializer_class = UnifiedOrderSerializer  # NEW: unified read serializer
     authentication_classes = [CustomerCookieJWTAuthentication]  # Customer auth only
     permission_classes = [permissions.IsAuthenticated]
     # pagination_class, filter_backends, ordering handled by ReadOnlyBaseViewSet
@@ -57,13 +73,13 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             )
         
         return queryset
-    
-    def get_serializer_class(self):
-        """Use OptimizedOrderSerializer for list view, full OrderSerializer for detail"""
-        if self.action == 'list':
-            return OptimizedOrderSerializer
-        return OrderSerializer
-    
+
+    # Note: get_serializer_class() is no longer needed!
+    # FieldsetQueryParamsMixin automatically handles view mode switching:
+    # - list action uses 'list' fieldset
+    # - retrieve action uses 'detail' fieldset
+    # - Can override with ?view=simple|list|detail query param
+
     @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='30/m', method='GET', block=True))
     def list(self, request, *args, **kwargs):
         """List customer orders with rate limiting and optimized serializer"""
@@ -81,9 +97,10 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
     def recent(self, request):
         """
         Get customer's most recent orders (last 10).
+        Uses UnifiedOrderSerializer with 'list' view mode for optimized response.
         """
         customer = self.ensure_customer_authenticated()
-        
+
         recent_orders = Order.objects.filter(
             customer=customer
         ).select_related(
@@ -95,8 +112,13 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             'applied_discounts__discount',
             'payment_details__transactions'
         ).order_by('-created_at')[:10]
-        
-        serializer = OptimizedOrderSerializer(recent_orders, many=True, context={'request': request})
+
+        # Use UnifiedOrderSerializer with 'list' view mode for lightweight response
+        serializer = UnifiedOrderSerializer(
+            recent_orders,
+            many=True,
+            context={'request': request, 'view_mode': 'list'}
+        )
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -212,7 +234,9 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Return the entire updated order.
-        response_serializer = OrderSerializer(order, context={"request": request})
+        response_serializer = UnifiedOrderSerializer(
+            order, context={"request": request, "view_mode": "detail"}
+        )
         return Response(response_serializer.data, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
@@ -255,10 +279,12 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             )
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-        response_serializer = OrderSerializer(order, context={"request": request})
+
+        response_serializer = UnifiedOrderSerializer(
+            order, context={"request": request, "view_mode": "detail"}
+        )
         return Response(response_serializer.data, status=status.HTTP_200_OK)
-    
+
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
     def remove_item(self, request):
         """
@@ -293,6 +319,8 @@ class CustomerOrderViewSet(CustomerJWTAuthenticationMixin, ReadOnlyBaseViewSet):
             OrderService.remove_order_item(item)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-        response_serializer = OrderSerializer(order, context={"request": request})
+
+        response_serializer = UnifiedOrderSerializer(
+            order, context={"request": request, "view_mode": "detail"}
+        )
         return Response(response_serializer.data, status=status.HTTP_200_OK)

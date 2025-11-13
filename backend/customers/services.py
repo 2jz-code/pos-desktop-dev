@@ -161,48 +161,19 @@ class CustomerAuthService:
         }
 
     @staticmethod
-    def set_customer_auth_cookies(response, access_token, refresh_token):
-        """
-        Set authentication cookies for customer session.
-        
-        DEPRECATED: Use core_backend.auth.cookies.AuthCookieService.set_customer_auth_cookies instead
-        """
-        from core_backend.auth.cookies import AuthCookieService
-        return AuthCookieService.set_customer_auth_cookies(response, access_token, refresh_token)
-
-    @staticmethod
-    def clear_customer_auth_cookies(response):
-        """
-        Clear customer authentication cookies.
-        
-        DEPRECATED: Use core_backend.auth.cookies.AuthCookieService.clear_customer_auth_cookies instead
-        """
-        from core_backend.auth.cookies import AuthCookieService
-        return AuthCookieService.clear_customer_auth_cookies(response)
-
-    @staticmethod
     def get_customer_profile(customer):
         """
         Get customer profile information.
-        Returns safe customer data for API responses.
+        Returns safe customer data for API responses using UnifiedCustomerSerializer.
         """
+        from .serializers import UnifiedCustomerSerializer
+
         if not isinstance(customer, Customer):
             return None
 
-        return {
-            "id": str(customer.id),
-            "email": customer.email,
-            "first_name": customer.first_name,
-            "last_name": customer.last_name,
-            "phone_number": customer.phone_number,
-            "date_joined": customer.date_joined,
-            "is_active": customer.is_active,
-            "email_verified": customer.email_verified,
-            "phone_verified": customer.phone_verified,
-            "preferred_contact_method": customer.preferred_contact_method,
-            "marketing_opt_in": customer.marketing_opt_in,
-            "newsletter_subscribed": customer.newsletter_subscribed,
-        }
+        # Use unified serializer with 'detail' view mode for full profile
+        serializer = UnifiedCustomerSerializer(customer, context={'view_mode': 'detail'})
+        return serializer.data
 
     @staticmethod
     def update_customer_profile(customer, **kwargs):

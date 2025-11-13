@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Order, OrderItem, OrderDiscount, OrderItemModifier
-from users.serializers import UserSerializer
+from users.serializers import UnifiedUserSerializer
 from discounts.models import Discount
 from products.serializers import ProductSerializer
 from .services import OrderService
@@ -8,94 +8,13 @@ from products.models import Product, ModifierOption
 from django.db import transaction
 from discounts.serializers import DiscountSerializer
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import FieldsetMixin, TenantFilteredSerializerMixin
 from django.db.models import Prefetch
 
 
-class OrderItemProductSerializer(BaseModelSerializer):
-    """Lightweight product serializer for use within OrderItemSerializer"""
-    modifier_groups = serializers.SerializerMethodField()
-    image_url = serializers.SerializerMethodField()
-    category = serializers.SerializerMethodField()
-    product_type = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Product
-        fields = [
-            "id",
-            "name",
-            "price",
-            "description",
-            "is_active",
-            "barcode",
-            "track_inventory",
-            "modifier_groups",
-            "image_url",
-            "category",
-            "product_type",
-        ]
-        prefetch_related_fields = [
-            "product_modifier_sets__modifier_set__options",
-            "product_modifier_sets__hidden_options",
-            "product_modifier_sets__extra_options",
-        ]
-        select_related_fields = ["category", "product_type"]
-
-    def get_category(self, obj):
-        """Return category details for order ticket"""
-        if obj.category:
-            return {
-                "id": obj.category.id,
-                "name": obj.category.name,
-                "order": obj.category.order
-            }
-        return None
-
-    def get_product_type(self, obj):
-        """Return product type details for order ticket"""
-        if obj.product_type:
-            return {
-                "id": obj.product_type.id,
-                "name": obj.product_type.name,
-                "description": obj.product_type.description
-            }
-        return None
-
-    def get_modifier_groups(self, obj):
-        """Get modifier groups using service layer - optimized for performance"""
-        from products.services import ProductService
-        from products.serializers import FinalProductModifierSetSerializer
-        
-        # Quick check - if no modifier sets, return empty array immediately
-        if not hasattr(obj, 'product_modifier_sets') or not obj.product_modifier_sets.exists():
-            return []
-        
-        try:
-            structured_data = ProductService.get_structured_modifier_groups_for_product(
-                obj, context=self.context
-            )
-            
-            context = self.context.copy() if self.context else {}
-            context["options_for_set"] = structured_data['options_map']
-            context["triggered_sets_for_option"] = structured_data['triggered_map']
-            
-            return FinalProductModifierSetSerializer(
-                structured_data['sets_to_return'],
-                many=True,
-                context=context
-            ).data
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to get modifier groups for product {obj.id}: {e}")
-            return []
-
-    def get_image_url(self, obj):
-        """
-        Get image URL using ProductImageService.
-        Business logic extracted to service layer.
-        """
-        from products.services import ProductImageService
-        return ProductImageService.get_image_url(obj, self.context.get("request"))
+# OrderItemProductSerializer is now replaced by ProductSerializer with view_mode='order_item'
+# See products.serializers.ProductSerializer fieldsets['order_item']
+# This eliminates duplicate code and uses the unified serializer pattern
 
 
 class OrderItemModifierSerializer(BaseModelSerializer):
@@ -105,7 +24,8 @@ class OrderItemModifierSerializer(BaseModelSerializer):
 
 
 class OrderItemSerializer(BaseModelSerializer):
-    product = OrderItemProductSerializer(read_only=True, allow_null=True)
+    # Use unified ProductSerializer with 'order_item' fieldset
+    product = serializers.SerializerMethodField()
     selected_modifiers_snapshot = OrderItemModifierSerializer(many=True, read_only=True)
     total_modifier_price = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
@@ -115,7 +35,33 @@ class OrderItemSerializer(BaseModelSerializer):
         model = OrderItem
         fields = "__all__"
         select_related_fields = ["product", "order"]
-        prefetch_related_fields = ["selected_modifiers_snapshot"]  # Fix: prefetch for modifier calculations
+        prefetch_related_fields = [
+            "selected_modifiers_snapshot"
+        ]  # Fix: prefetch for modifier calculations
+
+    def get_product(self, obj):
+        """
+        Return product using unified ProductSerializer with appropriate fieldset.
+        This replaces the old OrderItemProductSerializer.
+
+        For websocket context, uses 'websocket_item' fieldset with minimal fields
+        needed by frontend: id, name, price, image_url, modifier_groups.
+        """
+        if obj.product:
+            # Use unified ProductSerializer with appropriate view mode
+            context = self.context.copy() if self.context else {}
+
+            # Optimize for websocket: use minimal fieldset with only frontend-needed fields
+            parent_view_mode = self.context.get("view_mode")
+            if parent_view_mode == "websocket":
+                # Lightweight: id, name, price, image_url, modifier_groups (frontend needs these)
+                context["view_mode"] = "websocket_item"
+            else:
+                # Full representation with all fields
+                context["view_mode"] = "order_item"
+
+            return ProductSerializer(obj.product, context=context).data
+        return None
 
     def get_display_name(self, obj):
         """Return the item name, handling both product and custom items"""
@@ -156,68 +102,64 @@ class OrderDiscountSerializer(BaseModelSerializer):
         fields = "__all__"
 
 
-class SimpleOrderSerializer(BaseModelSerializer):
+class UnifiedOrderSerializer(
+    FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer
+):
     """
-    A lightweight, non-recursive serializer for an Order.
-    Crucially, it does NOT include 'payment_details', breaking the circular import loop.
+    Unified serializer for Order that consolidates SimpleOrderSerializer,
+    OptimizedOrderSerializer, and OrderSerializer.
+
+    Supports multiple view modes via ?view= param:
+    - simple: Minimal fields, breaks circular import with payments (no nested objects)
+    - list: Lightweight for list endpoints (minimal computed fields)
+    - detail: Full representation with all nested objects (default)
+
+    Supports expansion via ?expand= param:
+    - customer: Nests full User object
+    - cashier: Nests full User object
+    - items: Nests full OrderItem array
+    - applied_discounts: Nests full OrderDiscount array
+    - payment_details: Nests full Payment object (lazy import)
+    - store_location_details: Nests full StoreLocation object (lazy import)
+
+    Usage:
+        GET /orders/              → list mode
+        GET /orders/?view=simple  → simple mode
+        GET /orders/?view=detail  → detail mode
+        GET /orders/1/            → detail mode (default for retrieve)
+        GET /orders/1/?expand=items,payment_details → detail + nested objects
+        GET /orders/?fields=id,order_number → only specified fields
     """
 
-    class Meta:
-        model = Order
-        fields = [
-            "id",
-            "order_number",
-            "status",
-            "order_type",
-            "payment_status",
-            "store_location",
-            "grand_total",
-            "created_at",
-            "updated_at",
-        ]
-        select_related_fields = ["store_location"]
-
-
-class OrderSerializer(BaseModelSerializer):
+    # Nested serializers for detail mode
     items = OrderItemSerializer(many=True, read_only=True)
-    cashier = UserSerializer(read_only=True)
-    customer = UserSerializer(read_only=True)
+    cashier = UnifiedUserSerializer(read_only=True)
+    customer = UnifiedUserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
+
+    # SerializerMethodFields (lazy imports for circular dependency)
     payment_details = serializers.SerializerMethodField()
     store_location_details = serializers.SerializerMethodField()
-    # Essential payment fields for frontend compatibility
+
+    # Payment-related computed fields
     total_with_tip = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
     total_tips = serializers.SerializerMethodField()
     total_surcharges = serializers.SerializerMethodField()
     total_collected = serializers.SerializerMethodField()
+
+    # List mode computed fields
+    item_count = serializers.IntegerField(source="items.count", read_only=True)
+    cashier_name = serializers.CharField(source="cashier.get_full_name", read_only=True)
+
+    # Model properties
     is_guest_order = serializers.ReadOnlyField()
     customer_email = serializers.ReadOnlyField()
     customer_phone = serializers.ReadOnlyField()
     customer_display_name = serializers.ReadOnlyField()
-
-    def to_internal_value(self, data):
-        """
-        Override to populate missing constraint fields from instance for partial updates.
-
-        For partial updates (PATCH), UniqueConstraint validators with conditions need
-        all condition fields to be present in the attrs dict. We populate missing
-        fields from the existing instance so validators can access them.
-        """
-        attrs = super().to_internal_value(data)
-
-        # For partial updates, add fields from instance that validators need
-        if self.partial and self.instance:
-            condition_fields = set()
-            for validator in self.get_validators():
-                if hasattr(validator, 'condition_fields'):
-                    condition_fields.update(validator.condition_fields)
-
-            for field in condition_fields:
-                if field not in attrs and hasattr(self.instance, field):
-                    attrs[field] = getattr(self.instance, field)
-
-        return attrs
+    payment_in_progress = serializers.ReadOnlyField(
+        source="payment_in_progress_derived"
+    )
 
     class Meta:
         model = Order
@@ -234,25 +176,170 @@ class OrderSerializer(BaseModelSerializer):
             "created_at",
             "updated_at",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
-        prefetch_related_fields = [
-            # Let Django use the default manager to respect tenant context at request time
-            # Don't use explicit querysets with TenantManager - they're evaluated at class definition time
-            'items__product__category',
-            'items__product__product_type',
-            'items__selected_modifiers_snapshot',
-            'applied_discounts__discount',
-            'payment_details__transactions'
+
+        # Define view modes
+        fieldsets = {
+            # Minimal reference (breaks circular import with payments)
+            "simple": [
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "store_location",
+                "grand_total",
+                "created_at",
+                "updated_at",
+            ],
+            # Lightweight list view (POS/admin)
+            "list": [
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "store_location",
+                "total_with_tip",
+                "total_collected",
+                "item_count",
+                "cashier_name",
+                "customer_display_name",
+                "created_at",
+                "updated_at",
+                "completed_at",
+                "payment_in_progress",
+            ],
+            # Optimized for WebSocket real-time updates
+            # Only includes fields actively used by frontend (electron-app/src/domains/pos/store/cartSlice.js)
+            # Analysis: cartSocket.js setCartFromSocket() only reads:
+            #   - items, id, order_number, status, grand_total, subtotal, tax_total,
+            #     total_discounts_amount, applied_discounts, guest_first_name, dining_preference
+            "websocket": [
+                # Core fields (used by cartSlice.js)
+                "id",                      # → orderId
+                "order_number",            # → orderNumber
+                "status",                  # → orderStatus
+                "dining_preference",       # → used in resumeCart
+                # Financial fields (used by cartSlice.js)
+                "subtotal",                # → subtotal
+                "tax_total",               # → taxAmount
+                "total_discounts_amount",  # → totalDiscountsAmount
+                "grand_total",             # → total
+                # Relationships (used by cart UI)
+                "items",                   # → items array
+                "applied_discounts",       # → appliedDiscounts
+                # Customer info (used in resumeCart)
+                "guest_first_name",        # → used when resuming order
+            ],
+            # Full detail (default) - includes all fields
+            "detail": [
+                # Core fields
+                "id",
+                "order_number",
+                "status",
+                "order_type",
+                "payment_status",
+                "dining_preference",
+                "store_location",
+                # Financial fields
+                "subtotal",
+                "tax_total",
+                "total_discounts_amount",
+                "surcharges_total",
+                "grand_total",
+                "total_with_tip",
+                "amount_paid",
+                "total_tips",
+                "total_surcharges",
+                "total_collected",
+                # Relationships (nested)
+                "customer",
+                "cashier",
+                "items",
+                "applied_discounts",
+                "payment_details",
+                "store_location_details",
+                # Customer info
+                "is_guest_order",
+                "customer_display_name",
+                "customer_email",
+                "customer_phone",
+                "guest_first_name",
+                "guest_last_name",
+                "guest_email",
+                "guest_phone",
+                "guest_session_key",
+                # Metadata
+                "created_at",
+                "updated_at",
+                "completed_at",
+                "legacy_id",
+            ],
+        }
+
+        # Define expandable relationships
+        expandable = {
+            "customer": (UnifiedUserSerializer, {"source": "customer", "many": False}),
+            "cashier": (UnifiedUserSerializer, {"source": "cashier", "many": False}),
+            "items": (OrderItemSerializer, {"source": "items", "many": True}),
+            "applied_discounts": (
+                OrderDiscountSerializer,
+                {"source": "applied_discounts", "many": True},
+            ),
+            # payment_details and store_location_details use lazy imports via SerializerMethodFields
+        }
+
+        # Optimization fields
+        select_related_fields = [
+            "customer",
+            "cashier",
+            "payment_details",
+            "store_location",
         ]
+        prefetch_related_fields = [
+            "items__product__category",
+            "items__product__product_type",
+            "items__selected_modifiers_snapshot",
+            "applied_discounts__discount",
+            "payment_details__transactions",
+        ]
+
+        # Fields that must always be included
+        required_fields = {"id", "order_number"}
+
+    def to_internal_value(self, data):
+        """
+        Override to populate missing constraint fields from instance for partial updates.
+
+        For partial updates (PATCH), UniqueConstraint validators with conditions need
+        all condition fields to be present in the attrs dict. We populate missing
+        fields from the existing instance so validators can access them.
+        """
+        attrs = super().to_internal_value(data)
+
+        # For partial updates, add fields from instance that validators need
+        if self.partial and self.instance:
+            condition_fields = set()
+            for validator in self.get_validators():
+                if hasattr(validator, "condition_fields"):
+                    condition_fields.update(validator.condition_fields)
+
+            for field in condition_fields:
+                if field not in attrs and hasattr(self.instance, field):
+                    attrs[field] = getattr(self.instance, field)
+
+        return attrs
+
+    # SerializerMethodField implementations
 
     def get_payment_details(self, obj):
         """
         Lazily import PaymentSerializer to avoid circular dependency.
         """
-        from payments.serializers import PaymentSerializer
+        from payments.serializers import UnifiedPaymentSerializer
 
         if hasattr(obj, "payment_details") and obj.payment_details:
-            return PaymentSerializer(obj.payment_details).data
+            return UnifiedPaymentSerializer(obj.payment_details).data
         return None
 
     def get_store_location_details(self, obj):
@@ -297,55 +384,6 @@ class OrderSerializer(BaseModelSerializer):
         return 0.00
 
 
-class OptimizedOrderSerializer(BaseModelSerializer):
-    """
-    A lightweight serializer for listing orders, providing essential details
-    and a count of the items in each order.
-    """
-
-    item_count = serializers.IntegerField(source="items.count", read_only=True)
-    cashier_name = serializers.CharField(source="cashier.get_full_name", read_only=True)
-    customer_display_name = serializers.ReadOnlyField()
-    total_with_tip = serializers.SerializerMethodField()
-    total_collected = serializers.SerializerMethodField()
-    payment_in_progress = serializers.ReadOnlyField(
-        source="payment_in_progress_derived"
-    )
-
-    def get_total_with_tip(self, obj):
-        """Get total with tip, fallback to grand_total if no payment details"""
-        if hasattr(obj, "payment_details") and obj.payment_details:
-            return obj.payment_details.total_amount_due + obj.payment_details.total_tips
-        return obj.grand_total
-
-    def get_total_collected(self, obj):
-        """Get total collected, fallback to 0.00 if no payment details"""
-        if hasattr(obj, "payment_details") and obj.payment_details:
-            return obj.payment_details.total_collected
-        return 0.00
-
-    class Meta:
-        model = Order
-        fields = [
-            "id",
-            "order_number",
-            "status",
-            "order_type",
-            "payment_status",
-            "store_location",
-            "total_with_tip",
-            "total_collected",
-            "item_count",
-            "cashier_name",
-            "customer_display_name",
-            "created_at",
-            "updated_at",
-            "payment_in_progress",
-        ]
-        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
-        prefetch_related_fields = ["items"]  # Fix: prefetch items for item_count
-
-
 class OrderCustomerInfoSerializer(BaseModelSerializer):
     """
     Serializer specifically for updating an order's customer information,
@@ -374,7 +412,9 @@ class OrderCustomerInfoSerializer(BaseModelSerializer):
 # --- Service-driven Serializers ---
 
 
-class OrderCreateSerializer(BaseModelSerializer):
+class OrderCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
+    from settings.models import StoreLocation
+
     guest_first_name = serializers.CharField(
         required=False, allow_blank=True, max_length=150
     )
@@ -384,24 +424,12 @@ class OrderCreateSerializer(BaseModelSerializer):
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Dynamically set store_location field with tenant-filtered queryset
-        from settings.models import StoreLocation
-        request = self.context.get('request')
-
-        # IMPORTANT: Tenant context is required - no fallback to all locations
-        if request and hasattr(request, 'tenant'):
-            queryset = StoreLocation.objects.filter(tenant=request.tenant)
-        else:
-            # If no tenant context, use empty queryset to prevent cross-tenant access
-            queryset = StoreLocation.objects.none()
-
-        self.fields['store_location'] = serializers.PrimaryKeyRelatedField(
-            queryset=queryset,
-            required=True,
-            help_text="Store location where this order is placed (REQUIRED)"
-        )
+    # TenantFilteredSerializerMixin will automatically filter this queryset by tenant
+    store_location = serializers.PrimaryKeyRelatedField(
+        queryset=StoreLocation.objects.all(),  # Mixin auto-filters by tenant
+        required=True,
+        help_text="Store location where this order is placed (REQUIRED)",
+    )
 
     class Meta:
         model = Order
@@ -476,10 +504,11 @@ class UpdateOrderItemSerializer(BaseModelSerializer):
         """
         Update the order item quantity using the service layer for consistent stock validation.
         """
-        new_quantity = validated_data.get('quantity', instance.quantity)
+        new_quantity = validated_data.get("quantity", instance.quantity)
 
         try:
             from .services import OrderService
+
             OrderService.update_item_quantity(instance, new_quantity)
             return instance
         except ValueError as e:

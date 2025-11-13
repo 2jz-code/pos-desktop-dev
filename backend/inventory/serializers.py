@@ -4,75 +4,112 @@ from products.models import Product
 from products.serializers import ProductSerializer
 from .services import InventoryService
 from core_backend.base import BaseModelSerializer
-from core_backend.base.serializers import TenantFilteredSerializerMixin
+from core_backend.base.serializers import (
+    TenantFilteredSerializerMixin,
+    FieldsetMixin,
+)
 
 
-class LocationSerializer(BaseModelSerializer):
+# ============================================================================
+# SPECIALIZED SERIALIZERS (Lightweight helpers used across multiple serializers)
+# ============================================================================
+
+class StockHistoryUserSerializer(serializers.Serializer):
+    """Lightweight user serializer for stock history"""
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    username = serializers.CharField()
+
+
+class StockHistoryStoreLocationSerializer(serializers.Serializer):
+    """Lightweight store location serializer for stock history"""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+# ============================================================================
+# UNIFIED READ SERIALIZERS (Fieldset-based)
+# ============================================================================
+
+class UnifiedLocationSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for Location model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal location info (id, name)
+    - list: Simple + additional details (description, thresholds)
+    - detail: All fields (default)
+
+    Usage:
+        # List view
+        UnifiedLocationSerializer(location, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedLocationSerializer(location, context={'view_mode': 'detail'})
+    """
+
     effective_low_stock_threshold = serializers.ReadOnlyField()
     effective_expiration_threshold = serializers.ReadOnlyField()
 
     class Meta:
         model = Location
-        fields = [
-            "id",
-            "name",
-            "description",
-            "low_stock_threshold",
-            "expiration_threshold",
-            "effective_low_stock_threshold",
-            "effective_expiration_threshold",
-        ]
+        fields = '__all__'
+        read_only_fields = ['tenant', 'store_location']  # Set via perform_create
         prefetch_related_fields = ["stock_levels__product"]
 
+        fieldsets = {
+            'simple': [
+                'id',
+                'name',
+            ],
+            'list': [
+                'id',
+                'name',
+                'description',
+                'effective_low_stock_threshold',
+                'effective_expiration_threshold',
+            ],
+            'detail': '__all__',
+        }
 
-# Optimized serializers for stock management to avoid N+1 queries
-class OptimizedProductSerializer(BaseModelSerializer):
-    """Lightweight product serializer for inventory management"""
+        required_fields = {'id'}
 
-    category_name = serializers.CharField(source="category.name", read_only=True)
-    product_type_name = serializers.CharField(
-        source="product_type.name", read_only=True
+
+class UnifiedInventoryStockSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for InventoryStock model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal stock info (id, product, location, quantity, is_low_stock)
+    - list: Simple + additional details (optimized with lightweight nested serializers)
+    - detail: All fields with full nested relationships
+
+    Expandable:
+    - product: Can expand to full ProductSerializer
+    - location: Can expand to full UnifiedLocationSerializer
+
+    Usage:
+        # List view (optimized with lightweight nested serializers)
+        UnifiedInventoryStockSerializer(stock, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedInventoryStockSerializer(stock, context={'view_mode': 'detail'})
+    """
+
+    # Default nested serializers (lightweight for list view)
+    product = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+
+    # Write-only fields for creating/updating stock
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source="product", write_only=True, required=False
+    )
+    location_id = serializers.PrimaryKeyRelatedField(
+        queryset=Location.objects.all(), source="location", write_only=True, required=False
     )
 
-    class Meta:
-        model = Product
-        fields = [
-            "id",
-            "name",
-            "description",
-            "price",
-            "barcode",
-            "is_active",
-            "is_public",
-            "track_inventory",
-            "category_name",
-            "product_type_name",
-        ]
-        select_related_fields = ["category", "product_type"]
-
-
-class OptimizedLocationSerializer(BaseModelSerializer):
-    """Lightweight location serializer for inventory management"""
-
-    effective_low_stock_threshold = serializers.ReadOnlyField()
-    effective_expiration_threshold = serializers.ReadOnlyField()
-
-    class Meta:
-        model = Location
-        fields = [
-            "id",
-            "name",
-            "description",
-            "effective_low_stock_threshold",
-            "effective_expiration_threshold",
-        ]
-
-
-class OptimizedInventoryStockSerializer(BaseModelSerializer):
-    """Optimized serializer for stock management endpoint"""
-
-    product = OptimizedProductSerializer(read_only=True)
-    location = OptimizedLocationSerializer(read_only=True)
+    # Computed fields
     is_low_stock = serializers.ReadOnlyField()
     is_expiring_soon = serializers.ReadOnlyField()
     effective_low_stock_threshold = serializers.ReadOnlyField()
@@ -80,93 +117,188 @@ class OptimizedInventoryStockSerializer(BaseModelSerializer):
 
     class Meta:
         model = InventoryStock
-        fields = [
-            "id",
-            "product",
-            "location",
-            "store_location",
-            "quantity",
-            "expiration_date",
-            "low_stock_threshold",
-            "expiration_threshold",
-            "effective_low_stock_threshold",
-            "effective_expiration_threshold",
-            "is_low_stock",
-            "is_expiring_soon",
-        ]
-        # Optimized for list view - minimal relationships
+        fields = '__all__'
+        read_only_fields = ['tenant', 'store_location']  # Set via perform_create
         select_related_fields = ["product__category", "product__product_type", "location", "store_location"]
 
+        fieldsets = {
+            'simple': [
+                'id',
+                'product',
+                'location',
+                'quantity',
+                'is_low_stock',
+            ],
+            'list': [
+                'id',
+                'product',
+                'location',
+                'store_location',
+                'quantity',
+                'is_low_stock',
+                'is_expiring_soon',
+                'effective_low_stock_threshold',
+            ],
+            'detail': '__all__',
+        }
 
-class FullInventoryStockSerializer(BaseModelSerializer):
-    """Full serializer for detailed inventory operations"""
+        required_fields = {'id'}
 
-    product = ProductSerializer(read_only=True)
-    location = LocationSerializer(read_only=True)
-    is_low_stock = serializers.ReadOnlyField()
-    is_expiring_soon = serializers.ReadOnlyField()
-    effective_low_stock_threshold = serializers.ReadOnlyField()
-    effective_expiration_threshold = serializers.ReadOnlyField()
+    def get_product(self, obj):
+        """Return product with appropriate view mode"""
+        view_mode = self.context.get('view_mode', 'list')
+        # Use ProductSerializer with 'reference' for list, 'detail' for detail
+        product_view_mode = 'detail' if view_mode == 'detail' else 'reference'
+        return ProductSerializer(obj.product, context={'view_mode': product_view_mode}).data
 
-    class Meta:
-        model = InventoryStock
-        fields = [
-            "id",
-            "product",
-            "location",
-            "store_location",
-            "quantity",
-            "expiration_date",
-            "low_stock_threshold",
-            "expiration_threshold",
-            "effective_low_stock_threshold",
-            "effective_expiration_threshold",
-            "is_low_stock",
-            "is_expiring_soon",
-        ]
-        select_related_fields = ["product__category", "location", "store_location"]
-        prefetch_related_fields = ["product__taxes"]
+    def get_location(self, obj):
+        """Return location with appropriate view mode"""
+        view_mode = self.context.get('view_mode', 'list')
+        # Use UnifiedLocationSerializer with matching view mode
+        return UnifiedLocationSerializer(obj.location, context={'view_mode': view_mode}).data
+
+    def create(self, validated_data):
+        """
+        Create inventory stock with tenant context.
+
+        Note: tenant and store_location can be passed via perform_create in the viewset,
+        or they will be automatically retrieved from the current context.
+        """
+        # Tenant and store_location may be passed from viewset's perform_create
+        # If not provided, get them from context
+        if 'tenant' not in validated_data:
+            from tenant.managers import get_current_tenant
+            validated_data['tenant'] = get_current_tenant()
+
+        if 'store_location' not in validated_data:
+            request = self.context.get('request')
+            if request and hasattr(request, 'store_location_id'):
+                from settings.models import StoreLocation
+                validated_data['store_location'] = StoreLocation.objects.filter(
+                    id=request.store_location_id
+                ).first()
+
+        # Create the stock record
+        return InventoryStock.objects.create(**validated_data)
 
 
-class RecipeItemSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
-    product = OptimizedProductSerializer(read_only=True)
+class UnifiedRecipeItemSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for RecipeItem model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal recipe item info (id, product, quantity, unit)
+    - list: Same as simple (recipe items are typically nested)
+    - detail: All fields
+
+    Usage:
+        # List view
+        UnifiedRecipeItemSerializer(item, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedRecipeItemSerializer(item, context={'view_mode': 'detail'})
+    """
+
+    product = serializers.SerializerMethodField()
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product", write_only=True
     )
 
+    def get_product(self, obj):
+        """Return product with 'reference' view mode"""
+        return ProductSerializer(obj.product, context={'view_mode': 'reference'}).data
+
     class Meta:
         model = RecipeItem
-        fields = ["id", "product_id", "product", "quantity", "unit"]
+        fields = '__all__'
+        read_only_fields = ['tenant', 'recipe']  # Set via create method
         select_related_fields = ["product__category", "product__product_type"]
 
+        fieldsets = {
+            'simple': [
+                'id',
+                'product',
+                'quantity',
+                'unit',
+            ],
+            'list': [
+                'id',
+                'product',
+                'quantity',
+                'unit',
+            ],
+            'detail': '__all__',
+        }
 
-class RecipeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
-    menu_item = OptimizedProductSerializer(read_only=True)
+        required_fields = {'id'}
+
+
+class UnifiedRecipeSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for Recipe model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal recipe info (id, name, menu_item)
+    - list: Same as simple
+    - detail: All fields including nested ingredients
+
+    Usage:
+        # List view
+        UnifiedRecipeSerializer(recipe, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedRecipeSerializer(recipe, context={'view_mode': 'detail'})
+    """
+
+    menu_item = serializers.SerializerMethodField()
     menu_item_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(product_type__name="menu"),
         source="menu_item",
         write_only=True,
     )
-    ingredients = RecipeItemSerializer(many=True)
+    ingredients = UnifiedRecipeItemSerializer(many=True)
+
+    def get_menu_item(self, obj):
+        """Return menu item product with 'reference' view mode"""
+        return ProductSerializer(obj.menu_item, context={'view_mode': 'reference'}).data
 
     class Meta:
         model = Recipe
-        fields = ["id", "name", "menu_item_id", "menu_item", "ingredients"]
+        fields = '__all__'
+        read_only_fields = ['tenant']  # Set via create method
         select_related_fields = ["menu_item__category", "menu_item__product_type"]
         prefetch_related_fields = ["ingredients__product__category", "ingredients__product__product_type"]
 
+        fieldsets = {
+            'simple': [
+                'id',
+                'name',
+                'menu_item',
+            ],
+            'list': [
+                'id',
+                'name',
+                'menu_item',
+            ],
+            'detail': '__all__',
+        }
+
+        required_fields = {'id'}
+
     def to_representation(self, instance):
+        """Manually serialize prefetched ingredients to avoid N+1 queries"""
         representation = super().to_representation(instance)
 
         # Manually serialize the prefetched ingredients
         if hasattr(instance, "ingredients"):
-            representation["ingredients"] = RecipeItemSerializer(
-                instance.ingredients.all(), many=True
+            representation["ingredients"] = UnifiedRecipeItemSerializer(
+                instance.ingredients.all(), many=True, context=self.context
             ).data
 
         return representation
 
     def create(self, validated_data):
+        """Create recipe with tenant context"""
         from tenant.managers import get_current_tenant
 
         ingredients_data = validated_data.pop("ingredients")
@@ -182,10 +314,103 @@ class RecipeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
         return recipe
 
 
+class UnifiedStockHistoryEntrySerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for StockHistoryEntry model with fieldset support.
+
+    Fieldsets:
+    - simple: Minimal history info (id, product, operation_type, quantity_change, timestamp)
+    - list: Simple + additional details (location, new_quantity, reason)
+    - detail: All fields including nested relationships
+
+    Usage:
+        # List view
+        UnifiedStockHistoryEntrySerializer(entry, context={'view_mode': 'list'})
+
+        # Detail view
+        UnifiedStockHistoryEntrySerializer(entry, context={'view_mode': 'detail'})
+    """
+
+    # Nested serializers
+    product = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+    store_location = StockHistoryStoreLocationSerializer(read_only=True)
+    user = StockHistoryUserSerializer(read_only=True)
+
+    def get_product(self, obj):
+        """Return product with 'reference' view mode"""
+        return ProductSerializer(obj.product, context={'view_mode': 'reference'}).data
+
+    def get_location(self, obj):
+        """Return location with 'simple' view mode"""
+        return UnifiedLocationSerializer(obj.location, context={'view_mode': 'simple'}).data
+
+    # Computed fields from model properties
+    operation_display = serializers.ReadOnlyField()
+    reason_category = serializers.ReadOnlyField()
+    reason_category_display = serializers.ReadOnlyField()
+    truncated_reason = serializers.ReadOnlyField()
+
+    # New structured reason fields
+    reason_config = serializers.SerializerMethodField()
+    get_reason_display = serializers.ReadOnlyField()
+    get_full_reason = serializers.ReadOnlyField()
+
+    class Meta:
+        model = StockHistoryEntry
+        fields = '__all__'
+        select_related_fields = ['product__category', 'product__product_type', 'location', 'store_location', 'user', 'reason_config']
+
+        fieldsets = {
+            'simple': [
+                'id',
+                'product',
+                'operation_type',
+                'quantity_change',
+                'timestamp',
+            ],
+            'list': [
+                'id',
+                'product',
+                'location',
+                'operation_type',
+                'operation_display',
+                'quantity_change',
+                'new_quantity',
+                'reason_config',
+                'reason_category',
+                'reason_category_display',
+                'get_reason_display',
+                'timestamp',
+            ],
+            'detail': '__all__',
+        }
+
+        required_fields = {'id'}
+
+    def get_reason_config(self, obj):
+        """Return basic reason config information"""
+        if obj.reason_config:
+            return {
+                'id': obj.reason_config.id,
+                'name': obj.reason_config.name,
+                'category': obj.reason_config.category,
+                'category_display': obj.reason_config.get_category_display(),
+                'is_system_reason': obj.reason_config.is_system_reason,
+            }
+        return None
+
+
+
+
+
+
+
+
 # --- Service-driven Serializers ---
 
 
-class StockAdjustmentSerializer(serializers.Serializer):
+class StockAdjustmentSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     product_id = serializers.IntegerField()
     location_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
@@ -296,7 +521,7 @@ class StockAdjustmentSerializer(serializers.Serializer):
         return stock
 
 
-class StockTransferSerializer(serializers.Serializer):
+class StockTransferSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     product_id = serializers.IntegerField()
     from_location_id = serializers.IntegerField()
     to_location_id = serializers.IntegerField()
@@ -384,7 +609,7 @@ class StockTransferSerializer(serializers.Serializer):
 
 # --- Bulk Operations Serializers ---
 
-class BulkStockAdjustmentItemSerializer(serializers.Serializer):
+class BulkStockAdjustmentItemSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     product_id = serializers.IntegerField()
     location_id = serializers.IntegerField()
     adjustment_type = serializers.ChoiceField(choices=[("Add", "Add"), ("Subtract", "Subtract")])
@@ -420,7 +645,7 @@ class BulkStockAdjustmentItemSerializer(serializers.Serializer):
         except StockActionReasonConfig.DoesNotExist:
             raise serializers.ValidationError("Invalid or inactive reason configuration.")
 
-class BulkStockAdjustmentSerializer(serializers.Serializer):
+class BulkStockAdjustmentSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     adjustments = BulkStockAdjustmentItemSerializer(many=True)
     user_id = serializers.IntegerField()
 
@@ -430,7 +655,7 @@ class BulkStockAdjustmentSerializer(serializers.Serializer):
         return InventoryService.perform_bulk_stock_adjustment(adjustments_data, user_id)
 
 
-class BulkStockTransferItemSerializer(serializers.Serializer):
+class BulkStockTransferItemSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     product_id = serializers.IntegerField()
     from_location_id = serializers.IntegerField()
     to_location_id = serializers.IntegerField()
@@ -459,7 +684,7 @@ class BulkStockTransferItemSerializer(serializers.Serializer):
                 raise serializers.ValidationError("Invalid or inactive reason configuration.")
         return None
 
-class BulkStockTransferSerializer(serializers.Serializer):
+class BulkStockTransferSerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     transfers = BulkStockTransferItemSerializer(many=True)
     user_id = serializers.IntegerField()
     notes = serializers.CharField(required=False, allow_blank=True)
@@ -482,81 +707,3 @@ class BulkStockTransferSerializer(serializers.Serializer):
         notes = self.validated_data.get("notes", "")
         return InventoryService.perform_bulk_stock_transfer(transfers_data, user_id, notes)
 
-
-# --- Stock History Serializers ---
-
-class StockHistoryUserSerializer(serializers.Serializer):
-    """Lightweight user serializer for stock history"""
-    id = serializers.IntegerField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    username = serializers.CharField()
-
-
-class StockHistoryStoreLocationSerializer(serializers.Serializer):
-    """Lightweight store location serializer for stock history"""
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-
-
-class StockHistoryEntrySerializer(BaseModelSerializer):
-    """
-    Serializer for stock history entries with optimized queries.
-    """
-    product = OptimizedProductSerializer(read_only=True)
-    location = OptimizedLocationSerializer(read_only=True)
-    store_location = StockHistoryStoreLocationSerializer(read_only=True)
-    user = StockHistoryUserSerializer(read_only=True)
-    operation_display = serializers.ReadOnlyField()
-    reason_category = serializers.ReadOnlyField()
-    reason_category_display = serializers.ReadOnlyField()
-    truncated_reason = serializers.ReadOnlyField()
-    
-    # New structured reason fields
-    reason_config = serializers.SerializerMethodField()
-    get_reason_display = serializers.ReadOnlyField()
-    get_full_reason = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = StockHistoryEntry
-        fields = [
-            'id',
-            'product',
-            'location',
-            'store_location',
-            'user',
-            'operation_type',
-            'operation_display',
-            'quantity_change',
-            'previous_quantity',
-            'new_quantity',
-
-            # New structured reason fields
-            'reason_config',
-            'detailed_reason',
-            'get_reason_display',
-            'get_full_reason',
-
-            # Legacy reason fields (for backward compatibility)
-            'reason',
-            'notes',
-            'reason_category',
-            'reason_category_display',
-            'truncated_reason',
-
-            'reference_id',
-            'timestamp',
-        ]
-        select_related_fields = ['product__category', 'product__product_type', 'location', 'store_location', 'user', 'reason_config']
-        
-    def get_reason_config(self, obj):
-        """Return basic reason config information"""
-        if obj.reason_config:
-            return {
-                'id': obj.reason_config.id,
-                'name': obj.reason_config.name,
-                'category': obj.reason_config.category,
-                'category_display': obj.reason_config.get_category_display(),
-                'is_system_reason': obj.reason_config.is_system_reason,
-            }
-        return None

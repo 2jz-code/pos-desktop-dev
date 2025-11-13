@@ -90,7 +90,7 @@ class OperationsReportService(BaseReportService):
         filters = {
             "tenant": tenant,
             "status": Order.OrderStatus.COMPLETED,
-            "created_at__range": (start_date, end_date),
+            "completed_at__range": (start_date, end_date),
             "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
         }
 
@@ -101,7 +101,7 @@ class OperationsReportService(BaseReportService):
 
         # Hourly patterns
         hourly_patterns = (
-            orders.annotate(hour=Extract("created_at", "hour"))
+            orders.annotate(hour=Extract("completed_at", "hour"))
             .values("hour")
             .annotate(
                 orders=Count("id"),
@@ -136,7 +136,7 @@ class OperationsReportService(BaseReportService):
 
         # Daily order volume
         daily_volume = (
-            orders.annotate(date=OperationsReportService._trunc_date_local("created_at"))
+            orders.annotate(date=OperationsReportService._trunc_date_local("completed_at"))
             .values("date")
             .annotate(orders=Count("id"), revenue=Sum("grand_total"))
             .order_by("date")

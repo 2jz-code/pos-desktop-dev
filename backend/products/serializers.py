@@ -8,7 +8,7 @@ from rest_framework.fields import ImageField
 from django.conf import settings
 from collections import defaultdict
 
-from core_backend.base.serializers import BaseModelSerializer, TenantFilteredSerializerMixin
+from core_backend.base.serializers import BaseModelSerializer, TenantFilteredSerializerMixin, FieldsetMixin
 
 
 class ModifierOptionSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
@@ -71,7 +71,10 @@ class ModifierSetSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
         """Return basic info about products using this modifier set"""
         # Access the prefetched products to avoid N+1 queries
         products = [pms.product for pms in obj.product_modifier_sets.all()]
-        return BasicProductSerializer(products, many=True).data
+        # Use unified ProductSerializer with 'reference' fieldset
+        context = self.context.copy() if self.context else {}
+        context['view_mode'] = 'reference'
+        return ProductSerializer(products, many=True, context=context).data
 
     def create(self, validated_data):
         """Create modifier set with tenant validation and nested options"""
@@ -269,25 +272,23 @@ class FinalProductModifierSetSerializer(serializers.Serializer):
 # --- Existing Serializers ---
 
 
-class BasicCategorySerializer(BaseModelSerializer):
-    class Meta:
-        model = Category
-        fields = ["id", "name", "order"]
-
-
-class BasicProductSerializer(BaseModelSerializer):
-    class Meta:
-        model = Product
-        fields = ["id", "name", "barcode"]
-
-
 class BasicTaxSerializer(BaseModelSerializer):
     class Meta:
         model = Tax
         fields = ["id", "name", "rate"]
 
 
-class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
+class ProductTypeSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified ProductType serializer using FieldsetMixin for dynamic field control.
+
+    Usage:
+    - List view: context={'view_mode': 'list'}
+    - Detail view: context={'view_mode': 'detail'} or no view_mode
+    - FK references: context={'view_mode': 'reference'}
+    - Expand relationships: context={'expand': {'default_taxes'}}
+    """
+
     default_taxes = BasicTaxSerializer(many=True, read_only=True)
     default_taxes_ids = serializers.PrimaryKeyRelatedField(
         source="default_taxes",
@@ -321,7 +322,40 @@ class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
             "max_quantity_per_item",
             "exclude_from_discounts",
         ]
+
+        # View mode fieldsets
+        fieldsets = {
+            # Minimal reference (for FK references)
+            'reference': [
+                'id', 'name'
+            ],
+
+            # Lightweight list view
+            'list': [
+                'id', 'name', 'description', 'is_active'
+            ],
+
+            # Full detail view (default) - all fields for editing
+            'detail': [
+                'id', 'name', 'description', 'is_active',
+                'inventory_behavior', 'stock_enforcement', 'allow_negative_stock',
+                'tax_inclusive', 'default_taxes', 'default_taxes_ids',
+                'pricing_method', 'default_markup_percent',
+                'standard_prep_minutes',
+                'max_quantity_per_item', 'exclude_from_discounts',
+            ],
+        }
+
+        # Expandable relationships (?expand=default_taxes)
+        expandable = {
+            'default_taxes': (BasicTaxSerializer, {'source': 'default_taxes', 'many': True}),
+        }
+
+        # Optimization hints
         prefetch_related_fields = ["default_taxes"]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
 
     def create(self, validated_data):
         """Create product type with tenant validation"""
@@ -372,15 +406,31 @@ class ProductTypeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
         return instance
 
 
-class CategorySerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
-    parent = BasicCategorySerializer(read_only=True)
+class CategorySerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified Category serializer using FieldsetMixin for dynamic field control.
+
+    Replaces:
+    - BasicCategorySerializer → fieldsets['reference']
+
+    Usage:
+    - List view: context={'view_mode': 'list'}
+    - Detail view: context={'view_mode': 'detail'} or no view_mode
+    - FK references: context={'view_mode': 'reference'}
+    - Expand relationships: context={'expand': {'parent'}}
+    """
+
+    # parent_id handles both read and write - maps directly to the parent_id column
+    # DRF automatically converts between ID and FK object
     parent_id = serializers.PrimaryKeyRelatedField(
-        source="parent",
         queryset=Category.objects.all(),  # Mixin auto-filters by tenant
+        source="parent",  # Maps to the parent ForeignKey
         allow_null=True,
         required=False,
-        write_only=True,
     )
+
+    # Nested parent object (for detail view with full parent data)
+    parent = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
@@ -394,8 +444,49 @@ class CategorySerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
             "is_public",
             "is_active",
         ]
+
+        # View mode fieldsets
+        fieldsets = {
+            # Minimal reference (replaces BasicCategorySerializer)
+            # IMPORTANT: Includes parent_id for hierarchical ordering
+            'reference': [
+                'id', 'name', 'order', 'parent_id'
+            ],
+
+            # Lightweight list view
+            # Includes both parent_id (for logic) and parent (for display)
+            'list': [
+                'id', 'name', 'order', 'parent_id', 'parent', 'is_active', 'is_public'
+            ],
+
+            # Full detail view (default)
+            'detail': [
+                'id', 'name', 'description', 'parent', 'parent_id',
+                'order', 'is_public', 'is_active'
+            ],
+        }
+
+        # Expandable relationships (?expand=parent)
+        expandable = {
+            'parent': (None, {'source': 'parent', 'many': False}),  # Uses SerializerMethodField
+        }
+
+        # Optimization hints
         select_related_fields = ["parent"]
         prefetch_related_fields = ["children"]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
+
+    def get_parent(self, obj):
+        """Return minimal parent info (id, name, order) without using deprecated serializer"""
+        if obj.parent:
+            return {
+                "id": obj.parent.id,
+                "name": obj.parent.name,
+                "order": obj.parent.order
+            }
+        return None
 
     def create(self, validated_data):
         """Create category with tenant validation"""
@@ -545,42 +636,166 @@ class TaxSerializer(BaseModelSerializer):
         return super().create(validated_data)
 
 
-class ProductSerializer(BaseModelSerializer):
-    category = CategorySerializer(read_only=True)
-    parent_category = CategorySerializer(source="category.parent", read_only=True)
-    category_display_name = serializers.ReadOnlyField()
-    is_uncategorized = serializers.ReadOnlyField()
-    taxes = TaxSerializer(many=True, read_only=True)
-    product_type = ProductTypeSerializer(read_only=True)
-    image = ImageField(required=False)
+class ProductSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Unified Product serializer using FieldsetMixin for dynamic field control.
+
+    Replaces:
+    - OptimizedProductSerializer → fieldsets['list']
+    - POSProductSerializer → fieldsets['pos']
+    - ProductSyncSerializer → fieldsets['sync']
+    - BasicProductSerializer → fieldsets['reference']
+    - OrderItemProductSerializer → fieldsets['order_item']
+
+    Usage:
+    - List view: context={'view_mode': 'list'}
+    - POS view: context={'view_mode': 'pos'}
+    - Sync view: context={'view_mode': 'sync'}
+    - FK references: context={'view_mode': 'reference'}
+    - Order items: context={'view_mode': 'order_item'}
+    - Detail view: context={'view_mode': 'detail'} or no view_mode
+    - Expand relationships: context={'expand': {'category', 'taxes', 'product_type', 'modifier_groups'}}
+    """
+
+    # ID fields (default representation)
+    category_id = serializers.IntegerField(source="category.id", read_only=True, allow_null=True)
+    product_type_id = serializers.IntegerField(source="product_type.id", read_only=True, allow_null=True)
+    tax_ids = serializers.PrimaryKeyRelatedField(
+        source="taxes",
+        many=True,
+        queryset=Tax.objects.all(),  # TenantFilteredSerializerMixin will filter by tenant
+        required=False,
+        help_text="Tax IDs to assign to this product"
+    )
+
+    # Computed fields
     image_url = serializers.SerializerMethodField()
-    original_filename = serializers.CharField(read_only=True)
+    has_modifiers = serializers.SerializerMethodField()
+    modifier_summary = serializers.SerializerMethodField()
     modifier_groups = serializers.SerializerMethodField()
+    category_display_name = serializers.ReadOnlyField()
+    product_type_display_name = serializers.ReadOnlyField()
+    is_uncategorized = serializers.ReadOnlyField()
+
+    # POS/Order-specific nested representations (hierarchical)
+    category = serializers.SerializerMethodField()
+    product_type = serializers.SerializerMethodField()
+
+    # Read-only fields
+    original_filename = serializers.CharField(read_only=True)
+
+    # Image field
+    image = ImageField(required=False)
 
     class Meta:
         model = Product
         fields = [
+            # Core fields (always present)
             "id",
             "name",
-            "description",
             "price",
-            "category",
-            "parent_category",
-            "category_display_name",
-            "is_uncategorized",
-            "taxes",
+            "barcode",
+
+            # Status fields
             "is_active",
             "is_public",
             "track_inventory",
+
+            # Descriptive fields
+            "description",
+
+            # Relationship IDs (default)
+            "category_id",
+            "product_type_id",
+            "tax_ids",
+
+            # Relationship nested (via SerializerMethodField for custom formatting)
+            "category",
             "product_type",
-            "barcode",
+
+            # Computed fields
+            "image_url",
+            "has_modifiers",
+            "modifier_summary",
+            "modifier_groups",
+            "category_display_name",
+            "product_type_display_name",
+            "is_uncategorized",
+
+            # Image fields
+            "image",
+            "original_filename",
+
+            # Timestamps
             "created_at",
             "updated_at",
-            "image",
-            "image_url",
-            "original_filename",
-            "modifier_groups",
         ]
+
+        # View mode fieldsets
+        fieldsets = {
+            # Minimal list view (replaces OptimizedProductSerializer)
+            'list': [
+                'id', 'name', 'price', 'barcode', 'is_active', 'category_id'
+            ],
+
+            # POS terminal view (replaces POSProductSerializer)
+            'pos': [
+                'id', 'name', 'price', 'barcode', 'is_active',
+                'category', 'product_type',
+                'has_modifiers', 'modifier_summary', 'modifier_groups',
+                'image'
+            ],
+
+            # Sync to Electron (replaces ProductSyncSerializer)
+            'sync': [
+                'id', 'name', 'description', 'price', 'barcode',
+                'category_id', 'product_type_id', 'tax_ids',
+                'is_active', 'is_public', 'track_inventory',
+                'created_at', 'updated_at'
+            ],
+
+            # FK references only (replaces BasicProductSerializer)
+            # IMPORTANT: No price field - used for nested serializers
+            'reference': [
+                'id', 'name', 'barcode'
+            ],
+
+            # WebSocket cart updates - minimal fields needed by frontend
+            # Used by: electron-app CartItem.jsx, GroupedCartItem.jsx
+            # Frontend needs: id, name, price (for display), image_url (for UI), modifier_groups (for editing)
+            'websocket_item': [
+                'id', 'name', 'price', 'image_url', 'modifier_groups'
+            ],
+
+            # Order item representation (for OrderItemSerializer.product field)
+            'order_item': [
+                'id', 'name', 'price', 'description', 'barcode',
+                'is_active', 'track_inventory',
+                'modifier_groups', 'image_url',
+                'category', 'product_type'
+            ],
+
+            # Full detail view (default)
+            'detail': [
+                'id', 'name', 'description', 'price', 'barcode',
+                'category_id', 'category_display_name', 'is_uncategorized',
+                'product_type_id', 'product_type_display_name', 'tax_ids',
+                'is_active', 'is_public', 'track_inventory',
+                'image', 'image_url', 'original_filename',
+                'modifier_groups',
+                'created_at', 'updated_at'
+            ],
+        }
+
+        # Expandable relationships (?expand=category,taxes,product_type,modifier_groups)
+        expandable = {
+            'category': (CategorySerializer, {'source': 'category', 'many': False}),
+            'taxes': (TaxSerializer, {'source': 'taxes', 'many': True}),
+            'product_type': (ProductTypeSerializer, {'source': 'product_type', 'many': False}),
+            # Note: modifier_groups is always a SerializerMethodField, not truly expandable
+        }
+
+        # Optimization hints
         select_related_fields = ["category", "product_type"]
         prefetch_related_fields = [
             "taxes",
@@ -588,6 +803,9 @@ class ProductSerializer(BaseModelSerializer):
             "product_modifier_sets__hidden_options",
             "product_modifier_sets__extra_options",
         ]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
 
     def get_image_url(self, obj):
         """
@@ -597,24 +815,61 @@ class ProductSerializer(BaseModelSerializer):
         from .services import ProductImageService
         return ProductImageService.get_image_url(obj, self.context.get("request"))
 
+    def get_has_modifiers(self, obj):
+        """
+        Check if product has any modifier sets.
+        Uses prefetched cache to avoid N+1 queries.
+        """
+        if not hasattr(obj, 'product_modifier_sets'):
+            return False
+        # Cache the prefetched relation to avoid .exists() query
+        modifier_sets = list(obj.product_modifier_sets.all())
+        return len(modifier_sets) > 0
+
+    def get_modifier_summary(self, obj):
+        """
+        Return count of modifier groups.
+        Uses prefetched cache to avoid N+1 queries.
+        """
+        if not hasattr(obj, 'product_modifier_sets'):
+            return 0
+        # Cache the prefetched relation to avoid .count() query
+        modifier_sets = list(obj.product_modifier_sets.all())
+        return len(modifier_sets)
+
     def get_modifier_groups(self, obj):
-        """Get modifier groups using service layer"""
+        """
+        Get modifier groups using service layer.
+        Returns full nested structure with options and triggers.
+        Uses prefetched cache to avoid N+1 queries.
+        """
+        # Quick check - if no modifier sets, return empty array immediately
+        # Use prefetched cache instead of .exists()
+        if not hasattr(obj, 'product_modifier_sets'):
+            return []
+
+        modifier_sets = list(obj.product_modifier_sets.all())
+        if not modifier_sets:
+            return []
+
         try:
             # Use service layer for complex business logic
             structured_data = ProductService.get_structured_modifier_groups_for_product(
                 obj, context=self.context
             )
-            
+
             # Update context with processed data
-            context = self.context.copy()
+            context = self.context.copy() if self.context else {}
             context["options_for_set"] = structured_data['options_map']
             context["triggered_sets_for_option"] = structured_data['triggered_map']
-            
+
             # Serialize the structured data
             return FinalProductModifierSetSerializer(
-                structured_data['sets_to_return'], many=True, context=context
+                structured_data['sets_to_return'],
+                many=True,
+                context=context
             ).data
-            
+
         except Exception as e:
             # Log error and return empty list for graceful degradation
             import logging
@@ -622,38 +877,11 @@ class ProductSerializer(BaseModelSerializer):
             logger.warning(f"Error getting modifier groups for product {obj.id}: {e}")
             return []
 
-
-class OptimizedProductSerializer(BaseModelSerializer):
-    """Lightweight for list views"""
-    category = BasicCategorySerializer(read_only=True)
-    
-    class Meta:
-        model = Product
-        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category']
-        select_related_fields = ['category']
-
-
-class POSProductSerializer(BaseModelSerializer):
-    """POS serializer with complete modifier data for editing functionality"""
-    category = serializers.SerializerMethodField()
-    product_type = ProductTypeSerializer(read_only=True)
-    has_modifiers = serializers.SerializerMethodField()
-    modifier_summary = serializers.SerializerMethodField()
-    modifier_groups = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Product
-        fields = ['id', 'name', 'price', 'barcode', 'is_active', 'category', 'product_type', 'has_modifiers', 'modifier_summary', 'modifier_groups', 'image']
-        select_related_fields = ['category', 'product_type']
-        prefetch_related_fields = [
-            'product_modifier_sets__modifier_set__options',
-            'product_modifier_sets__hidden_options',
-            'product_modifier_sets__extra_options',
-            'product_type__default_taxes',
-        ]
-    
     def get_category(self, obj):
-        """Return category info with parent relationship for hierarchical display"""
+        """
+        Return category info with parent relationship for hierarchical display.
+        Used for POS and order views.
+        """
         if obj.category:
             category_data = {
                 'id': obj.category.id,
@@ -671,71 +899,22 @@ class POSProductSerializer(BaseModelSerializer):
                 category_data['parent'] = None
             return category_data
         return None
-    
-    def get_has_modifiers(self, obj):
-        return hasattr(obj, 'product_modifier_sets') and obj.product_modifier_sets.exists()
-    
-    def get_modifier_summary(self, obj):
-        """Return just count of modifier groups, not full data"""
-        if hasattr(obj, 'product_modifier_sets'):
-            return obj.product_modifier_sets.count()
-        return 0
-    
-    def get_modifier_groups(self, obj):
-        """Get modifier groups using service layer - optimized for performance"""
-        from .services import ProductService
-        
-        # Quick check - if no modifier sets, return empty array immediately
-        if not hasattr(obj, 'product_modifier_sets') or not obj.product_modifier_sets.exists():
-            return []
-        
-        try:
-            structured_data = ProductService.get_structured_modifier_groups_for_product(
-                obj, context=self.context
-            )
-            
-            context = self.context.copy() if self.context else {}
-            context["options_for_set"] = structured_data['options_map']
-            context["triggered_sets_for_option"] = structured_data['triggered_map']
-            
-            return FinalProductModifierSetSerializer(
-                structured_data['sets_to_return'],
-                many=True,
-                context=context
-            ).data
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to get modifier groups for product {obj.id}: {e}")
-            return []
+
+    def get_product_type(self, obj):
+        """
+        Return product type details for order views.
+        Used for order item serialization.
+        """
+        if obj.product_type:
+            return {
+                'id': obj.product_type.id,
+                'name': obj.product_type.name,
+                'description': obj.product_type.description
+            }
+        return None
 
 
-class ProductSyncSerializer(BaseModelSerializer):
-    category_id = serializers.IntegerField(
-        source="category.id", read_only=True, allow_null=True
-    )
-    product_type_id = serializers.IntegerField(source="product_type.id", read_only=True)
-
-    class Meta:
-        model = Product
-        fields = [
-            "id",
-            "name",
-            "description",
-            "price",
-            "category_id",
-            "product_type_id",
-            "is_active",
-            "is_public",
-            "track_inventory",
-            "barcode",
-            "created_at",
-            "updated_at",
-        ]
-        select_related_fields = ["category", "product_type"]
-
-
-class ProductCreateSerializer(BaseModelSerializer):
+class ProductCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     category_id = serializers.IntegerField(write_only=True, required=False)
     tax_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False

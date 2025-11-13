@@ -424,7 +424,7 @@ class SalesReportService(BaseReportService):
         filters = {
             "tenant": tenant,
             "status": Order.OrderStatus.COMPLETED,
-            "created_at__range": (start_date, end_date),
+            "completed_at__range": (start_date, end_date),  # Use completed_at for accurate revenue attribution
             "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
         }
 
@@ -516,13 +516,13 @@ class SalesReportService(BaseReportService):
     def _calculate_sales_by_period(orders_queryset, group_by: str) -> Dict[str, Any]:
         """Calculate sales breakdown by time period."""
         
-        # Determine truncation function
+        # Determine truncation function - use completed_at for accurate revenue attribution
         if group_by == "week":
-            trunc_period = TruncWeek("created_at")
+            trunc_period = TruncWeek("completed_at")
         elif group_by == "month":
-            trunc_period = TruncMonth("created_at")
+            trunc_period = TruncMonth("completed_at")
         else:
-            trunc_period = TruncDate("created_at")
+            trunc_period = TruncDate("completed_at")
 
         # Step 1: Aggregate revenue and orders. This is correct as it doesn't involve joins that cause duplication.
         sales_agg = (
@@ -599,22 +599,23 @@ class SalesReportService(BaseReportService):
                 end_dt = start_dt + timedelta(days=1)
 
             # Get transactions for this period using the precise datetime range
+            # Note: Filter by order's completed_at for accurate period attribution
             period_transactions = (
                 PaymentTransaction.objects.select_related("payment", "payment__order")
                 .filter(
                     payment__order__in=orders_queryset,
-                    payment__created_at__gte=start_dt,
-                    payment__created_at__lt=end_dt,
+                    payment__order__completed_at__gte=start_dt,
+                    payment__order__completed_at__lt=end_dt,
                     status=PaymentTransaction.TransactionStatus.SUCCESSFUL,
                 )
-                .order_by("-payment__created_at")
+                .order_by("-payment__order__completed_at")
             )
 
             # Get payment totals for this period
             period_payments = Payment.objects.filter(
                 order__in=orders_queryset,
-                created_at__gte=start_dt,
-                created_at__lt=end_dt,
+                order__completed_at__gte=start_dt,
+                order__completed_at__lt=end_dt,
             ).aggregate(
                 total_tips=Coalesce(Sum("total_tips"), Value(Decimal("0.00"))),
                 total_surcharges=Coalesce(
@@ -632,7 +633,7 @@ class SalesReportService(BaseReportService):
                 "transactions": [
                     {
                         "order_number": trans.payment.order.order_number,
-                        "created_at": trans.payment.order.created_at.isoformat(),
+                        "completed_at": (trans.payment.order.completed_at or trans.payment.order.updated_at).isoformat(),
                         "amount": float(trans.amount or 0),
                         "tip": float(trans.tip or 0),
                         "surcharge": float(trans.surcharge or 0),
@@ -704,7 +705,7 @@ class SalesReportService(BaseReportService):
     def _calculate_peak_hours(orders_queryset) -> Dict[str, Any]:
         """Calculate top performing hours by revenue."""
         hourly_sales = (
-            orders_queryset.annotate(hour=Extract("created_at", "hour"))
+            orders_queryset.annotate(hour=Extract("completed_at", "hour"))
             .values("hour")
             .annotate(revenue=Sum("grand_total"), orders=Count("id"))
             .order_by("-revenue")[:10]
@@ -728,7 +729,7 @@ class SalesReportService(BaseReportService):
         # Get all orders in the date range
         filters = {
             "tenant": tenant,
-            "created_at__range": (start_date, end_date),
+            "completed_at__range": (start_date, end_date),
             "subtotal__gt": 0  # Exclude $0 orders
         }
 
@@ -900,7 +901,7 @@ class SalesReportService(BaseReportService):
             from orders.models import Order
             filters = {
                 'status': Order.OrderStatus.COMPLETED,
-                'created_at__range': (start_date_obj, end_date_obj),
+                'completed_at__range': (start_date_obj, end_date_obj),
                 'subtotal__gt': 0
             }
 
@@ -959,8 +960,8 @@ class SalesReportService(BaseReportService):
                 # Format the order row
                 order_row = [
                     order.order_number,
-                    order.created_at.strftime("%Y-%m-%d"),
-                    order.created_at.strftime("%H:%M:%S"), 
+                    order.completed_at.strftime("%Y-%m-%d") if order.completed_at else "N/A",
+                    order.completed_at.strftime("%H:%M:%S") if order.completed_at else "N/A", 
                     order.order_type,
                     order.status,
                     "PAID" if order.payment_status == "PAID" else order.payment_status,
@@ -1369,7 +1370,7 @@ class SalesReportService(BaseReportService):
 
             filters = {
                 'status': Order.OrderStatus.COMPLETED,
-                'created_at__range': (start_date_obj, end_date_obj),
+                'completed_at__range': (start_date_obj, end_date_obj),
                 'subtotal__gt': 0
             }
 
@@ -1428,8 +1429,8 @@ class SalesReportService(BaseReportService):
                     # Write order row
                     order_data = [
                         order.order_number,
-                        order.created_at.strftime("%Y-%m-%d"),
-                        order.created_at.strftime("%H:%M:%S"), 
+                        order.completed_at.strftime("%Y-%m-%d") if order.completed_at else "N/A",
+                        order.completed_at.strftime("%H:%M:%S") if order.completed_at else "N/A", 
                         order.order_type,
                         order.status,
                         "PAID" if order.payment_status == "PAID" else order.payment_status,
@@ -1839,7 +1840,7 @@ class SalesReportService(BaseReportService):
 
             filters = {
                 'status': Order.OrderStatus.COMPLETED,
-                'created_at__range': (start_date_obj, end_date_obj),
+                'completed_at__range': (start_date_obj, end_date_obj),
                 'subtotal__gt': 0
             }
 
@@ -1890,8 +1891,8 @@ class SalesReportService(BaseReportService):
 
                     order_row = [
                         order.order_number,
-                        order.created_at.strftime("%m/%d/%Y"),
-                        order.created_at.strftime("%H:%M"),
+                        order.completed_at.strftime("%m/%d/%Y") if order.completed_at else "N/A",
+                        order.completed_at.strftime("%H:%M") if order.completed_at else "N/A",
                         order.order_type,
                         order.status,
                         "PAID" if order.payment_status == "PAID" else order.payment_status,

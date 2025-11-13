@@ -266,10 +266,10 @@ class CompleteGuestPaymentView(
             completed_order = completed_payment.order
 
             # Serialize the order data for the confirmation page
-            from orders.serializers import OrderSerializer
+            from orders.serializers import UnifiedOrderSerializer
 
-            order_serializer = OrderSerializer(
-                completed_order, context={"request": request}
+            order_serializer = UnifiedOrderSerializer(
+                completed_order, context={"request": request, "view_mode": "detail"}
             )
             order_data = order_serializer.data
 

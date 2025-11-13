@@ -7,9 +7,7 @@ throughout the Django application for consistency and maintainability.
 
 from .viewsets import BaseViewSet, ReadOnlyBaseViewSet, BaseAPIView
 from .serializers import (
-    BaseModelSerializer, 
-    BasicProductSerializer, 
-    BasicCategorySerializer,
+    BaseModelSerializer,
     TimestampedSerializer
 )
 from .mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin, SerializerOptimizedMixin
@@ -18,20 +16,18 @@ from .filters import BaseFilterSet, ArchivingFilterSet
 __all__ = [
     # ViewSets
     'BaseViewSet',
-    'ReadOnlyBaseViewSet', 
+    'ReadOnlyBaseViewSet',
     'BaseAPIView',
-    
+
     # Serializers
     'BaseModelSerializer',
-    'BasicProductSerializer',
-    'BasicCategorySerializer', 
     'TimestampedSerializer',
-    
+
     # Mixins
     'OptimizedQuerysetMixin',
     'ArchivingViewSetMixin',
     'SerializerOptimizedMixin',
-    
+
     # Filters
     'BaseFilterSet',
     'ArchivingFilterSet',

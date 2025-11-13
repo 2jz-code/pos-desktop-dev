@@ -8,7 +8,7 @@ from asgiref.sync import sync_to_async
 
 from .models import Order, OrderItem, Product
 from .services import OrderService
-from .serializers import OrderSerializer
+from .serializers import UnifiedOrderSerializer
 
 # No longer need DjangoJSONEncoder if we pre-process the data
 # from django.core.serializers.json import DjangoJSONEncoder
@@ -88,8 +88,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
         logging.info(f"OrderConsumer: Joined tenant-scoped group {self.order_group_name}")
         await self.accept()
 
-        await self.send_full_order_state()
-        logging.info("OrderConsumer: Connection established and initial state sent.")
+        # Optimization: Skip initial state send for empty orders (new orders with first item about to be added)
+        # This speeds up first item addition by avoiding unnecessary serialization of empty cart
+        # For resumed orders with items, send initial state to ensure sync with frontend
+        has_items = await sync_to_async(lambda: self.order.items.exists())()
+        if has_items:
+            await self.send_full_order_state()
+            logging.info("OrderConsumer: Connection established and initial state sent (order has items).")
+        else:
+            logging.info("OrderConsumer: Connection established (skipped initial state - empty order, waiting for first item).")
 
     async def recalculate_and_cache_order(self, order):
         cached_state = getattr(order, "_recalculated_order_instance", None)
@@ -136,6 +143,11 @@ class OrderConsumer(AsyncWebsocketConsumer):
         # Store operation ID for use in response
         self._current_operation_id = operation_id
 
+        # Clear all caches to ensure fresh data for this operation
+        self._cached_order_instance = None
+        self._cached_serialized_payload = None
+        self._cached_payload_metadata = None
+
         if message_type == "add_item":
             await self.add_item(payload)
         elif message_type == "add_custom_item":
@@ -156,7 +168,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await self.clear_cart(payload)
 
         await self.send_full_order_state()
-        
+
         # Clear operation ID after sending response
         self._current_operation_id = None
 
@@ -169,8 +181,23 @@ class OrderConsumer(AsyncWebsocketConsumer):
         if force_add:
             # Force add: bypass all validation and add directly
             try:
-                order = await sync_to_async(Order.objects.get)(id=self.order_id)
-                product = await sync_to_async(Product.objects.get)(id=product_id)
+                # Optimize: prefetch related data to avoid N+1 queries
+                def get_order():
+                    return Order.objects.prefetch_related(
+                        'items__product',
+                        'items__selected_modifiers_snapshot',
+                        'applied_discounts__discount'
+                    ).get(id=self.order_id, tenant=self.tenant)
+
+                def get_product():
+                    return Product.objects.select_related('category', 'product_type').prefetch_related(
+                        'product_modifier_sets__modifier_set__options',
+                        'product_modifier_sets__hidden_options',
+                        'product_modifier_sets__extra_options'
+                    ).get(id=product_id, tenant=self.tenant)
+
+                order = await sync_to_async(get_order)()
+                product = await sync_to_async(get_product)()
 
                 logging.info(
                     f"OrderConsumer: FORCE OVERRIDE - Adding {product.name} despite stock validation failure"
@@ -178,13 +205,16 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
                 # Add the item without stock validation using OrderService
                 await sync_to_async(OrderService.add_item_to_order)(
-                    order=order, 
-                    product=product, 
-                    quantity=quantity, 
+                    order=order,
+                    product=product,
+                    quantity=quantity,
                     selected_modifiers=selected_modifiers,
                     notes=payload.get("notes", ""),
                     force_add=True
                 )
+                # Use recalculate_and_cache_order for consistency with other operations
+                # This will use the _recalculated_order_instance attribute set by add_item_to_order
+                # (avoiding redundant recalculation) and properly cache the serialized payload
                 await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully force-added {quantity} of {product.name}"
@@ -207,11 +237,29 @@ class OrderConsumer(AsyncWebsocketConsumer):
         else:
             # Normal add: use validation
             try:
-                order = await sync_to_async(Order.objects.get)(id=self.order_id)
-                product = await sync_to_async(Product.objects.get)(id=product_id)
+                # Optimize: prefetch related data to avoid N+1 queries
+                def get_order():
+                    return Order.objects.prefetch_related(
+                        'items__product',
+                        'items__selected_modifiers_snapshot',
+                        'applied_discounts__discount'
+                    ).get(id=self.order_id, tenant=self.tenant)
+
+                def get_product():
+                    return Product.objects.select_related('category', 'product_type').prefetch_related(
+                        'product_modifier_sets__modifier_set__options',
+                        'product_modifier_sets__hidden_options',
+                        'product_modifier_sets__extra_options'
+                    ).get(id=product_id, tenant=self.tenant)
+
+                order = await sync_to_async(get_order)()
+                product = await sync_to_async(get_product)()
                 await sync_to_async(OrderService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
+                # Use recalculate_and_cache_order for consistency with other operations
+                # This will use the _recalculated_order_instance attribute set by add_item_to_order
+                # (avoiding redundant recalculation) and properly cache the serialized payload
                 await self.recalculate_and_cache_order(order)
                 logging.info(
                     f"OrderConsumer: Successfully added {quantity} of {product.name} to order {self.order_id}"
@@ -260,7 +308,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         try:
             from decimal import Decimal
-            order = await sync_to_async(Order.objects.get)(id=self.order_id)
+            order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
 
             # Convert price to Decimal
             price_decimal = Decimal(str(price))
@@ -578,7 +626,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 "OrderConsumer: 'discount_id' not provided in apply_discount payload"
             )
             return
-        order = await sync_to_async(Order.objects.get)(id=self.order_id)
+
+        def get_order():
+            return Order.objects.prefetch_related(
+                'items__product',
+                'items__selected_modifiers_snapshot',
+                'applied_discounts__discount'
+            ).get(id=self.order_id, tenant=self.tenant)
+
+        order = await sync_to_async(get_order)()
         try:
             await sync_to_async(OrderService.apply_discount_to_order_by_id)(
                 order=order, discount_id=discount_id
@@ -597,7 +653,15 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 "OrderConsumer: 'code' not provided in apply_discount_code payload"
             )
             return
-        order = await sync_to_async(Order.objects.get)(id=self.order_id)
+
+        def get_order():
+            return Order.objects.prefetch_related(
+                'items__product',
+                'items__selected_modifiers_snapshot',
+                'applied_discounts__discount'
+            ).get(id=self.order_id, tenant=self.tenant)
+
+        order = await sync_to_async(get_order)()
         try:
             await sync_to_async(OrderService.apply_discount_to_order_by_code)(
                 order=order, code=code
@@ -616,7 +680,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 "OrderConsumer: 'discount_id' not provided in remove_discount payload"
             )
             return
-        order = await sync_to_async(Order.objects.get)(id=self.order_id)
+        order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
         try:
             await sync_to_async(OrderService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
@@ -635,7 +699,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 f"Clear cart request mismatch: expected {self.order_id}, got {order_id_from_payload}"
             )
             return
-        order = await sync_to_async(Order.objects.get)(id=self.order_id)
+        order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
         await sync_to_async(OrderService.clear_order_items)(order)
         await self.recalculate_and_cache_order(order)
 
@@ -749,8 +813,13 @@ class OrderConsumer(AsyncWebsocketConsumer):
     def get_order_instance(self):
         return Order.objects.prefetch_related(
             "items__product", "applied_discounts__discount"
-        ).get(id=self.order_id)
+        ).get(id=self.order_id, tenant=self.tenant)
 
     @sync_to_async
     def serialize_order(self, order):
-        return OrderSerializer(order).data
+        # Use 'websocket' view mode for WebSocket updates
+        # This uses a lightweight fieldset optimized for real-time updates:
+        # - Includes order items and discounts (changes per operation)
+        # - Excludes heavy nested data like product modifier_groups (static data)
+        # - Significantly reduces payload size and serialization time
+        return UnifiedOrderSerializer(order, context={'view_mode': 'websocket'}).data

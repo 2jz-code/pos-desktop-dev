@@ -11,8 +11,7 @@ import logging
 
 from .models import Order, OrderItem
 from .serializers import (
-    OrderSerializer,
-    OptimizedOrderSerializer,
+    UnifiedOrderSerializer,
     OrderCreateSerializer,
     AddItemSerializer,
     UpdateOrderItemSerializer,
@@ -21,6 +20,7 @@ from .serializers import (
     OrderCustomerInfoSerializer,
 )
 from .services import OrderService, GuestSessionService
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 from .permissions import (
     IsAuthenticatedOrGuestOrder,
     IsGuestOrAuthenticated,
@@ -44,7 +44,7 @@ class GetPendingOrderView(generics.RetrieveAPIView):
     Customer-site only endpoint.
     """
 
-    serializer_class = OrderSerializer
+    serializer_class = UnifiedOrderSerializer  # NEW: uses unified serializer (defaults to 'detail' mode)
     authentication_classes = [
         CustomerCookieJWTAuthentication
     ]  # Customer auth only to prevent admin cookie interference
@@ -79,15 +79,22 @@ class GetPendingOrderView(generics.RetrieveAPIView):
         return order
 
 
-class OrderViewSet(BaseViewSet):
+class OrderViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     A comprehensive ViewSet for handling orders and their items - Admin/Staff only.
     Provides CRUD for orders and cart management functionalities.
     For customer orders, use /api/auth/customer/orders/ endpoints.
-    (Now with automated query optimization)
+
+    Now with unified serializer pattern:
+    - Uses UnifiedOrderSerializer with fieldsets (simple, list, detail)
+    - Supports ?view=simple|list|detail query param
+    - Supports ?expand=items,payment_details query param
+    - Supports ?fields=id,order_number query param
+    - Automated query optimization via BaseViewSet
     """
 
     queryset = Order.objects.all()
+    serializer_class = UnifiedOrderSerializer  # NEW: unified read serializer
     authentication_classes = [
         CookieJWTAuthentication
     ]  # Admin/staff authentication only
@@ -136,15 +143,14 @@ class OrderViewSet(BaseViewSet):
     def get_serializer_class(self):
         """
         Return the appropriate serializer class based on the request action.
+        Only overrides for write operations - read operations use UnifiedOrderSerializer.
         """
-        if self.action == "list":
-            return OptimizedOrderSerializer
         if self.action == "create":
             return OrderCreateSerializer
         if self.action == "update_status":
             return UpdateOrderStatusSerializer
-        # Default for 'retrieve', 'update', 'partial_update'
-        return OrderSerializer
+        # Default: UnifiedOrderSerializer (handles list, retrieve, update, partial_update via fieldsets)
+        return UnifiedOrderSerializer
 
     def perform_create(self, serializer):
         """Handle order creation for both authenticated users and guests."""
@@ -193,15 +199,15 @@ class OrderViewSet(BaseViewSet):
 
     def create(self, request, *args, **kwargs):
         """
-        Custom create method to use OrderSerializer for the response,
+        Custom create method to use UnifiedOrderSerializer for the response,
         ensuring the full order data (including ID) is returned.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        response_serializer = OrderSerializer(
-            serializer.instance, context={"request": request}
+        response_serializer = UnifiedOrderSerializer(
+            serializer.instance, context={"request": request, "view_mode": "detail"}
         )
         headers = self.get_success_headers(response_serializer.data)
         return Response(
@@ -269,7 +275,9 @@ class OrderViewSet(BaseViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Return the entire updated order.
-        response_serializer = OrderSerializer(order, context={"request": request})
+        response_serializer = UnifiedOrderSerializer(
+            order, context={"request": request, "view_mode": "detail"}
+        )
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     def _handle_status_change(self, request: Request, service_method) -> Response:
@@ -354,8 +362,8 @@ class OrderViewSet(BaseViewSet):
             updated_order = OrderService.update_customer_info(
                 order, serializer.validated_data
             )
-            response_serializer = OrderSerializer(
-                updated_order, context={"request": request}
+            response_serializer = UnifiedOrderSerializer(
+                updated_order, context={"request": request, "view_mode": "detail"}
             )
             return Response(response_serializer.data)
         except Exception as e:
@@ -381,7 +389,9 @@ class OrderViewSet(BaseViewSet):
 
         try:
             OrderService.update_order_status(order=order, new_status=new_status)
-            response_serializer = OrderSerializer(order, context={"request": request})
+            response_serializer = UnifiedOrderSerializer(
+                order, context={"request": request, "view_mode": "detail"}
+            )
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -489,7 +499,9 @@ class OrderViewSet(BaseViewSet):
             # Clear guest session data
             GuestSessionService.clear_guest_session(request)
 
-            serializer = OrderSerializer(converted_order, context={"request": request})
+            serializer = UnifiedOrderSerializer(
+                converted_order, context={"request": request, "view_mode": "detail"}
+            )
             return Response(
                 {
                     "order": serializer.data,
@@ -556,7 +568,9 @@ class OrderViewSet(BaseViewSet):
         try:
             new_order = OrderService.reorder(source_order_id=pk, user=request.user)
             # Serialize the new order to return its details, including the new ID
-            serializer = OrderSerializer(new_order, context={"request": request})
+            serializer = UnifiedOrderSerializer(
+                new_order, context={"request": request, "view_mode": "detail"}
+            )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -584,7 +598,7 @@ class OrderViewSet(BaseViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class OrderItemViewSet(BaseViewSet):
+class OrderItemViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     """
     A ViewSet for managing a specific item within an order.
     """
@@ -655,7 +669,9 @@ class OrderItemViewSet(BaseViewSet):
         )
 
         # Serialize the parent order and return it
-        order_serializer = OrderSerializer(order, context={"request": request})
+        order_serializer = UnifiedOrderSerializer(
+            order, context={"request": request, "view_mode": "detail"}
+        )
         return Response(order_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["delete"], url_path="clear")

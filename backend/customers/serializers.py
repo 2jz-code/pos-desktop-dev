@@ -5,10 +5,165 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import (
+    TenantFilteredSerializerMixin,
+    FieldsetMixin,
+)
 from core_backend.utils.pii import PIISerializerMixin
 
 from .models import Customer, CustomerAddress
 
+
+# ============================================================================
+# UNIFIED READ SERIALIZER (Fieldset-based)
+# ============================================================================
+
+class UnifiedCustomerSerializer(FieldsetMixin, TenantFilteredSerializerMixin, PIISerializerMixin, BaseModelSerializer):
+    """
+    Unified serializer for Customer model with fieldset support.
+
+    Supports multiple view modes via ?view= param:
+    - reference: Minimal for FK references/dropdowns (id, full_name, email)
+    - list: Lightweight list view with analytics (for admin customer lists)
+    - detail: Full customer profile (default, for profile views)
+
+    Usage:
+        # Profile view (customer-site)
+        GET /api/customers/profile/  → detail mode (full profile)
+
+        # Admin customer list
+        GET /api/admin/customers/?view=list  → list mode (with analytics)
+
+    Replaces: CustomerProfileSerializer, CustomerSummarySerializer
+
+    IMPORTANT: Maintains exact field compatibility with frontend:
+    - customer-site/src/api/user.js expects detail fields
+    - customer-site/src/api/auth.js expects profile response
+    """
+
+    # Derived/computed fields for list view (analytics)
+    full_name = serializers.CharField(source="get_full_name", read_only=True)
+    total_orders = serializers.IntegerField(read_only=True)
+    total_spent = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Customer
+        fields = [
+            # Core identification
+            "id",
+            "email",
+
+            # Personal info
+            "first_name",
+            "last_name",
+            "full_name",  # Derived field
+            "phone_number",
+
+            # Preferences
+            "preferred_contact_method",
+            "marketing_opt_in",
+            "newsletter_subscribed",
+            "birth_date",
+
+            # Status fields
+            "is_active",
+            "email_verified",
+            "phone_verified",
+
+            # Timestamps
+            "date_joined",
+            "last_login",
+            "updated_at",
+
+            # Analytics (from model @property methods)
+            "total_orders",
+            "total_spent",
+
+            # Tenant (read-only, auto-set)
+            "tenant",
+        ]
+
+        # Fieldsets for different view modes
+        fieldsets = {
+            # Minimal for FK references (orders, etc.)
+            'reference': [
+                'id',
+                'first_name',
+                'last_name',
+                'full_name',
+                'email',
+            ],
+
+            # Lightweight list view with analytics (admin customer lists)
+            # Matches CustomerSummarySerializer exactly
+            'list': [
+                'id',
+                'email',
+                'full_name',
+                'date_joined',
+                'last_login',
+                'is_active',
+                'total_orders',
+                'total_spent',
+            ],
+
+            # Full profile (customer-site profile view)
+            # Matches CustomerProfileSerializer exactly
+            'detail': [
+                'id',
+                'email',
+                'first_name',
+                'last_name',
+                'phone_number',
+                'preferred_contact_method',
+                'marketing_opt_in',
+                'newsletter_subscribed',
+                'birth_date',
+                'date_joined',
+                'last_login',
+                'is_active',
+                'email_verified',
+                'phone_verified',
+            ],
+        }
+
+        # Read-only fields
+        read_only_fields = [
+            'id',
+            'date_joined',
+            'last_login',
+            'updated_at',
+            'is_active',
+            'email_verified',
+            'phone_verified',
+            'tenant',
+            'full_name',
+            'total_orders',
+            'total_spent',
+        ]
+
+        # PII fields that should be masked for non-owners
+        pii_mask_fields = ['email', 'phone_number']
+
+        # No FK relationships to optimize (tenant is auto-set)
+        select_related_fields = ['tenant']
+        prefetch_related_fields = []
+
+        # Required fields (always included)
+        required_fields = {'id'}
+
+    def validate_email(self, value):
+        """Validate email uniqueness (if being changed, tenant-scoped)"""
+        # TenantManager automatically scopes to current tenant from request
+        if self.instance and self.instance.email != value:
+            if Customer.objects.filter(email=value).exists():
+                raise serializers.ValidationError("A customer with this email already exists for this restaurant.")
+        return value
+
+
+# ============================================================================
+# WRITE/ACTION SERIALIZERS (Keep separate - have specific business logic)
+# ============================================================================
 
 class CustomerRegistrationSerializer(BaseModelSerializer, PIISerializerMixin):
     """
@@ -118,53 +273,6 @@ class CustomerLoginSerializer(serializers.Serializer):
         return attrs
 
 
-class CustomerProfileSerializer(BaseModelSerializer, PIISerializerMixin):
-    """
-    Serializer for customer profile management.
-    Handles both read and update operations.
-    """
-
-    class Meta:
-        model = Customer
-        fields = [
-            "id",
-            "email",
-            "first_name",
-            "last_name",
-            "phone_number",
-            "preferred_contact_method",
-            "marketing_opt_in",
-            "newsletter_subscribed",
-            "birth_date",
-            "date_joined",
-            "last_login",
-            "is_active",
-            "email_verified",
-            "phone_verified",
-        ]
-        read_only_fields = [
-            "id",
-            "date_joined",
-            "last_login",
-            "is_active",
-            "email_verified",
-            "phone_verified",
-        ]
-        # Customer model has no FK relationships to optimize
-        select_related_fields = []
-        prefetch_related_fields = []
-        # PII fields that should be masked for non-owners
-        pii_mask_fields = ["email", "phone_number"]
-
-    def validate_email(self, value):
-        """Validate email uniqueness (if being changed, tenant-scoped)"""
-        # TenantManager automatically scopes to current tenant from request
-        if self.instance and self.instance.email != value:
-            if Customer.objects.filter(email=value).exists():
-                raise serializers.ValidationError("A customer with this email already exists for this restaurant.")
-        return value
-
-
 class ChangePasswordSerializer(serializers.Serializer):
     """
     Serializer for changing customer password.
@@ -250,36 +358,6 @@ class CustomerAddressSerializer(BaseModelSerializer, PIISerializerMixin):
         validated_data["customer"] = customer
         validated_data["tenant"] = customer.tenant
         return super().create(validated_data)
-
-
-class CustomerSummarySerializer(BaseModelSerializer, PIISerializerMixin):
-    """
-    Lightweight serializer for customer summaries (lists, etc.).
-    Only includes essential information with PII masking.
-    """
-
-    full_name = serializers.CharField(source="get_full_name", read_only=True)
-    total_orders = serializers.IntegerField(read_only=True)
-    total_spent = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-
-    class Meta:
-        model = Customer
-        fields = [
-            "id",
-            "email",
-            "full_name",
-            "date_joined",
-            "last_login",
-            "is_active",
-            "total_orders",
-            "total_spent",
-        ]
-        read_only_fields = fields
-        # No FK relationships to optimize
-        select_related_fields = []
-        prefetch_related_fields = []
-        # PII fields that should be masked for non-owners
-        pii_mask_fields = ["email"]
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -388,7 +466,8 @@ class GoogleOAuthResponseSerializer(serializers.Serializer):
     """
     Serializer for Google OAuth response data.
     Returns customer information and authentication status.
+    Uses UnifiedCustomerSerializer for customer data.
     """
-    customer = CustomerProfileSerializer(read_only=True)
+    customer = UnifiedCustomerSerializer(read_only=True)
     is_new_customer = serializers.BooleanField(read_only=True)
     message = serializers.CharField(read_only=True)

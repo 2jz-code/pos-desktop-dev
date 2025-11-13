@@ -13,12 +13,9 @@ from django.shortcuts import get_object_or_404
 import stripe
 import uuid
 from .signals import payment_completed
-import logging
 
 # Import the money precision helpers
 from .money import to_minor, from_minor, quantize
-
-logger = logging.getLogger(__name__)
 
 
 class PaymentService:
@@ -107,9 +104,6 @@ class PaymentService:
         payment.status = target_status
         payment.save(update_fields=["status", "updated_at"])
 
-        logger.info(
-            f"Payment {payment.id}: Status transition {old_status} -> {target_status}"
-        )
         return payment
 
     @staticmethod
@@ -182,21 +176,7 @@ class PaymentService:
 
         # Idempotency Check AFTER locking: If payment is already PAID, skip all processing
         # This handles the race condition where webhook arrives immediately after frontend capture
-        # Idempotency Check AFTER locking: If payment is already PAID, skip all processing
-        # This handles the race condition where webhook arrives immediately after frontend capture
         if payment.status == Payment.PaymentStatus.PAID:
-            logger.info(
-                f"Payment {payment.id} is already marked as PAID. "
-                f"Skipping confirmation for transaction {transaction.id} (likely webhook arrived after frontend capture)."
-            )
-            # Ensure transaction is marked successful even if payment was already settled
-            if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
-                transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-                transaction.save(update_fields=["status"])
-            logger.info(
-                f"Payment {payment.id} is already marked as PAID. "
-                f"Skipping confirmation for transaction {transaction.id} (likely webhook arrived after frontend capture)."
-            )
             # Ensure transaction is marked successful even if payment was already settled
             if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
                 transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
@@ -204,22 +184,7 @@ class PaymentService:
             return payment
 
         # Check transaction status - if already successful, this might be a retry
-        if transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL:
-            logger.info(
-                f"Transaction {transaction.id} already marked as SUCCESSFUL. "
-                f"Recalculating payment {payment.id} to ensure consistency."
-            )
-        else:
-            # Mark the transaction as successful
-            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-            transaction.save(update_fields=["status"])
-        # Check transaction status - if already successful, this might be a retry
-        if transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL:
-            logger.info(
-                f"Transaction {transaction.id} already marked as SUCCESSFUL. "
-                f"Recalculating payment {payment.id} to ensure consistency."
-            )
-        else:
+        if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
             # Mark the transaction as successful
             transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
             transaction.save(update_fields=["status"])
@@ -228,30 +193,12 @@ class PaymentService:
         updated_payment = PaymentService._recalculate_payment_amounts(payment)
 
         # Determine new status based on amounts - ONLY transition if status actually needs to change
-        # Determine new status based on amounts - ONLY transition if status actually needs to change
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
             # Check if already PAID to avoid invalid transition
             if updated_payment.status != Payment.PaymentStatus.PAID:
                 PaymentService._transition_payment_status(updated_payment, "PAID")
                 PaymentService._handle_payment_completion(updated_payment)
-            else:
-                logger.info(
-                    f"Payment {payment.id} already in PAID status. No transition needed."
-                )
-            # Check if already PAID to avoid invalid transition
-            if updated_payment.status != Payment.PaymentStatus.PAID:
-                PaymentService._transition_payment_status(updated_payment, "PAID")
-                PaymentService._handle_payment_completion(updated_payment)
-            else:
-                logger.info(
-                    f"Payment {payment.id} already in PAID status. No transition needed."
-                )
         elif updated_payment.amount_paid > 0:
-            # Only transition if not already partially paid
-            if updated_payment.status != Payment.PaymentStatus.PARTIALLY_PAID:
-                PaymentService._transition_payment_status(
-                    updated_payment, "PARTIALLY_PAID"
-                )
             # Only transition if not already partially paid
             if updated_payment.status != Payment.PaymentStatus.PARTIALLY_PAID:
                 PaymentService._transition_payment_status(
@@ -400,8 +347,10 @@ class PaymentService:
         """
         order = payment.order
         if order.status != Order.OrderStatus.COMPLETED:
+            from django.utils import timezone
             order.status = Order.OrderStatus.COMPLETED
-            order.save(update_fields=["status"])
+            order.completed_at = timezone.now()
+            order.save(update_fields=["status", "completed_at"])
 
         # PERFORMANCE FIX: Defer signal emission until AFTER transaction commits
         # This prevents inventory processing and email sending from blocking the payment transaction
@@ -414,9 +363,6 @@ class PaymentService:
                 # Emit payment_completed signal for event-driven architecture
                 payment_completed.send(
                     sender=PaymentService, payment=payment, order=order
-                )
-                logger.info(
-                    f"Payment completion signals emitted for payment {payment.id}"
                 )
             except Exception as e:
                 # Log but don't raise - payment is already committed
@@ -436,9 +382,6 @@ class PaymentService:
                 # Emit payment_completed signal for event-driven architecture
                 payment_completed.send(
                     sender=PaymentService, payment=payment, order=order
-                )
-                logger.info(
-                    f"Payment completion signals emitted for payment {payment.id}"
                 )
             except Exception as e:
                 # Log but don't raise - payment is already committed
@@ -810,9 +753,11 @@ class PaymentService:
             payment.save(update_fields=["status"])
 
             # Update order status to completed
+            from django.utils import timezone
             order = payment.order
             order.status = Order.OrderStatus.COMPLETED
-            order.save(update_fields=["status"])
+            order.completed_at = timezone.now()
+            order.save(update_fields=["status", "completed_at"])
 
             # Handle payment completion (signals, etc.)
             # Note: _handle_payment_completion now defers heavy operations via transaction.on_commit
@@ -945,7 +890,6 @@ class PaymentService:
         try:
             if is_split_payment:
                 # SPLIT PAYMENT: Mark original transactions as REFUNDED (cash refund to customer)
-                logger.info(f"Split payment detected for Payment {self.payment.id}, marking transactions as REFUNDED (cash refund)")
 
                 # Calculate how much to refund from each transaction proportionally
                 total_paid = sum(txn.amount + txn.tip + txn.surcharge for txn in successful_transactions)
@@ -1027,8 +971,6 @@ class PaymentService:
 
                     txn.save(update_fields=['refunded_amount', 'refund_reason', 'status'])
 
-                    logger.info(f"Marked transaction {txn.id} as {txn.status}, refunded ${txn_refund_amount}")
-
                 # Use the primary transaction for RefundItem linkage
                 refunded_transaction = primary_transaction
 
@@ -1036,8 +978,6 @@ class PaymentService:
                 PaymentService._update_payment_status(self.payment)
             else:
                 # SINGLE CARD: Process refund via provider (Stripe/Clover)
-                logger.info(f"Single card payment for Payment {self.payment.id}, refunding to card")
-
                 refunded_transaction = self.refund_transaction_with_provider(
                     transaction_id=refund_from_transaction.id,
                     amount_to_refund=total_refund_amount,
@@ -1345,16 +1285,14 @@ class PaymentService:
         )
 
         # Update order status
+        from django.utils import timezone
         order.status = Order.OrderStatus.COMPLETED
+        order.completed_at = timezone.now()
         order.payment_status = Order.PaymentStatus.PAID
         order.order_type = platform_id
-        order.save(update_fields=["status", "payment_status", "order_type"])
+        order.save(update_fields=["status", "completed_at", "payment_status", "order_type"])
 
         # Emit payment completed signal
         payment_completed.send(sender=PaymentService, payment=payment, order=order)
-
-        logger.info(
-            f"Delivery payment created for order {order.order_number} via {platform_id}"
-        )
 
         return payment

@@ -17,7 +17,7 @@ import stripe
 
 from .base import BasePaymentView, PaymentValidationMixin, PAYMENT_MESSAGES
 from ..models import Payment, PaymentTransaction
-from ..serializers import PaymentSerializer, InitiateTerminalPaymentSerializer
+from ..serializers import UnifiedPaymentSerializer, InitiateTerminalPaymentSerializer
 from ..services import PaymentService
 from ..strategies import StripeTerminalStrategy
 from ..factories import PaymentStrategyFactory
@@ -235,7 +235,7 @@ class CaptureTerminalIntentView(BasePaymentView):
             payment_object = PaymentService.confirm_successful_transaction(transaction)
 
             # Serialize the payment object to send its data back to the frontend
-            serializer = PaymentSerializer(payment_object)
+            serializer = UnifiedPaymentSerializer(payment_object, context={'view_mode': 'detail'})
 
             return self.create_success_response(serializer.data)
 
@@ -326,51 +326,6 @@ class TerminalConfigurationView(BasePaymentView):
             )
 
 
-class InitiateTerminalPaymentView(BasePaymentView):
-    """
-    DEPRECATED: A dedicated endpoint for starting a payment with the currently configured
-    card terminal. This uses a simple, synchronous-style `process` method.
-
-    Note: This view is kept for backward compatibility but should be replaced
-    with the newer CreateTerminalIntentView for new implementations.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
-        """
-        DEPRECATED: Initiates a terminal payment using legacy method.
-
-        Expected payload:
-        {
-            "amount": "decimal_string"
-        }
-        """
-        order_id = self.kwargs.get("order_id")
-        order = get_object_or_404(Order, id=order_id)
-
-        # Validate amount
-        amount_str = request.data.get("amount")
-        if not amount_str:
-            return self.create_error_response("amount is required.")
-
-        try:
-            amount = Decimal(str(amount_str))
-        except (ValueError, TypeError):
-            return self.create_error_response("Invalid amount format.")
-
-        try:
-            # Use the old service method for compatibility if needed.
-            transaction = PaymentService.initiate_terminal_payment(
-                order=order, amount=amount
-            )
-            payment = transaction.payment
-            serializer = PaymentSerializer(payment)
-            return self.create_success_response(serializer.data)
-        except (RuntimeError, ValueError) as e:
-            return self.create_error_response(str(e))
-
-
 # Export all terminal views
 __all__ = [
     "TerminalPaymentViewSet",
@@ -380,5 +335,4 @@ __all__ = [
     "CaptureTerminalIntentView",
     "CancelTerminalActionView",
     "TerminalConfigurationView",
-    "InitiateTerminalPaymentView",
 ]

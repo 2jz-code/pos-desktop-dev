@@ -106,14 +106,9 @@ const ProductList = ({
 		// Check if we have multiple categories in the filtered products (subcategories)
 		const uniqueCategories = new Set();
 		searchFilteredProducts.forEach((product) => {
-			const productCategories = Array.isArray(product.category)
-				? product.category
-				: product.category
-				? [product.category]
-				: [];
-			productCategories.forEach((cat) => {
-				if (cat && cat.name) uniqueCategories.add(cat.name);
-			});
+			if (product.category_id) {
+				uniqueCategories.add(product.category_id);
+			}
 		});
 
 		// Group if we have multiple categories (subcategories)
@@ -123,20 +118,15 @@ const ProductList = ({
 	const renderGroupedProducts = (forSelectedCategory = false) => {
 		const groupedByCategory = {};
 		searchFilteredProducts.forEach((product) => {
-			const productCategories = Array.isArray(product.category)
-				? product.category
-				: product.category
-				? [product.category]
-				: [];
+			// New API structure: product has category_id (number) and category_display_name (string)
+			// Look up full category details from allCategories
+			const category = allCategories.find((cat) => cat.id === product.category_id);
 
-			// Use only the primary (first) category to avoid duplicates
-			// This matches POS behavior where products belong to one primary category
-			const primaryCategory = productCategories[0];
-			if (primaryCategory && primaryCategory.name) {
-				if (!groupedByCategory[primaryCategory.name]) {
-					groupedByCategory[primaryCategory.name] = [];
+			if (category && category.name) {
+				if (!groupedByCategory[category.name]) {
+					groupedByCategory[category.name] = [];
 				}
-				groupedByCategory[primaryCategory.name].push(product);
+				groupedByCategory[category.name].push(product);
 			}
 		});
 

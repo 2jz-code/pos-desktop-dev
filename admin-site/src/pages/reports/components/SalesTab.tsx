@@ -911,11 +911,15 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 																								{transaction.order_number}
 																							</TableCell>
 																							<TableCell className="py-3">
-																								{format(
-																									new Date(
-																										transaction.created_at
-																									),
-																									"HH:mm"
+																								{transaction.completed_at || transaction.created_at ? (
+																									format(
+																										new Date(
+																											transaction.completed_at || transaction.created_at
+																										),
+																										"HH:mm"
+																									)
+																								) : (
+																									"N/A"
 																								)}
 																							</TableCell>
 																							<TableCell className="font-semibold text-foreground py-3">

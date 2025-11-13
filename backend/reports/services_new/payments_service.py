@@ -134,7 +134,7 @@ class PaymentsReportService(BaseReportService):
         """Get base transaction querysets for different statuses."""
         base_filter = {
             "payment__order__tenant": tenant,
-            "payment__order__created_at__range": (start_date, end_date),
+            "payment__order__completed_at__range": (start_date, end_date),
             "payment__order__subtotal__gt": 0,
         }
 
@@ -261,7 +261,7 @@ class PaymentsReportService(BaseReportService):
         filters = {
             "order__tenant": tenant,
             "order__status": Order.OrderStatus.COMPLETED,
-            "order__created_at__range": (start_date, end_date),
+            "order__completed_at__range": (start_date, end_date),
             "order__subtotal__gt": 0,
         }
 
@@ -271,7 +271,7 @@ class PaymentsReportService(BaseReportService):
         payments = Payment.objects.filter(**filters)
 
         daily_payments = (
-            payments.annotate(date=TruncDate("order__created_at"))
+            payments.annotate(date=TruncDate("order__completed_at"))
             .values("date")
             .annotate(amount=Sum("total_collected"), count=Count("id"))
             .order_by("date")
@@ -330,7 +330,7 @@ class PaymentsReportService(BaseReportService):
         # Use the same filtering logic as sales service for consistency
         filters = {
             "order__status": Order.OrderStatus.COMPLETED,
-            "order__created_at__range": (start_date, end_date),
+            "order__completed_at__range": (start_date, end_date),
             "order__subtotal__gt": 0,
         }
 
@@ -405,7 +405,7 @@ class PaymentsReportService(BaseReportService):
         filters = {
             "payment__order__tenant": tenant,
             "payment__order__status": Order.OrderStatus.COMPLETED,
-            "payment__order__created_at__range": (start_date, end_date),
+            "payment__order__completed_at__range": (start_date, end_date),
             "payment__order__subtotal__gt": 0,
         }
 
@@ -469,7 +469,7 @@ class PaymentsReportService(BaseReportService):
         """Get detailed transaction data for CSV export."""
         filters = {
             'payment__order__status': Order.OrderStatus.COMPLETED,
-            'payment__order__created_at__range': (start_date, end_date),
+            'payment__order__completed_at__range': (start_date, end_date),
             'payment__order__subtotal__gt': 0,
             'status__in': [
                 PaymentTransaction.TransactionStatus.SUCCESSFUL,

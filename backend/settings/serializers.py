@@ -1,5 +1,9 @@
 from rest_framework import serializers
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import (
+    TenantFilteredSerializerMixin,
+    FieldsetMixin,
+)
 from .models import (
     GlobalSettings,
     StoreLocation,
@@ -31,7 +35,13 @@ class NestedBusinessHoursSerializer(serializers.Serializer):
         }
 
 
-class GlobalSettingsSerializer(BaseModelSerializer):
+class GlobalSettingsSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Serializer for GlobalSettings singleton model.
+    Supports ?fields= query param for custom field selection.
+
+    Note: Singleton model with no list variant - only has 'detail' fieldset.
+    """
     web_order_defaults = serializers.SerializerMethodField()
 
     class Meta:
@@ -59,6 +69,12 @@ class GlobalSettingsSerializer(BaseModelSerializer):
             "default_auto_print_web_receipt",
             "default_auto_print_web_kitchen",
         ]
+
+        # Fieldset for singleton (only detail view)
+        fieldsets = {
+            'detail': '__all__',  # Default - all fields
+        }
+
         # Make the actual model fields write-only so they don't appear in GET responses
         extra_kwargs = {
             'default_enable_web_notifications': {'write_only': True},
@@ -68,6 +84,7 @@ class GlobalSettingsSerializer(BaseModelSerializer):
         }
         select_related_fields = []
         prefetch_related_fields = []
+        required_fields = set()
 
     def get_web_order_defaults(self, obj):
         """
@@ -101,8 +118,13 @@ class GlobalSettingsSerializer(BaseModelSerializer):
         return super().update(instance, validated_data)
 
 
-class PrinterSerializer(BaseModelSerializer):
-    """Serializer for Printer model."""
+class PrinterSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
+    """
+    Serializer for Printer model.
+    Supports ?fields= query param for custom field selection.
+
+    Note: Simple model with no list variant - only has 'detail' fieldset.
+    """
 
     class Meta:
         model = Printer
@@ -117,14 +139,25 @@ class PrinterSerializer(BaseModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+        # Fieldset (only detail view - no list variant needed)
+        fieldsets = {
+            'detail': '__all__',  # Default - all fields
+        }
+
         read_only_fields = ['tenant', 'created_at', 'updated_at']
         select_related_fields = ['location']
+        prefetch_related_fields = []
+        required_fields = {'id'}
 
 
-class KitchenZoneSerializer(BaseModelSerializer):
+class KitchenZoneSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
     Serializer for KitchenZone model.
     Returns printer details and category IDs for filtering.
+    Supports ?fields= query param for custom field selection.
+
+    Note: Simple model with no list variant - only has 'detail' fieldset.
     """
     printer_details = PrinterSerializer(source='printer', read_only=True)
     category_ids = serializers.SerializerMethodField()
@@ -144,9 +177,16 @@ class KitchenZoneSerializer(BaseModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+        # Fieldset (only detail view - no list variant needed)
+        fieldsets = {
+            'detail': '__all__',  # Default - all fields
+        }
+
         read_only_fields = ['tenant', 'created_at', 'updated_at']
         select_related_fields = ['location', 'printer']
         prefetch_related_fields = ['categories']
+        required_fields = {'id'}
 
     def get_category_ids(self, obj):
         """Return list of category IDs for frontend filtering."""
@@ -234,19 +274,6 @@ class PrinterConfigResponseSerializer(serializers.Serializer):
         return result
 
 
-class PrinterConfigurationSerializer(BaseModelSerializer):
-    """
-    DEPRECATED: Use Printer and KitchenZone models/serializers instead.
-    Kept for backward compatibility during migration.
-    """
-    class Meta:
-        model = PrinterConfiguration
-        fields = "__all__"
-        read_only_fields = ['tenant']
-        select_related_fields = []
-        prefetch_related_fields = []
-
-
 class TerminalLocationSerializer(BaseModelSerializer):
     """
     Serializer for the Stripe-specific location link.
@@ -276,12 +303,30 @@ class TerminalLocationSerializer(BaseModelSerializer):
         return None
 
 
-class StoreLocationListSerializer(BaseModelSerializer):
+class UnifiedStoreLocationSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Lightweight serializer for listing store locations.
-    Used in dropdowns and simple lists for better performance.
+    Unified serializer for StoreLocation model with fieldset support.
 
-    Returns effective web order settings (location overrides OR tenant defaults).
+    Supports multiple view modes via ?view= param:
+    - reference: Minimal for FK references (id, name, slug, city, state)
+    - list: Lightweight for location selection (guest checkout, admin lists)
+    - detail: Full detail including receipt customization (default)
+
+    Usage:
+        # Guest checkout location list
+        GET /api/settings/store-locations/?view=list
+
+        # Admin location detail
+        GET /api/settings/store-locations/123/  → detail mode
+
+        # Orders app nested reference
+        context={'view_mode': 'reference'}
+
+    Replaces: StoreLocationSerializer, StoreLocationListSerializer
+
+    IMPORTANT: web_order_settings returns different structure based on view_mode:
+    - list mode: Effective values only (simplified for selection)
+    - detail mode: Effective values + overrides structure (for admin editing)
     """
 
     stripe_config = TerminalLocationSerializer(
@@ -293,9 +338,11 @@ class StoreLocationListSerializer(BaseModelSerializer):
     class Meta:
         model = StoreLocation
         fields = (
+            # Core identification
             "id",
             "name",
             "slug",
+
             # Structured address fields
             "address_line1",
             "address_line2",
@@ -303,38 +350,100 @@ class StoreLocationListSerializer(BaseModelSerializer):
             "state",
             "postal_code",
             "country",
-            # Contact info
+
+            # Contact information
             "phone",
             "email",
-            # Settings
+
+            # Location-specific settings
             "timezone",
             "tax_rate",
+
+            # Web order configuration
             "accepts_web_orders",
             "web_order_lead_time_minutes",
-            # Web order settings (effective values - location overrides OR tenant defaults)
             "web_order_settings",
-            # Inventory defaults (Phase 5)
+
+            # Receipt customization
+            "receipt_header",
+            "receipt_footer",
+
+            # Inventory defaults
             "low_stock_threshold",
             "expiration_threshold",
             "default_inventory_location",
-            # Integrations (needed for maps on customer site)
+
+            # Integrations
             "google_place_id",
             "latitude",
             "longitude",
+
+            # System fields
             "stripe_config",
             "business_hours",
         )
-        read_only_fields = ('slug',)
+
+        # Fieldsets for different view modes
+        fieldsets = {
+            # Minimal for FK references (orders, etc.)
+            'reference': [
+                'id',
+                'name',
+                'slug',
+                'city',
+                'state',
+            ],
+
+            # Lightweight for location selection (guest checkout, admin lists)
+            # Matches old StoreLocationListSerializer exactly
+            'list': [
+                'id',
+                'name',
+                'slug',
+                'address_line1',
+                'address_line2',
+                'city',
+                'state',
+                'postal_code',
+                'country',
+                'phone',
+                'email',
+                'timezone',
+                'tax_rate',
+                'accepts_web_orders',
+                'web_order_lead_time_minutes',
+                'web_order_settings',  # Lightweight - effective values only
+                'low_stock_threshold',
+                'expiration_threshold',
+                'default_inventory_location',
+                'google_place_id',
+                'latitude',
+                'longitude',
+                'stripe_config',
+                'business_hours',
+            ],
+
+            # Full detail including receipt customization
+            # Matches old StoreLocationSerializer exactly
+            'detail': '__all__',
+        }
+
+        read_only_fields = ('slug',)  # Auto-generated from name
         select_related_fields = ["default_inventory_location"]
         prefetch_related_fields = ["terminallocation", "business_hours", "web_notification_terminals"]
+        required_fields = {'id'}
 
     def get_web_order_settings(self, obj):
         """
-        Return effective web order settings for this location.
-        Location-specific overrides take precedence over tenant-wide defaults.
+        Return web order settings for this location.
+        Structure changes based on view_mode:
+        - list/reference: Effective values only (simplified)
+        - detail: Effective values + overrides structure (for editing)
         """
+        view_mode = self.context.get('view_mode', 'detail')
         effective_settings = obj.get_effective_web_order_settings()
-        return {
+
+        result = {
             'enable_notifications': effective_settings['enable_notifications'],
             'play_notification_sound': effective_settings['play_notification_sound'],
             'auto_print_receipt': effective_settings['auto_print_receipt'],
@@ -345,84 +454,9 @@ class StoreLocationListSerializer(BaseModelSerializer):
             ]
         }
 
-
-class StoreLocationSerializer(BaseModelSerializer):
-    """
-    Serializer for the primary StoreLocation model.
-    Includes a nested representation of the linked Stripe configuration.
-
-    Phase 5 Enhancement: Now includes all location-centric settings fields.
-    No default location concept - all locations are explicit.
-    """
-
-    # Use the serializer above for the nested representation. 'source' points to the reverse relationship
-    stripe_config = TerminalLocationSerializer(
-        source="terminallocation", read_only=True
-    )
-    business_hours = NestedBusinessHoursSerializer(read_only=True)
-    web_order_settings = serializers.SerializerMethodField()
-
-    class Meta:
-        model = StoreLocation
-        fields = (
-            "id",
-            "name",
-            "slug",
-            # Structured address fields (Phase 5)
-            "address_line1",
-            "address_line2",
-            "city",
-            "state",
-            "postal_code",
-            "country",
-            # Contact information
-            "phone",
-            "email",
-            # Location-specific settings
-            "timezone",
-            "tax_rate",
-            # Web order configuration
-            "accepts_web_orders",
-            "web_order_lead_time_minutes",
-            # Web order settings (includes both effective values and raw overrides)
-            "web_order_settings",
-            # Receipt customization
-            "receipt_header",
-            "receipt_footer",
-            # Inventory defaults (Phase 5)
-            "low_stock_threshold",
-            "expiration_threshold",
-            "default_inventory_location",
-            # Integrations
-            "google_place_id",
-            "latitude",
-            "longitude",
-            # System fields
-            "stripe_config",
-            "business_hours",
-        )
-        read_only_fields = ('slug',)  # Auto-generated from name
-        select_related_fields = ["default_inventory_location"]
-        prefetch_related_fields = ["terminallocation", "business_hours", "web_notification_terminals"]
-
-    def get_web_order_settings(self, obj):
-        """
-        Return web order settings for this location.
-        Includes both effective values (for display) and raw override values (for editing).
-        """
-        effective_settings = obj.get_effective_web_order_settings()
-        return {
-            # Effective values (location overrides OR tenant defaults)
-            'enable_notifications': effective_settings['enable_notifications'],
-            'play_notification_sound': effective_settings['play_notification_sound'],
-            'auto_print_receipt': effective_settings['auto_print_receipt'],
-            'auto_print_kitchen': effective_settings['auto_print_kitchen'],
-            'terminal_device_ids': [
-                terminal.device_id
-                for terminal in effective_settings['terminals']
-            ],
-            # Raw override values (null means use tenant default)
-            'overrides': {
+        # Only include overrides structure in detail mode
+        if view_mode == 'detail':
+            result['overrides'] = {
                 'enable_web_notifications': obj.enable_web_notifications,
                 'play_web_notification_sound': obj.play_web_notification_sound,
                 'auto_print_web_receipt': obj.auto_print_web_receipt,
@@ -432,10 +466,11 @@ class StoreLocationSerializer(BaseModelSerializer):
                     for terminal in obj.web_notification_terminals.all()
                 ]
             }
-        }
+
+        return result
 
     def update(self, instance, validated_data):
-        # Handle web order settings updates from web_order_settings.overrides structure
+        """Handle web order settings updates from web_order_settings.overrides structure"""
         if "web_order_settings" in self.initial_data and "overrides" in self.initial_data["web_order_settings"]:
             overrides = self.initial_data["web_order_settings"]["overrides"]
 
@@ -464,19 +499,42 @@ class StoreLocationSerializer(BaseModelSerializer):
         return super().update(instance, validated_data)
 
 
+# Backward compatibility alias - orders app imports this
+StoreLocationSerializer = UnifiedStoreLocationSerializer
+
+
 # WebOrderSettingsSerializer REMOVED - settings now managed directly on StoreLocation
 
 
-class StockActionReasonConfigSerializer(BaseModelSerializer):
+class UnifiedStockActionReasonConfigSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Serializer for StockActionReasonConfig model.
-    Handles validation for system reason protection.
+    Unified serializer for StockActionReasonConfig model with fieldset support.
+
+    Supports multiple view modes via ?view= param:
+    - reference: Minimal for FK references (id, name, category)
+    - list: Lightweight for dropdowns and lists
+    - detail: Full detail with validation info (default)
+
+    Usage:
+        # Dropdown for stock action forms
+        GET /api/settings/stock-reasons/?view=list
+
+        # Admin detail view
+        GET /api/settings/stock-reasons/123/  → detail mode
+
+        # Inventory app nested reference
+        context={'view_mode': 'reference'}
+
+    Replaces: StockActionReasonConfigSerializer, StockActionReasonConfigListSerializer
+
+    IMPORTANT: Preserves custom validation for system reason protection.
+    System reasons (tenant=NULL) can only have is_active modified.
     """
-    
+
     usage_count = serializers.ReadOnlyField()
     can_be_deleted = serializers.ReadOnlyField()
     category_display = serializers.CharField(source='get_category_display', read_only=True)
-    
+
     class Meta:
         model = StockActionReasonConfig
         fields = [
@@ -492,65 +550,73 @@ class StockActionReasonConfigSerializer(BaseModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+        # Fieldsets for different view modes
+        fieldsets = {
+            # Minimal for FK references (stock actions, etc.)
+            'reference': [
+                'id',
+                'name',
+                'category',
+            ],
+
+            # Lightweight for dropdowns and simple lists
+            # Matches old StockActionReasonConfigListSerializer exactly
+            'list': [
+                'id',
+                'name',
+                'category',
+                'category_display',
+                'is_system_reason',
+                'is_active',
+                'usage_count',
+            ],
+
+            # Full detail with validation info
+            # Matches old StockActionReasonConfigSerializer exactly
+            'detail': '__all__',
+        }
+
         read_only_fields = ['is_system_reason', 'created_at', 'updated_at']
-    
+        select_related_fields = []
+        prefetch_related_fields = []
+        required_fields = {'id'}
+
     def validate(self, data):
         """Custom validation for system reason protection"""
         instance = getattr(self, 'instance', None)
-        
+
         if instance and instance.is_system_reason:
             # For system reasons, only allow is_active to be changed
             allowed_fields = {'is_active'}
             changed_fields = set(data.keys())
-            
+
             if changed_fields - allowed_fields:
                 forbidden_fields = changed_fields - allowed_fields
                 raise serializers.ValidationError(
                     f"System reasons can only have 'is_active' modified. "
                     f"Cannot change: {', '.join(forbidden_fields)}"
                 )
-        
+
         return data
-    
+
     def validate_name(self, value):
         """Ensure name uniqueness among active reasons"""
         # Get the current instance if updating
         instance = getattr(self, 'instance', None)
-        
+
         # Check for duplicates among active reasons
         existing = StockActionReasonConfig.objects.filter(
             name=value,
             is_active=True
         )
-        
+
         if instance:
             existing = existing.exclude(pk=instance.pk)
-        
+
         if existing.exists():
             raise serializers.ValidationError(
                 f"An active reason with the name '{value}' already exists."
             )
-        
+
         return value
-
-
-class StockActionReasonConfigListSerializer(BaseModelSerializer):
-    """
-    Lightweight serializer for listing stock action reasons.
-    Used in dropdowns and simple lists.
-    """
-    
-    usage_count = serializers.ReadOnlyField()
-    category_display = serializers.CharField(source='get_category_display', read_only=True)
-    
-    class Meta:
-        model = StockActionReasonConfig
-        fields = [
-            'id',
-            'name',
-            'category',
-            'category_display',
-            'is_system_reason',
-            'is_active',
-            'usage_count',
-        ]

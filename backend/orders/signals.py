@@ -113,10 +113,10 @@ def handle_web_order_notifications(sender, instance, created, **kwargs):
     )
 
     # Import locally to prevent circular dependency
-    from .serializers import OrderSerializer
+    from .serializers import UnifiedOrderSerializer
 
-    # Use the OrderSerializer to create a robust data payload
-    serialized_data = OrderSerializer(instance).data
+    # Use UnifiedOrderSerializer with 'detail' view mode to create a robust data payload
+    serialized_data = UnifiedOrderSerializer(instance, context={'view_mode': 'detail'}).data
 
     # Broadcast the custom signal for other apps to listen to
     web_order_ready_for_notification.send(

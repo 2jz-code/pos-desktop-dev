@@ -51,40 +51,45 @@ class InventoryService {
 
 	/**
 	 * Get all inventory stock levels
-	 * @param {Object} filters - Optional filters {location, search, product, is_low_stock, is_expiring_soon}
+	 * @param {Object} filters - Optional filters {location, search, product, is_low_stock, is_expiring_soon, page}
 	 * @returns {Promise} API response with all stock records
 	 */
 	async getAllStock(filters = {}) {
 		try {
 			const params = new URLSearchParams();
-			
+
 			// Add location filter if provided
 			if (filters.location) {
 				params.append('location', filters.location);
 			}
-			
+
 			// Add search filter if provided
 			if (filters.search) {
 				params.append('search', filters.search);
 			}
-			
+
 			// Add product filter if provided
 			if (filters.product) {
 				params.append('product', filters.product);
 			}
-			
+
 			// Add status filters if provided
 			if (filters.is_low_stock) {
 				params.append('is_low_stock', filters.is_low_stock);
 			}
-			
+
 			if (filters.is_expiring_soon) {
 				params.append('is_expiring_soon', filters.is_expiring_soon);
 			}
-			
+
+			// Add page parameter if provided
+			if (filters.page) {
+				params.append('page', filters.page);
+			}
+
 			const queryString = params.toString();
 			const url = queryString ? `/inventory/stock/?${queryString}` : "/inventory/stock/";
-			
+
 			const response = await apiClient.get(url);
 			return response.data;
 		} catch (error) {

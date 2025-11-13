@@ -185,18 +185,23 @@ export const BulkOperationsPage = () => {
 	// Create filters with memoization (store location is now handled by middleware via X-Store-Location header)
 	// Keep selectedLocationId in deps to trigger refetch when location changes
 	const stockQueryFilters = useMemo(
-		() => ({}),
+		() => ({
+			page_size: 1000, // Fetch all items for bulk operations (up to max_page_size)
+		}),
 		[selectedLocationId]
 	);
 
 	const locationsFilters = useMemo(
-		() => ({}),
+		() => ({
+			page_size: 1000, // Fetch all locations
+		}),
 		[selectedLocationId]
 	);
 
 	const { data: stockItems, isLoading: stockLoading } = useQuery({
 		queryKey: ["inventory-stock", selectedLocationId, stockQueryFilters],
 		queryFn: () => inventoryService.getAllStock(stockQueryFilters),
+		select: (data) => data.results, // Extract results array from paginated response
 	});
 
 	const products = useMemo(() => {

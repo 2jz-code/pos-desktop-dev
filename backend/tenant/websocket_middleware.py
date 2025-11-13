@@ -9,9 +9,6 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from .models import Tenant
 from .managers import set_current_tenant
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 class TenantWebSocketMiddleware:
@@ -38,11 +35,8 @@ class TenantWebSocketMiddleware:
         scope['tenant'] = tenant
 
         if tenant:
-            logger.info(f"TenantWebSocketMiddleware: Set tenant {tenant.slug} for WebSocket connection")
             # Set thread-local context for TenantManager (like HTTP middleware does)
             await database_sync_to_async(set_current_tenant)(tenant)
-        else:
-            logger.warning("TenantWebSocketMiddleware: No tenant found for WebSocket connection")
 
         try:
             # Call the next middleware/consumer
@@ -104,7 +98,6 @@ class TenantWebSocketMiddleware:
             )
             return tenant
 
-        except Exception as e:
+        except Exception:
             # Invalid JWT format, tenant not found, or other decode errors
-            logger.debug(f"TenantWebSocketMiddleware: Failed to extract tenant from JWT: {e}")
             return None

@@ -36,19 +36,18 @@ class CanEditUserDetails(permissions.BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        # Users can always edit themselves, unless they are a customer.
-        if request.user == obj and obj.role != User.Role.CUSTOMER:
+        # Users can always edit themselves.
+        if request.user == obj:
             return True
 
         # Owners can edit anyone.
         if request.user.role == User.Role.OWNER:
             return True
 
-        # Admins can edit managers, cashiers, and customers.
+        # Admins can edit managers and cashiers.
         if request.user.role == User.Role.ADMIN and obj.role in [
             User.Role.MANAGER,
             User.Role.CASHIER,
-            User.Role.CUSTOMER,
         ]:
             return True
 

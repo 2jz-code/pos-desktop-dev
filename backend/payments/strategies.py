@@ -67,7 +67,9 @@ class CashPaymentStrategy(PaymentStrategy):
         transaction.refund_reason = reason
 
         # Calculate total transaction amount (amount + tip + surcharge)
-        total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+        total_transaction_amount = (
+            transaction.amount + transaction.tip + transaction.surcharge
+        )
 
         # If the refunded amount equals the total transaction amount, mark as fully refunded
         if transaction.refunded_amount >= total_transaction_amount:
@@ -153,7 +155,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                             stripe_id=loc.id,
                             defaults={
                                 "store_location": store_location_to_link,
-                                "tenant": store_location_to_link.tenant  # Add tenant for NOT NULL constraint
+                                "tenant": store_location_to_link.tenant,  # Add tenant for NOT NULL constraint
                             },
                         )
                         if created:
@@ -276,7 +278,6 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 
         try:
             stripe.PaymentIntent.cancel(payment_intent_id)
-            logger.info(f"Successfully cancelled Stripe PI: {payment_intent_id}")
             return True
         except stripe.error.InvalidRequestError as e:
             # This error often means the intent is already canceled or in a final state.
@@ -369,7 +370,7 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         if not self.merchant_id:
             # Try to get merchant_id from settings or use a default
             # You'll need to add this to your settings model
-            self.merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
+            self.merchant_id = getattr(settings, "CLOVER_MERCHANT_ID", None)
 
         if not self.merchant_id:
             logger.warning("No Clover merchant ID configured")
@@ -378,6 +379,7 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         # Get tenant from parameter or from context
         if tenant is None:
             from tenant.managers import get_current_tenant
+
             tenant = get_current_tenant()
 
         self.tenant = tenant
@@ -394,49 +396,52 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         """
         Process payment using Clover REST API.
         """
-        if not hasattr(self, 'clover_api'):
-            raise ValueError("Clover API not initialized - check merchant ID configuration")
-        
+        if not hasattr(self, "clover_api"):
+            raise ValueError(
+                "Clover API not initialized - check merchant ID configuration"
+            )
+
         try:
             # Calculate amounts in cents
             amount_cents = int(transaction.amount * 100)
             tip_cents = int(transaction.tip * 100) if transaction.tip else 0
-            surcharge_cents = int(transaction.surcharge * 100) if transaction.surcharge else 0
-            
+            surcharge_cents = (
+                int(transaction.surcharge * 100) if transaction.surcharge else 0
+            )
+
             # Create payment note
             order = transaction.payment.order
             note = f"POS Order #{order.order_number}" if order else "POS Payment"
-            
+
             # Create payment in Clover
             clover_payment = self.clover_api.create_payment(
                 amount_cents=amount_cents + tip_cents + surcharge_cents,
                 note=note,
-                tip_amount_cents=tip_cents
+                tip_amount_cents=tip_cents,
             )
-            
+
             # Update transaction with Clover response
-            transaction.transaction_id = clover_payment.get('id')
+            transaction.transaction_id = clover_payment.get("id")
             transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
             transaction.provider_response = {
                 "provider": "clover",
-                "clover_payment_id": clover_payment.get('id'),
-                "amount": clover_payment.get('amount'),
-                "status": clover_payment.get('state', 'processed'),
-                "created_time": clover_payment.get('createdTime'),
+                "clover_payment_id": clover_payment.get("id"),
+                "amount": clover_payment.get("amount"),
+                "status": clover_payment.get("state", "processed"),
+                "created_time": clover_payment.get("createdTime"),
                 "message": "Payment processed successfully via Clover API",
             }
             transaction.save()
-            
-            logger.info(f"Clover payment created: {clover_payment.get('id')}")
+
             return transaction
-            
+
         except Exception as e:
             logger.error(f"Clover payment processing failed: {e}")
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
             transaction.provider_response = {
                 "provider": "clover",
                 "error": str(e),
-                "status": "failed"
+                "status": "failed",
             }
             transaction.save()
             raise e
@@ -450,7 +455,7 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         Args:
             amount: The TOTAL refund amount including tip + surcharge + base amount
         """
-        if not hasattr(self, 'clover_api'):
+        if not hasattr(self, "clover_api"):
             raise ValueError("Clover API not initialized")
 
         if not transaction.transaction_id:
@@ -464,7 +469,7 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
             clover_refund = self.clover_api.refund_payment(
                 payment_id=transaction.transaction_id,
                 amount_cents=amount_cents,
-                reason=reason
+                reason=reason,
             )
 
             # Update transaction record
@@ -472,7 +477,9 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
             transaction.refund_reason = reason
 
             # Calculate total transaction amount (amount + tip + surcharge)
-            total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+            total_transaction_amount = (
+                transaction.amount + transaction.tip + transaction.surcharge
+            )
 
             if transaction.refunded_amount >= total_transaction_amount:
                 transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
@@ -481,17 +488,18 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
             if "refunds" not in transaction.provider_response:
                 transaction.provider_response["refunds"] = []
 
-            transaction.provider_response["refunds"].append({
-                "id": clover_refund.get('id'),
-                "amount": clover_refund.get('amount'),
-                "reason": reason,
-                "status": clover_refund.get('state', 'processed'),
-                "created_time": clover_refund.get('createdTime')
-            })
+            transaction.provider_response["refunds"].append(
+                {
+                    "id": clover_refund.get("id"),
+                    "amount": clover_refund.get("amount"),
+                    "reason": reason,
+                    "status": clover_refund.get("state", "processed"),
+                    "created_time": clover_refund.get("createdTime"),
+                }
+            )
 
             transaction.save()
 
-            logger.info(f"Clover refund created: {clover_refund.get('id')}")
             return transaction
 
         except Exception as e:
@@ -570,13 +578,18 @@ class StripeOnlineStrategy(PaymentStrategy):
 
     def refund_transaction(
         self, transaction: PaymentTransaction, amount: Decimal, reason: str = None
-    ):
+    ) -> stripe.Refund:
         """
         Refunds a Stripe Online payment transaction.
-        Assumes transaction.transaction_id holds the Payment Intent ID or Charge ID.
+
+        This method ONLY triggers the Stripe API call and returns the refund object.
+        Database updates are handled by the webhook to ensure consistency.
 
         Args:
             amount: The TOTAL refund amount including tip + surcharge + base amount
+
+        Returns:
+            stripe.Refund object from the API call
         """
         stripe.api_key = settings.STRIPE_SECRET_KEY
         if not transaction.transaction_id:
@@ -586,7 +599,8 @@ class StripeOnlineStrategy(PaymentStrategy):
         amount_cents = int(amount * 100)
 
         try:
-            refund = stripe.Refund.create(
+            # Create the refund - webhook will handle database updates
+            return stripe.Refund.create(
                 payment_intent=(
                     transaction.transaction_id
                     if transaction.transaction_id.startswith("pi_")
@@ -601,31 +615,9 @@ class StripeOnlineStrategy(PaymentStrategy):
                 reason=reason,
                 metadata={"original_transaction_id": str(transaction.id)},
             )
-            transaction.refunded_amount += Decimal(str(refund.amount)) / 100
-            transaction.refund_reason = reason
-            transaction.provider_response["refunds"] = (
-                transaction.provider_response.get("refunds", []) + [refund.to_dict()]
-            )
-
-            # Calculate total transaction amount (amount + tip + surcharge)
-            total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
-
-            if refund.status == "succeeded":
-                # Only mark as REFUNDED if total refunded >= total transaction
-                if transaction.refunded_amount >= total_transaction_amount:
-                    transaction.status = PaymentTransaction.TransactionStatus.REFUNDED
-            elif refund.status == "pending":
-                transaction.status = PaymentTransaction.TransactionStatus.PENDING
-            else:
-                transaction.status = PaymentTransaction.TransactionStatus.FAILED
-            transaction.save()
-            return transaction
         except stripe.error.StripeError as e:
             logger.error(f"Stripe refund error for transaction {transaction.id}: {e}")
-            transaction.status = PaymentTransaction.TransactionStatus.FAILED
-            transaction.provider_response = {"error": {"message": str(e)}}
-            transaction.save()
-            raise e
+            raise ValueError(str(e))
         except Exception as e:
             logger.error(
                 f"Unexpected error during Stripe refund for transaction {transaction.id}: {e}"
@@ -646,8 +638,8 @@ class GiftCardPaymentStrategy(PaymentStrategy):
         Process a gift card payment by deducting the amount from the gift card balance.
         """
         from django.db import transaction as db_transaction
-        
-        gift_card_code = kwargs.get('gift_card_code')
+
+        gift_card_code = kwargs.get("gift_card_code")
         if not gift_card_code:
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
             transaction.save()
@@ -656,42 +648,46 @@ class GiftCardPaymentStrategy(PaymentStrategy):
         try:
             # Find the gift card
             gift_card = GiftCard.objects.get(code=gift_card_code.upper())
-            
+
             # Validate the gift card
             if not gift_card.is_valid:
                 transaction.status = PaymentTransaction.TransactionStatus.FAILED
                 transaction.save()
                 raise ValueError(f"Gift card {gift_card_code} is not valid for use")
-            
+
             # Check if gift card has sufficient balance
             if gift_card.current_balance < transaction.amount:
                 transaction.status = PaymentTransaction.TransactionStatus.FAILED
                 transaction.save()
-                raise ValueError(f"Insufficient gift card balance. Available: ${gift_card.current_balance}, Requested: ${transaction.amount}")
-            
+                raise ValueError(
+                    f"Insufficient gift card balance. Available: ${gift_card.current_balance}, Requested: ${transaction.amount}"
+                )
+
             # Use atomic transaction to ensure consistency
             with db_transaction.atomic():
                 # Deduct the amount from the gift card
                 amount_used = gift_card.use_amount(transaction.amount)
-                
+
                 # Update the payment transaction
                 transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
-                transaction.transaction_id = f"GC-{gift_card.code}-{uuid.uuid4().hex[:8]}"
+                transaction.transaction_id = (
+                    f"GC-{gift_card.code}-{uuid.uuid4().hex[:8]}"
+                )
                 transaction.provider_response = {
                     "gift_card_code": gift_card.code,
                     "amount_used": str(amount_used),
                     "remaining_balance": str(gift_card.current_balance),
-                    "transaction_type": "gift_card_payment"
+                    "transaction_type": "gift_card_payment",
                 }
                 transaction.save()
-                
+
             return transaction
-            
+
         except GiftCard.DoesNotExist:
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
             transaction.save()
             raise ValueError(f"Gift card {gift_card_code} not found")
-            
+
         except Exception as e:
             transaction.status = PaymentTransaction.TransactionStatus.FAILED
             transaction.save()
@@ -712,10 +708,10 @@ class GiftCardPaymentStrategy(PaymentStrategy):
         try:
             # Get the gift card code from the original transaction
             provider_response = transaction.provider_response
-            if not provider_response or 'gift_card_code' not in provider_response:
+            if not provider_response or "gift_card_code" not in provider_response:
                 raise ValueError("Cannot determine gift card for refund")
 
-            gift_card_code = provider_response['gift_card_code']
+            gift_card_code = provider_response["gift_card_code"]
             gift_card = GiftCard.objects.get(code=gift_card_code)
 
             # Use atomic transaction to ensure consistency
@@ -724,7 +720,10 @@ class GiftCardPaymentStrategy(PaymentStrategy):
                 gift_card.current_balance += amount
 
                 # If the gift card was fully redeemed but now has balance, reactivate it
-                if gift_card.status == GiftCard.GiftCardStatus.REDEEMED and gift_card.current_balance > 0:
+                if (
+                    gift_card.status == GiftCard.GiftCardStatus.REDEEMED
+                    and gift_card.current_balance > 0
+                ):
                     gift_card.status = GiftCard.GiftCardStatus.ACTIVE
 
                 gift_card.save()
@@ -734,7 +733,9 @@ class GiftCardPaymentStrategy(PaymentStrategy):
                 transaction.refund_reason = reason
 
                 # Calculate total transaction amount (amount + tip + surcharge)
-                total_transaction_amount = transaction.amount + transaction.tip + transaction.surcharge
+                total_transaction_amount = (
+                    transaction.amount + transaction.tip + transaction.surcharge
+                )
 
                 # If the refunded amount equals the total transaction amount, mark as fully refunded
                 if transaction.refunded_amount >= total_transaction_amount:

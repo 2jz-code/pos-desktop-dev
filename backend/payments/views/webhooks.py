@@ -79,7 +79,19 @@ class StripeWebhookView(BasePaymentView):
             elif event["type"] == "payment_intent.canceled":
                 payment_intent = event["data"]["object"]
                 self._handle_payment_intent_canceled(payment_intent)
+            elif event["type"] == "refund.created":
+                # Handle refund.created the same as refund.updated
+                # This event arrives first and contains the same data
+                refund = event["data"]["object"]
+                self._handle_refund_updated(refund)
             elif event["type"] == "refund.updated":
+                refund = event["data"]["object"]
+                self._handle_refund_updated(refund)
+            elif event["type"] == "charge.refunded":
+                charge = event["data"]["object"]
+                self._handle_charge_refunded(charge)
+            elif event["type"] == "charge.refund.updated":
+                # charge.refund.updated contains refund data in the object
                 refund = event["data"]["object"]
                 self._handle_refund_updated(refund)
             else:
@@ -109,8 +121,8 @@ class StripeWebhookView(BasePaymentView):
         # For payment_intent events, metadata is directly on the object
         if event["type"].startswith("payment_intent"):
             order_id = event_data.get("metadata", {}).get("order_id")
-        # For refund events, we need to get the payment_intent first
-        elif event["type"].startswith("refund"):
+        # For refund and charge events, we need to get the payment_intent first
+        elif event["type"].startswith("refund") or event["type"].startswith("charge"):
             payment_intent_id = event_data.get("payment_intent")
             if payment_intent_id:
                 # Look up the transaction to get the order
@@ -141,7 +153,6 @@ class StripeWebhookView(BasePaymentView):
 
             # Use all_objects to bypass tenant filtering
             order = Order.all_objects.select_related("tenant").get(id=order_id)
-            logger.info(f"Resolved tenant {order.tenant.slug} from order {order_id}")
             return order.tenant
         except Order.DoesNotExist:
             logger.error(f"Order {order_id} not found for tenant resolution")
@@ -164,9 +175,6 @@ class StripeWebhookView(BasePaymentView):
             transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL
             and transaction.card_brand
         ):
-            logger.info(
-                f"Transaction {transaction.id} is already fully processed with card details."
-            )
             return
 
         card_brand = None
@@ -212,10 +220,6 @@ class StripeWebhookView(BasePaymentView):
             if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
                 PaymentService.confirm_successful_transaction(transaction)
 
-        logger.info(
-            f"Webhook processed 'payment_intent.succeeded' for Txn {transaction.id}"
-        )
-
     def _handle_payment_intent_payment_failed(self, payment_intent):
         """Handles 'payment_intent.payment_failed' events."""
         self._handle_failure(payment_intent, event_type="payment_failed")
@@ -243,9 +247,6 @@ class StripeWebhookView(BasePaymentView):
         # Process each refund in the charge
         refunds = charge_object.get("refunds", {}).get("data", [])
         if not refunds:
-            logger.info(
-                f"No refund data found in charge.refunded event for charge {charge_id}"
-            )
             return
 
         # Process the most recent refund (usually there's only one new refund per event)
@@ -263,9 +264,6 @@ class StripeWebhookView(BasePaymentView):
         - Links to existing RefundItem records if available
         """
         if refund_object.get("status") != "succeeded":
-            logger.info(
-                f"Ignoring refund {refund_object.get('id')} with status: {refund_object.get('status')}"
-            )
             return
 
         # --- THE CORE FIX: USE THE PAYMENT INTENT ID FOR LOOKUP ---
@@ -293,9 +291,6 @@ class StripeWebhookView(BasePaymentView):
                     r.get("id") for r in response_data.get("refunds", [])
                 }
                 if refund_object["id"] in existing_refund_ids:
-                    logger.info(
-                        f"Refund event {refund_object['id']} already processed for Txn {txn_to_refund.id}. Skipping."
-                    )
                     return
 
                 # Apply the refund logic
@@ -339,11 +334,6 @@ class StripeWebhookView(BasePaymentView):
                 # Update the parent Payment object
                 PaymentService._update_payment_status(txn_to_refund.payment)
 
-            logger.info(
-                f"Successfully processed webhook 'refund.updated' for Txn {txn_to_refund.id}. "
-                f"Refunded: ${refunded_amount_in_event}, Total refunded: ${txn_to_refund.refunded_amount} / ${total_transaction_amount}"
-            )
-
         except PaymentTransaction.DoesNotExist:
             logger.error(
                 f"Webhook Error: Received refund for PI {payment_intent_id} but could not find matching transaction."
@@ -361,7 +351,7 @@ class StripeWebhookView(BasePaymentView):
         Args:
             event_data: Stripe event data object
         """
-        logger.info(f"Unhandled Stripe event type: {event_data.get('type', 'unknown')}")
+        pass
 
     def _get_or_create_transaction(self, payment_intent):
         """
@@ -410,10 +400,6 @@ class StripeWebhookView(BasePaymentView):
                     "tenant": payment.tenant,
                 },
             )
-            if created:
-                logger.info(
-                    f"Webhook: Created new PaymentTransaction {txn.id} for PI {pi_id}"
-                )
             return txn
         except Order.DoesNotExist:
             logger.error(
@@ -442,9 +428,6 @@ class StripeWebhookView(BasePaymentView):
         )
 
         if transaction.status == target_status:
-            logger.info(
-                f"Transaction {transaction.id} already in desired state: {target_status}."
-            )
             return
 
         from django.db import transaction as db_transaction

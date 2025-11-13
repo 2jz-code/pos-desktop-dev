@@ -1,22 +1,50 @@
 from rest_framework import serializers
-from core_backend.base import BaseModelSerializer, BasicProductSerializer, BasicCategorySerializer
-from core_backend.base.serializers import TenantFilteredSerializerMixin
+from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import FieldsetMixin, TenantFilteredSerializerMixin
 from .models import Discount
 from orders.models import Order
 from products.models import Product, Category
 
 
-class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
+class UnifiedDiscountSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Serializes Discount objects, including details about what they apply to.
+    Unified serializer for Discount model.
+
+    Supports multiple view modes via ?view= param:
+    - list: Lightweight for list endpoints
+    - detail: Full representation (default)
+    - sync: Flat fields for Electron sync
+    - reference: Minimal for nested usage
+
+    Supports expansion via ?expand= param:
+    - applicable_products: Nests full product objects
+    - applicable_categories: Nests full category objects
+
+    Usage:
+        GET /api/discounts/              → list mode
+        GET /api/discounts/?view=detail  → detail mode
+        GET /api/discounts/1/            → detail mode (default for retrieve)
+        GET /api/discounts/1/?expand=applicable_products → detail + nested products
+        GET /api/discounts/?view=sync    → sync mode (flat fields only)
     """
 
-    # --- FIX: Use nested serializers for readable names on the frontend ---
-    applicable_products = BasicProductSerializer(many=True, read_only=True)
-    applicable_categories = BasicCategorySerializer(many=True, read_only=True)
+    # Read-only ID fields (default behavior - IDs only, no nesting)
+    applicable_product_ids = serializers.PrimaryKeyRelatedField(
+        source="applicable_products",
+        many=True,
+        read_only=True
+    )
+    applicable_category_ids = serializers.PrimaryKeyRelatedField(
+        source="applicable_categories",
+        many=True,
+        read_only=True
+    )
 
-    # These fields are for writing data back from the frontend
-    # They accept a list of IDs.
+    # Nested representations (only used when ?expand= is requested)
+    applicable_products = serializers.SerializerMethodField()
+    applicable_categories = serializers.SerializerMethodField()
+
+    # Write-only fields for mutations
     write_applicable_products = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(),
         many=True,
@@ -34,31 +62,54 @@ class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
 
     class Meta:
         model = Discount
-        fields = [
-            "id",
-            "name",
-            "code",
-            "type",
-            "scope",
-            "value",
-            "min_purchase_amount",
-            "is_active",
-            "archived_at",
-            "archived_by",
-            "start_date",
-            "end_date",
-            "applicable_products",
-            "applicable_categories",
-            "write_applicable_products",
-            "write_applicable_categories",
-            "buy_quantity",
-            "get_quantity",
-        ]
+        fields = '__all__'
+
+        fieldsets = {
+            # Lightweight list view
+            'list': [
+                'id', 'name', 'code', 'type', 'scope', 'value',
+                'is_active', 'start_date', 'end_date',
+                'applicable_product_ids', 'applicable_category_ids'
+            ],
+
+            # Full detail view (default)
+            'detail': [
+                'id', 'name', 'code', 'type', 'scope', 'value',
+                'min_purchase_amount', 'buy_quantity', 'get_quantity',
+                'is_active', 'archived_at', 'archived_by',
+                'start_date', 'end_date',
+                'applicable_product_ids', 'applicable_category_ids',
+                'write_applicable_products', 'write_applicable_categories'
+            ],
+
+            # Sync view (flat fields for Electron)
+            'sync': [
+                'id', 'name', 'type', 'scope', 'value',
+                'min_purchase_amount', 'buy_quantity', 'get_quantity',
+                'is_active', 'archived_at', 'start_date', 'end_date'
+            ],
+
+            # Reference view (minimal for nested usage)
+            'reference': [
+                'id', 'name', 'code', 'type', 'value'
+            ],
+        }
+
+        # Expandable relationships (?expand=applicable_products,applicable_categories)
+        expandable = {
+            'applicable_products': (None, {'source': 'applicable_products', 'many': True}),  # Uses SerializerMethodField
+            'applicable_categories': (None, {'source': 'applicable_categories', 'many': True}),  # Uses SerializerMethodField
+        }
+
+        # Optimization hints
         select_related_fields = []
         prefetch_related_fields = [
             'applicable_products',
             'applicable_categories'
         ]
+
+        # Required fields (always included even if not in fieldset)
+        required_fields = {'id'}
 
     def validate(self, data):
         scope = data.get("scope")
@@ -86,32 +137,35 @@ class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
 
         return data
 
+    def get_applicable_products(self, obj):
+        """
+        Return minimal product info using unified ProductSerializer with 'reference' fieldset.
+        Returns: id, name, barcode only
+        Only called when ?expand=applicable_products is used.
+        """
+        from products.serializers import ProductSerializer
+        products = obj.applicable_products.all()
+        return ProductSerializer(
+            products,
+            many=True,
+            context={'view_mode': 'reference'}
+        ).data
 
-# Sync-specific serializer that sends simple field values instead of nested objects
-class DiscountSyncSerializer(BaseModelSerializer):
-    """
-    Sync-specific serializer for discounts that only includes basic fields
-    suitable for SQLite storage without nested objects.
-    """
+    def get_applicable_categories(self, obj):
+        """
+        Return minimal category info.
+        Returns: id, name, order
+        Only called when ?expand=applicable_categories is used.
+        """
+        from products.serializers import CategorySerializer
+        categories = obj.applicable_categories.all()
+        # CategorySerializer doesn't have fieldsets yet, but we can use it directly
+        # It returns more fields than BasicCategorySerializer, but that's acceptable
+        return CategorySerializer(categories, many=True, context=self.context).data
 
-    class Meta:
-        model = Discount
-        fields = [
-            "id",
-            "name",
-            "type",
-            "scope",
-            "value",
-            "min_purchase_amount",
-            "buy_quantity",
-            "get_quantity",
-            "is_active",
-            "archived_at",
-            "start_date",
-            "end_date",
-        ]
-        select_related_fields = []
-        prefetch_related_fields = []
+
+# Legacy alias for backward compatibility during migration
+DiscountSerializer = UnifiedDiscountSerializer
 
 
 class DiscountApplySerializer(TenantFilteredSerializerMixin, serializers.Serializer):

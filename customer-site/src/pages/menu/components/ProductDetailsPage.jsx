@@ -260,13 +260,9 @@ const ProductDetailsPage = () => {
 		);
 	}
 
-	// Determine category name safely
-	const categoryName =
-		product.category && !Array.isArray(product.category)
-			? product.category.name
-			: Array.isArray(product.category) && product.category.length > 0
-			? product.category[0].name
-			: "Products";
+	// Determine category name from the new API structure
+	// API now returns category_display_name directly (e.g., "Fresh Drinks")
+	const categoryName = product.category_display_name || "Products";
 
 	const imageUrl = getProductImageUrl(product.image);
 

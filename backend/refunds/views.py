@@ -13,6 +13,9 @@ from django.shortcuts import get_object_or_404
 from decimal import Decimal
 import logging
 
+from core_backend.base import BaseViewSet, ReadOnlyBaseViewSet
+from core_backend.base.mixins import TenantScopedQuerysetMixin, FieldsetQueryParamsMixin
+
 from .models import RefundItem, RefundAuditLog, ExchangeSession
 from .serializers import (
     RefundItemSerializer,
@@ -41,10 +44,11 @@ from users.permissions import IsAdminOrHigher
 logger = logging.getLogger(__name__)
 
 
-class RefundItemViewSet(viewsets.ReadOnlyModelViewSet):
+class RefundItemViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, ReadOnlyBaseViewSet):
     """
     ViewSet for viewing RefundItem records.
     Read-only - refund items are created via refund processing.
+    Supports ?view=, ?fields=, ?expand= query params.
     """
     serializer_class = RefundItemSerializer
     permission_classes = [IsAuthenticated]
@@ -52,7 +56,9 @@ class RefundItemViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Filter by payment or order if provided."""
-        queryset = RefundItem.objects.select_related(
+        queryset = super().get_queryset()  # Already tenant-filtered by TenantScopedQuerysetMixin
+
+        queryset = queryset.select_related(
             'order_item',
             'order_item__product',
             'order_item__order',
@@ -72,10 +78,11 @@ class RefundItemViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.order_by('-created_at')
 
 
-class RefundAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+class RefundAuditLogViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, ReadOnlyBaseViewSet):
     """
     ViewSet for viewing RefundAuditLog records.
     Read-only - audit logs are created automatically.
+    Supports ?view=, ?fields=, ?expand= query params.
     """
     serializer_class = RefundAuditLogSerializer
     permission_classes = [IsAuthenticated, IsAdminOrHigher]
@@ -83,7 +90,9 @@ class RefundAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Filter by payment if provided."""
-        queryset = RefundAuditLog.objects.select_related(
+        queryset = super().get_queryset()  # Already tenant-filtered by TenantScopedQuerysetMixin
+
+        queryset = queryset.select_related(
             'payment',
             'payment__order',
             'payment_transaction',
@@ -103,7 +112,7 @@ class RefundAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.order_by('-created_at')
 
 
-class ExchangeSessionViewSet(viewsets.ModelViewSet):
+class ExchangeSessionViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     ViewSet for managing ExchangeSession records.
 
@@ -114,14 +123,26 @@ class ExchangeSessionViewSet(viewsets.ModelViewSet):
     - add_items: Add replacement items to exchange
     - complete: Finalize the exchange
     - cancel: Cancel the exchange
+
+    Supports ?view=list|detail, ?fields=, ?expand= query params.
     """
     serializer_class = ExchangeSessionSerializer
     permission_classes = [IsAuthenticated]
     queryset = ExchangeSession.objects.all()
 
+    def _get_default_view_mode(self):
+        """Return default view mode based on action."""
+        if self.action == 'list':
+            return 'list'
+        elif self.action in ['retrieve', 'summary', 'balance']:
+            return 'detail'
+        return 'detail'
+
     def get_queryset(self):
         """Filter by order if provided."""
-        queryset = ExchangeSession.objects.select_related(
+        queryset = super().get_queryset()  # Already tenant-filtered by TenantScopedQuerysetMixin
+
+        queryset = queryset.select_related(
             'original_order',
             'new_order',
             'original_payment',

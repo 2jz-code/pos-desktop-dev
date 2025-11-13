@@ -16,6 +16,7 @@ const POS = () => {
 	const barcodeInputRef = useRef("");
 	const lastKeystrokeRef = useRef(0);
 	const productGridRef = useRef(null);
+	const hasInitializedRef = useRef(false);
 
 	// Select all necessary state from the store
 	const {
@@ -28,6 +29,8 @@ const POS = () => {
 		orderId,
 		addItem,
 		resetFilters,
+		initializeCartSocket,
+		cartItems,
 		// Get the dialog status flags for conditional rendering
 		isTenderDialogOpen,
 		isDiscountDialogOpen,
@@ -53,6 +56,8 @@ const POS = () => {
 			orderId: state.orderId,
 			addItem: state.addItem,
 			resetFilters: state.resetFilters,
+			initializeCartSocket: state.initializeCartSocket,
+			cartItems: state.items,
 			// Add the dialog flags to the selector
 			isTenderDialogOpen: state.isTenderDialogOpen,
 			isDiscountDialogOpen: state.isDiscountDialogOpen,
@@ -75,56 +80,55 @@ const POS = () => {
 
 	// Create stable function references
 	const initializePOS = useCallback(async () => {
-		console.log("🚀 [POS] Initializing POS page...");
-		console.log("🚀 [POS] Available functions:", {
-			resetFilters: !!resetFilters,
-			fetchProducts: !!fetchProducts,
-			fetchParentCategories: !!fetchParentCategories,
-			login: !!login,
-			loadCartFromOrderId: !!loadCartFromOrderId,
-		});
-		console.log("🚀 [POS] Current state:", { currentUser: !!currentUser, orderId });
-		
+		// Only run full initialization once on mount
+		if (hasInitializedRef.current) {
+			return;
+		}
+		hasInitializedRef.current = true;
+
 		// Handle user authentication first
 		if (!currentUser && login) {
-			console.log("👤 [POS] Logging in user...");
 			login();
 		}
-		
+
 		// Fetch data FIRST, then reset filters
 		if (fetchProducts) {
-			console.log("📦 [POS] Fetching products...");
 			try {
 				await fetchProducts();
-				console.log("✅ [POS] Products fetch completed");
 			} catch (error) {
 				console.error("❌ [POS] Error fetching products:", error);
 			}
-		} else {
-			console.error("❌ [POS] fetchProducts function not available!");
 		}
-		
+
 		if (fetchParentCategories) {
-			console.log("📂 [POS] Fetching parent categories...");
 			await fetchParentCategories();
-		} else {
-			console.error("❌ [POS] fetchParentCategories function not available!");
 		}
-		
+
 		// Reset filters AFTER products are loaded
 		if (resetFilters) {
-			console.log("🔄 [POS] Resetting filters after products loaded...");
 			resetFilters();
 		}
-		
-		// Load cart if there's an existing order
-		if (orderId && loadCartFromOrderId) {
-			console.log("🛒 [POS] Loading cart from order ID:", orderId);
-			loadCartFromOrderId(orderId);
+
+		// Load cart if there's an existing order ON MOUNT ONLY
+		if (orderId && loadCartFromOrderId && cartItems.length === 0) {
+			// No items in cart, need to load from server
+			console.log(`⏱️ [TIMING] POS mount: loading cart for order ${orderId.substring(0, 8)}`);
+			await loadCartFromOrderId(orderId);
+		} else if (orderId && cartItems.length > 0) {
+			// Cart already has items (either from resume or persisted state)
+			// Just reconnect the WebSocket without reloading from server
+			console.log(`⏱️ [TIMING] POS mount: cart already loaded, reconnecting socket`);
+			if (initializeCartSocket) {
+				try {
+					await initializeCartSocket();
+					console.log(`⏱️ [TIMING] Socket reconnected for persisted cart`);
+				} catch (error) {
+					console.error("❌ Failed to reconnect socket:", error);
+				}
+			}
 		}
-		
-		console.log("✅ [POS] POS page initialization complete");
-	}, [resetFilters, fetchProducts, fetchParentCategories, login, currentUser, loadCartFromOrderId, orderId]);
+	}, [resetFilters, fetchProducts, fetchParentCategories, login, currentUser, loadCartFromOrderId, initializeCartSocket, cartItems]);
+	// Note: orderId intentionally NOT in deps - we only load cart once on mount
 
 	useEffect(() => {
 		initializePOS();

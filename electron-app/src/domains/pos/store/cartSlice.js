@@ -189,30 +189,10 @@ export const createCartSlice = (set, get) => {
 			const originalSubtotal = get().subtotal;
 			const originalTotal = get().total;
 
-			const existingItemIndex = get().items.findIndex(
-				(item) =>
-					item.product.id === product.id &&
-					!item.id.toString().startsWith("temp-")
-			);
-			let optimisticItems = [...get().items];
-
-			if (existingItemIndex > -1) {
-				optimisticItems[existingItemIndex].quantity += 1;
-			} else {
-				optimisticItems.push({
-					id: `temp-${product.id}-${Date.now()}`,
-					product: product,
-					quantity: 1,
-					price_at_sale: product.price,
-				});
-			}
-
-			const { subtotal, total } = calculateLocalTotals(optimisticItems);
-			set({ items: optimisticItems, subtotal, total });
-
 			try {
 				let orderId = get().orderId;
 
+				// Create order and initialize socket FIRST, before optimistic update
 				if (!orderId) {
 					const orderData = {
 						order_type: "POS",
@@ -233,13 +213,40 @@ export const createCartSlice = (set, get) => {
 						orderStatus: orderRes.data.status,
 						orderNumber: orderRes.data.order_number,
 					});
-					// We no longer use localStorage for the order ID.
-					// The state itself is the source of truth.
+
+					// AWAIT socket connection before proceeding
+					console.log(`⏱️ [TIMING] Order created: ${orderId.substring(0, 8)}, connecting socket...`);
 					await get().initializeCartSocket();
+					console.log(`⏱️ [TIMING] Socket ready, sending item (skipping optimistic update for first item)`);
+
 					get().showToast({
 						title: "New Order Started",
 						description: `Order #${orderId.substring(0, 4)}...`,
 					});
+					// Skip optimistic update for first item - just send to server and wait for response
+					// This prevents the flicker from initial cart sync
+				} else {
+					// For subsequent items, do optimistic update since socket is already synced
+					const existingItemIndex = get().items.findIndex(
+						(item) =>
+							item.product.id === product.id &&
+							!item.id.toString().startsWith("temp-")
+					);
+					let optimisticItems = [...get().items];
+
+					if (existingItemIndex > -1) {
+						optimisticItems[existingItemIndex].quantity += 1;
+					} else {
+						optimisticItems.push({
+							id: `temp-${product.id}-${Date.now()}`,
+							product: product,
+							quantity: 1,
+							price_at_sale: product.price,
+						});
+					}
+
+					const { subtotal, total } = calculateLocalTotals(optimisticItems);
+					set({ items: optimisticItems, subtotal, total });
 				}
 
 				const payload = { product_id: product.id, quantity: 1 };
@@ -282,7 +289,7 @@ export const createCartSlice = (set, get) => {
 
 		addItemWithModifiers: async (itemData) => {
 			const { product_id, quantity, selected_modifiers, notes } = itemData;
-			
+
 			set({ addingItemId: product_id });
 
 			// Store original state for rollback
@@ -298,42 +305,10 @@ export const createCartSlice = (set, get) => {
 				return;
 			}
 
-			// Calculate price with modifiers for optimistic update
-			let totalModifierPrice = 0;
-			if (selected_modifiers) {
-				selected_modifiers.forEach(modifier => {
-					const option = findModifierOptionById(product, modifier.option_id);
-					if (option) {
-						totalModifierPrice += parseFloat(option.price_delta) * (modifier.quantity || 1);
-					}
-				});
-			}
-
-			const optimisticItem = {
-				id: `temp-${product_id}-${Date.now()}`,
-				product: product,
-				quantity: quantity,
-				price_at_sale: parseFloat(product.price) + totalModifierPrice,
-				selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
-					const option = findModifierOptionById(product, modifier.option_id);
-					return option ? {
-						modifier_set_name: option.modifier_set?.name || "Unknown",
-						option_name: option.name,
-						price_at_sale: parseFloat(option.price_delta),
-						quantity: modifier.quantity || 1
-					} : null;
-				}).filter(Boolean) || [],
-				total_modifier_price: totalModifierPrice,
-				notes: notes || ""
-			};
-
-			const optimisticItems = [...get().items, optimisticItem];
-			const { subtotal, total } = calculateLocalTotals(optimisticItems);
-			set({ items: optimisticItems, subtotal, total });
-
 			try {
 				let orderId = get().orderId;
 
+				// Create order and initialize socket FIRST, before optimistic update
 				if (!orderId) {
 					const orderData = {
 						order_type: "POS",
@@ -354,11 +329,50 @@ export const createCartSlice = (set, get) => {
 						orderStatus: orderRes.data.status,
 						orderNumber: orderRes.data.order_number,
 					});
+
+					// AWAIT socket connection before proceeding
+					console.log(`⏱️ [TIMING] Order created (with modifiers): ${orderId.substring(0, 8)}, connecting socket...`);
 					await get().initializeCartSocket();
+					console.log(`⏱️ [TIMING] Socket ready, sending item with modifiers (skipping optimistic update for first item)`);
+
 					get().showToast({
 						title: "New Order Started",
 						description: `Order #${orderId.substring(0, 4)}...`,
 					});
+					// Skip optimistic update for first item - just send to server and wait for response
+				} else {
+					// For subsequent items, do optimistic update since socket is already synced
+					let totalModifierPrice = 0;
+					if (selected_modifiers) {
+						selected_modifiers.forEach(modifier => {
+							const option = findModifierOptionById(product, modifier.option_id);
+							if (option) {
+								totalModifierPrice += parseFloat(option.price_delta) * (modifier.quantity || 1);
+							}
+						});
+					}
+
+					const optimisticItem = {
+						id: `temp-${product_id}-${Date.now()}`,
+						product: product,
+						quantity: quantity,
+						price_at_sale: parseFloat(product.price) + totalModifierPrice,
+						selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
+							const option = findModifierOptionById(product, modifier.option_id);
+							return option ? {
+								modifier_set_name: option.modifier_set?.name || "Unknown",
+								option_name: option.name,
+								price_at_sale: parseFloat(option.price_delta),
+								quantity: modifier.quantity || 1
+							} : null;
+						}).filter(Boolean) || [],
+						total_modifier_price: totalModifierPrice,
+						notes: notes || ""
+					};
+
+					const optimisticItems = [...get().items, optimisticItem];
+					const { subtotal, total } = calculateLocalTotals(optimisticItems);
+					set({ items: optimisticItems, subtotal, total });
 				}
 
 				const payload = { 
@@ -510,7 +524,7 @@ export const createCartSlice = (set, get) => {
 		},
 
 		setCartFromSocket: (orderData) => {
-			console.log("Reconciling state from WebSocket:", orderData);
+			console.log(`⏱️ [TIMING] WebSocket update received, reconciling cart state (${orderData.items?.length || 0} items)`);
 			set({
 				items: orderData.items || [],
 				orderId: orderData.id,
@@ -709,7 +723,7 @@ export const createCartSlice = (set, get) => {
 				const order = response.data;
 				// Only resume if the order is in a workable state
 				if (["PENDING", "HOLD", "DRAFT"].includes(order.status)) {
-					get().resumeCart(order);
+					await get().resumeCart(order);
 					get().showToast({
 						title: "Cart Loaded",
 						description: `${order.order_number} loaded.`,
@@ -736,8 +750,11 @@ export const createCartSlice = (set, get) => {
 			}
 		},
 
-		resumeCart: (orderData) => {
+		resumeCart: async (orderData) => {
+			console.log(`⏱️ [TIMING] resumeCart called for order: ${orderData.id.substring(0, 8)}`);
+			console.log(`⏱️ [TIMING] Disconnecting any existing socket...`);
 			get().disconnectCartSocket(); // Disconnect from any previous socket
+			console.log(`⏱️ [TIMING] Socket disconnected, setting cart state...`);
 
 			set({
 				items: orderData.items,
@@ -753,7 +770,11 @@ export const createCartSlice = (set, get) => {
 				isLoadingCart: false,
 				socketConnected: false,
 			});
-			get().initializeCartSocket(); // Connect to the new order's socket
+
+			// Connect to the new order's socket and wait for it to be ready
+			console.log(`⏱️ [TIMING] Resuming order: ${orderData.id.substring(0, 8)}, connecting socket...`);
+			await get().initializeCartSocket();
+			console.log(`⏱️ [TIMING] Socket ready for resumed order`);
 		},
 
 		// Customer name actions

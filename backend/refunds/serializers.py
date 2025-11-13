@@ -9,15 +9,17 @@ from rest_framework import serializers
 from decimal import Decimal
 from typing import List, Tuple
 
+from core_backend.base.serializers import FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer
 from .models import RefundItem, RefundAuditLog, ExchangeSession
 from orders.models import OrderItem
 from payments.models import PaymentTransaction
 
 
-class RefundItemSerializer(serializers.ModelSerializer):
+class RefundItemSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Serializer for RefundItem model.
-    Read-only for API responses.
+    Serializer for RefundItem model with fieldset support.
+    Read-only for API responses - refund items are created via refund processing.
+    Supports ?fields= query param for custom field selection.
     """
     order_item_name = serializers.CharField(source='order_item.product.name', read_only=True)
     order_number = serializers.CharField(source='order_item.order.order_number', read_only=True)
@@ -47,13 +49,19 @@ class RefundItemSerializer(serializers.ModelSerializer):
             'refund_reason',
             'created_at',
         ]
+
+        fieldsets = {
+            'detail': '__all__',  # Default - all fields
+        }
+
         read_only_fields = fields  # All fields read-only
 
 
-class RefundAuditLogSerializer(serializers.ModelSerializer):
+class RefundAuditLogSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Serializer for RefundAuditLog model.
-    Read-only for audit trail viewing.
+    Serializer for RefundAuditLog model with fieldset support.
+    Read-only for audit trail viewing - critical for compliance.
+    Supports ?fields= query param for custom field selection.
     """
     initiated_by_name = serializers.SerializerMethodField()
     payment_order_number = serializers.CharField(
@@ -80,7 +88,12 @@ class RefundAuditLogSerializer(serializers.ModelSerializer):
             'error_message',
             'created_at',
         ]
-        read_only_fields = fields  # All fields read-only
+
+        fieldsets = {
+            'detail': '__all__',  # Default - all fields for audit compliance
+        }
+
+        read_only_fields = fields  # All fields read-only (audit logs are immutable)
 
     def get_initiated_by_name(self, obj):
         """Get the name of the user who initiated the refund."""
@@ -89,9 +102,15 @@ class RefundAuditLogSerializer(serializers.ModelSerializer):
         return None
 
 
-class ExchangeSessionSerializer(serializers.ModelSerializer):
+class ExchangeSessionSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
-    Serializer for ExchangeSession model.
+    Serializer for ExchangeSession model with fieldset support.
+
+    Fieldsets:
+    - list: Lightweight for exchange history (status, orders, amounts, timestamps)
+    - detail: Full exchange details (all fields)
+
+    Supports ?view=list|detail, ?fields=, ?expand= query params.
     """
     original_order_number = serializers.CharField(
         source='original_order.order_number',
@@ -125,6 +144,22 @@ class ExchangeSessionSerializer(serializers.ModelSerializer):
             'created_at',
             'completed_at',
         ]
+
+        fieldsets = {
+            'list': [
+                'id',
+                'original_order_number',
+                'new_order_number',
+                'session_status',
+                'refund_amount',
+                'new_order_amount',
+                'balance_due',
+                'created_at',
+                'completed_at',
+            ],
+            'detail': '__all__',  # Default - all fields
+        }
+
         read_only_fields = [
             'id',
             'created_at',

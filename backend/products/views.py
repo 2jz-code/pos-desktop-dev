@@ -19,9 +19,6 @@ from users.permissions import ReadOnlyForCashiers, IsAdminOrHigher
 from .serializers import (
     ProductSerializer,
     ProductCreateSerializer,
-    ProductSyncSerializer,
-    OptimizedProductSerializer,
-    POSProductSerializer,
     CategorySerializer,
     CategoryBulkUpdateSerializer,
     TaxSerializer,
@@ -29,15 +26,15 @@ from .serializers import (
     ModifierSetSerializer,
     ModifierOptionSerializer,
     ProductModifierSetSerializer,
-    BasicProductSerializer,
 )
 from .services import ProductService
 from .filters import ProductFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from core_backend.base.viewsets import BaseViewSet
+from core_backend.base.mixins import FieldsetQueryParamsMixin, TenantScopedQuerysetMixin
 
 
-class ProductModifierSetViewSet(BaseViewSet):
+class ProductModifierSetViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ProductModifierSet.objects.all()
     serializer_class = ProductModifierSetSerializer
     permission_classes = [IsAdminOrHigher]
@@ -200,7 +197,7 @@ class ProductModifierSetViewSet(BaseViewSet):
             )
 
 
-class ModifierSetViewSet(BaseViewSet):
+class ModifierSetViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ModifierSet.objects.all()
     serializer_class = ModifierSetSerializer
     permission_classes = [IsAdminOrHigher]
@@ -263,7 +260,7 @@ class ModifierSetViewSet(BaseViewSet):
             )
 
 
-class ModifierOptionViewSet(BaseViewSet):
+class ModifierOptionViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = ModifierOption.objects.all()
     serializer_class = ModifierOptionSerializer
     permission_classes = [IsAdminOrHigher]
@@ -276,7 +273,19 @@ class ModifierOptionViewSet(BaseViewSet):
 # Create your views here.
 
 
-class ProductViewSet(BaseViewSet):
+class ProductViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
+    """
+    ProductViewSet with standardized query param support.
+
+    Supports:
+    - ?view=list|pos|sync|detail (fieldset selection)
+    - ?fields=id,name,price (ad-hoc field filtering)
+    - ?expand=category,taxes,product_type (relationship expansion)
+
+    Backward compatible:
+    - ?sync=true → view_mode='sync'
+    - ?for_website=true → view_mode='detail'
+    """
     # Base queryset - archiving will be handled by ArchivingViewSetMixin
     queryset = Product.objects.all()
     permission_classes = [
@@ -286,8 +295,7 @@ class ProductViewSet(BaseViewSet):
     filterset_class = ProductFilter
     search_fields = ["name", "description", "barcode"]
 
-    @property
-    def paginator(self):
+    def paginate_queryset(self, queryset):
         """
         Disable pagination for website and POS requests.
         POS needs all products at once for the product grid.
@@ -301,7 +309,7 @@ class ProductViewSet(BaseViewSet):
         # 2. Fetching only active products (is_active=true) - POS use case
         if is_for_website or is_active_filter:
             return None
-        return super().paginator
+        return super().paginate_queryset(queryset)
 
     def get_queryset(self):
         """
@@ -358,40 +366,56 @@ class ProductViewSet(BaseViewSet):
 
     def list(self, request, *args, **kwargs):
         # Cache for common POS queries (tenant-scoped via TenantManager)
+        # Note: Only cache non-paginated requests (for POS/website)
         query_params = dict(request.GET.items())
 
-        # Cache unfiltered requests
-        if not query_params:
-            products = ProductService.get_cached_products_list()
-            serializer = self.get_serializer(products, many=True)
-            return Response(serializer.data)
-
-        # Cache the most common POS query: ?is_active=true
+        # Cache the most common POS query: ?is_active=true (returns all products, no pagination)
         if query_params == {"is_active": "true"}:
             products = ProductService.get_cached_active_products_list()
             serializer = self.get_serializer(products, many=True)
             return Response(serializer.data)
 
-        # Fall back to optimized queryset for filtered requests
+        # For all other requests (including unfiltered ones), use standard pagination
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
-        # Use sync serializer if sync=true parameter is present
+        """
+        Return serializer class based on action.
+        Only ProductCreateSerializer is separate (write logic).
+        All read operations use ProductSerializer with view_mode context.
+        """
+        if self.action in ["create", "update", "partial_update"]:
+            return ProductCreateSerializer
+        return ProductSerializer
+
+    def _get_default_view_mode(self):
+        """
+        Override FieldsetQueryParamsMixin to provide smart defaults.
+
+        Backward compatible with legacy query params:
+        - ?sync=true → 'sync'
+        - ?for_website=true → 'detail'
+        - Default list → 'pos'
+        - Default retrieve → 'detail'
+
+        New standardized param ?view= takes precedence over legacy params.
+        """
+        # Check legacy query params for backward compatibility
         is_sync_request = self.request.query_params.get("sync") == "true"
-
-        if is_sync_request and self.action in ["list", "retrieve"]:
-            return ProductSyncSerializer
-
-        # Check if this is for the customer website - use full serializer with description
         is_for_website = self.request.query_params.get("for_website") == "true"
 
-        if self.action == "list":
+        if is_sync_request and self.action in ["list", "retrieve"]:
+            return 'sync'
+        elif self.action == "list":
             if is_for_website:
-                return ProductSerializer  # Full serializer with description for customer site
-            return POSProductSerializer  # Lightweight POS serializer with modifier detection
-        elif self.action in ["create", "update", "partial_update"]:
-            return ProductCreateSerializer
-        return ProductSerializer  # Full detail view
+                return 'detail'  # Full detail for website
+            else:
+                return 'pos'  # POS terminal view
+        elif self.action == "retrieve":
+            return 'detail'
+        else:
+            # Fallback to parent's default behavior
+            return super()._get_default_view_mode()
 
     @action(detail=False, methods=["get"], url_path="by-name/(?P<name>[^/.]+)")
     def get_by_name(self, request, name=None):
@@ -523,12 +547,17 @@ def barcode_lookup(request, barcode):
         )
 
 
-class CategoryViewSet(BaseViewSet):
+class CategoryViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
     """
     A viewset for viewing categories.
     Can be filtered by parent_id to get child categories, or with `?parent=null` to get top-level categories.
     Supports delta sync with modified_since parameter.
     Supports archiving with include_archived parameter.
+
+    Supports query params (via FieldsetQueryParamsMixin):
+    - ?view=list|detail|reference (selects fieldset)
+    - ?fields=id,name,order (ad-hoc field filtering)
+    - ?expand=parent (relationship expansion)
     """
 
     queryset = Category.objects.all()
@@ -571,7 +600,7 @@ class CategoryViewSet(BaseViewSet):
             except (ValueError, TypeError):
                 pass
 
-        # Apply parent filtering
+        # Apply parent filtering (if requesting specific parent's children)
         parent_id = self.request.query_params.get("parent")
         if parent_id is not None:
             if parent_id == "null":
@@ -584,8 +613,9 @@ class CategoryViewSet(BaseViewSet):
                     queryset = queryset.filter(parent_id=parent_id).order_by("order", "name")
                 except ValueError:
                     queryset = queryset.none()
-        elif is_for_website:
-            # Website: Hierarchical ordering - parents first, then children grouped
+        else:
+            # Hierarchical ordering for all non-filtered requests
+            # Parents first (sorted by order), then children grouped under their parent
             queryset = queryset.annotate(
                 hierarchical_order=models.Case(
                     models.When(parent__isnull=True, then=models.F("order")),
@@ -593,9 +623,6 @@ class CategoryViewSet(BaseViewSet):
                     output_field=models.FloatField(),
                 )
             ).order_by("hierarchical_order", "name")
-        else:
-            # Admin/POS: Simple flat ordering
-            queryset = queryset.order_by("order", "name")
 
         return queryset
 
@@ -641,13 +668,21 @@ class CategoryViewSet(BaseViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TaxViewSet(BaseViewSet):
+class TaxViewSet(TenantScopedQuerysetMixin, BaseViewSet):
     queryset = Tax.objects.all()
     serializer_class = TaxSerializer
     permission_classes = [IsAdminOrHigher]
 
 
-class ProductTypeViewSet(BaseViewSet):
+class ProductTypeViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseViewSet):
+    """
+    A viewset for viewing and editing product types.
+
+    Supports query params (via FieldsetQueryParamsMixin):
+    - ?view=list|detail|reference (selects fieldset)
+    - ?fields=id,name,description (ad-hoc field filtering)
+    - ?expand=default_taxes (relationship expansion)
+    """
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]

@@ -5,6 +5,27 @@ export const getProducts = (params = {}) => {
 	return apiClient.get("/products/", { params });
 };
 
+// Get products with pagination support (for useProductsData hook)
+export const getProductsWithPagination = async (filters = {}, url = null) => {
+	if (url) {
+		// If a URL is provided (for pagination), use it directly.
+		const response = await apiClient.get(url);
+		return response.data;
+	}
+
+	// Remove any filter properties that are empty, so we don't send them to the backend
+	const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+		if (value) {
+			acc[key] = value;
+		}
+		return acc;
+	}, {});
+
+	const params = new URLSearchParams(cleanFilters).toString();
+	const response = await apiClient.get(`/products/?${params}`);
+	return response.data;
+};
+
 export const getProductById = (id) => {
 	return apiClient.get(`/products/${id}/`);
 };
@@ -55,10 +76,11 @@ export const getAllActiveProducts = () => {
 };
 
 // Get all products (handles pagination automatically)
+// Uses 'reference' view for minimal data (id, name, barcode only)
 export const getAllProducts = async (params = {}) => {
 	let allProducts = [];
 	let nextUrl = "/products/";
-	let requestParams = { ...params, limit: 1000 }; // Request large batches to minimize requests
+	let requestParams = { ...params, limit: 1000, view: 'reference' }; // Request large batches with minimal fields
 	
 	while (nextUrl) {
 		try {
@@ -93,6 +115,7 @@ export const getAllProducts = async (params = {}) => {
 
 export default {
 	getProducts,
+	getProductsWithPagination,
 	getProductById,
 	createProduct,
 	updateProduct,

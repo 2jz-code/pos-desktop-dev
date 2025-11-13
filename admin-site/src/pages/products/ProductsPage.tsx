@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-	getProducts,
 	archiveProduct,
 	unarchiveProduct,
 } from "@/services/api/productService";
@@ -39,9 +38,11 @@ import {
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { useToast } from "@/components/ui/use-toast";
-import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
+import { formatCurrency, useScrollToScannedItem, useProductsData } from "@ajeen/ui";
 import { useProductBarcodeWithScroll } from "@/hooks/useBarcode";
 import { useAuth } from "@/contexts/AuthContext";
+import productService from "@/services/api/productService";
+import { PaginationControls } from "@/components/ui/pagination";
 
 // Import dialog components
 import { ProductFormDialog } from "@/components/ProductFormDialog";
@@ -53,21 +54,53 @@ import { Checkbox } from "@/components/ui/checkbox";
 export const ProductsPage = () => {
 	const { tenant } = useAuth();
 	const tenantSlug = tenant?.slug || '';
-	const [products, setProducts] = useState([]);
-	const [allProducts, setAllProducts] = useState([]); // Keep unfiltered copy
+
+	// Category and product type selection state (for UI)
 	const [parentCategories, setParentCategories] = useState([]);
 	const [childCategories, setChildCategories] = useState([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const [showArchivedProducts, setShowArchivedProducts] = useState(false);
-	const [filters, setFilters] = useState({
-		search: "",
-		category: "",
-		subcategory: "",
-	});
 	const [selectedParentCategory, setSelectedParentCategory] = useState("all");
 	const [selectedChildCategory, setSelectedChildCategory] = useState("all");
 	const [selectedProductType, setSelectedProductType] = useState("all");
+	const [showArchivedProducts, setShowArchivedProducts] = useState(false);
+
+	// Modifier context from URL params
+	const [modifierContext, setModifierContext] = useState<{
+		id: string | null;
+		name: string | null;
+	} | null>(null);
+
+	// Build additional filters for the hook
+	const additionalFilters = {
+		// Send category ID to backend (it handles descendants automatically)
+		category: selectedChildCategory !== "all" && selectedChildCategory !== "parent-only"
+			? selectedChildCategory
+			: selectedChildCategory === "parent-only" && selectedParentCategory !== "all"
+			? selectedParentCategory
+			: selectedParentCategory !== "all" && selectedParentCategory !== "uncategorized"
+			? selectedParentCategory
+			: "",
+		product_type: selectedProductType !== "all" ? selectedProductType : "",
+		include_archived: showArchivedProducts ? "only" : undefined,
+		modifier_groups: modifierContext?.id || "",
+	};
+
+	// Use the products data hook for pagination and filtering
+	const {
+		products,
+		loading,
+		error,
+		nextUrl,
+		prevUrl,
+		count,
+		currentPage,
+		searchInput,
+		handleSearchChange,
+		handleNavigate,
+		refetch,
+	} = useProductsData({
+		getProductsService: productService.getProductsWithPagination,
+		additionalFilters,
+	});
 
 	// Dialog states
 	const [isProductFormOpen, setIsProductFormOpen] = useState(false);
@@ -88,18 +121,12 @@ export const ProductsPage = () => {
 	const { toast } = useToast();
 	const [searchParams, setSearchParams] = useSearchParams();
 
-	// Modifier context from URL params
-	const [modifierContext, setModifierContext] = useState<{
-		id: string | null;
-		name: string | null;
-	} | null>(null);
-
 	// Scroll to scanned item functionality
 	const { scrollToItem } = useScrollToScannedItem();
 
 	// Smart barcode scanning
 	const { scanBarcode, isScanning } = useProductBarcodeWithScroll((product) => {
-		setFilters({ search: "", category: "", subcategory: "" });
+		// Clear filters and set archived status based on scanned product
 		setSelectedParentCategory("all");
 		setSelectedChildCategory("all");
 		setShowArchivedProducts(!product.is_active);
@@ -107,46 +134,19 @@ export const ProductsPage = () => {
 		setHighlightedProductId(product.id);
 		setTimeout(() => setHighlightedProductId(null), 3000);
 
+		// Scroll to the product after a short delay
 		setTimeout(() => {
-			applyFilters(allProducts);
-		}, 100);
+			scrollToItem(product.id, {
+				dataAttribute: "data-product-id",
+				delay: 200,
+			});
+		}, 300);
 	}, (productId) => {
 		scrollToItem(productId, {
 			dataAttribute: "data-product-id",
 			delay: 200,
 		});
 	});
-
-	const fetchProducts = async (includeArchived = false) => {
-		try {
-			setLoading(true);
-			// Use include_archived parameter to control which products are returned
-			const params = {};
-
-			if (includeArchived) {
-				params.include_archived = 'only'; // Show only archived products
-			} else {
-				// Explicitly request only active products when not viewing archived
-				params.is_active = 'true';
-			}
-
-			// If we have a modifier context, we need to include all modifiers to see conditional ones
-			if (modifierContext) {
-				params.include_all_modifiers = true;
-			}
-
-			const response = await getProducts(params);
-			const fetchedProducts = response.data?.results || response.data || [];
-			setAllProducts(fetchedProducts); // Store complete list
-			applyFilters(fetchedProducts);
-			setError(null);
-		} catch (err) {
-			setError("Failed to fetch products.");
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
 
 	const fetchParentCategories = async () => {
 		try {
@@ -180,10 +180,9 @@ export const ProductsPage = () => {
 	};
 
 	useEffect(() => {
-		fetchProducts(showArchivedProducts);
 		fetchParentCategories();
 		fetchProductTypes();
-	}, [modifierContext, showArchivedProducts]);
+	}, []);
 
 	// Handle URL parameters for modifier filtering
 	useEffect(() => {
@@ -211,89 +210,6 @@ export const ProductsPage = () => {
 			fetchChildCategories(selectedParentCategory);
 		}
 	}, [selectedParentCategory]);
-
-	const applyFilters = (allProductsToFilter: any) => {
-		let filtered = allProductsToFilter;
-
-		if (filters.search) {
-			const searchLower = filters.search.toLowerCase();
-			filtered = filtered.filter(
-				(product: any) =>
-					product.name.toLowerCase().includes(searchLower) ||
-					(product.description &&
-						product.description.toLowerCase().includes(searchLower)) ||
-					(product.barcode &&
-						product.barcode.toLowerCase().includes(searchLower))
-			);
-		}
-
-		// Category filtering logic
-		if (
-			selectedChildCategory &&
-			selectedChildCategory !== "all" &&
-			selectedChildCategory !== "parent-only"
-		) {
-			// Show products from specific child category
-			filtered = filtered.filter((product: any) => {
-				const category = product.category;
-				return category && category.id === parseInt(selectedChildCategory);
-			});
-		} else if (
-			selectedChildCategory === "parent-only" &&
-			selectedParentCategory &&
-			selectedParentCategory !== "all"
-		) {
-			// Show only products directly assigned to the parent category
-			filtered = filtered.filter((product: any) => {
-				const category = product.category;
-				return category && category.id === parseInt(selectedParentCategory);
-			});
-		} else if (selectedParentCategory === "uncategorized") {
-			// Show only uncategorized products
-			filtered = filtered.filter((product: any) => {
-				return !product.category || product.is_uncategorized;
-			});
-		} else if (selectedParentCategory && selectedParentCategory !== "all") {
-			// Show all products under parent category (including child categories) - "All Subcategories"
-			filtered = filtered.filter((product: any) => {
-				const category = product.category;
-				if (!category) return false;
-				if (category.id === parseInt(selectedParentCategory)) return true;
-
-				const parentId = category.parent_id ?? category.parent?.id;
-				return parentId === parseInt(selectedParentCategory);
-			});
-		}
-
-		// Modifier filtering logic - filter by products that use this modifier set
-		if (modifierContext && modifierContext.id) {
-			filtered = filtered.filter((product: any) => {
-				return product.modifier_groups && product.modifier_groups.some((group: any) =>
-					group.id == modifierContext.id
-				);
-			});
-		}
-
-		// Product type filtering logic
-		if (selectedProductType && selectedProductType !== "all") {
-			filtered = filtered.filter((product: any) => {
-				return product.product_type && product.product_type.id === parseInt(selectedProductType);
-			});
-		}
-
-		setProducts(filtered);
-	};
-
-	useEffect(() => {
-		applyFilters(allProducts);
-	}, [selectedParentCategory, selectedChildCategory, selectedProductType, allProducts, modifierContext]);
-
-	useEffect(() => {
-		const timeoutId = setTimeout(() => {
-			applyFilters(allProducts);
-		}, 300);
-		return () => clearTimeout(timeoutId);
-	}, [filters.search, allProducts]);
 
 	// Global barcode listener
 	useEffect(() => {
@@ -351,11 +267,6 @@ export const ProductsPage = () => {
 		isProductTypeDialogOpen,
 	]);
 
-	const handleSearchChange = (e: any) => {
-		const value = e.target.value;
-		setFilters((prev) => ({ ...prev, search: value }));
-	};
-
 	const handleClearModifierFilter = () => {
 		// Clear URL params to show all products
 		setSearchParams({});
@@ -381,7 +292,7 @@ export const ProductsPage = () => {
 					description: "Product restored successfully.",
 				});
 			}
-			fetchProducts(showArchivedProducts);
+			refetch();
 		} catch (err) {
 			toast({
 				title: "Error",
@@ -403,7 +314,7 @@ export const ProductsPage = () => {
 	};
 
 	const handleProductFormSuccess = () => {
-		fetchProducts(showArchivedProducts);
+		refetch();
 		fetchParentCategories(); // Refresh categories in case they were updated
 	};
 
@@ -420,7 +331,7 @@ export const ProductsPage = () => {
 		// Only refresh if data was actually modified
 		if (dataChanged) {
 			fetchParentCategories();
-			fetchProducts(showArchivedProducts);
+			refetch();
 		}
 	};
 
@@ -428,7 +339,7 @@ export const ProductsPage = () => {
 		setIsProductTypeDialogOpen(false);
 		// Only refresh if data was actually modified
 		if (dataChanged) {
-			fetchProducts(showArchivedProducts);
+			refetch();
 		}
 	};
 
@@ -754,7 +665,7 @@ export const ProductsPage = () => {
 				pageActions={headerActions}
 				title="Filters & Search"
 				searchPlaceholder="Search products by name or description..."
-				searchValue={filters.search}
+				searchValue={searchInput}
 				onSearchChange={handleSearchChange}
 				filterControls={filterControls}
 				error={error}
@@ -765,7 +676,7 @@ export const ProductsPage = () => {
 						selectedProductIds={selectedProductIds}
 						onClear={handleClearSelection}
 						onSuccess={() => {
-							fetchProducts(showArchivedProducts);
+							refetch();
 							setSelectedProductIds([]);
 						}}
 						categories={parentCategories}
@@ -792,6 +703,15 @@ export const ProductsPage = () => {
 					itemIdKey="id"
 					colSpan={7}
 					className="border-0"
+				/>
+
+				<PaginationControls
+					prevUrl={prevUrl}
+					nextUrl={nextUrl}
+					onNavigate={handleNavigate}
+					count={count}
+					currentPage={currentPage}
+					pageSize={25}
 				/>
 			</DomainPageLayout>
 

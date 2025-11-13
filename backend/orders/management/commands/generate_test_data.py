@@ -334,7 +334,9 @@ class Command(BaseCommand):
         self.stdout.write(f"After recalculation: subtotal={order.subtotal}, grand_total={order.grand_total}")
 
         # Complete the order (change status from PENDING to COMPLETED)
+        from django.utils import timezone
         order.status = Order.OrderStatus.COMPLETED
+        order.completed_at = timezone.now()
         order.save()
 
         # Create payment

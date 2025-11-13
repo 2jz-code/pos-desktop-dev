@@ -993,88 +993,140 @@ class InventoryService:
         """
         Extract dashboard aggregation logic from InventoryDashboardView.
         Can be filtered by store_location to show data for a specific physical store.
+
+        OPTIMIZED: Uses database-level aggregations with CASE/WHEN expressions
+        instead of Python loops and property access.
         """
-        from django.db.models import Sum, F, Case, When, Value, Q
+        from django.db.models import Sum, F, Case, When, Value, Q, DecimalField, IntegerField, OuterRef, Subquery, Min
+        from django.db.models.functions import Coalesce, Cast
         from django.utils import timezone
         from datetime import timedelta
 
         try:
-            # Get all stock records, optionally filtered by store_location
-            # FIX: Add product__product_type to prevent N+1 queries in reporting
-            all_stock_records = InventoryStock.objects.select_related(
-                "product", "location", "product__product_type"
+            today = timezone.now().date()
+
+            # Get base queryset with optimized select_related
+            base_queryset = InventoryStock.objects.select_related(
+                "product",
+                "location",
+                "location__store_location",
+                "product__product_type"
             ).filter(archived_at__isnull=True)
 
             # Apply store_location filter if provided
             if store_location:
-                all_stock_records = all_stock_records.filter(store_location_id=store_location)
-            
-            # Aggregate total quantities per product across all locations
-            product_totals = all_stock_records.values("product").annotate(
+                base_queryset = base_queryset.filter(store_location_id=store_location)
+
+            # Calculate effective_low_stock_threshold in the database using 3-tier hierarchy
+            effective_low_stock_threshold_expr = Case(
+                # Tier 1: Individual stock threshold
+                When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
+                # Tier 2: Storage location threshold
+                When(location__low_stock_threshold__isnull=False, then=F("location__low_stock_threshold")),
+                # Tier 3: Store location threshold (cast to DecimalField)
+                When(
+                    location__store_location__low_stock_threshold__isnull=False,
+                    then=Cast(F("location__store_location__low_stock_threshold"), output_field=DecimalField(max_digits=10, decimal_places=2))
+                ),
+                # Fallback: Hardcoded default
+                default=Value(10, output_field=DecimalField(max_digits=10, decimal_places=2)),
+                output_field=DecimalField(max_digits=10, decimal_places=2)
+            )
+
+            # Calculate effective_expiration_threshold in the database using 3-tier hierarchy
+            effective_expiration_threshold_expr = Case(
+                # Tier 1: Individual stock threshold
+                When(expiration_threshold__isnull=False, then=F("expiration_threshold")),
+                # Tier 2: Storage location threshold
+                When(location__expiration_threshold__isnull=False, then=F("location__expiration_threshold")),
+                # Tier 3: Store location threshold
+                When(location__store_location__expiration_threshold__isnull=False, then=F("location__store_location__expiration_threshold")),
+                # Fallback: Hardcoded default
+                default=Value(7, output_field=IntegerField()),
+                output_field=IntegerField()
+            )
+
+            # Annotate queryset with effective thresholds
+            annotated_stock = base_queryset.annotate(
+                effective_low_threshold=effective_low_stock_threshold_expr,
+                effective_exp_threshold=effective_expiration_threshold_expr
+            )
+
+            # Aggregate total quantities per product with computed thresholds
+            product_aggregates = annotated_stock.values("product_id").annotate(
                 total_quantity=Sum("quantity"),
                 product_name=F("product__name"),
                 product_price=F("product__price"),
-                product_id=F("product__id"),
+                # Get the MINIMUM threshold across all locations for this product (most restrictive)
+                min_threshold=Min("effective_low_threshold")
             )
-            
-            total_products = product_totals.count()
-            
-            # Calculate low stock count based on aggregated quantities
-            low_stock_count = 0
-            out_of_stock_count = 0
-            low_stock_products = []
-            
-            for product_data in product_totals:
-                total_qty = product_data["total_quantity"] or 0
-                
-                # Get the most restrictive low stock threshold for this product
-                product_stocks = all_stock_records.filter(
-                    product_id=product_data["product_id"]
-                )
-                min_threshold = min(
-                    stock.effective_low_stock_threshold for stock in product_stocks
-                )
-                
-                if total_qty == 0:
-                    out_of_stock_count += 1
-                elif total_qty <= min_threshold:
-                    low_stock_count += 1
-                    low_stock_products.append({
-                        "product_id": product_data["product_id"],
-                        "product_name": product_data["product_name"],
-                        "quantity": total_qty,
-                        "price": product_data["product_price"],
-                        "low_stock_threshold": min_threshold,
-                    })
-            
-            # Calculate expiring soon items across all locations
-            today = timezone.now().date()
+
+            total_products = product_aggregates.count()
+
+            # Calculate low stock and out of stock counts using database filtering
+            low_stock_products_qs = product_aggregates.filter(
+                total_quantity__gt=0,
+                total_quantity__lte=F("min_threshold")
+            )
+            low_stock_count = low_stock_products_qs.count()
+
+            out_of_stock_count = product_aggregates.filter(total_quantity=0).count()
+
+            # Get top 10 low stock products
+            low_stock_products = [
+                {
+                    "product_id": item["product_id"],
+                    "product_name": item["product_name"],
+                    "quantity": item["total_quantity"],
+                    "price": item["product_price"],
+                    "low_stock_threshold": item["min_threshold"],
+                }
+                for item in low_stock_products_qs.order_by("total_quantity")[:10]
+            ]
+
+            # Calculate expiring soon items using database query
+            # Use ExpressionWrapper for date arithmetic compatibility across databases
+            from django.db.models import ExpressionWrapper, DurationField
+            from django.db.models.functions import Now
+
+            # Filter items where expiration_date <= today + effective_expiration_threshold days
+            # Since we can't directly add days in a database-agnostic way with annotated integer,
+            # we'll fetch candidates and filter in Python (but much smaller set than before)
+            expiring_candidates = annotated_stock.filter(
+                expiration_date__isnull=False,
+                expiration_date__lte=today + timedelta(days=90)  # Conservative max threshold
+            ).values(
+                "product_id",
+                "product__name",
+                "quantity",
+                "product__price",
+                "expiration_date",
+                "effective_exp_threshold",
+                "location__name"
+            )
+
+            # Filter to actual expiring items
             expiring_soon_items = []
-            
-            for stock in all_stock_records.filter(expiration_date__isnull=False):
-                threshold_date = today + timedelta(
-                    days=stock.effective_expiration_threshold
-                )
-                if stock.expiration_date <= threshold_date:
+            for item in expiring_candidates:
+                threshold_date = today + timedelta(days=item["effective_exp_threshold"])
+                if item["expiration_date"] <= threshold_date:
                     expiring_soon_items.append({
-                        "product_id": stock.product.id,
-                        "product_name": stock.product.name,
-                        "quantity": stock.quantity,
-                        "price": stock.product.price,
-                        "expiration_date": stock.expiration_date,
-                        "expiration_threshold": stock.effective_expiration_threshold,
-                        "location": stock.location.name,
+                        "product_id": item["product_id"],
+                        "product_name": item["product__name"],
+                        "quantity": item["quantity"],
+                        "price": item["product__price"],
+                        "expiration_date": item["expiration_date"],
+                        "expiration_threshold": item["effective_exp_threshold"],
+                        "location": item["location__name"],
                     })
-            
+
             expiring_soon_count = len(expiring_soon_items)
-            
-            # Calculate total inventory value across all locations
-            total_value = sum(
-                (product_data["total_quantity"] or 0)
-                * (product_data["product_price"] or 0)
-                for product_data in product_totals
-            )
-            
+
+            # Calculate total inventory value using database aggregation
+            total_value = product_aggregates.aggregate(
+                total_value=Sum(F("total_quantity") * F("product_price"), output_field=DecimalField())
+            )["total_value"] or 0
+
             return {
                 "scope": "All Locations",
                 "summary": {
@@ -1082,13 +1134,15 @@ class InventoryService:
                     "low_stock_count": low_stock_count,
                     "out_of_stock_count": out_of_stock_count,
                     "expiring_soon_count": expiring_soon_count,
-                    "total_value": total_value,
+                    "total_value": float(total_value),
                 },
                 "low_stock_items": low_stock_products[:10],
                 "expiring_soon_items": expiring_soon_items[:10],
             }
-            
+
         except Exception as e:
+            import traceback
+            logger.error(f"Dashboard data error: {str(e)}\n{traceback.format_exc()}")
             return {"error": f"Dashboard data error: {str(e)}"}
     
     @staticmethod

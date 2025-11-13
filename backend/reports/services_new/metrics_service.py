@@ -60,7 +60,7 @@ class BusinessMetricsService(BaseReportService):
 
             # Monthly performance
             monthly_orders = Order.objects.filter(
-                created_at__gte=thirty_days_ago, 
+                completed_at__gte=thirty_days_ago, 
                 status=Order.OrderStatus.COMPLETED
             )
 
@@ -70,7 +70,7 @@ class BusinessMetricsService(BaseReportService):
 
             # Weekly performance
             weekly_orders = Order.objects.filter(
-                created_at__gte=seven_days_ago, 
+                completed_at__gte=seven_days_ago, 
                 status=Order.OrderStatus.COMPLETED
             )
 
@@ -81,7 +81,7 @@ class BusinessMetricsService(BaseReportService):
             # Daily performance
             today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
             daily_orders = Order.objects.filter(
-                created_at__gte=today_start, 
+                completed_at__gte=today_start, 
                 status=Order.OrderStatus.COMPLETED
             )
 
@@ -105,7 +105,7 @@ class BusinessMetricsService(BaseReportService):
             # Product performance
             top_selling_product = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__gte=thirty_days_ago
+                order__completed_at__gte=thirty_days_ago
             ).values("product__name").annotate(
                 total_quantity=Sum("quantity")
             ).order_by("-total_quantity").first()
@@ -162,7 +162,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Today's metrics
             today_orders = Order.objects.filter(
-                created_at__gte=today_start,
+                completed_at__gte=today_start,
                 status=Order.OrderStatus.COMPLETED
             )
             
@@ -174,7 +174,7 @@ class BusinessMetricsService(BaseReportService):
             # This hour's metrics
             hour_start = now.replace(minute=0, second=0, microsecond=0)
             hour_orders = Order.objects.filter(
-                created_at__gte=hour_start,
+                completed_at__gte=hour_start,
                 status=Order.OrderStatus.COMPLETED
             )
             
@@ -187,8 +187,8 @@ class BusinessMetricsService(BaseReportService):
             yesterday_start = today_start - timedelta(days=1)
             yesterday_end = today_start
             yesterday_orders = Order.objects.filter(
-                created_at__gte=yesterday_start,
-                created_at__lt=yesterday_end,
+                completed_at__gte=yesterday_start,
+                completed_at__lt=yesterday_end,
                 status=Order.OrderStatus.COMPLETED
             )
             
@@ -239,7 +239,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Payment method breakdown
             payment_methods = PaymentTransaction.objects.filter(
-                created_at__gte=thirty_days_ago,
+                completed_at__gte=thirty_days_ago,
                 status='completed'
             ).values('method').annotate(
                 total_amount=Sum('amount'),
@@ -249,11 +249,11 @@ class BusinessMetricsService(BaseReportService):
             
             # Payment success rate
             total_transactions = PaymentTransaction.objects.filter(
-                created_at__gte=thirty_days_ago
+                completed_at__gte=thirty_days_ago
             ).count()
             
             successful_transactions = PaymentTransaction.objects.filter(
-                created_at__gte=thirty_days_ago,
+                completed_at__gte=thirty_days_ago,
                 status='completed'
             ).count()
             
@@ -261,7 +261,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Tips analysis
             tips_analysis = PaymentTransaction.objects.filter(
-                created_at__gte=thirty_days_ago,
+                completed_at__gte=thirty_days_ago,
                 status='completed',
                 tip__gt=0
             ).aggregate(
@@ -273,10 +273,10 @@ class BusinessMetricsService(BaseReportService):
             # Daily payment trends (last 7 days)
             seven_days_ago = timezone.now() - timedelta(days=7)
             daily_trends = PaymentTransaction.objects.filter(
-                created_at__gte=seven_days_ago,
+                completed_at__gte=seven_days_ago,
                 status='completed'
             ).extra(
-                {'date': "DATE(created_at)"}
+                {'date': "DATE(completed_at)"}
             ).values('date').annotate(
                 total_amount=Sum('amount'),
                 transaction_count=Count('id')
@@ -333,7 +333,7 @@ class BusinessMetricsService(BaseReportService):
             # Top performing products
             top_products = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__gte=thirty_days_ago
+                order__completed_at__gte=thirty_days_ago
             ).values(
                 'product__name',
                 'product__category__name'
@@ -350,7 +350,7 @@ class BusinessMetricsService(BaseReportService):
             # Category performance
             category_performance = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__gte=thirty_days_ago
+                order__completed_at__gte=thirty_days_ago
             ).values('product__category__name').annotate(
                 total_revenue=Sum(
                     ExpressionWrapper(
@@ -365,7 +365,7 @@ class BusinessMetricsService(BaseReportService):
             # Low performing products (bottom 20%)
             all_products_revenue = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__gte=thirty_days_ago
+                order__completed_at__gte=thirty_days_ago
             ).values('product__name').annotate(
                 total_revenue=Sum(
                     ExpressionWrapper(
@@ -382,7 +382,7 @@ class BusinessMetricsService(BaseReportService):
             # Product velocity (sales per day)
             product_velocity = OrderItem.objects.filter(
                 order__status=Order.OrderStatus.COMPLETED,
-                order__created_at__gte=thirty_days_ago
+                order__completed_at__gte=thirty_days_ago
             ).values('product__name').annotate(
                 total_quantity=Sum('quantity'),
                 daily_avg=ExpressionWrapper(
@@ -453,7 +453,7 @@ class BusinessMetricsService(BaseReportService):
             # Order processing times (from creation to completion)
             completed_orders = Order.objects.filter(
                 status=Order.OrderStatus.COMPLETED,
-                created_at__gte=seven_days_ago
+                completed_at__gte=seven_days_ago
             ).annotate(
                 processing_time=ExpressionWrapper(
                     F('updated_at') - F('created_at'),
@@ -467,14 +467,14 @@ class BusinessMetricsService(BaseReportService):
             
             # Order status distribution
             order_statuses = Order.objects.filter(
-                created_at__gte=today_start
+                completed_at__gte=today_start
             ).values('status').annotate(
                 count=Count('id')
             ).order_by('status')
             
             # Peak hours analysis
             hourly_orders = Order.objects.filter(
-                created_at__gte=seven_days_ago,
+                completed_at__gte=seven_days_ago,
                 status=Order.OrderStatus.COMPLETED
             ).extra(
                 {'hour': 'EXTRACT(hour FROM created_at)'}
@@ -485,7 +485,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Staff performance (orders handled per staff member)
             staff_performance = Order.objects.filter(
-                created_at__gte=seven_days_ago,
+                completed_at__gte=seven_days_ago,
                 status=Order.OrderStatus.COMPLETED,
                 cashier__isnull=False
             ).values(
@@ -499,7 +499,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Order type distribution
             order_types = Order.objects.filter(
-                created_at__gte=seven_days_ago
+                completed_at__gte=seven_days_ago
             ).values('order_type').annotate(
                 count=Count('id'),
                 total_revenue=Sum('grand_total')
@@ -569,8 +569,8 @@ class BusinessMetricsService(BaseReportService):
             
             # Recent activity (last 24 hours)
             last_24_hours = timezone.now() - timedelta(hours=24)
-            recent_orders = Order.objects.filter(created_at__gte=last_24_hours).count()
-            recent_transactions = PaymentTransaction.objects.filter(created_at__gte=last_24_hours).count()
+            recent_orders = Order.objects.filter(completed_at__gte=last_24_hours).count()
+            recent_transactions = PaymentTransaction.objects.filter(completed_at__gte=last_24_hours).count()
             
             # Cache performance (if using Redis/Memcached)
             try:
@@ -584,12 +584,12 @@ class BusinessMetricsService(BaseReportService):
             previous_30_days = now - timedelta(days=60)
             
             current_period_orders = Order.objects.filter(
-                created_at__gte=last_30_days
+                completed_at__gte=last_30_days
             ).count()
             
             previous_period_orders = Order.objects.filter(
-                created_at__gte=previous_30_days,
-                created_at__lt=last_30_days
+                completed_at__gte=previous_30_days,
+                completed_at__lt=last_30_days
             ).count()
             
             order_growth = 0
@@ -650,7 +650,7 @@ class BusinessMetricsService(BaseReportService):
             
             # Monthly revenue trends
             monthly_trends = Order.objects.filter(
-                created_at__gte=start_date,
+                completed_at__gte=start_date,
                 status=Order.OrderStatus.COMPLETED
             ).extra(
                 {'month': "DATE_FORMAT(created_at, '%%Y-%%m')"}
@@ -663,7 +663,7 @@ class BusinessMetricsService(BaseReportService):
             # Weekly trends (last 12 weeks)
             twelve_weeks_ago = end_date - timedelta(weeks=12)
             weekly_trends = Order.objects.filter(
-                created_at__gte=twelve_weeks_ago,
+                completed_at__gte=twelve_weeks_ago,
                 status=Order.OrderStatus.COMPLETED
             ).extra(
                 {'week': "DATE_FORMAT(created_at, '%%Y-%%u')"}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,8 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 	const [searchTerm, setSearchTerm] = useState("");
 	const { toast } = useToast();
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || "";
 
 	useEffect(() => {
 		if (modifierSets.length > 0) {
@@ -146,7 +149,11 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 
 	const getUsageLevel = (productCount: number): UsageLevel => {
 		if (productCount === 0)
-			return { level: "unused", color: "text-destructive", icon: AlertTriangle };
+			return {
+				level: "unused",
+				color: "text-destructive",
+				icon: AlertTriangle,
+			};
 		if (productCount <= 3)
 			return { level: "low", color: "text-warning", icon: TrendingUp };
 		if (productCount <= 10)
@@ -198,8 +205,12 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-foreground">{totalModifierSets}</div>
-						<p className="text-xs text-muted-foreground mt-1">Across all products</p>
+						<div className="text-3xl font-bold text-foreground">
+							{totalModifierSets}
+						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Across all products
+						</p>
 					</CardContent>
 				</Card>
 
@@ -213,7 +224,9 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-destructive">{unusedSets}</div>
+						<div className="text-3xl font-bold text-destructive">
+							{unusedSets}
+						</div>
 						{totalModifierSets > 0 && (
 							<p className="text-xs text-muted-foreground mt-1">
 								{((unusedSets / totalModifierSets) * 100).toFixed(1)}% of total
@@ -232,8 +245,12 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-foreground">{averageProductsPerSet}</div>
-						<p className="text-xs text-muted-foreground mt-1">Products per set</p>
+						<div className="text-3xl font-bold text-foreground">
+							{averageProductsPerSet}
+						</div>
+						<p className="text-xs text-muted-foreground mt-1">
+							Products per set
+						</p>
 					</CardContent>
 				</Card>
 
@@ -250,7 +267,9 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 						<div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
 							{totalModifierSets - unusedSets}
 						</div>
-						<p className="text-xs text-muted-foreground mt-1">Currently in use</p>
+						<p className="text-xs text-muted-foreground mt-1">
+							Currently in use
+						</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -268,7 +287,8 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 									Unused Modifier Sets
 								</CardTitle>
 								<CardDescription className="text-orange-700 dark:text-orange-300 text-sm mt-1">
-									{unusedSets} modifier set{unusedSets !== 1 ? "s" : ""} not being used by any products
+									{unusedSets} modifier set{unusedSets !== 1 ? "s" : ""} not
+									being used by any products
 								</CardDescription>
 							</div>
 						</div>
@@ -331,140 +351,150 @@ const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ modifierSets }) => {
 					) : (
 						<div className="max-h-[600px] overflow-auto">
 							<Table>
-									<TableHeader className="sticky top-0 bg-white z-10 border-b">
+								<TableHeader className="sticky top-0 bg-white z-10 border-b">
+									<TableRow>
+										<TableHead>Modifier Set</TableHead>
+										<TableHead>Type</TableHead>
+										<TableHead>Options</TableHead>
+										<TableHead>Products Using</TableHead>
+										<TableHead>Usage Level</TableHead>
+										<TableHead>Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{filteredAnalytics.length === 0 ? (
 										<TableRow>
-											<TableHead>Modifier Set</TableHead>
-											<TableHead>Type</TableHead>
-											<TableHead>Options</TableHead>
-											<TableHead>Products Using</TableHead>
-											<TableHead>Usage Level</TableHead>
-											<TableHead>Actions</TableHead>
+											<TableCell
+												colSpan={6}
+												className="text-center py-12 text-muted-foreground"
+											>
+												{searchTerm
+													? "No modifier sets match your search"
+													: "No modifier sets available"}
+											</TableCell>
 										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{filteredAnalytics.length === 0 ? (
-											<TableRow>
-												<TableCell
-													colSpan={6}
-													className="text-center py-12 text-muted-foreground"
-												>
-													{searchTerm
-														? "No modifier sets match your search"
-														: "No modifier sets available"}
-												</TableCell>
-											</TableRow>
-										) : (
-											filteredAnalytics.map((item) => {
-												const { color, icon: Icon } = getUsageLevel(
-													item.product_count
-												);
-												const statusDotColor = item.product_count > 0 ? "bg-emerald-500" : "bg-gray-400";
+									) : (
+										filteredAnalytics.map((item) => {
+											const { color, icon: Icon } = getUsageLevel(
+												item.product_count
+											);
+											const statusDotColor =
+												item.product_count > 0
+													? "bg-emerald-500"
+													: "bg-gray-400";
 
-												return (
-													<TableRow key={item.id} className="hover:bg-muted/50">
-														<TableCell className="py-3">
-															<div className="flex items-center gap-2">
-																<div className={`h-2 w-2 rounded-full ${statusDotColor} flex-shrink-0`} />
-																<div className="min-w-0">
-																	<div className="font-semibold text-foreground">
-																		{item.name}
-																	</div>
-																	<div className="text-xs text-muted-foreground font-mono truncate">
-																		{item.internal_name}
-																	</div>
+											return (
+												<TableRow
+													key={item.id}
+													className="hover:bg-muted/50"
+												>
+													<TableCell className="py-3">
+														<div className="flex items-center gap-2">
+															<div
+																className={`h-2 w-2 rounded-full ${statusDotColor} flex-shrink-0`}
+															/>
+															<div className="min-w-0">
+																<div className="font-semibold text-foreground">
+																	{item.name}
+																</div>
+																<div className="text-xs text-muted-foreground font-mono truncate">
+																	{item.internal_name}
 																</div>
 															</div>
-														</TableCell>
-														<TableCell className="py-3">
-															<Badge variant="outline" className="font-normal">
-																<span className="mr-1.5">
-																	{item.selection_type === "SINGLE" ? "○" : "☑"}
-																</span>
-																{item.selection_type === "SINGLE"
-																	? "Single"
-																	: "Multiple"}
-																{item.min_selections > 0 && " • Required"}
-															</Badge>
-														</TableCell>
-														<TableCell className="py-3">
-															<div className="flex items-center gap-2">
-																<span className="font-semibold text-foreground">
-																	{item.options?.length || 0}
-																</span>
-																{item.options && item.options.length > 0 && (
-																	<div className="flex gap-1 ml-1">
-																		{item.options
-																			.slice(0, 2)
-																			.map((option, idx) => (
-																				<Badge
-																					key={idx}
-																					variant="secondary"
-																					className="text-xs font-normal"
-																				>
-																					{option.name}
-																				</Badge>
-																			))}
-																		{item.options.length > 2 && (
+														</div>
+													</TableCell>
+													<TableCell className="py-3">
+														<Badge
+															variant="outline"
+															className="font-normal"
+														>
+															<span className="mr-1.5">
+																{item.selection_type === "SINGLE" ? "○" : "☑"}
+															</span>
+															{item.selection_type === "SINGLE"
+																? "Single"
+																: "Multiple"}
+															{item.min_selections > 0 && " • Required"}
+														</Badge>
+													</TableCell>
+													<TableCell className="py-3">
+														<div className="flex items-center gap-2">
+															<span className="font-semibold text-foreground">
+																{item.options?.length || 0}
+															</span>
+															{item.options && item.options.length > 0 && (
+																<div className="flex gap-1 ml-1">
+																	{item.options
+																		.slice(0, 2)
+																		.map((option, idx) => (
 																			<Badge
-																				variant="outline"
-																				className="text-xs"
+																				key={idx}
+																				variant="secondary"
+																				className="text-xs font-normal"
 																			>
-																				+{item.options.length - 2}
+																				{option.name}
 																			</Badge>
-																		)}
-																	</div>
-																)}
-															</div>
-														</TableCell>
-														<TableCell className="py-3">
-															<div className="flex items-center gap-2">
-																<Icon className={`h-4 w-4 ${color} flex-shrink-0`} />
-																<span className="font-semibold text-foreground text-lg">
-																	{item.product_count}
-																</span>
-																<span className="text-xs text-muted-foreground">
-																	product{item.product_count !== 1 ? 's' : ''}
-																</span>
-															</div>
-														</TableCell>
-														<TableCell className="py-3">
-															{getUsageBadge(item.product_count)}
-														</TableCell>
-														<TableCell className="py-3">
-															<Button
-																variant="outline"
-																size="sm"
-																onClick={() => {
-																	if (
-																		item.products &&
-																		item.products.length > 0
-																	) {
-																		// Navigate to products page with modifier filter
-																		navigate(
-																			`/products?modifier=${
-																				item.id
-																			}&modifierName=${encodeURIComponent(
-																				item.name
-																			)}&from=modifiers`
-																		);
-																	} else {
-																		toast({
-																			title: "No Products Found",
-																			description: `No products are currently using "${item.name}".`,
-																			variant: "destructive",
-																		});
-																	}
-																}}
-															>
-																<Eye className="h-3.5 w-3.5 mr-1.5" />
-																View
-															</Button>
-														</TableCell>
-													</TableRow>
-												);
-											})
-										)}
-									</TableBody>
+																		))}
+																	{item.options.length > 2 && (
+																		<Badge
+																			variant="outline"
+																			className="text-xs"
+																		>
+																			+{item.options.length - 2}
+																		</Badge>
+																	)}
+																</div>
+															)}
+														</div>
+													</TableCell>
+													<TableCell className="py-3">
+														<div className="flex items-center gap-2">
+															<Icon
+																className={`h-4 w-4 ${color} flex-shrink-0`}
+															/>
+															<span className="font-semibold text-foreground text-lg">
+																{item.product_count}
+															</span>
+															<span className="text-xs text-muted-foreground">
+																product{item.product_count !== 1 ? "s" : ""}
+															</span>
+														</div>
+													</TableCell>
+													<TableCell className="py-3">
+														{getUsageBadge(item.product_count)}
+													</TableCell>
+													<TableCell className="py-3">
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => {
+																if (item.products && item.products.length > 0) {
+																	// Navigate to products page with modifier filter
+																	navigate(
+																		`/${tenantSlug}/products?modifier=${
+																			item.id
+																		}&modifierName=${encodeURIComponent(
+																			item.name
+																		)}&from=modifiers`
+																	);
+																} else {
+																	toast({
+																		title: "No Products Found",
+																		description: `No products are currently using "${item.name}".`,
+																		variant: "destructive",
+																	});
+																}
+															}}
+														>
+															<Eye className="h-3.5 w-3.5 mr-1.5" />
+															View
+														</Button>
+													</TableCell>
+												</TableRow>
+											);
+										})
+									)}
+								</TableBody>
 							</Table>
 						</div>
 					)}

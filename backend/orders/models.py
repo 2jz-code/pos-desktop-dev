@@ -174,6 +174,13 @@ class Order(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(default=timezone.now, editable=False)
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        db_index=True,
+        help_text="Timestamp when order was marked as COMPLETED. Use this for daily reports and revenue tracking."
+    )
 
     # Email tracking
     confirmation_sent = models.BooleanField(

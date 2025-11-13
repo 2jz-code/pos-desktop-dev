@@ -240,8 +240,8 @@ const PaymentsPage = () => {
 	];
 
 	const renderPaymentRow = (payment) => {
-		const transactionCount = payment.transactions?.length || 0;
-		const method = getPaymentMethod(payment.transactions);
+		const transactionCount = payment.transaction_count || 0;
+		const method = payment.primary_method || "N/A";
 
 		return (
 			<>
@@ -260,7 +260,7 @@ const PaymentsPage = () => {
 				{/* Order Link */}
 				<TableCell className="py-3">
 					<span className="font-mono text-sm text-foreground font-medium">
-						{payment.order ? `#${payment.order_number}` : "N/A"}
+						{payment.order_number ? `#${payment.order_number}` : "N/A"}
 					</span>
 				</TableCell>
 
@@ -268,7 +268,7 @@ const PaymentsPage = () => {
 				{!selectedLocationId && locations.length > 1 && (
 					<TableCell className="py-3">
 						<span className="text-sm text-foreground font-medium">
-							{getLocationName(payment.order?.store_location)}
+							{getLocationName(payment.store_location)}
 						</span>
 					</TableCell>
 				)}

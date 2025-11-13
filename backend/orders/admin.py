@@ -71,6 +71,7 @@ class OrderAdmin(TenantAdminMixin, admin.ModelAdmin):
         "get_total_collected_formatted",
         "get_payment_in_progress_display",  # NEW: Use derived property
         "created_at",
+        "completed_at",  # NEW: Show completion timestamp
     )
 
     # Make order_number the clickable link
@@ -92,6 +93,7 @@ class OrderAdmin(TenantAdminMixin, admin.ModelAdmin):
         "order_type",
         "dining_preference",
         "created_at",
+        "completed_at",  # NEW: Filter by completion date
         "cashier",
     )
 
@@ -164,10 +166,24 @@ class OrderAdmin(TenantAdminMixin, admin.ModelAdmin):
         return tuple(readonly)
 
     def get_queryset(self, request):
-        """Show all tenants in Django admin with optimized queries"""
-        return Order.all_objects.select_related(
+        """
+        Show all tenants in Django admin with optimized queries.
+        Orders by completed_at (desc) for completed orders, then created_at (desc) for others.
+        """
+        from django.db.models import Case, When, F
+
+        qs = Order.all_objects.select_related(
             "tenant", "customer", "cashier", "payment_details"
         )
+
+        # Smart ordering: Use completed_at for COMPLETED orders, created_at for others
+        # This ensures today's completed orders appear at the top, not yesterday's pending orders
+        return qs.annotate(
+            sort_date=Case(
+                When(status='COMPLETED', then=F('completed_at')),
+                default=F('created_at'),
+            )
+        ).order_by('-sort_date', 'order_number')
 
     # --- ADD THIS METHOD ---
     @admin.display(description="Customer")
