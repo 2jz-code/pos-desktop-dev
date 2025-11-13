@@ -30,6 +30,7 @@ export const useCartQuery = () => {
 		staleTime: 1000 * 30, // 30 seconds
 		cacheTime: 1000 * 60 * 5, // 5 minutes
 		refetchOnWindowFocus: true,
+		refetchOnMount: false, // ← CRITICAL: Prevent refetch on navigation after checkout
 		retry: (failureCount) => {
 			// Don't retry if checkout is completed
 			if (checkoutCompleted) return false;

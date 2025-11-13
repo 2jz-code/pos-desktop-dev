@@ -397,7 +397,9 @@ export const useCheckout = (initialStep = 0) => {
 
 				// Clear cart and navigate with order ID
 				setCheckoutCompleted(true);
-				queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
+				// Remove cart queries instead of invalidating to prevent refetch
+			// (which would create a new cart and overwrite session guest_id)
+			queryClient.removeQueries({ queryKey: cartKeys.all });
 
 				// Cache order data in sessionStorage for faster initial load
 				const orderId = completionResponse.order.id;
@@ -488,7 +490,9 @@ export const useCheckout = (initialStep = 0) => {
 
 					// Clear cart and navigate with order ID
 					setCheckoutCompleted(true);
-					queryClient.invalidateQueries({ queryKey: cartKeys.all }); // Invalidate all cart queries
+					// Remove cart queries instead of invalidating to prevent refetch
+			// (which would create a new cart and overwrite session guest_id)
+			queryClient.removeQueries({ queryKey: cartKeys.all });
 
 					// Cache order data in sessionStorage for faster initial load
 					sessionStorage.setItem(`order_${orderId}`, JSON.stringify(completionResponse.order));
