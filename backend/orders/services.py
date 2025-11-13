@@ -1006,8 +1006,12 @@ class GuestSessionService:
         Get or create a unique guest identifier for the session.
         Returns a guest_id that persists for the session.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not request.session.session_key:
             request.session.create()
+            logger.info(f"[GuestSessionService] Created new session: {request.session.session_key}")
 
         guest_id = request.session.get(GuestSessionService.GUEST_SESSION_KEY)
         if not guest_id:
@@ -1017,6 +1021,12 @@ class GuestSessionService:
             guest_id = f"guest_{uuid.uuid4().hex[:12]}"
             request.session[GuestSessionService.GUEST_SESSION_KEY] = guest_id
             request.session.modified = True
+            request.session.save()  # ← EXPLICITLY SAVE SESSION
+            logger.info(f"[GuestSessionService] Created NEW guest_id: {guest_id}, stored in session: {request.session.session_key}")
+            logger.info(f"[GuestSessionService] Session keys after storing guest_id: {list(request.session.keys())}")
+            logger.info(f"[GuestSessionService] Session saved to cache")
+        else:
+            logger.info(f"[GuestSessionService] Retrieved EXISTING guest_id: {guest_id} from session: {request.session.session_key}")
 
         return guest_id
 

@@ -42,16 +42,30 @@ class CustomerOrderViewSet(
     permission_classes = [permissions.IsAuthenticated]
     # pagination_class, filter_backends, ordering handled by ReadOnlyBaseViewSet
     ordering = ['-created_at']  # Override default ordering
+
+    def get_permissions(self):
+        """
+        Override permissions to allow guest users to retrieve their orders.
+        """
+        if self.action == 'retrieve':
+            # Allow guests to view their order confirmation pages
+            return [permissions.AllowAny()]
+        return super().get_permissions()
     
     def get_queryset(self):
         """
         Filter orders to only show those belonging to the authenticated customer.
+        For retrieve action, allows guest users (ownership verified in retrieve method).
         Uses customer ForeignKey to filter orders.
         """
-        customer = self.ensure_customer_authenticated()
-        
-        # Filter orders by customer ForeignKey - heavily optimized for performance
-        queryset = Order.objects.filter(customer=customer)
+        # For retrieve action with guest users, skip customer filtering
+        # (ownership will be verified in the retrieve method)
+        if self.action == 'retrieve' and (not self.request.user or not self.request.user.is_authenticated):
+            queryset = Order.objects.all()
+        else:
+            # For authenticated users, filter by customer
+            customer = self.ensure_customer_authenticated()
+            queryset = Order.objects.filter(customer=customer)
         
         # Always select payment_details, then add additional optimizations per view type
         queryset = queryset.select_related('cashier', 'customer', 'payment_details')
@@ -87,9 +101,59 @@ class CustomerOrderViewSet(
     
     @method_decorator(ratelimit(key='core_backend.utils.get_client_ip', rate='30/m', method='GET', block=True))
     def retrieve(self, request, *args, **kwargs):
-        """Retrieve specific customer order with rate limiting"""
-        # Ensure we use the optimized queryset for retrieve as well
+        """
+        Retrieve specific customer order with rate limiting.
+        Supports both authenticated users and guest users.
+        """
+        from orders.services import GuestSessionService
+        from rest_framework.exceptions import PermissionDenied
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Get the order instance
         instance = self.get_object()
+
+        # Debug logging
+        logger.info(f"=== ORDER RETRIEVE DEBUG ===")
+        logger.info(f"Order ID: {instance.id}")
+        logger.info(f"Order guest_id: {instance.guest_id}")
+        logger.info(f"Order customer: {instance.customer}")
+        logger.info(f"Request user: {request.user}")
+        logger.info(f"User authenticated: {request.user.is_authenticated if hasattr(request.user, 'is_authenticated') else False}")
+        logger.info(f"Has session: {hasattr(request, 'session')}")
+        logger.info(f"Session key: {request.session.session_key if hasattr(request, 'session') else 'N/A'}")
+        if hasattr(request, 'session'):
+            guest_id_in_session = request.session.get(GuestSessionService.GUEST_SESSION_KEY)
+            logger.info(f"Guest ID in session: {guest_id_in_session}")
+            logger.info(f"All session keys: {list(request.session.keys())}")
+
+        # Verify ownership
+        if request.user and request.user.is_authenticated:
+            # Authenticated user: verify they own this order
+            if instance.customer != request.user:
+                logger.warning(f"Authenticated user {request.user.id} tried to access order belonging to {instance.customer}")
+                raise PermissionDenied("You do not have permission to view this order.")
+        else:
+            # Guest user verification
+            guest_id = request.session.get(GuestSessionService.GUEST_SESSION_KEY) if hasattr(request, 'session') else None
+
+            # Check if this is a guest order
+            if instance.is_guest_order:
+                # For COMPLETED/PROCESSING orders, allow access without session check
+                # This handles confirmation pages after payment redirects that may lose session
+                if instance.status in ['COMPLETED', 'PROCESSING'] and instance.payment_status in ['PAID', 'PARTIALLY_PAID']:
+                    logger.info(f"Allowing guest access to completed order {instance.id} (session guest_id: {guest_id}, order guest_id: {instance.guest_id})")
+                # For PENDING orders, require session match for security
+                elif guest_id and instance.guest_id == guest_id:
+                    logger.info(f"Guest session verified for pending order {instance.id}")
+                else:
+                    logger.warning(f"Guest access denied. Session guest_id: {guest_id}, Order guest_id: {instance.guest_id}, Status: {instance.status}")
+                    raise PermissionDenied("You do not have permission to view this order.")
+            else:
+                # This order belongs to an authenticated user, not accessible to guests
+                raise PermissionDenied("You do not have permission to view this order.")
+
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
     

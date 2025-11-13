@@ -51,16 +51,19 @@ class CartViewSet(viewsets.ViewSet):
         """
         Get or create cart for current user/session.
 
-        Uses authentication if available, otherwise uses session ID.
+        Uses authentication if available, otherwise uses GuestSessionService
+        to ensure guest_id is stored in session for permission checks.
         """
-        customer = request.user if request.user.is_authenticated else None
-        session_id = None if customer else request.session.session_key
+        from orders.services import GuestSessionService
 
-        # Create session if it doesn't exist (for guest users)
-        if not customer and not session_id:
-            if not request.session.session_key:
-                request.session.create()
-            session_id = request.session.session_key
+        customer = request.user if request.user.is_authenticated else None
+
+        # For guest users, use GuestSessionService to ensure guest_id is stored IN session
+        # This is critical for order permission checks after cart → order conversion
+        if not customer:
+            session_id = GuestSessionService.get_or_create_guest_id(request)
+        else:
+            session_id = None
 
         return CartService.get_or_create_cart(
             customer=customer,
