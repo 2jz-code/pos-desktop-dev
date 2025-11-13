@@ -34,6 +34,32 @@ class LocationViewSet(BaseViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
     permission_classes = [IsAdminOrHigher]
+    filterset_fields = ["store_location"]
+
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        queryset = super().get_queryset()
+
+        # Add store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        from settings.models import StoreLocation
+
+        tenant = get_current_tenant()
+
+        # Get store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        store_location = None
+        if store_location_id:
+            store_location = StoreLocation.objects.get(id=store_location_id)
+
+        serializer.save(tenant=tenant, store_location=store_location)
 
 
 class RecipeViewSet(BaseViewSet):
@@ -41,10 +67,38 @@ class RecipeViewSet(BaseViewSet):
     serializer_class = RecipeSerializer
     permission_classes = [IsAdminOrHigher]
 
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        # Note: RecipeSerializer.create() already handles tenant assignment
+        # No need to pass it here as it would be redundant
+        serializer.save()
+
 
 class InventoryStockViewSet(BaseViewSet):
     queryset = InventoryStock.objects.all()
     permission_classes = [IsAdminOrHigher]
+    filterset_fields = ["store_location", "location", "product"]
+
+    def get_queryset(self):
+        # Call super() to leverage tenant context from BaseViewSet
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        from settings.models import StoreLocation
+
+        tenant = get_current_tenant()
+
+        # Get store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        store_location = None
+        if store_location_id:
+            store_location = StoreLocation.objects.get(id=store_location_id)
+
+        serializer.save(tenant=tenant, store_location=store_location)
 
     def get_serializer_class(self):
         """Use optimized serializer for list view to reduce N+1 queries"""
@@ -56,20 +110,34 @@ class InventoryStockViewSet(BaseViewSet):
 class InventoryStockListView(SerializerOptimizedMixin, generics.ListAPIView):
     serializer_class = OptimizedInventoryStockSerializer
     permission_classes = [IsAdminOrHigher]
-    
+
     # Base queryset that the mixin will optimize
     queryset = InventoryStock.objects.filter(archived_at__isnull=True)
 
     def get_queryset(self):
-        # First get the base optimized queryset from the mixin
+        """
+        Re-evaluate queryset at request time to ensure tenant context is applied.
+
+        IMPORTANT: The class-level queryset is evaluated at import time (before tenant context exists),
+        so we must call Model.objects again here to get a fresh queryset with tenant filtering.
+        """
+        # Re-evaluate queryset at request time to pick up tenant context
+        # Temporarily override self.queryset so super().get_queryset() uses the fresh one
+        self.queryset = InventoryStock.objects.filter(archived_at__isnull=True)
+
+        # Let the mixin apply optimizations to the fresh queryset
         queryset = super().get_queryset()
-        
-        # Then apply filtering logic from service
-        # Convert QueryDict to plain dict, taking first value from lists
+
+        # Build filters from query params
         filters = {}
         for key, value in self.request.query_params.items():
             filters[key] = value
-            
+
+        # Add store_location from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            filters['store_location'] = store_location_id
+
         # Apply filters to the already-optimized queryset
         return InventoryService.apply_stock_filters(queryset, filters)
 
@@ -269,14 +337,16 @@ class BulkStockCheckView(APIView):
 class InventoryDashboardView(APIView):
     """
     Get inventory overview data for dashboard display.
-    Shows aggregated inventory data across ALL locations.
+    Store location is extracted from X-Store-Location header by StoreLocationMiddleware.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        result = InventoryService.get_inventory_dashboard_data()
-        
+        # Get store_location_id from middleware (set from X-Store-Location header)
+        store_location = getattr(request, 'store_location_id', None)
+        result = InventoryService.get_inventory_dashboard_data(store_location=store_location)
+
         if "error" in result:
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
@@ -316,21 +386,37 @@ class QuickStockAdjustmentView(APIView):
 
 class InventoryDefaultsView(APIView):
     """
-    Get the global inventory default settings.
+    Returns inventory defaults (thresholds) for a specific store location.
+    Store location is extracted from X-Store-Location header by StoreLocationMiddleware.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         try:
-            return Response(
-                {
-                    "default_low_stock_threshold": float(
-                        app_settings.default_low_stock_threshold
-                    ),
-                    "default_expiration_threshold": app_settings.default_expiration_threshold,
-                }
-            )
+            from settings.models import StoreLocation
+
+            # Get store_location_id from middleware (set from X-Store-Location header)
+            store_location_id = getattr(request, 'store_location_id', None)
+            if not store_location_id:
+                return Response(
+                    {"error": "store_location header is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                store = StoreLocation.objects.get(id=store_location_id)
+                return Response(
+                    {
+                        "default_low_stock_threshold": store.low_stock_threshold,
+                        "default_expiration_threshold": store.expiration_threshold,
+                    }
+                )
+            except StoreLocation.DoesNotExist:
+                return Response(
+                    {"error": "Store location not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
         except Exception as e:
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -347,7 +433,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     queryset = StockHistoryEntry.objects.all()
     serializer_class = StockHistoryEntrySerializer
     permission_classes = [IsAdminOrHigher]
-    
+
     # Enable search and filtering via filter backends
     filter_backends = [
         filters.SearchFilter,
@@ -355,26 +441,36 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
     ]
     search_fields = ['product__name', 'product__barcode', 'reason', 'notes', 'reference_id']
     ordering = ['-timestamp']
-    
+
     def get_queryset(self):
+        """
+        Re-evaluate queryset at request time to ensure tenant context is applied.
+        """
+        # Re-evaluate queryset at request time to pick up tenant context
+        self.queryset = StockHistoryEntry.objects.all()
+
         # Get the optimized queryset from SerializerOptimizedMixin
         queryset = super().get_queryset()
-        
-        # Apply manual filtering for query parameters that aren't handled by filter backends
+
+        # Apply store_location filter from middleware (set by StoreLocationMiddleware from X-Store-Location header)
+        store_location_id = getattr(self.request, 'store_location_id', None)
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
         location = self.request.query_params.get('location')
         if location:
             queryset = queryset.filter(location_id=location)
-        
+
         operation_type = self.request.query_params.get('operation_type')
         if operation_type:
             queryset = queryset.filter(operation_type=operation_type)
-        
+
         user = self.request.query_params.get('user')
         if user:
             queryset = queryset.filter(user_id=user)
-        
+
         # Note: reference_id filtering is now handled by the unified search field
-        
+
         # Apply custom date range filtering
         date_range = self.request.query_params.get('date_range')
         if date_range:
@@ -391,7 +487,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
             elif date_range == 'quarter':
                 start_date = now - timedelta(days=90)
                 queryset = queryset.filter(timestamp__gte=start_date)
-        
+
         # Filter by tab (operation type groups)
         tab = self.request.query_params.get('tab')
         if tab == 'adjustments':
@@ -402,7 +498,7 @@ class StockHistoryListView(SerializerOptimizedMixin, generics.ListAPIView):
             queryset = queryset.filter(
                 operation_type__in=['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']
             )
-        
+
         return queryset
 
 

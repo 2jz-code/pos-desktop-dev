@@ -91,10 +91,11 @@ class AdvancedExportService:
                 validated_configs, export_format
             )
 
-            # Create export metadata
+            # Create export metadata (include tenant_id for isolation)
             export_metadata = {
                 "operation_id": operation_id,
                 "user_id": user.id,
+                "tenant_id": str(user.tenant.id),  # SECURITY: Include tenant for cache isolation
                 "report_configs": validated_configs,
                 "export_format": export_format,
                 "compress": compress,
@@ -105,8 +106,8 @@ class AdvancedExportService:
                 "estimated_completion": estimated_time,
             }
 
-            # Store metadata (you could use a separate model for this)
-            cls._store_export_metadata(operation_id, export_metadata)
+            # Store metadata with tenant isolation
+            cls._store_export_metadata(operation_id, export_metadata, user.tenant.id)
 
             logger.info(
                 f"Bulk export created: {operation_id} with {len(validated_configs)} reports"
@@ -133,14 +134,17 @@ class AdvancedExportService:
             Export result metadata
         """
         try:
-            # Load export metadata
+            # Load export metadata (try without tenant first for compatibility)
             metadata = cls._load_export_metadata(operation_id)
             if not metadata:
                 raise ValueError(f"Export operation {operation_id} not found")
 
+            # Extract tenant_id for proper cache isolation
+            tenant_id = metadata.get('tenant_id')
+
             metadata["status"] = "processing"
             metadata["started_at"] = timezone.now().isoformat()
-            cls._store_export_metadata(operation_id, metadata)
+            cls._store_export_metadata(operation_id, metadata, tenant_id)
 
             user = User.objects.get(id=metadata["user_id"])
             report_configs = metadata["report_configs"]
@@ -212,10 +216,11 @@ class AdvancedExportService:
         except Exception as e:
             # Update metadata with error
             metadata = cls._load_export_metadata(operation_id) or {}
+            tenant_id = metadata.get('tenant_id')
             metadata["status"] = "failed"
             metadata["error"] = str(e)
             metadata["failed_at"] = timezone.now().isoformat()
-            cls._store_export_metadata(operation_id, metadata)
+            cls._store_export_metadata(operation_id, metadata, tenant_id)
 
             logger.error(f"Bulk export failed: {operation_id} - {e}")
             raise
@@ -242,18 +247,19 @@ class AdvancedExportService:
             "name": template_name,
             "config": template_config,
             "created_by": user.id,
+            "tenant_id": str(user.tenant.id),  # Include tenant for isolation
             "created_at": timezone.now().isoformat(),
         }
 
-        # Store template (you might want a separate model for this)
-        cls._store_template(template_id, template_data)
+        # Store template with tenant isolation
+        cls._store_template(template_id, template_data, user.tenant.id)
 
         return template_id
 
     @classmethod
-    def get_export_status(cls, operation_id: str) -> Dict[str, Any]:
-        """Get the status of an export operation."""
-        metadata = cls._load_export_metadata(operation_id)
+    def get_export_status(cls, operation_id: str, tenant_id: str = None) -> Dict[str, Any]:
+        """Get the status of an export operation with tenant isolation."""
+        metadata = cls._load_export_metadata(operation_id, tenant_id)
         if not metadata:
             return {"status": "not_found"}
 
@@ -519,51 +525,65 @@ class AdvancedExportService:
 
     @classmethod
     def _store_export_metadata(
-        cls, operation_id: str, metadata: Dict[str, Any]
+        cls, operation_id: str, metadata: Dict[str, Any], tenant_id: str = None
     ) -> None:
-        """Store export operation metadata."""
-        # For now, store in cache or a simple file
-        # In production, you might want a dedicated model
+        """Store export operation metadata with tenant isolation."""
         from django.core.cache import cache
 
-        cache.set(
-            f"export_metadata_{operation_id}", metadata, timeout=86400 * 7
-        )  # 7 days
+        # SECURITY: Include tenant_id in cache key for isolation
+        if not tenant_id and 'tenant_id' in metadata:
+            tenant_id = metadata['tenant_id']
+
+        cache_key = f"export_metadata_{tenant_id}_{operation_id}" if tenant_id else f"export_metadata_{operation_id}"
+        cache.set(cache_key, metadata, timeout=86400 * 7)  # 7 days
 
     @classmethod
-    def _load_export_metadata(cls, operation_id: str) -> Optional[Dict[str, Any]]:
-        """Load export operation metadata."""
+    def _load_export_metadata(cls, operation_id: str, tenant_id: str = None) -> Optional[Dict[str, Any]]:
+        """Load export operation metadata with tenant isolation."""
         from django.core.cache import cache
 
+        # Try tenant-scoped cache key first
+        if tenant_id:
+            cache_key = f"export_metadata_{tenant_id}_{operation_id}"
+            metadata = cache.get(cache_key)
+            if metadata:
+                return metadata
+
+        # Fallback to old key format for backward compatibility (will be phased out)
         return cache.get(f"export_metadata_{operation_id}")
 
     @classmethod
-    def _store_template(cls, template_id: str, template_data: Dict[str, Any]) -> None:
-        """Store export template."""
+    def _store_template(cls, template_id: str, template_data: Dict[str, Any], tenant_id: str = None) -> None:
+        """Store export template with tenant isolation."""
         from django.core.cache import cache
 
-        cache.set(
-            f"export_template_{template_id}", template_data, timeout=86400 * 30
-        )  # 30 days
+        # SECURITY: Include tenant_id in cache key for isolation
+        if not tenant_id and 'tenant_id' in template_data:
+            tenant_id = template_data['tenant_id']
+
+        cache_key = f"export_template_{tenant_id}_{template_id}" if tenant_id else f"export_template_{template_id}"
+        cache.set(cache_key, template_data, timeout=86400 * 30)  # 30 days
 
 
 class ExportQueue:
     """
-    Export queue management for handling multiple export operations.
+    Export queue management for handling multiple export operations with tenant isolation.
     """
 
     @classmethod
     def add_to_queue(
-        cls, operation_id: str, priority: int = AdvancedExportService.PRIORITY_NORMAL
+        cls, operation_id: str, tenant_id: str, priority: int = AdvancedExportService.PRIORITY_NORMAL
     ) -> None:
-        """Add an export operation to the processing queue."""
+        """Add an export operation to the processing queue with tenant isolation."""
         from django.core.cache import cache
 
-        queue_key = f"export_queue_p{priority}"
+        # SECURITY: Include tenant_id in queue key for isolation
+        queue_key = f"export_queue_{tenant_id}_p{priority}"
         queue = cache.get(queue_key, [])
 
         queue_item = {
             "operation_id": operation_id,
+            "tenant_id": tenant_id,
             "added_at": timezone.now().isoformat(),
             "priority": priority,
         }
@@ -572,8 +592,8 @@ class ExportQueue:
         cache.set(queue_key, queue, timeout=86400)  # 24 hours
 
     @classmethod
-    def get_next_operation(cls) -> Optional[str]:
-        """Get the next operation to process from the queue."""
+    def get_next_operation(cls, tenant_id: str) -> Optional[str]:
+        """Get the next operation to process from the queue for a specific tenant."""
         from django.core.cache import cache
 
         # Check queues in priority order (highest to lowest)
@@ -585,7 +605,7 @@ class ExportQueue:
         ]
 
         for priority in priorities:
-            queue_key = f"export_queue_p{priority}"
+            queue_key = f"export_queue_{tenant_id}_p{priority}"
             queue = cache.get(queue_key, [])
 
             if queue:
@@ -597,8 +617,8 @@ class ExportQueue:
         return None
 
     @classmethod
-    def get_queue_status(cls) -> Dict[str, Any]:
-        """Get the current status of all export queues."""
+    def get_queue_status(cls, tenant_id: str) -> Dict[str, Any]:
+        """Get the current status of all export queues for a specific tenant."""
         from django.core.cache import cache
 
         status = {"total_operations": 0, "by_priority": {}}
@@ -611,7 +631,7 @@ class ExportQueue:
         ]
 
         for priority_name, priority_value in priorities:
-            queue_key = f"export_queue_p{priority_value}"
+            queue_key = f"export_queue_{tenant_id}_p{priority_value}"
             queue = cache.get(queue_key, [])
 
             status["by_priority"][priority_name] = {

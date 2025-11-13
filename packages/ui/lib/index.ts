@@ -40,7 +40,10 @@ export type {
 // Shared hooks
 export { usePagination } from '../hooks/usePagination';
 export { useOrdersData } from '../hooks/useOrdersData';
+export { usePaymentsData } from '../hooks/usePaymentsData';
+export type { PaymentFilters } from '../hooks/usePaymentsData';
 export { useOrderActions } from '../hooks/useOrderActions';
+export { useListStateWithUrlPersistence } from '../hooks/useListStateWithUrlPersistence';
 export { useDebounce } from '../hooks/useDebounce';
 export { useScrollToScannedItem } from '../hooks/useScrollToScannedItem';
 export type { ScrollToItemOptions, ScrollToItemWithHighlightOptions } from '../hooks/useScrollToScannedItem';

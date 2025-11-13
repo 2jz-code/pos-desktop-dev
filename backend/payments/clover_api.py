@@ -10,11 +10,15 @@ logger = logging.getLogger(__name__)
 class CloverAPIService:
     """
     Service for interacting with Clover's REST API for payment processing only.
+
+    IMPORTANT: This service is tenant-aware and should be instantiated with tenant context.
     """
 
-    def __init__(self, merchant_id: str):
+    def __init__(self, merchant_id: str, tenant=None):
         self.merchant_id = merchant_id
-        self.oauth_service = CloverOAuthService(merchant_id)
+
+        # Pass tenant to OAuth service for cache isolation
+        self.oauth_service = CloverOAuthService(merchant_id, tenant=tenant)
         self.base_url = self.oauth_service.base_url
 
     def _get_headers(self) -> Dict[str, str]:

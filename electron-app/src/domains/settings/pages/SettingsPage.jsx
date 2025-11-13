@@ -1,4 +1,5 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Toaster } from "@/shared/components/ui/toaster";
 import { Separator } from "@/shared/components/ui/separator";
@@ -9,9 +10,9 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/shared/components/ui/card";
-import { Bell } from "lucide-react";
+import { Bell, Building2, Palette, CreditCard } from "lucide-react";
+import { getGlobalSettings } from "../services/settingsService";
 
-import { StoreLocationsManagement } from "../components/StoreLocationsManagement";
 import { FinancialSettings } from "../components/FinancialSettings";
 import { ReceiptSettings } from "../components/ReceiptSettings";
 import { DeviceSettings } from "../components/DeviceSettings";
@@ -22,6 +23,11 @@ import { InventorySettings } from "../components/InventorySettings";
 import { StoreInfoSettings } from "../components/StoreInfoSettings";
 
 export function SettingsPage() {
+	const { data: globalSettings } = useQuery({
+		queryKey: ["globalSettings"],
+		queryFn: getGlobalSettings,
+	});
+
 	return (
 		<>
 			<Toaster />
@@ -37,20 +43,89 @@ export function SettingsPage() {
 				<div className="flex flex-col flex-1 min-h-0 px-4 md:px-8 pb-4">
 					<ScrollArea className="h-full">
 						<div className="space-y-8">
+							{/* Brand Information - Read Only */}
+							{globalSettings && (
+								<Card className="bg-muted/30">
+									<CardHeader>
+										<CardTitle className="flex items-center gap-2">
+											<Building2 className="h-5 w-5" />
+											Brand Information
+										</CardTitle>
+										<CardDescription>
+											Global brand settings managed by the business owner
+										</CardDescription>
+									</CardHeader>
+									<CardContent className="grid gap-4">
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<div className="text-sm font-medium text-muted-foreground mb-1">
+													Brand Name
+												</div>
+												<div className="text-base font-semibold">
+													{globalSettings.brand_name}
+												</div>
+											</div>
+											<div>
+												<div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+													<CreditCard className="h-3 w-3" />
+													Active Terminal Provider
+												</div>
+												<div className="text-base">
+													{globalSettings.active_terminal_provider?.replace(/_/g, ' ')}
+												</div>
+											</div>
+										</div>
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+													<Palette className="h-3 w-3" />
+													Primary Color
+												</div>
+												<div className="flex items-center gap-2">
+													<div
+														className="w-6 h-6 rounded border"
+														style={{ backgroundColor: globalSettings.brand_primary_color }}
+													/>
+													<span className="text-sm font-mono">
+														{globalSettings.brand_primary_color}
+													</span>
+												</div>
+											</div>
+											<div>
+												<div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+													<Palette className="h-3 w-3" />
+													Secondary Color
+												</div>
+												<div className="flex items-center gap-2">
+													<div
+														className="w-6 h-6 rounded border"
+														style={{ backgroundColor: globalSettings.brand_secondary_color }}
+													/>
+													<span className="text-sm font-mono">
+														{globalSettings.brand_secondary_color}
+													</span>
+												</div>
+											</div>
+										</div>
+									</CardContent>
+								</Card>
+							)}
+
+							<Separator />
+
 							{/* Business Setup Section */}
 							<div className="space-y-6">
 								<div>
 									<h3 className="text-xl font-semibold tracking-tight">
-										Business Setup
+										Location Information
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Configure your store information, hours, and locations
+										Configure information for this store location
 									</p>
 								</div>
 
 								<div className="space-y-6">
 									<StoreInfoSettings />
-									<StoreLocationsManagement />
 								</div>
 							</div>
 

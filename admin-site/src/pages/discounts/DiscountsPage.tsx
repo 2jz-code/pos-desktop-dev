@@ -74,8 +74,10 @@ export const DiscountsPage = () => {
 		isLoading,
 		error,
 	} = useQuery<{ results: Discount[] }, Error>({
-		queryKey: ["discounts"],
-		queryFn: () => discountService.getDiscounts({}),
+		queryKey: ["discounts", showArchivedDiscounts],
+		queryFn: () => discountService.getDiscounts({
+			include_archived: showArchivedDiscounts ? "only" : undefined
+		}),
 	});
 
 	const mutationOptions = {
@@ -270,20 +272,20 @@ export const DiscountsPage = () => {
 	};
 
 	const filteredDiscounts = discounts?.results?.filter((discount) => {
-		// Filter by active/archived status
-		const matchesActiveStatus = showArchivedDiscounts ? !discount.is_active : discount.is_active;
+		// No need to filter by active/archived status - backend already handles this
+		// via the include_archived parameter
 
-		// Filter by search query
+		// Filter by search query only
 		if (debouncedSearchQuery && debouncedSearchQuery.trim()) {
 			const searchLower = debouncedSearchQuery.toLowerCase();
 			const matchesSearch =
 				discount.name.toLowerCase().includes(searchLower) ||
 				(discount.code && discount.code.toLowerCase().includes(searchLower));
 
-			return matchesActiveStatus && matchesSearch;
+			return matchesSearch;
 		}
 
-		return matchesActiveStatus;
+		return true; // Show all results from backend
 	}) || [];
 
 	const headers = [

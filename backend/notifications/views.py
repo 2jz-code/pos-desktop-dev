@@ -12,6 +12,13 @@ class ContactFormView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
+        # Validate tenant from request (set by middleware from subdomain)
+        if not hasattr(request, 'tenant') or not request.tenant:
+            return Response(
+                {"detail": "Unable to determine restaurant. Please access via your restaurant's website."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = ContactFormSerializer(data=request.data)
         if serializer.is_valid():
             name = serializer.validated_data.get("name")
@@ -27,12 +34,14 @@ class ContactFormView(APIView):
             try:
                 email_service.send_email(
                     recipient_list=[business_contact_email],
-                    subject=f"Contact Form Submission",
+                    subject=f"Contact Form Submission - {request.tenant.name}",
                     template_name="emails/contact_form_submission.html",
                     context={
                         "name": name,
                         "email": email,
                         "message": message,
+                        "tenant_name": request.tenant.name,
+                        "tenant_slug": request.tenant.slug,
                     },
                 )
                 return Response(

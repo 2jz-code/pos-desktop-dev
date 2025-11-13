@@ -32,20 +32,26 @@ class BusinessHoursService:
     def profile(self) -> BusinessHoursProfile:
         """Get the business hours profile (cached)"""
         if self._profile is None:
-            cache_key = f"business_hours_profile_{self.profile_id or 'default'}"
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+
+            # Include tenant in cache key to prevent cross-tenant cache pollution
+            cache_key = f"business_hours_profile_{tenant.id if tenant else 'none'}_{self.profile_id or 'default'}"
             self._profile = cache.get(cache_key)
-            
+
             if self._profile is None:
                 if self.profile_id:
+                    # TenantManager automatically filters by current tenant
                     self._profile = BusinessHoursProfile.objects.select_related().get(
                         id=self.profile_id, is_active=True
                     )
                 else:
+                    # TenantManager automatically filters by current tenant
                     self._profile = BusinessHoursProfile.objects.select_related().get(
                         is_default=True, is_active=True
                     )
                 cache.set(cache_key, self._profile, self.CACHE_TIMEOUT)
-        
+
         return self._profile
     
     def is_open(self, dt: Optional[datetime] = None) -> bool:
@@ -258,7 +264,11 @@ class BusinessHoursService:
     
     def _get_hours_for_date(self, target_date: date) -> Dict:
         """Internal method to get hours for a specific date with caching"""
-        cache_key = f"business_hours_{self.profile.id}_{target_date}"
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+
+        # Include tenant in cache key to prevent cross-tenant cache pollution
+        cache_key = f"business_hours_{tenant.id if tenant else 'none'}_{self.profile.id}_{target_date}"
         hours_info = cache.get(cache_key)
         
         if hours_info is None:

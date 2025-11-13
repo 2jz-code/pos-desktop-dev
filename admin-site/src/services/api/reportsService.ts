@@ -122,9 +122,13 @@ const reportsService = {
 		}
 	},
 
-	getQuickMetrics: async (): Promise<unknown> => {
+	getQuickMetrics: async (locationId?: number): Promise<unknown> => {
 		try {
-			const response = await apiClient.get("/reports/quick-metrics/");
+			const params: Record<string, unknown> = {};
+			if (locationId) {
+				params.location_id = locationId;
+			}
+			const response = await apiClient.get("/reports/quick-metrics/", { params });
 			return response.data;
 		} catch (error) {
 			console.error("Error getting quick metrics:", error);

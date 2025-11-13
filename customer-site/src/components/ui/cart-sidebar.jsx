@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion"; // eslint-disable-line
 import { FaShoppingCart, FaTrash, FaTimes } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
-import { Clock, Store } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
 import { useCartStore } from "@/store/cartStore";
@@ -59,7 +59,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 	};
 
 	// Determine if the checkout button should be disabled
-	const isCheckoutButtonDisabled = cartItemCount === 0 || !cartStore.canProceedToCheckout();
+	// Users can proceed to checkout anytime - location selection will handle business hours
+	const isCheckoutButtonDisabled = cartItemCount === 0;
 
 	return (
 		<AnimatePresence>
@@ -156,13 +157,13 @@ const CartSidebar = ({ isOpen, onClose }) => {
 														{item.product?.name || "Unknown Product"}
 													</h4>
 													<p className="text-sm text-accent-dark-brown">
-														${formatPrice(item.price_at_sale)} × {item.quantity}
+														${formatPrice(item.item_price)} × {item.quantity}
 													</p>
-													
+
 													{/* Display modifiers */}
-													<ModifierDisplay 
-														modifiers={item.selected_modifiers_snapshot} 
-														compact={true} 
+													<ModifierDisplay
+														modifiers={item.modifiers}
+														compact={true}
 													/>
 													
 													{item.notes && (
@@ -175,10 +176,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 												{/* Item Actions */}
 												<div className="flex flex-col items-end space-y-2 ml-2 flex-shrink-0">
 													<span className="text-sm font-medium text-accent-dark-green">
-														$
-														{formatPrice(
-															(item.price_at_sale || 0) * item.quantity
-														)}
+														${formatPrice(item.total_price)}
 													</span>
 													<button
 														onClick={() => handleRemoveItem(item.id)}
@@ -191,8 +189,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 											</div>
 
 											{/* Edit button - positioned in bottom right with proper spacing */}
-											{item.selected_modifiers_snapshot && 
-											 item.selected_modifiers_snapshot.length > 0 && (
+											{item.modifiers &&
+											 item.modifiers.length > 0 && (
 												<button
 													onClick={() => handleEditItem(item)}
 													className="absolute bottom-1 right-0 text-xs text-accent-dark-green hover:text-primary-green underline transition-colors focus:outline-none px-1 py-1"
@@ -217,7 +215,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									<span>${formatPrice(subtotal)}</span>
 								</div>
 
-								{/* Store Status */}
+								{/* Store Status - Only show if closing soon */}
 								{storeStatus.isClosingSoon && storeStatus.canPlaceOrder && (
 									<div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
 										<div className="flex items-center justify-center">
@@ -228,26 +226,8 @@ const CartSidebar = ({ isOpen, onClose }) => {
 										</div>
 									</div>
 								)}
-								
-								{!storeStatus.canPlaceOrder && !storeStatus.isLoading && (
-									<div className="bg-red-50 border border-red-200 rounded-lg p-3">
-										<div className="flex items-center justify-center">
-											<Store className="h-4 w-4 text-red-500 mr-2" />
-											<div className="text-center">
-												<p className="text-sm text-red-700 font-medium">
-													Store is currently closed
-												</p>
-												{storeStatus.getNextOpeningDisplay() && (
-													<p className="text-xs text-red-600 mt-1">
-														We'll open again at {storeStatus.getNextOpeningDisplay()}
-													</p>
-												)}
-											</div>
-										</div>
-									</div>
-								)}
 
-								{/* Checkout Button */}
+								{/* Checkout Button - Users can proceed to checkout anytime */}
 								<Link
 									to="/checkout"
 									onClick={onClose}
@@ -259,12 +239,7 @@ const CartSidebar = ({ isOpen, onClose }) => {
 									}`}
 									aria-disabled={isCheckoutButtonDisabled}
 								>
-									{!storeStatus.canPlaceOrder && !storeStatus.isLoading 
-										? "Store Closed" 
-										: cartItemCount === 0 
-										? "Cart Empty" 
-										: "Proceed to Checkout"
-									}
+									{cartItemCount === 0 ? "Cart Empty" : "Proceed to Checkout"}
 								</Link>
 							</div>
 						)}

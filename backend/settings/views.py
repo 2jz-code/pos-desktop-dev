@@ -9,18 +9,19 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
+    Printer,
+    KitchenZone,
     PrinterConfiguration,
-    WebOrderSettings,
     StockActionReasonConfig,
 )
 from .serializers import (
     GlobalSettingsSerializer,
     StoreLocationSerializer,
     TerminalLocationSerializer,
-    TerminalRegistrationSerializer,
+    PrinterSerializer,
+    KitchenZoneSerializer,
+    PrinterConfigResponseSerializer,
     PrinterConfigurationSerializer,
-    WebOrderSettingsSerializer,
     StockActionReasonConfigSerializer,
     StockActionReasonConfigListSerializer,
 )
@@ -31,7 +32,6 @@ from core_backend.base.mixins import ArchivingViewSetMixin
 from .services import (
     SettingsService,
     PrinterConfigurationService,
-    WebOrderSettingsService,
     TerminalService,
     SettingsValidationService,
 )
@@ -184,198 +184,188 @@ class GlobalSettingsViewSet(BaseViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-class PrinterConfigurationViewSet(BaseViewSet):
+class PrinterViewSet(BaseViewSet):
     """
-    API endpoint for viewing and editing the singleton PrinterConfiguration object.
+    API endpoint for managing network printers.
+    Scoped to current location based on query parameters.
     """
-
-    queryset = PrinterConfiguration.objects.all()
-    serializer_class = PrinterConfigurationSerializer
+    queryset = Printer.objects.all()
+    serializer_class = PrinterSerializer
     permission_classes = [SettingsReadOnlyOrOwnerAdmin]
-
-    def get_object(self):
-        """Uses PrinterConfigurationService for consistent singleton management."""
-        return PrinterConfigurationService.get_printer_configuration()
-
-    def list(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
-
-    def create(self, request, *args, **kwargs):
-        # For singleton, redirect create to update
-        return self.update(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        """Handle singleton update using PrinterConfigurationService."""
-        try:
-            instance = PrinterConfigurationService.update_printer_configuration(
-                request.data, partial=False
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    def partial_update(self, request, *args, **kwargs):
-        """Handle singleton partial update using PrinterConfigurationService."""
-        try:
-            instance = PrinterConfigurationService.update_printer_configuration(
-                request.data, partial=True
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-class WebOrderSettingsViewSet(BaseViewSet):
-    """
-    API endpoint for viewing and editing the singleton WebOrderSettings object.
-    Manages which terminals should print customer receipts for web orders.
-    """
-
-    queryset = WebOrderSettings.objects.all()
-    serializer_class = WebOrderSettingsSerializer
-    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
-
-    def get_object(self):
-        """
-        Always returns the single WebOrderSettings instance.
-        Uses WebOrderSettingsService for optimized queries.
-        """
-        return WebOrderSettingsService.get_web_order_settings()
-
-    def list(self, request, *args, **kwargs):
-        """
-        Handle GET requests for the list view.
-        Since this is a singleton, this will retrieve the single settings object.
-        """
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
-
-    def create(self, request, *args, **kwargs):
-        """
-        For singleton, redirect create to update.
-        """
-        return self.update(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        """
-        Handle PUT/PATCH requests using WebOrderSettingsService.
-        """
-        partial = kwargs.pop("partial", False)
-        try:
-            instance = WebOrderSettingsService.update_web_order_settings(
-                request.data, partial=partial
-            )
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    def partial_update(self, request, *args, **kwargs):
-        """
-        Handle PATCH requests for partial updates.
-        """
-        kwargs["partial"] = True
-        return self.update(request, *args, **kwargs)
-
-class TerminalRegistrationViewSet(BaseViewSet):
-    """
-    API endpoint for managing Terminal Registrations.
-    This replaces the old POSDeviceViewSet.
-    """
-
-    queryset = TerminalRegistration.objects.all()
-    serializer_class = TerminalRegistrationSerializer
-    lookup_field = "device_id"
-    ordering = ["device_id"]  # Override default ordering since this model uses device_id as PK
+    filterset_fields = ['location', 'printer_type', 'is_active']
 
     def get_queryset(self):
-        return TerminalRegistration.objects.select_related('store_location')
+        """Filter by tenant and optionally by location."""
+        queryset = super().get_queryset()
+
+        # Filter by location if provided
+        location_id = self.request.query_params.get('location')
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+
+        return queryset
 
     def perform_create(self, serializer):
-        """
-        Saves the serializer instance.
-        """
-        serializer.save()
+        """Set tenant on printer creation."""
+        serializer.save(tenant=self.request.tenant)
 
-    def create(self, request, *args, **kwargs):
+
+class KitchenZoneViewSet(BaseViewSet):
+    """
+    API endpoint for managing kitchen zones.
+    Scoped to current location based on query parameters.
+    """
+    queryset = KitchenZone.objects.all()
+    serializer_class = KitchenZoneSerializer
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+    filterset_fields = ['location', 'is_active']
+
+    def get_queryset(self):
+        """Filter by tenant and optionally by location."""
+        queryset = super().get_queryset()
+
+        # Filter by location if provided
+        location_id = self.request.query_params.get('location')
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set tenant on kitchen zone creation."""
+        serializer.save(tenant=self.request.tenant)
+
+
+class PrinterConfigurationViewSet(BaseViewSet):
+    """
+    BACKWARD COMPATIBILITY ENDPOINT
+
+    Returns printer config in old JSON format for Electron app.
+    Now sources data from relational Printer and KitchenZone models.
+
+    GET settings/printer-config/ → Returns config for terminal's location
+    GET settings/printer-config/?location=123 → Returns config for specific location
+    """
+    permission_classes = [SettingsReadOnlyOrOwnerAdmin]
+
+    def list(self, request, *args, **kwargs):
         """
-        Creates or updates a terminal registration (UPSERT).
-        Complex business logic (40+ lines) extracted to TerminalService.
+        Return printer configuration in backward-compatible format.
+        Sources from new relational models instead of JSON.
         """
-        try:
-            instance, created = TerminalService.upsert_terminal_registration(
-                request.data
-            )
-            serializer = self.get_serializer(instance)
-            
-            # Return appropriate status code
-            status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-            headers = (
-                self.get_success_headers(serializer.data)
-                if created else {}
-            )
-            
-            return Response(serializer.data, status=status_code, headers=headers)
-        except ValidationError as e:
-            if isinstance(e.message_dict if hasattr(e, 'message_dict') else e, dict):
-                return Response(e.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        # Determine which location to fetch config for
+        location_id = request.query_params.get('location')
+
+        if not location_id:
+            # Try to get location from terminal registration
+            device_id = request.headers.get('X-Device-ID')
+            if device_id:
+                try:
+                    from terminals.models import TerminalRegistration
+                    terminal = TerminalRegistration.objects.get(
+                        device_id=device_id,
+                        tenant=request.tenant
+                    )
+                    location = terminal.store_location
+                except TerminalRegistration.DoesNotExist:
+                    # No terminal registration, use first active location
+                    location = StoreLocation.objects.filter(
+                        tenant=request.tenant,
+                        is_active=True
+                    ).first()
             else:
+                # No device ID, use first active location
+                location = StoreLocation.objects.filter(
+                    tenant=request.tenant,
+                    is_active=True
+                ).first()
+        else:
+            # Specific location requested
+            try:
+                location = StoreLocation.objects.get(
+                    id=location_id,
+                    tenant=request.tenant
+                )
+            except StoreLocation.DoesNotExist:
                 return Response(
-                    {"error": str(e)}, 
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Location not found"},
+                    status=status.HTTP_404_NOT_FOUND
                 )
 
-    def update(self, request, *args, **kwargs):
-        """
-        Handles standard updates for a terminal registration.
-        """
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        if not location:
+            return Response(
+                {
+                    "receipt_printers": [],
+                    "kitchen_printers": [],
+                    "kitchen_zones": [],
+                }
+            )
+
+        # Use backward-compatible serializer
+        serializer = PrinterConfigResponseSerializer({'location': location})
         return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to create configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    def update(self, request, *args, **kwargs):
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to update configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        """Not supported - use individual Printer/KitchenZone endpoints"""
+        return Response(
+            {"error": "Use /printers/ and /kitchen-zones/ endpoints to update configurations"},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+# WebOrderSettings ViewSet REMOVED - settings now managed directly on StoreLocation
+
 
 class StoreLocationViewSet(BaseViewSet):
     """
     API endpoint for managing primary Store Locations.
+
+    Phase 5 Enhancement: Uses lightweight serializer for list actions
+    and detailed serializer for individual location operations.
+    All locations are explicit - no default location concept.
+
+    Permissions: AllowAny for list/retrieve (guest checkout needs to select location)
+                 IsAuthenticated for create/update/delete (admin only)
     """
 
     queryset = StoreLocation.objects.all()
     serializer_class = StoreLocationSerializer
 
-    @action(detail=True, methods=["post"], url_path="set-default")
-    def set_default(self, request, pk=None):
+    def get_permissions(self):
         """
-        Sets this location as the default store location.
-        Business logic extracted to TerminalService.
+        Allow anonymous access for list/retrieve (guest checkout).
+        Require authentication for mutations.
         """
-        try:
-            location = TerminalService.set_default_store_location(pk)
-            return Response(
-                {
-                    "status": "success",
-                    "message": f"'{location.name}' is now the default store location.",
-                }
-            )
-        except ValidationError as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        from rest_framework.permissions import IsAuthenticated, AllowAny
+
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_serializer_class(self):
+        """Use lightweight serializer for list action, detailed for others"""
+        if self.action == 'list':
+            from .serializers import StoreLocationListSerializer
+            return StoreLocationListSerializer
+        return StoreLocationSerializer
+
+    def perform_create(self, serializer):
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant)
 
 class TerminalLocationViewSet(ReadOnlyBaseViewSet):
     """
@@ -450,16 +440,24 @@ class StockActionReasonConfigViewSet(BaseViewSet):
         return StockActionReasonConfigSerializer
     
     def get_queryset(self):
-        """Filter queryset based on action and parameters"""
-        queryset = super().get_queryset()
-        
+        """Return global system reasons + tenant-specific custom reasons"""
+        from tenant.managers import get_current_tenant
+        from django.db.models import Q
+
+        tenant = get_current_tenant()
+
+        # Get both global (tenant=NULL) and tenant-specific reasons
+        queryset = StockActionReasonConfig.objects.filter(
+            Q(tenant__isnull=True) | Q(tenant=tenant)
+        )
+
         # For list and active_reasons actions, optionally filter to only active reasons
         if self.action in ['list', 'active_reasons']:
             # Check if we should only show active reasons
             active_only = self.request.query_params.get('active_only', 'false').lower() == 'true'
             if active_only:
                 queryset = queryset.filter(is_active=True)
-        
+
         return queryset
     
     @action(detail=False, methods=['get'])
@@ -492,8 +490,11 @@ class StockActionReasonConfigViewSet(BaseViewSet):
     
     def perform_create(self, serializer):
         """Override to ensure new reasons are marked as custom (non-system)"""
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
         # Ensure new reasons are never marked as system reasons
-        serializer.save(is_system_reason=False)
+        serializer.save(tenant=tenant, is_system_reason=False)
     
     def destroy(self, request, *args, **kwargs):
         """Override destroy to prevent deletion of system reasons"""

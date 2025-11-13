@@ -1,12 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "react-query";
 import * as settingsService from "../services/settingsService";
 import { toast } from "react-hot-toast";
-
-// It's good practice to get the device_id once and use it in the hook's closure.
-const device_id = window.electron.getDeviceId();
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 const useDeviceSettings = () => {
 	const queryClient = useQueryClient();
+
+	// Get device_id from terminal registration (from pairing flow)
+	const terminalConfig = terminalRegistrationService.getTerminalConfig();
+	const device_id = terminalConfig?.device_id || null;
+
+	// Terminal must be paired before device settings can be configured
+	const isTerminalPaired = terminalRegistrationService.isTerminalRegistered();
 
 	// Query to fetch the current device settings from the backend
 	const {
@@ -17,7 +22,7 @@ const useDeviceSettings = () => {
 		["deviceSettings", device_id],
 		() => settingsService.getTerminalRegistration(device_id),
 		{
-			enabled: !!device_id, // Only run if device_id exists
+			enabled: !!device_id && isTerminalPaired, // Only run if terminal is paired
 			retry: (failureCount, error) => {
 				// A 404 is not a true error here, it just means the device is new. Don't retry.
 				if (error?.response?.status === 404) {

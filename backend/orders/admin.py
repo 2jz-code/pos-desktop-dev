@@ -6,12 +6,18 @@ from .models import (
     OrderDiscount,
     OrderItemModifier
 )
+from core_backend.admin.mixins import TenantAdminMixin
 
 class OrderItemModifierInline(admin.TabularInline):
     model = OrderItemModifier
     extra = 0
     readonly_fields = ('modifier_set_name', 'option_name', 'price_at_sale', 'quantity')
     can_delete = False
+
+    def get_queryset(self, request):
+        """Use all_objects to bypass TenantManager, Django will filter by parent FK"""
+        # Start with all_objects, Django's inline mechanism will filter by order_item FK
+        return OrderItemModifier.all_objects.all()
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -23,6 +29,19 @@ class OrderItemInline(admin.TabularInline):
     fields = ("product", "quantity", "price_at_sale", "get_line_item_total")
     autocomplete_fields = ("product",)
 
+    def get_queryset(self, request):
+        """Use all_objects to bypass TenantManager, Django will filter by parent FK"""
+        # Start with all_objects and prefetch product to ensure it's available
+        return OrderItem.all_objects.select_related('product').all()
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ensure product queryset uses all_objects so current product is available"""
+        if db_field.name == "product":
+            from products.models import Product
+            # Use all_objects so the currently selected product is available
+            kwargs["queryset"] = Product.all_objects.all()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_line_item_total(self, obj):
         return f"${(obj.price_at_sale * obj.quantity):,.2f}"
 
@@ -33,7 +52,7 @@ class OrderItemInline(admin.TabularInline):
 
 
 @admin.register(Order)
-class OrderAdmin(admin.ModelAdmin):
+class OrderAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin configuration for the Order model.
     """
@@ -145,9 +164,9 @@ class OrderAdmin(admin.ModelAdmin):
         return tuple(readonly)
 
     def get_queryset(self, request):
-        """Optimize query performance by pre-fetching related objects."""
-        return super().get_queryset(request).select_related(
-            "customer", "cashier", "payment_details"
+        """Show all tenants in Django admin with optimized queries"""
+        return Order.all_objects.select_related(
+            "tenant", "customer", "cashier", "payment_details"
         )
 
     # --- ADD THIS METHOD ---
@@ -230,7 +249,7 @@ class OrderAdmin(admin.ModelAdmin):
 
 
 @admin.register(OrderItem)
-class OrderItemAdmin(admin.ModelAdmin):
+class OrderItemAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin configuration for the OrderItem model.
     """
@@ -248,7 +267,13 @@ class OrderItemAdmin(admin.ModelAdmin):
     ordering = ("-order__created_at", "-id")  # Most recent orders first, then most recent items
     list_per_page = 50
     date_hierarchy = "order__created_at"
-    
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return OrderItem.all_objects.select_related(
+            "tenant", "order", "product"
+        )
+
     def get_order_number(self, obj):
         """Display the order number for easier identification."""
         return obj.order.order_number
@@ -271,7 +296,7 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 
 @admin.register(OrderDiscount)
-class OrderDiscountAdmin(admin.ModelAdmin):
+class OrderDiscountAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ("order", "discount", "amount", "created_at")
     search_fields = (
         "order__order_number",
@@ -279,9 +304,15 @@ class OrderDiscountAdmin(admin.ModelAdmin):
     )  # Changed search field for order
     raw_id_fields = ("order", "discount")
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return OrderDiscount.all_objects.select_related(
+            "tenant", "order", "discount"
+        )
+
 
 @admin.register(OrderItemModifier)
-class OrderItemModifierAdmin(admin.ModelAdmin):
+class OrderItemModifierAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ("order_item", "modifier_set_name", "option_name", "price_at_sale", "quantity")
     search_fields = (
         "order_item__order__order_number",
@@ -290,3 +321,9 @@ class OrderItemModifierAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("modifier_set_name", "option_name", "price_at_sale", "quantity")
     raw_id_fields = ("order_item",)
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return OrderItemModifier.all_objects.select_related(
+            "tenant", "order_item", "order_item__order"
+        )

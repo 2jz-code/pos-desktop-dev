@@ -3,11 +3,11 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
-from core_backend.admin.mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin
 
 
 @admin.register(Location)
-class LocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class LocationAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "description", "low_stock_threshold", "expiration_threshold")
     search_fields = ("name",)
     fieldsets = (
@@ -20,14 +20,24 @@ class LocationAdmin(ArchivingAdminMixin, admin.ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return Location.all_objects.select_related('tenant')
+
 
 @admin.register(InventoryStock)
-class InventoryStockAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class InventoryStockAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("product", "location", "quantity")
     list_filter = ("location", "product")
     search_fields = ("product__name", "location__name")
     # Make product and location searchable with a dropdown instead of just an ID
     autocomplete_fields = ("product", "location")
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return InventoryStock.all_objects.select_related(
+            "tenant", "product", "location"
+        )
 
 
 class RecipeItemInline(admin.TabularInline):
@@ -40,25 +50,35 @@ class RecipeItemInline(admin.TabularInline):
     autocomplete_fields = ("product",)
     extra = 1  # Show one extra blank ingredient line by default
 
+    def get_queryset(self, request):
+        """Use all_objects to show items across all tenants in admin"""
+        return RecipeItem.all_objects.select_related("product")
+
 
 @admin.register(Recipe)
-class RecipeAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class RecipeAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "menu_item")
     search_fields = ("name", "menu_item__name")
     autocomplete_fields = ("menu_item",)
     inlines = [RecipeItemInline]
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return Recipe.all_objects.select_related(
+            "tenant", "menu_item"
+        )
+
 
 @admin.register(StockHistoryEntry)
-class StockHistoryEntryAdmin(admin.ModelAdmin):
+class StockHistoryEntryAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = (
-        "timestamp", 
-        "product_link", 
-        "location", 
-        "operation_display", 
-        "quantity_change_formatted", 
-        "new_quantity", 
-        "user", 
+        "timestamp",
+        "product_link",
+        "location",
+        "operation_display",
+        "quantity_change_formatted",
+        "new_quantity",
+        "user",
         "reason_category_badge",
         "reference_id_link"
     )
@@ -125,6 +145,12 @@ class StockHistoryEntryAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return StockHistoryEntry.all_objects.select_related(
+            "tenant", "product", "location", "user"
+        )
 
     def product_link(self, obj):
         """Display product name as a link to the product admin page."""
@@ -197,8 +223,8 @@ class StockHistoryEntryAdmin(admin.ModelAdmin):
     def related_operations_link(self, obj):
         """Display link to view all related operations by reference_id."""
         if obj.reference_id:
-            # Count related operations
-            related_count = StockHistoryEntry.objects.filter(
+            # Count related operations (use all_objects for admin visibility)
+            related_count = StockHistoryEntry.all_objects.filter(
                 reference_id=obj.reference_id
             ).count()
             

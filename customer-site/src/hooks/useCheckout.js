@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ordersAPI } from "@/api/orders";
 import { paymentsAPI } from "@/api/payments";
+import cartAPI from "@/api/cart";
 import { useCart } from "./useCart";
 import { useFinancialSettings } from "./useSettings";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,7 +22,7 @@ const initialFormData = {
 	tip: 0,
 };
 
-export const useCheckout = () => {
+export const useCheckout = (initialStep = 0) => {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { cart } = useCart();
@@ -29,7 +30,8 @@ export const useCheckout = () => {
 	const { user, isAuthenticated } = useAuth();
 
 	// State management
-	const [currentStep, setCurrentStep] = useState(1);
+	// Start at provided initial step (0 for multi-location, 1 for single-location)
+	const [currentStep, setCurrentStep] = useState(initialStep);
 	const [formData, setFormData] = useState(initialFormData);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false); // <-- New state for payment submission
@@ -123,9 +125,11 @@ export const useCheckout = () => {
 			const surchargeRate = financialSettings?.surcharge_percentage
 				? parseFloat(financialSettings.surcharge_percentage)
 				: 0.035; // 3.5%
-			const taxRate = financialSettings?.tax_rate
-				? parseFloat(financialSettings.tax_rate)
-				: 0.08125; // 8.125%
+
+			// Tax rate comes from cart's location (location-specific)
+			const taxRate = cartData.store_location_tax_rate
+				? parseFloat(cartData.store_location_tax_rate)
+				: 0; // No tax if location not selected yet
 
 			const surchargeAmount = subtotal * surchargeRate;
 			const taxableAmount = subtotal + surchargeAmount;
@@ -144,16 +148,13 @@ export const useCheckout = () => {
 
 	// Fetch surcharge for display purposes
 	const fetchSurchargeDisplay = useCallback(async () => {
-		if (!cart || !cart.subtotal) return;
-		
+		// Check if cart has totals (backend-calculated values)
+		if (!cart || !cart.totals || !cart.totals.grand_total) return;
+
 		try {
-			const totals = calculateOrderTotals(cart);
-			if (!totals) return;
-			
-			// Calculate base amount (subtotal + tax) for surcharge calculation
-			// Round to 2 decimal places to avoid floating point precision issues
-			const baseAmount = parseFloat((totals.subtotal + totals.taxAmount).toFixed(2));
-			
+			// Use backend-calculated grand_total as the base for surcharge calculation
+			const baseAmount = parseFloat(cart.totals.grand_total);
+
 			const response = await paymentsAPI.calculateSurcharge(baseAmount);
 			setSurchargeDisplay({
 				amount: response.surcharge,
@@ -164,7 +165,7 @@ export const useCheckout = () => {
 			console.warn('Failed to fetch surcharge display:', err);
 			// Don't show error to user for display-only calculation
 		}
-	}, [cart, calculateOrderTotals]);
+	}, [cart]);
 
 	// Fetch surcharge display when cart changes
 	useEffect(() => {
@@ -186,7 +187,21 @@ export const useCheckout = () => {
 
 	const prevStep = useCallback(() => {
 		setError(null);
-		setCurrentStep((prev) => Math.max(prev - 1, 1));
+		// Don't go below the initial step (0 for multi-location, 1 for single-location)
+		setCurrentStep((prev) => Math.max(prev - 1, initialStep));
+	}, [initialStep]);
+
+	// Handle location selection completion (Step 0 -> Step 1)
+	const submitLocationSelection = useCallback((selectedLocationId) => {
+		if (!selectedLocationId) {
+			setError("Please select a pickup location to continue");
+			return;
+		}
+
+		// Location is already set in cart by the LocationSelector component
+		// Just move to next step
+		setError(null);
+		setCurrentStep(1);
 	}, []);
 
 	// NEW: Unified function to submit customer info
@@ -205,7 +220,7 @@ export const useCheckout = () => {
 		setError(null);
 
 		try {
-			// This data structure matches the new serializer
+			// This data structure matches the new cart serializer
 			const customerData = {
 				guest_first_name: formData.firstName,
 				guest_last_name: formData.lastName,
@@ -213,10 +228,10 @@ export const useCheckout = () => {
 				guest_phone: formData.phone.replace(/[^\d]/g, ""), // Sanitize phone
 			};
 
-			// Call the new unified endpoint
-			await ordersAPI.updateCustomerInfo(cart.id, customerData);
+			// Call the cart API to update customer info
+			await cartAPI.updateCustomerInfo(customerData);
 
-			// Invalidate cart queries to refetch the updated order data
+			// Invalidate cart queries to refetch the updated cart data
 			await queryClient.invalidateQueries({ queryKey: cartKeys.current() });
 
 			// Proceed to the next step
@@ -233,92 +248,46 @@ export const useCheckout = () => {
 		}
 	}, [cart, formData, queryClient, validateFormData]);
 
-	// Create or update guest order (for guest users only)
+	// Get or update cart (for guest users only)
+	// Note: This doesn't create an order - it returns the cart. Cart → Order conversion happens atomically during payment.
 	const createGuestOrder = useCallback(async () => {
 		try {
 			const totals = calculateOrderTotals(cart);
 			if (!totals) throw new Error("Unable to calculate order totals");
 
-			// Check if we already have a cart with items - if so, use that instead of creating new
+			// Check if we already have a cart with items
 			if (cart && cart.id && cart.items && cart.items.length > 0) {
 				console.log("Using existing cart for guest checkout:", cart.id);
 				console.log("Cart has", cart.items.length, "items");
-				
-				// Update guest contact information on existing cart
-				if (formData.firstName || formData.lastName || formData.email || formData.phone) {
-					try {
-						const updateData = {};
-						if (formData.firstName) updateData.guest_first_name = formData.firstName;
-						if (formData.lastName) updateData.guest_last_name = formData.lastName;
-						if (formData.email) updateData.guest_email = formData.email;
-						if (formData.phone) updateData.guest_phone = formData.phone.replace(/[^\d]/g, "");
 
-						await ordersAPI.updateCustomerInfo(cart.id, updateData);
-						console.log("Updated guest info on existing cart");
-					} catch (updateError) {
-						console.warn("Failed to update guest info on existing cart:", updateError);
-					}
-				}
-				
-				return cart; // Return the existing cart instead of creating new
+				// Customer info should already be in cart from submitCustomerInfo
+				// No need to update it here
+
+				return cart; // Return the existing cart (will be converted to order during payment)
 			}
 
-			// Only create new guest order if no cart exists
-			console.log("No existing cart found, creating new guest order");
-			
-			// First, ensure guest session is initialized
-			try {
-				await ordersAPI.initGuestSession();
-				console.log("Guest session initialized");
-			} catch (sessionError) {
-				console.warn("Session initialization failed:", sessionError);
-			}
-
-			// Create or get guest order (no data needed - it creates from session)
-			const response = await ordersAPI.createGuestOrder();
-
-			// Then update guest contact information
-			if (
-				response.id &&
-				(formData.firstName ||
-					formData.lastName ||
-					formData.email ||
-					formData.phone)
-			) {
-				try {
-					const updateData = {};
-					if (formData.firstName)
-						updateData.guest_first_name = formData.firstName;
-					if (formData.lastName) updateData.guest_last_name = formData.lastName;
-					if (formData.email) updateData.guest_email = formData.email;
-					if (formData.phone)
-						updateData.guest_phone = formData.phone.replace(/[^\d]/g, ""); // Send raw digits
-
-					await ordersAPI.updateCustomerInfo(response.id, updateData);
-				} catch (updateError) {
-					console.warn("Failed to update guest info:", updateError);
-				}
-			}
-
-			return response;
+			// If no cart exists, this shouldn't happen in the checkout flow
+			// Cart should have been created when items were added
+			throw new Error("No cart found. Please add items to your cart first.");
 		} catch (err) {
-			console.error("Error creating guest order:", err);
-			throw new Error(err.response?.data?.detail || "Failed to create order");
+			console.error("Error in createGuestOrder:", err);
+			throw new Error(err.response?.data?.detail || "Failed to prepare order");
 		}
-	}, [cart, formData, calculateOrderTotals]);
+	}, [cart, calculateOrderTotals]);
 
 	// Note: For authenticated users, we use the cart directly as it's already an order
 
 	// Create payment intent (for guest users)
 	const createGuestPaymentIntent = useCallback(
-		async (order) => {
+		async (cartOrOrder) => {
 			try {
-				const totals = calculateOrderTotals(cart);
-				if (!totals) throw new Error("Unable to calculate order totals");
+				// Use backend-calculated grand_total (does NOT include surcharge)
+				// Backend will add surcharge during payment processing
+				if (!cart?.totals?.grand_total) throw new Error("Unable to get cart total");
 
 				const paymentData = {
-					order_id: order.id,
-					amount: totals.total,
+					cart_id: cart.id, // Use cart_id for web orders (atomic cart → order conversion)
+					amount: cart.totals.grand_total,  // Backend total WITHOUT surcharge
 					tip: formData.tip || 0,
 					currency: "usd",
 					customer_email: formData.email,
@@ -343,10 +312,9 @@ export const useCheckout = () => {
 	// Note: Authenticated payment intents are now handled in handleAuthenticatedCheckout
 
 	// Complete guest payment
-	const completeGuestPayment = useCallback(async (paymentIntentId, orderId, tipAmount = 0) => {
+	const completeGuestPayment = useCallback(async (paymentIntentId, tipAmount = 0) => {
 		return await paymentsAPI.completeGuestPayment({
 			payment_intent_id: paymentIntentId,
-			order_id: orderId,
 			tip: tipAmount,
 		});
 	}, []);
@@ -372,8 +340,8 @@ export const useCheckout = () => {
 				console.log('🎯 Creating authenticated payment intent with tip:', tipAmount);
 				const paymentIntentData =
 					await paymentsAPI.createAuthenticatedPaymentIntent({
-						order_id: cart.id,
-						amount: cart.grand_total,
+						cart_id: cart.id, // Use cart_id for web orders (atomic cart → order conversion)
+						amount: cart.totals.grand_total,  // Backend total WITHOUT surcharge
 						tip: tipAmount || 0,
 						currency: "usd",
 					});
@@ -410,7 +378,6 @@ export const useCheckout = () => {
 				const completionResponse =
 					await paymentsAPI.completeAuthenticatedPayment({
 						payment_intent_id: paymentIntent.id,
-						order_id: cart.id, // Use the cart ID
 						tip: tipAmount,
 					});
 
@@ -460,9 +427,9 @@ export const useCheckout = () => {
 			setError(null);
 
 			try {
-				let order, paymentIntent;
+				let paymentIntent;
 
-				// Step 1: Create/get the order based on user type
+				// Step 1: Create/get the cart and payment intent based on user type
 				if (isAuthenticated && user) {
 					console.log("Routing to authenticated checkout...");
 					console.log('🎯 Passing tip to handleAuthenticatedCheckout:', formData.tip);
@@ -471,9 +438,10 @@ export const useCheckout = () => {
 					setIsLoading(false);
 					return handleAuthenticatedCheckout({ stripe, cardElement, tipAmount: formData.tip || 0 });
 				} else {
-					console.log("Processing guest user order...");
-					order = await createGuestOrder();
-					paymentIntent = await createGuestPaymentIntent(order);
+					console.log("Processing guest user checkout...");
+					// Get cart (not order - cart → order conversion happens during payment)
+					await createGuestOrder(); // Ensures cart has guest info
+					paymentIntent = await createGuestPaymentIntent(); // Uses cart.id internally
 				}
 
 				// Step 2: Confirm payment with Stripe
@@ -510,13 +478,12 @@ export const useCheckout = () => {
 					// Complete the guest payment (now returns order data directly)
 					const completionResponse = await completeGuestPayment(
 						confirmedPayment.id,
-						order.id,
 						formData.tip || 0
 					);
 
 					// Use the order data returned from payment completion
-					const orderId = order.id;
 					setOrderConfirmation(completionResponse.order);
+					const orderId = completionResponse.order.id; // Get order ID from response
 
 					toast.success("Payment successful!");
 
@@ -590,6 +557,7 @@ export const useCheckout = () => {
 		updateFormData,
 		nextStep,
 		prevStep,
+		submitLocationSelection,
 		submitOrder,
 		clearError,
 		resetCheckout,

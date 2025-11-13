@@ -20,7 +20,7 @@ import { Toaster } from "@/shared/components/ui/toaster";
 import { AnimatedOutlet } from "../components/animations/AnimatedOutlet";
 
 // Domain Pages
-import { LoginPage } from "@/domains/auth";
+import { LoginPage, TerminalPairingPage } from "@/domains/auth";
 import { DashboardPage } from "@/domains/dashboard";
 import { POSPage } from "@/domains/pos";
 import { OrdersPage, OrderDetailsPage } from "@/domains/orders";
@@ -33,6 +33,9 @@ import { SettingsPage } from "@/domains/settings";
 
 // Shared Components
 import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
+
+// Services
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 /**
  * This is the root component that sets up all the providers
@@ -47,6 +50,10 @@ function AppContent() {
 function App() {
 	useEffect(() => {
 		console.log("App mounted. Running initialization logic...");
+
+		// Initialize terminal registration (must be first - sets location context)
+		terminalRegistrationService.initialize();
+
 		// Call these once when the app mounts
 		useSettingsStore.getState().fetchSettings();
 		useSettingsStore.getState().discoverAndSetPrinters();
@@ -101,8 +108,31 @@ function AppRoutes() {
 		return <FullScreenLoader />;
 	}
 
+	// IMPORTANT: Check if terminal is registered first
+	const isTerminalRegistered = terminalRegistrationService.isTerminalRegistered();
+
+	// If terminal is not registered, redirect to pairing page
+	if (!isTerminalRegistered && location.pathname !== "/terminal-pairing") {
+		return (
+			<Navigate
+				to="/terminal-pairing"
+				replace
+			/>
+		);
+	}
+
+	// If terminal is registered but user is on pairing page, redirect to login
+	if (isTerminalRegistered && location.pathname === "/terminal-pairing") {
+		return (
+			<Navigate
+				to="/login"
+				replace
+			/>
+		);
+	}
+
 	// This logic handles routing for unauthenticated users.
-	if (!isAuthenticated && location.pathname !== "/login") {
+	if (!isAuthenticated && location.pathname !== "/login" && location.pathname !== "/terminal-pairing") {
 		return (
 			<Navigate
 				to="/login"
@@ -124,6 +154,10 @@ function AppRoutes() {
 	// Main routing structure
 	return (
 		<Routes>
+			<Route
+				path="/terminal-pairing"
+				element={<TerminalPairingPage />}
+			/>
 			<Route
 				path="/login"
 				element={<LoginPage />}

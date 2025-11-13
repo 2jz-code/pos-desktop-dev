@@ -10,9 +10,12 @@ class IsAuthenticatedOrGuestOrder(permissions.BasePermission):
     """
 
     def has_permission(self, request, view):
-        # Allow all users to create orders (including guests)
+        # For create action: Allow authenticated users OR users with valid sessions (guests)
+        # Note: This supports both staff creating orders through POS and guests creating web orders
         if view.action == "create":
-            return True
+            return bool(request.user and request.user.is_authenticated) or bool(
+                request.session.session_key
+            )
 
         # For other actions, check if user is authenticated or has a valid session
         return bool(request.user and request.user.is_authenticated) or bool(

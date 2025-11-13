@@ -7,6 +7,7 @@ from discounts.services import DiscountService
 from discounts.models import Discount
 from products.services import ModifierValidationService
 from core_backend.infrastructure.cache_utils import cache_session_data, cache_static_data
+from business_hours.services import BusinessHoursService
 import hashlib
 import logging
 import time
@@ -17,14 +18,20 @@ class OrderService:
     
     @staticmethod
     @cache_static_data(timeout=3600*4)  # 4 hours - tax calculations don't change often
-    def get_tax_calculation_matrix():
-        """Cache tax calculations for common price ranges"""
-        from settings.config import app_settings
-        
+    def get_tax_calculation_matrix(store_location):
+        """
+        Cache tax calculations for common price ranges for a specific store location.
+
+        Args:
+            store_location: StoreLocation instance to get tax rate from
+        """
+        if not store_location:
+            raise ValueError("store_location is required for tax calculations")
+
         # Pre-calculate tax amounts for common price ranges
-        tax_rate = app_settings.tax_rate
+        tax_rate = store_location.tax_rate
         price_ranges = [1, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200]
-        
+
         tax_matrix = {}
         for price in price_ranges:
             price_decimal = Decimal(str(price))
@@ -33,11 +40,12 @@ class OrderService:
                 'tax_amount': float(tax_amount.quantize(Decimal("0.01"))),
                 'total_with_tax': float((price_decimal + tax_amount).quantize(Decimal("0.01")))
             }
-        
+
         return {
             'tax_rate': float(tax_rate),
             'matrix': tax_matrix,
-            'last_updated': str(app_settings.tax_rate)  # Use as cache key
+            'last_updated': str(store_location.tax_rate),  # Use as cache key
+            'store_location_id': store_location.id  # Include location in cache key
         }
     
     @staticmethod
@@ -105,24 +113,47 @@ class OrderService:
     @staticmethod
     @transaction.atomic
     def create_new_order(
-        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS
+        cashier: User, customer: User = None, order_type: str = Order.OrderType.POS, tenant=None, store_location=None
     ) -> Order:
         """
         Creates a new, empty order.
+
+        Args:
+            cashier: The cashier creating the order
+            customer: Optional customer for the order
+            order_type: Type of order (POS, WEB, etc.)
+            tenant: Tenant for the order (REQUIRED for multi-tenancy)
+            store_location: StoreLocation for the order (REQUIRED for multi-location)
+
+        Raises:
+            ValueError: If tenant or store_location is not provided
         """
+        if tenant is None:
+            raise ValueError("tenant parameter is required for creating orders")
+
+        if store_location is None:
+            raise ValueError("store_location parameter is required for creating orders")
+
         order = Order.objects.create(
-            order_type=order_type, cashier=cashier, customer=customer
+            order_type=order_type, cashier=cashier, customer=customer, tenant=tenant, store_location=store_location
         )
         return order
 
     @staticmethod
     @transaction.atomic
-    def create_order(order_type: str, cashier: User, customer: User = None) -> Order:
+    def create_order(order_type: str, cashier: User, customer: User = None, tenant=None, store_location=None) -> Order:
         """
         Creates a new, empty order.
         Compatibility method for existing tests and code.
+
+        Args:
+            order_type: Type of order (POS, WEB, etc.)
+            cashier: The cashier creating the order
+            customer: Optional customer for the order
+            tenant: Tenant for the order (REQUIRED for multi-tenancy)
+            store_location: StoreLocation for the order (REQUIRED for multi-location)
         """
-        return OrderService.create_new_order(cashier, customer, order_type)
+        return OrderService.create_new_order(cashier, customer, order_type, tenant, store_location)
 
     @staticmethod
     @transaction.atomic
@@ -161,12 +192,15 @@ class OrderService:
             
             # Stock validation - check if product is available
             from inventory.services import InventoryService
-            from settings.config import app_settings
-            
+
             # Only validate stock for products that track inventory
             if product.track_inventory:
                 try:
-                    default_location = app_settings.get_default_location()
+                    # Get inventory location from order's store location
+                    inventory_location = order.store_location.default_inventory_location
+                    if not inventory_location:
+                        raise ValueError(f"No default inventory location configured for store location '{order.store_location.name}'")
+
                     from django.conf import settings as dj_settings
 
                     # When policy is enabled, use policy-aware stock checking with cumulative enforcement
@@ -189,7 +223,7 @@ class OrderService:
                             from django.db.models import Sum
                             # How many of this product are already reserved in this order?
                             reserved = OrderItem.objects.filter(order=order, product=product).aggregate(total=Sum('quantity'))['total'] or 0
-                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            stock_level = InventoryService.get_stock_level(product, inventory_location)
                             # Work with Decimal for consistency
                             available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
                             if Decimal(str(quantity)) > available_to_add:
@@ -199,9 +233,9 @@ class OrderService:
                                     raise ValueError(f"'{product.name}' has low stock. Only {available_to_add} items available, but {quantity} requested.")
                     else:
                         # Legacy: check only the requested chunk against stock
-                        is_available = InventoryService.check_stock_availability(product, default_location, quantity)
+                        is_available = InventoryService.check_stock_availability(product, inventory_location, quantity)
                         if not is_available:
-                            stock_level = InventoryService.get_stock_level(product, default_location)
+                            stock_level = InventoryService.get_stock_level(product, inventory_location)
                             if stock_level <= 0:
                                 raise ValueError(f"'{product.name}' is out of stock. No items available.")
                             else:
@@ -211,8 +245,10 @@ class OrderService:
                     # If InventoryService methods don't exist, fall back to basic stock level check
                     from inventory.models import InventoryStock
                     try:
-                        default_location = app_settings.get_default_location()
-                        stock = InventoryStock.objects.get(product=product, location=default_location)
+                        inventory_location = order.store_location.default_inventory_location
+                        if not inventory_location:
+                            raise ValueError(f"No default inventory location configured for store location '{order.store_location.name}'")
+                        stock = InventoryStock.objects.get(product=product, location=inventory_location)
                         if stock.quantity < quantity:
                             if stock.quantity <= 0:
                                 raise ValueError(f"'{product.name}' is out of stock. No items available.")
@@ -258,6 +294,7 @@ class OrderService:
                     notes=notes,
                     item_sequence=existing_count + i + 1,
                     variation_group=variation_group,
+                    tenant=order.tenant
                 )
                 created_items.append(individual_item)
             
@@ -273,9 +310,14 @@ class OrderService:
             ).first()
             
             if existing_item:
-                # Update existing item quantity
-                existing_item.quantity += quantity
-                existing_item.save()
+                # CRITICAL FIX: Use atomic F() expression to prevent race condition
+                # This prevents lost updates when multiple requests try to add items simultaneously
+                from django.db.models import F
+
+                OrderItem.objects.filter(id=existing_item.id).update(
+                    quantity=F('quantity') + quantity
+                )
+                existing_item.refresh_from_db()
                 order_item = existing_item
             else:
                 # Create new item without modifiers
@@ -292,6 +334,7 @@ class OrderService:
                     notes=notes,
                     item_sequence=existing_count + 1,
                     variation_group=variation_group,
+                    tenant=order.tenant
                 )
 
         # Create snapshot records for the selected modifiers
@@ -322,7 +365,8 @@ class OrderService:
                             modifier_set_name=modifier_option.modifier_set.name,
                             option_name=modifier_option.name,
                             price_at_sale=modifier_option.price_delta,
-                            quantity=mod_quantity
+                            quantity=mod_quantity,
+                            tenant=order.tenant
                         )
                         logger.debug(f"Created OrderItemModifier: {created_modifier}")
                     except ModifierOption.DoesNotExist:
@@ -362,6 +406,7 @@ class OrderService:
             price_at_sale=price,  # Use the custom price as price_at_sale
             notes=notes,
             item_sequence=1,  # Custom items don't need sequence tracking
+            tenant=order.tenant
         )
 
         OrderService.recalculate_order_totals(order)
@@ -464,7 +509,7 @@ class OrderService:
     @transaction.atomic
     def update_order_status(order: Order, new_status: str) -> Order:
         """
-        Updates the status of an order, checking for valid transitions.
+        Updates the status of an order, checking for valid transitions and business hours.
         """
         if new_status not in Order.OrderStatus.values:
             raise ValueError(f"'{new_status}' is not a valid order status.")
@@ -475,6 +520,25 @@ class OrderService:
             raise ValueError(
                 f"Cannot transition order from {order.status} to {new_status}."
             )
+
+        # Validate business hours when completing a web order
+        if (new_status == Order.OrderStatus.COMPLETED and
+            order.order_type == Order.OrderType.WEB and
+            order.status == Order.OrderStatus.PENDING):
+
+            if not order.store_location:
+                raise ValueError("Store location is required for web orders.")
+
+            business_hours_profile = order.store_location.business_hours_profile
+            if business_hours_profile and business_hours_profile.is_active:
+                service = BusinessHoursService(business_hours_profile)
+                if not service.is_open():
+                    status_summary = service.get_status_summary()
+                    next_opening = status_summary.get('next_opening', 'business hours')
+                    raise ValueError(
+                        f"Cannot complete order. {order.store_location.name} is currently closed. "
+                        f"Next opening: {next_opening}"
+                    )
 
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
@@ -489,9 +553,26 @@ class OrderService:
         - Updates order status to COMPLETED.
         - Updates order surcharges_total from payment data.
         - Triggers inventory deduction.
+        - Validates business hours for web orders.
         """
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError("Only PENDING or HOLD orders can be completed.")
+
+        # Validate business hours for web orders (POS orders can be completed anytime)
+        if order.order_type == Order.OrderType.WEB:
+            if not order.store_location:
+                raise ValueError("Store location is required for web orders.")
+
+            business_hours_profile = order.store_location.business_hours_profile
+            if business_hours_profile and business_hours_profile.is_active:
+                service = BusinessHoursService(business_hours_profile)
+                if not service.is_open():
+                    status_summary = service.get_status_summary()
+                    next_opening = status_summary.get('next_opening', 'business hours')
+                    raise ValueError(
+                        f"Cannot complete order. {order.store_location.name} is currently closed. "
+                        f"Next opening: {next_opening}"
+                    )
 
         # Update order surcharges from payment data
         if hasattr(order, 'payment_details') and order.payment_details:
@@ -525,7 +606,8 @@ class OrderService:
         new_order = Order.objects.create(
             customer=user,
             order_type=source_order.order_type,
-            # Copy other relevant fields if necessary, e.g., location
+            tenant=source_order.tenant,  # Use same tenant as source order
+            store_location=source_order.store_location,  # Copy store location from source order
         )
 
         # Copy items from the source order to the new one
@@ -537,6 +619,7 @@ class OrderService:
                 quantity=item.quantity,
                 price_at_sale=item.product.price,  # Use current price from pre-fetched data
                 notes=item.notes,
+                tenant=new_order.tenant
             )
 
         # Recalculate totals for the new order
@@ -643,15 +726,12 @@ class OrderService:
     @transaction.atomic
     def recalculate_order_totals(order: Order):
         """
-        Recalculates all financial fields for an order, ensuring calculations
-        are performed in the correct sequence.
-        Surcharges are excluded from cart totals and only calculated during payment.
+        Recalculates all financial fields for an order using OrderCalculator (DRY).
+
+        Delegates to OrderCalculator for subtotal, tax, and grand_total calculations.
+        Discounts are handled separately using DiscountStrategyFactory.
         """
         start_time = time.monotonic()
-
-        # Import app_settings locally to ensure we always get the fresh configuration
-        # This avoids Python's module-level import caching that could cause stale config
-        from settings.config import app_settings
 
         # Re-fetch the full order context to ensure data is fresh
         # FIX: Add select_related for product to prevent N+1 queries when accessing item.product.price
@@ -662,16 +742,19 @@ class OrderService:
         setattr(original_order_reference, "_recalculated_order_instance", order)
 
         # Pre-fetch items with related data to prevent N+1 queries
-        # Note: Some items may not have products (custom items), so we use nullable relations
         items_queryset = order.items.select_related("product", "product__product_type").prefetch_related("product__taxes").all()
         items = list(items_queryset)
         item_count = len(items)
 
-        # 1. Calculate the pre-discount subtotal from all items
-        # FIX: Use pre-fetched items to prevent additional queries
-        order.subtotal = sum(item.total_price for item in items)
+        # Use OrderCalculator for DRY financial calculations
+        from .calculators import OrderCalculator
+        calculator = OrderCalculator(order)
 
-        # 2. Recalculate the value of all applied discounts based on the fresh subtotal
+        # 1. Calculate subtotal (delegated to calculator)
+        order.subtotal = calculator.calculate_subtotal()
+
+        # 2. Recalculate discounts using DiscountService (NOT in calculator yet)
+        # TODO: Move this logic to DiscountCalculator class
         total_discount_amount = Decimal("0.00")
         from discounts.factories import DiscountStrategyFactory
 
@@ -686,65 +769,17 @@ class OrderService:
                 total_discount_amount += calculated_amount
         order.total_discounts_amount = total_discount_amount
 
-        # 3. Determine the base for tax calculations (subtotal AFTER discounts)
+        # 3. Calculate post-discount subtotal
         post_discount_subtotal = order.subtotal - order.total_discounts_amount
 
         # 4. Surcharges are NOT calculated here - only during payment processing
-        # Keep surcharges_total at 0 for cart operations
         order.surcharges_total = Decimal("0.00")
 
-        # 5. Calculate tax based on the discounted price of each item (without surcharges)
-        tax_total = Decimal("0.00")
-        if order.subtotal > 0:
-            proportional_discount_rate = order.total_discounts_amount / order.subtotal
-            # FIX: Use pre-fetched items to prevent N+1 queries when accessing item.product.taxes
-            for item in items:
-                discounted_item_price = item.total_price * (
-                    Decimal("1.0") - proportional_discount_rate
-                )
+        # 5. Calculate tax (delegated to calculator with discount-aware logic)
+        order.tax_total = calculator.calculate_item_level_tax(post_discount_subtotal)
 
-                if item.product:
-                    # Check if product type has tax_inclusive flag set
-                    product_type = item.product.product_type
-                    if product_type and product_type.tax_inclusive:
-                        # Tax is already included in the product price, don't calculate additional tax
-                        continue
-
-                    # Access pre-fetched taxes to prevent additional queries
-                    product_taxes = item.product.taxes.all()
-                    if product_taxes:
-                        # Use product-specific taxes if defined
-                        for tax in product_taxes:
-                            tax_total += discounted_item_price * (
-                                tax.rate / Decimal("100.0")
-                            )
-                    else:
-                        # Feature-flagged: consider product type default taxes
-                        from django.conf import settings as dj_settings
-                        if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
-                            try:
-                                from products.policies import ProductTypePolicy
-                                type_taxes = list(ProductTypePolicy.get_applicable_taxes(item.product))
-                            except Exception:
-                                type_taxes = []
-                            if type_taxes:
-                                for tax in type_taxes:
-                                    tax_total += discounted_item_price * (
-                                        tax.rate / Decimal("100.0")
-                                    )
-                            else:
-                                tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
-                        else:
-                            # Legacy: use global tax rate
-                            tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
-                else:
-                    # Custom items use the default tax rate from settings
-                    tax_total += discounted_item_price * Decimal(str(app_settings.tax_rate))
-
-        order.tax_total = tax_total.quantize(Decimal("0.01"))
-
-        # 6. Calculate the final grand total (WITHOUT surcharges for cart view)
-        # Surcharges will be calculated separately during payment processing
+        # 6. Calculate grand total (delegated to calculator)
+        # Note: Calculator already applies discounts internally
         order.grand_total = post_discount_subtotal + order.tax_total
 
         order.save(
@@ -761,7 +796,7 @@ class OrderService:
         elapsed_ms = (time.monotonic() - start_time) * 1000
         discount_count = len(applied_discounts)
         logger.info(
-            "OrderService.recalculate_order_totals order_id=%s items=%d discounts=%d elapsed_ms=%.2f",
+            "OrderService.recalculate_order_totals order_id=%s items=%d discounts=%d elapsed_ms=%.2f (DRY via OrderCalculator)",
             order.id,
             item_count,
             discount_count,
@@ -805,10 +840,12 @@ class OrderService:
 
             try:
                 from inventory.services import InventoryService
-                from settings.config import app_settings
                 from django.conf import settings as dj_settings
 
-                default_location = app_settings.get_default_location()
+                # Get inventory location from order's store location
+                inventory_location = order_item.order.store_location.default_inventory_location
+                if not inventory_location:
+                    raise ValueError(f"No default inventory location configured for store location '{order_item.order.store_location.name}'")
 
                 # When policy is enabled, use policy-aware stock checking with cumulative enforcement
                 if getattr(dj_settings, 'USE_PRODUCT_TYPE_POLICY', False):
@@ -834,7 +871,7 @@ class OrderService:
                             product=order_item.product
                         ).aggregate(total=Sum('quantity'))['total'] or 0
 
-                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        stock_level = InventoryService.get_stock_level(order_item.product, inventory_location)
                         # Work with Decimal for consistency
                         available_to_add = Decimal(str(stock_level)) - Decimal(str(reserved))
 
@@ -846,10 +883,10 @@ class OrderService:
                 else:
                     # Legacy: check only the additional quantity against stock
                     is_available = InventoryService.check_stock_availability(
-                        order_item.product, default_location, additional_quantity
+                        order_item.product, inventory_location, additional_quantity
                     )
                     if not is_available:
-                        stock_level = InventoryService.get_stock_level(order_item.product, default_location)
+                        stock_level = InventoryService.get_stock_level(order_item.product, inventory_location)
                         if stock_level <= 0:
                             raise ValueError(f"'{order_item.product.name}' is out of stock. No items available.")
                         else:
@@ -983,10 +1020,15 @@ class GuestSessionService:
             return None
 
     @staticmethod
-    def create_guest_order(request, order_type="WEB"):
+    def create_guest_order(request, order_type="WEB", store_location=None):
         """
         Create a new guest order for the session, with improved duplicate prevention.
         Returns existing pending order if one exists for the session.
+
+        Args:
+            request: The HTTP request object
+            order_type: Type of order (default: "WEB")
+            store_location: StoreLocation for the order (REQUIRED for new orders)
         """
         from .models import Order
 
@@ -1043,8 +1085,15 @@ class GuestSessionService:
             return existing_by_guest_id
 
         # Create new order only if none exists
+        if store_location is None:
+            raise ValueError("store_location parameter is required for creating guest orders")
+
         order = Order.objects.create(
-            guest_id=guest_id, order_type=order_type, status=Order.OrderStatus.PENDING
+            guest_id=guest_id,
+            order_type=order_type,
+            status=Order.OrderStatus.PENDING,
+            tenant=request.tenant,
+            store_location=store_location
         )
 
         # Store order ID in session for quick access

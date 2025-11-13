@@ -40,8 +40,9 @@ export interface ActivityItem {
 class DashboardService {
 	/**
 	 * Get dashboard metrics for today
+	 * @param locationId - Optional store location ID to filter metrics by location
 	 */
-	async getDashboardMetrics(): Promise<DashboardMetrics> {
+	async getDashboardMetrics(locationId?: number): Promise<DashboardMetrics> {
 		try {
 			const today = new Date();
 			const yesterday = new Date(today);
@@ -70,13 +71,17 @@ class DashboardService {
 			console.log("Dashboard fetching reports for:", {
 				today: { start: todayStart, end: todayEnd },
 				yesterday: { start: yesterdayStart, end: yesterdayEnd },
+				locationId,
 			});
+
+			// Build filters with optional location_id
+			const filters = locationId ? { location_id: locationId } : {};
 
 			// Fetch today's sales report and products report in parallel
 			const [todaySalesData, yesterdaySalesData, todayProductsData] = await Promise.all([
-				reportsService.generateSalesReport(todayStart, todayEnd, "day"),
-				reportsService.generateSalesReport(yesterdayStart, yesterdayEnd, "day"),
-				reportsService.generateProductsReport(todayStart, todayEnd),
+				reportsService.generateSalesReport(todayStart, todayEnd, "day", filters),
+				reportsService.generateSalesReport(yesterdayStart, yesterdayEnd, "day", filters),
+				reportsService.generateProductsReport(todayStart, todayEnd, filters),
 			]);
 
 			// Extract metrics from sales reports (use net_revenue instead of total_revenue)
@@ -106,7 +111,7 @@ class DashboardService {
 					: null;
 			console.log("Top product:", topProduct);
 
-			// Get low stock count
+			// Get low stock count (filtered by store location from middleware)
 			const lowStockItems = await inventoryService.getAllStock({
 				is_low_stock: true,
 			});
@@ -160,7 +165,7 @@ class DashboardService {
 	/**
 	 * Get recent activity feed
 	 */
-	async getRecentActivity(): Promise<ActivityItem[]> {
+	async getRecentActivity(tenantSlug?: string): Promise<ActivityItem[]> {
 		try {
 			// Fetch recent orders
 			const recentOrders = await getAllOrders({
@@ -177,13 +182,14 @@ class DashboardService {
 			// Convert orders to activity items
 			orders.slice(0, 5).forEach((order: any) => {
 				const timeAgo = this.getTimeAgo(new Date(order.created_at));
+				const ordersPath = tenantSlug ? `/${tenantSlug}/orders` : '/orders';
 				activities.push({
 					id: `order-${order.id}`,
 					type: "order",
 					message: `${order.status === "completed" ? "Order completed" : "New order"} #${order.order_number}`,
 					timestamp: timeAgo,
 					icon: "ShoppingCart",
-					linkTo: `/orders?highlight=${order.order_number}`,
+					linkTo: `${ordersPath}?highlight=${order.order_number}`,
 				});
 			});
 

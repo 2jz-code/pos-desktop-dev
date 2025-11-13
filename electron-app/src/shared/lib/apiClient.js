@@ -1,5 +1,14 @@
 import axios from "axios";
 
+// Cache location ID to avoid circular dependency and repeated lookups
+let cachedLocationId = null;
+
+// Export setter for TerminalRegistrationService to update location
+export function setLocationId(locationId) {
+	cachedLocationId = locationId;
+	console.log('📍 Location ID set for API client:', locationId);
+}
+
 const apiClient = axios.create({
 	baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001/api",
 	timeout: parseInt(import.meta.env.VITE_API_TIMEOUT_MS) || 10000,
@@ -38,10 +47,41 @@ apiClient.interceptors.request.use(
 	async (config) => {
 		// Note: User-Agent and Origin headers are managed by the browser/Electron
 		// and should not be manually set as they are considered unsafe headers
+
+		config.headers = config.headers || {};
+
+		// Add X-Store-Location header for location-scoped filtering
+		// Skip for terminal registration/pairing endpoints (they don't need location context)
+		const skipLocationHeader =
+			config.url?.includes('/terminals/pairing/') ||
+			config.url?.includes('/terminals/registrations/by-fingerprint/');
+
+		if (!skipLocationHeader && cachedLocationId) {
+			config.headers['X-Store-Location'] = cachedLocationId;
+			console.log(`📍 [API] Adding X-Store-Location: ${cachedLocationId} to ${config.url}`);
+		} else if (!skipLocationHeader && !cachedLocationId) {
+			console.warn(`⚠️ [API] No location ID for request to ${config.url}`);
+		}
+
+		// Add X-Tenant header from terminal config
+		// This allows tenant resolution even when JWT is expired (for token refresh)
+		try {
+			const terminalConfig = localStorage.getItem('terminal_config');
+			if (terminalConfig) {
+				const config_parsed = JSON.parse(terminalConfig);
+				const tenantSlug = config_parsed.tenant_slug;
+				if (tenantSlug) {
+					config.headers['X-Tenant'] = tenantSlug;
+					console.log(`🏢 [API] Adding X-Tenant: ${tenantSlug} to ${config.url}`);
+				}
+			}
+		} catch (_) {
+			// If localStorage or parsing fails, proceed without the header
+		}
+
 		// Add CSRF stopgap header on unsafe methods so the backend permits cookie-auth writes
 		const method = (config.method || 'get').toLowerCase();
 		if (!['get', 'head', 'options'].includes(method)) {
-			config.headers = config.headers || {};
 			config.headers['X-Requested-With'] = 'XMLHttpRequest';
 			try {
 				const token = await ensureCsrfToken();
@@ -52,6 +92,7 @@ apiClient.interceptors.request.use(
 				// If CSRF token fetch fails, proceed; server may reject with 403 which UI can handle
 			}
 		}
+
 		return config;
 	},
 	(error) => {
@@ -94,9 +135,12 @@ apiClient.interceptors.response.use(
 
 		// Check if the error is 401 Unauthorized and if we haven't already retried
 		if (error.response?.status === 401 && !originalRequest._retry) {
-			if (originalRequest.url === "/users/token/refresh/") {
-				// If the refresh token request itself fails, just reject.
-				// No more hard redirects.
+			// Don't try to refresh on login or refresh endpoints - these are auth failures, not expired tokens
+			if (
+				originalRequest.url === "/users/token/refresh/" ||
+				originalRequest.url === "/users/login/pos/"
+			) {
+				// If the login or refresh request itself fails, just reject.
 				return Promise.reject(error);
 			}
 

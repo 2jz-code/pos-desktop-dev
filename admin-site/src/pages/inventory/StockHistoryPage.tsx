@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Card,
 	CardContent,
@@ -40,10 +42,11 @@ import {
 	Minus,
 	MapPin,
 	Calendar,
+	Warehouse,
 } from "lucide-react";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
-import { useDebounce } from "@ajeen/ui";
+// import { useDebounce } from "@ajeen/ui";
 import { ReasonBadge } from "@/components/inventory/ReasonBadge";
 
 interface Product {
@@ -57,6 +60,12 @@ interface Location {
 	id: number;
 	name: string;
 	description?: string;
+	store_location?: number;
+}
+
+interface StoreLocation {
+	id: number;
+	name: string;
 }
 
 interface User {
@@ -76,6 +85,7 @@ interface StockHistoryEntry {
 	id: number;
 	product: Product;
 	location: Location;
+	store_location?: StoreLocation;
 	user: User;
 	operation_type: string;
 	operation_display: string;
@@ -121,6 +131,9 @@ const OPERATION_TYPES = {
 
 export const StockHistoryPage = () => {
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || "";
+	const { selectedLocationId } = useStoreLocation();
 
 	// Filtering and search states
 	const [searchQuery, setSearchQuery] = useState("");
@@ -132,72 +145,56 @@ export const StockHistoryPage = () => {
 	const [dateRange, setDateRange] = useState<string>("all");
 	const [activeTab, setActiveTab] = useState("all");
 
+	// Create filters with memoization (store location is now handled by middleware via X-Store-Location header)
+	// Keep selectedLocationId in deps to trigger refetch when location changes
+	const historyFilters = useMemo(
+		() => ({
+			search: searchQuery,
+			location: selectedLocation || undefined,
+			operation_type: selectedOperationType || undefined,
+			user: selectedUser || undefined,
+			date_range: dateRange !== "all" ? dateRange : undefined,
+			tab: activeTab !== "all" ? activeTab : undefined,
+		}),
+		[
+			selectedLocationId,
+			searchQuery,
+			selectedLocation,
+			selectedOperationType,
+			selectedUser,
+			dateRange,
+			activeTab,
+		]
+	);
+
+	const locationsFilters = useMemo(
+		() => ({}),
+		[selectedLocationId]
+	);
+
 	// Data fetching - get all records once
 	const { data: allHistoryData, isLoading: historyLoading } = useQuery<
 		StockHistoryEntry[]
 	>({
-		queryKey: ["stock-history"],
-		queryFn: () => inventoryService.getStockHistory({}),
+		queryKey: ["stock-history", selectedLocationId, historyFilters],
+		queryFn: () => inventoryService.getStockHistory(historyFilters),
 		staleTime: 30000, // Consider data fresh for 30 seconds
 		cacheTime: 300000, // Keep in cache for 5 minutes
 	});
 
 	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>(
 		{
-			queryKey: ["inventory-locations"],
-			queryFn: inventoryService.getLocations,
+			queryKey: ["inventory-locations", selectedLocationId, locationsFilters],
+			queryFn: () => inventoryService.getLocations(locationsFilters),
 			select: (data) => data.results,
 		}
 	);
 
-	// Client-side filtering
-	const filteredHistoryData = useMemo(() => {
-		if (!allHistoryData) return [];
+	// Check if we're viewing all locations
+	const isViewingAllLocations = !selectedLocationId;
 
-		let filtered = allHistoryData;
-
-		// Filter by search query
-		if (searchQuery.trim()) {
-			const query = searchQuery.toLowerCase();
-			filtered = filtered.filter((entry) =>
-				entry.product.name.toLowerCase().includes(query) ||
-				entry.product.barcode?.toLowerCase().includes(query) ||
-				entry.reason?.toLowerCase().includes(query) ||
-				entry.notes?.toLowerCase().includes(query) ||
-				entry.reference_id?.toLowerCase().includes(query)
-			);
-		}
-
-		// Filter by location
-		if (selectedLocation) {
-			filtered = filtered.filter((entry) => entry.location.id.toString() === selectedLocation);
-		}
-
-		// Filter by operation type
-		if (selectedOperationType) {
-			filtered = filtered.filter((entry) => entry.operation_type === selectedOperationType);
-		}
-
-		// Filter by user
-		if (selectedUser) {
-			filtered = filtered.filter((entry) => entry.user?.id.toString() === selectedUser);
-		}
-
-		// Filter by tab
-		if (activeTab === "adjustments") {
-			filtered = filtered.filter((entry) =>
-				["ADJUSTED_ADD", "ADJUSTED_SUBTRACT", "CREATED"].includes(
-					entry.operation_type
-				)
-			);
-		} else if (activeTab === "transfers") {
-			filtered = filtered.filter((entry) =>
-				["TRANSFER_FROM", "TRANSFER_TO"].includes(entry.operation_type)
-			);
-		}
-
-		return filtered;
-	}, [allHistoryData, searchQuery, selectedLocation, selectedOperationType, selectedUser, activeTab]);
+	// Use backend-filtered data directly
+	const filteredHistoryData = allHistoryData || [];
 
 	// Calculate summary statistics
 	const summaryStats = useMemo(() => {
@@ -281,7 +278,7 @@ export const StockHistoryPage = () => {
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => navigate("/inventory")}
+						onClick={() => navigate(`/${tenantSlug}/inventory`)}
 					>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back to Inventory
@@ -301,7 +298,9 @@ export const StockHistoryPage = () => {
 						</div>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-foreground">{summaryStats.total}</div>
+						<div className="text-3xl font-bold text-foreground">
+							{summaryStats.total}
+						</div>
 						<p className="text-xs text-muted-foreground mt-1">
 							All recorded operations
 						</p>
@@ -321,13 +320,17 @@ export const StockHistoryPage = () => {
 						<div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
 							{summaryStats.creations}
 						</div>
-						<p className="text-xs text-muted-foreground mt-1">New stock entries</p>
+						<p className="text-xs text-muted-foreground mt-1">
+							New stock entries
+						</p>
 					</CardContent>
 				</Card>
 
 				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">Adjustments</CardTitle>
+						<CardTitle className="text-sm font-medium text-muted-foreground">
+							Adjustments
+						</CardTitle>
 						<div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
 							<Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
 						</div>
@@ -336,13 +339,17 @@ export const StockHistoryPage = () => {
 						<div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
 							{summaryStats.adjustments}
 						</div>
-						<p className="text-xs text-muted-foreground mt-1">Stock modifications</p>
+						<p className="text-xs text-muted-foreground mt-1">
+							Stock modifications
+						</p>
 					</CardContent>
 				</Card>
 
 				<Card className="border-border bg-card">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">Transfers</CardTitle>
+						<CardTitle className="text-sm font-medium text-muted-foreground">
+							Transfers
+						</CardTitle>
 						<div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
 							<ArrowUpDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
 						</div>
@@ -351,7 +358,9 @@ export const StockHistoryPage = () => {
 						<div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
 							{summaryStats.transfers}
 						</div>
-						<p className="text-xs text-muted-foreground mt-1">Location movements</p>
+						<p className="text-xs text-muted-foreground mt-1">
+							Location movements
+						</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -459,14 +468,35 @@ export const StockHistoryPage = () => {
 										<Table>
 											<TableHeader>
 												<TableRow className="bg-muted/50 hover:bg-muted/50">
-													<TableHead className="font-semibold text-foreground">Timestamp</TableHead>
-													<TableHead className="font-semibold text-foreground">Operation</TableHead>
-													<TableHead className="font-semibold text-foreground">Product</TableHead>
-													<TableHead className="font-semibold text-foreground">Location</TableHead>
-													<TableHead className="font-semibold text-foreground">User</TableHead>
-													<TableHead className="text-right font-semibold text-foreground">Change</TableHead>
-													<TableHead className="text-right font-semibold text-foreground">New Qty</TableHead>
-													<TableHead className="font-semibold text-foreground">Reason</TableHead>
+													<TableHead className="font-semibold text-foreground">
+														Timestamp
+													</TableHead>
+													<TableHead className="font-semibold text-foreground">
+														Operation
+													</TableHead>
+													<TableHead className="font-semibold text-foreground">
+														Product
+													</TableHead>
+													{isViewingAllLocations && (
+														<TableHead className="font-semibold text-foreground">
+															Store
+														</TableHead>
+													)}
+													<TableHead className="font-semibold text-foreground">
+														Location
+													</TableHead>
+													<TableHead className="font-semibold text-foreground">
+														User
+													</TableHead>
+													<TableHead className="text-right font-semibold text-foreground">
+														Change
+													</TableHead>
+													<TableHead className="text-right font-semibold text-foreground">
+														New Qty
+													</TableHead>
+													<TableHead className="font-semibold text-foreground">
+														Reason
+													</TableHead>
 												</TableRow>
 											</TableHeader>
 											<TableBody>
@@ -477,11 +507,16 @@ export const StockHistoryPage = () => {
 													const Icon = operationInfo.icon;
 
 													return (
-														<TableRow key={entry.id} className="hover:bg-muted/30 transition-colors">
+														<TableRow
+															key={entry.id}
+															className="hover:bg-muted/30 transition-colors"
+														>
 															<TableCell className="py-4 text-sm">
 																<div className="flex items-center gap-2">
 																	<Calendar className="h-4 w-4 text-muted-foreground" />
-																	<span className="text-foreground">{formatTimestamp(entry.timestamp)}</span>
+																	<span className="text-foreground">
+																		{formatTimestamp(entry.timestamp)}
+																	</span>
 																</div>
 															</TableCell>
 															<TableCell className="py-4">
@@ -493,13 +528,27 @@ export const StockHistoryPage = () => {
 															<TableCell className="py-4">
 																<div className="flex items-center gap-2">
 																	<Package className="h-4 w-4 text-muted-foreground" />
-																	<span className="font-semibold text-foreground">{entry.product.name}</span>
+																	<span className="font-semibold text-foreground">
+																		{entry.product.name}
+																	</span>
 																</div>
 															</TableCell>
+															{isViewingAllLocations && (
+																<TableCell className="py-4">
+																	<div className="flex items-center gap-2">
+																		<Warehouse className="h-4 w-4 text-muted-foreground" />
+																		<span className="text-foreground">
+																			{entry.store_location?.name || "N/A"}
+																		</span>
+																	</div>
+																</TableCell>
+															)}
 															<TableCell className="py-4">
 																<div className="flex items-center gap-2">
 																	<MapPin className="h-4 w-4 text-muted-foreground" />
-																	<span className="text-foreground">{entry.location.name}</span>
+																	<span className="text-foreground">
+																		{entry.location.name}
+																	</span>
 																</div>
 															</TableCell>
 															<TableCell className="py-4">

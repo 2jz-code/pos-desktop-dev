@@ -45,6 +45,7 @@ import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { getCategories } from "@/services/api/categoryService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 interface Category {
 	id: number;
@@ -91,13 +92,14 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ dateRange }: ProductsTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<ProductsData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [categories, setCategories] = useState<Category[]>([]);
 	const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
-	const [limit, setLimit] = useState<number>(10);
+	const [limit, setLimit] = useState<number | "all">(10);
 	const [sortBy, setSortBy] = useState<"revenue" | "quantity" | "margin">(
 		"revenue"
 	);
@@ -130,9 +132,10 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 			}
 
 			const filters = {
-				limit: limit,
+				...(limit !== "all" && { limit: limit }),
 				trend_period: trendPeriod,
 				...(categoryFilter && { category_id: categoryFilter }),
+				...(selectedLocationId && { location_id: selectedLocationId }),
 			};
 
 			const productsData = await reportsService.generateProductsReport(
@@ -140,7 +143,14 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				endDate,
 				filters
 			);
-			setData(productsData as ProductsData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (productsData && typeof productsData === 'object' && 'is_multi_location' in productsData && productsData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(productsData.consolidated as ProductsData);
+			} else {
+				setData(productsData as ProductsData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
@@ -183,7 +193,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 
 	useEffect(() => {
 		fetchProductsData();
-	}, [dateRange, categoryFilter, limit, trendPeriod]);
+	}, [dateRange, categoryFilter, limit, trendPeriod, selectedLocationId]);
 
 	if (loading) {
 		return (
@@ -262,7 +272,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="all">All Categories</SelectItem>
-							{categories.results?.map((category) => (
+							{categories.map((category) => (
 								<SelectItem
 									key={category.id}
 									value={category.id.toString()}
@@ -305,7 +315,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 					</Select>
 					<Select
 						value={limit.toString()}
-						onValueChange={(value) => setLimit(Number.parseInt(value))}
+						onValueChange={(value) => setLimit(value === "all" ? "all" : Number.parseInt(value))}
 					>
 						<SelectTrigger className="w-20">
 							<SelectValue />
@@ -315,6 +325,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 							<SelectItem value="25">25</SelectItem>
 							<SelectItem value="50">50</SelectItem>
 							<SelectItem value="100">100</SelectItem>
+							<SelectItem value="all">All</SelectItem>
 						</SelectContent>
 					</Select>
 					<Button
@@ -652,7 +663,7 @@ export function ProductsTab({ dateRange }: ProductsTabProps) {
 				defaultEndDate={dateRange?.to}
 				defaultFilters={{
 					category_id: categoryFilter || undefined,
-					limit: limit,
+					...(limit !== "all" && { limit: limit }),
 				}}
 			/>
 		</div>

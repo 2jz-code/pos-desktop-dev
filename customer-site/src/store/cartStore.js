@@ -27,11 +27,12 @@ export const useCartStore = create(
 			},
 
 			// Business hours related actions
+			// Note: Users can proceed to checkout anytime - location selection will handle business hours
 			setStoreClosedWarning: (warning) => set({ storeClosedWarning: warning }),
 			setCanCheckout: (canCheckout) => set({ canCheckout }),
-			updateStoreStatus: (isOpen, canPlaceOrder) => set({ 
-				canCheckout: isOpen && canPlaceOrder,
-				storeClosedWarning: !isOpen || !canPlaceOrder
+			updateStoreStatus: (isOpen, canPlaceOrder) => set({
+				canCheckout: true, // Always allow proceeding to checkout
+				storeClosedWarning: !isOpen || !canPlaceOrder // Still track for informational purposes
 			}),
 			handleSuccessfulCheckout: () => {
 				console.log("Checkout successful. Clearing local cart state only.");

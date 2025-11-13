@@ -11,6 +11,7 @@ import {
 	getTerminalLocations,
 } from "../services/settingsService";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -93,21 +94,19 @@ export function DeviceSettings() {
 	}, [readers, selectedReader]);
 
 	useEffect(() => {
-		const fetchMachineId = async () => {
-			try {
-				const id = await window.electronAPI.getMachineId();
-				setMachineId(id);
-			} catch (error) {
-				console.error("Failed to get machine ID:", error);
-				toast.error("Critical Error", {
-					description:
-						"Could not retrieve device ID. Some functions may not work.",
-				});
-			} finally {
-				setIsMachineIdLoading(false);
-			}
-		};
-		fetchMachineId();
+		// Get device_id from terminal registration (from pairing flow)
+		const terminalConfig = terminalRegistrationService.getTerminalConfig();
+		if (terminalConfig?.device_id) {
+			setMachineId(terminalConfig.device_id);
+			setIsMachineIdLoading(false);
+		} else {
+			// Terminal not paired yet
+			toast.error("Terminal Not Registered", {
+				description:
+					"This terminal must be paired first. Please complete the terminal pairing process.",
+			});
+			setIsMachineIdLoading(false);
+		}
 	}, []);
 
 	const { data: registration, isLoading: isLoadingRegistration } = useQuery({
@@ -123,12 +122,24 @@ export function DeviceSettings() {
 	const terminalForm = useForm({
 		resolver: zodResolver(terminalRegistrationSchema),
 		disabled: !machineId || isLoadingRegistration,
+		defaultValues: {
+			nickname: "",
+			store_location: "",
+		},
 	});
 
 	useEffect(() => {
 		if (registration && storeLocations) {
-			// Use the ID from the nested store_location object
-			const locationId = registration.store_location?.id?.toString() || "";
+			// Handle both formats: store_location as ID (number) or nested object
+			let locationId = "";
+			if (typeof registration.store_location === 'object' && registration.store_location !== null) {
+				// Nested object format: { id: 1, name: "Location Name" }
+				locationId = registration.store_location.id?.toString() || "";
+			} else if (registration.store_location) {
+				// Plain ID format: 1
+				locationId = registration.store_location.toString();
+			}
+
 			terminalForm.reset({
 				nickname: registration.nickname || "",
 				store_location: locationId,
@@ -144,7 +155,8 @@ export function DeviceSettings() {
 				store_location: "",
 			});
 		}
-	}, [registration, terminalForm, isLoadingRegistration, isLoadingLocations, storeLocations, setSelectedReader]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [registration, isLoadingRegistration, isLoadingLocations, storeLocations]); // terminalForm and setSelectedReader are stable references
 
 	const { mutate: upsertRegistration, isPending: isUpsertingTerminal } =
 		useMutation({
@@ -163,8 +175,13 @@ export function DeviceSettings() {
 		});
 
 	const onTerminalSubmit = (data) => {
-		// Include the selected reader ID in the payload sent to the backend
-		upsertRegistration({ machineId, ...data, reader_id: selectedReader });
+		// Include the device_id and selected reader ID in the payload sent to the backend
+		// Convert null reader_id to empty string (field has blank=True but not null=True)
+		upsertRegistration({
+			device_id: machineId,
+			...data,
+			reader_id: selectedReader || ""
+		});
 	};
 
 	const isLoading = isMachineIdLoading || isLoadingRegistration;
@@ -235,7 +252,7 @@ export function DeviceSettings() {
 												<FormLabel>Assigned Store Location</FormLabel>
 												<Select
 													onValueChange={field.onChange}
-													value={field.value}
+													value={field.value ?? ""}
 												>
 													<FormControl>
 														<SelectTrigger disabled={isLoadingLocations}>

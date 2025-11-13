@@ -43,40 +43,63 @@ class UserService:
         }
     
     @staticmethod
-    def authenticate_pos_user(username: str, pin: str) -> User | None:
-        """Enhanced authentication using cached staff data"""
+    def authenticate_pos_user(username: str, pin: str, tenant_id: str = None) -> User | None:
+        """
+        POS terminal authentication - optionally tenant-scoped.
+
+        Args:
+            username: POS username
+            pin: 4+ digit PIN
+            tenant_id: Optional tenant ID from POS device configuration
+                      If not provided, searches current tenant from middleware context
+
+        Returns:
+            Authenticated User or None
+        """
         try:
             # First try to get from cache
             cached_staff = UserService.get_pos_staff_users()
-            
+
             # Find user in cached data
             cached_user_data = None
             for user_data in cached_staff:
                 if user_data['username'] and user_data['username'].lower() == username.lower():
                     cached_user_data = user_data
                     break
-            
+
             if not cached_user_data:
                 return None
-            
+
             # Get the full user object for PIN verification
-            user = User.objects.get(id=cached_user_data['id'])
+            # If tenant_id provided, do explicit tenant-scoped lookup
+            if tenant_id:
+                user = User.objects.get(id=cached_user_data['id'], tenant_id=tenant_id)
+            else:
+                # Use current tenant context (from middleware)
+                user = User.objects.get(id=cached_user_data['id'])
+
             if user.check_pin(pin) and user.is_active:
                 return user
-                
+
         except (User.DoesNotExist, KeyError):
             # Fallback to direct database query if cache fails
             try:
-                user = User.objects.get(
-                    username__iexact=username,
-                    role__in=[
+                filter_kwargs = {
+                    'username__iexact': username,
+                    'role__in': [
                         User.Role.CASHIER,
                         User.Role.MANAGER,
                         User.Role.ADMIN,
                         User.Role.OWNER,
                     ],
-                    is_active=True
-                )
+                    'is_active': True
+                }
+
+                # Add tenant filter if provided
+                if tenant_id:
+                    filter_kwargs['tenant_id'] = tenant_id
+
+                user = User.objects.get(**filter_kwargs)
                 if user.check_pin(pin):
                     return user
             except User.DoesNotExist:
@@ -84,8 +107,92 @@ class UserService:
         return None
 
     @staticmethod
+    def authenticate_admin_user(email: str, password: str) -> dict | User | None:
+        """
+        Admin web authentication - email-first with tenant discovery.
+
+        Searches across ALL tenants to find users with the given email,
+        then validates the password. If multiple tenants are found,
+        returns a tenant picker response.
+
+        This matches Stripe/DoorDash UX: generic login → auto-redirect if single tenant,
+        or show tenant picker if user belongs to multiple tenants.
+
+        Args:
+            email: User email address
+            password: User password
+
+        Returns:
+            - User object if single tenant match
+            - dict with 'multiple_tenants' key if multiple matches
+            - None if no valid credentials
+        """
+        # Search across ALL tenants for admin/owner/manager users
+        users = User.all_objects.filter(
+            email__iexact=email,
+            role__in=[User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER],
+            is_active=True
+        )
+
+        if users.count() == 0:
+            return None
+
+        # Validate password for each match
+        valid_users = []
+        for user in users:
+            if user.check_password(password):
+                valid_users.append(user)
+
+        if len(valid_users) == 0:
+            return None
+
+        if len(valid_users) == 1:
+            # Single tenant - return user for auto-login
+            return valid_users[0]
+
+        # Multiple tenants - return tenant picker data
+        return {
+            'multiple_tenants': True,
+            'email': email,
+            'tenants': [
+                {
+                    'tenant_id': str(u.tenant.id),
+                    'tenant_name': u.tenant.name,
+                    'tenant_slug': u.tenant.slug,
+                    'user_id': str(u.id),
+                    'role': u.role,
+                }
+                for u in valid_users
+            ]
+        }
+
+    @staticmethod
     def generate_tokens_for_user(user: User) -> dict:
+        """
+        Generate JWT tokens for a user with tenant context embedded.
+
+        Enterprise pattern: Tenant ID is embedded in JWT claims for stateless,
+        scalable multi-tenancy. The token cryptographically binds the user to
+        their tenant, enabling:
+        - Stateless horizontal scaling (no session state needed)
+        - Multi-tab support (each tab has independent JWT context)
+        - Microservices architecture (any service can validate tenant)
+        - Security auditing (tenant context in every request)
+
+        Args:
+            user: User instance with tenant relationship
+
+        Returns:
+            dict: {'access': <token>, 'refresh': <token>}
+        """
         refresh = RefreshToken.for_user(user)
+
+        # Embed tenant context in JWT claims (enterprise standard)
+        # These claims are cryptographically signed and cannot be tampered with
+        refresh['tenant_id'] = str(user.tenant.id)
+        refresh['tenant_slug'] = user.tenant.slug
+
+        # Access token automatically inherits these claims from refresh token
         return {
             "refresh": str(refresh),
             "access": str(refresh.access_token),

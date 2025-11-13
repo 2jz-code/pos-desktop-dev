@@ -8,44 +8,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.hashers import make_password, check_password
 from core_backend.utils.archiving import SoftDeleteMixin, SoftDeleteManager, SoftDeleteQuerySet
-
-
-class UserManager(SoftDeleteManager, BaseUserManager):
-    def get_queryset(self):
-        """Return only active users by default."""
-        return SoftDeleteQuerySet(self.model, using=self._db).active()
-
-    def _create_user(self, email, password, **extra_fields):
-        if not email:
-            raise ValueError(_("The Email must be set"))
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
-        user.set_password(password)
-
-        # Automatically set is_pos_staff for all staff roles (all roles are now staff)
-        role = extra_fields.get("role", User.Role.CASHIER)
-        user.is_pos_staff = True
-
-        user.save(using=self._db)
-        return user
-
-    def create_user(self, email, password=None, **extra_fields):
-        extra_fields.setdefault("is_staff", False)
-        extra_fields.setdefault("is_superuser", False)
-        return self._create_user(email, password, **extra_fields)
-
-    def create_superuser(self, email, password, **extra_fields):
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
-        extra_fields.setdefault("is_active", True)
-        extra_fields.setdefault("role", User.Role.OWNER)
-
-        if extra_fields.get("is_staff") is not True:
-            raise ValueError(_("Superuser must have is_staff=True."))
-        if extra_fields.get("is_superuser") is not True:
-            raise ValueError(_("Superuser must have is_superuser=True."))
-
-        return self._create_user(email, password, **extra_fields)
+from tenant.managers import TenantAwareUserManager
 
 
 class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
@@ -55,14 +18,22 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
         MANAGER = "MANAGER", _("Manager")
         CASHIER = "CASHIER", _("Cashier")
 
-    email = models.EmailField(_("email address"), unique=True)
+    # Multi-tenancy: Each user belongs to a tenant
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='users',
+        help_text=_("The tenant this user belongs to")
+    )
+
+    # Email and username are unique per tenant, not globally
+    email = models.EmailField(_("email address"))
     username = models.CharField(
         _("username"),
         max_length=150,
-        unique=True,
         blank=True,
         null=True,
-        help_text=_("A unique username for POS login."),
+        help_text=_("A unique username for POS login (unique per tenant)."),
     )
     first_name = models.CharField(_("first name"), max_length=150, blank=True)
     last_name = models.CharField(_("last name"), max_length=150, blank=True)
@@ -100,20 +71,44 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The user ID from the old system.")
 
-    objects = UserManager()
+    # Managers: TenantAwareUserManager for tenant filtering + soft delete + auth operations
+    objects = TenantAwareUserManager()  # Default manager: tenant-aware + auth methods
+    all_objects = models.Manager()  # Bypass all filters (admin only)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     class Meta:
+        constraints = [
+            # Email must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'email'],
+                name='unique_user_email_per_tenant'
+            ),
+            # Username must be unique per tenant (if provided)
+            models.UniqueConstraint(
+                fields=['tenant', 'username'],
+                name='unique_user_username_per_tenant',
+                condition=models.Q(username__isnull=False)
+            ),
+        ]
         indexes = [
-            models.Index(fields=['role', 'is_pos_staff']),  # For POS staff filtering
-            models.Index(fields=['is_active', 'role']),     # For active user queries (is_active from SoftDeleteMixin)
-            models.Index(fields=['email']),  # For email lookups (if not already indexed)
-            models.Index(fields=['username']),
+            models.Index(fields=['tenant', 'email']),  # Primary lookup pattern
+            models.Index(fields=['tenant', 'role', 'is_pos_staff']),  # For POS staff filtering
+            models.Index(fields=['tenant', 'is_active', 'role']),  # For active user queries
+            models.Index(fields=['tenant', 'username']),
             models.Index(fields=['phone_number']),
             models.Index(fields=['first_name', 'last_name'])
         ]
+
+    @classmethod
+    def check(cls, **kwargs):
+        """Override system checks to allow non-unique USERNAME_FIELD in multi-tenant setup."""
+        errors = super().check(**kwargs)
+        # Remove the auth.E003 error (USERNAME_FIELD must be unique)
+        # We enforce uniqueness per tenant via database constraint instead
+        errors = [e for e in errors if e.id != 'auth.E003']
+        return errors
 
     def __str__(self):
         return self.email

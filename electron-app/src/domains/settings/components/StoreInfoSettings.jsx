@@ -3,9 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import {
-	getStoreInfo,
-	updateStoreInfo,
+	getStoreLocation,
+	updateStoreLocation,
 } from "../services/settingsService";
 
 import { Button } from "@/shared/components/ui/button";
@@ -32,34 +33,40 @@ import { Store, Phone, Mail, MapPin } from "lucide-react";
 import { formatPhoneNumber, isValidPhoneNumber } from "@ajeen/ui";
 
 const formSchema = z.object({
-	store_name: z.string().min(1, "Store name is required"),
-	store_address: z.string().optional(),
-	store_phone: z
+	name: z.string().min(1, "Location name is required"),
+	address_line1: z.string().optional(),
+	city: z.string().optional(),
+	state: z.string().optional(),
+	postal_code: z.string().optional(),
+	phone: z
 		.string()
 		.optional()
 		.refine((phone) => {
 			return !phone || isValidPhoneNumber(phone);
 		}, "Please enter a valid phone number"),
-	store_email: z.string().email("Invalid email address").or(z.literal("")),
+	email: z.string().email("Invalid email address").or(z.literal("")),
 });
 
 export function StoreInfoSettings() {
 	const queryClient = useQueryClient();
 
-	const { data: storeInfo, isLoading } = useQuery({
-		queryKey: ["storeInfo"],
-		queryFn: getStoreInfo,
+	// Get location ID from terminal config
+	const locationId = terminalRegistrationService.getLocationId();
+
+	const { data: storeLocation, isLoading } = useQuery({
+		queryKey: ["storeLocation", locationId],
+		queryFn: () => getStoreLocation(locationId),
+		enabled: !!locationId,
 	});
 
 	const mutation = useMutation({
-		mutationFn: updateStoreInfo,
+		mutationFn: (data) => updateStoreLocation(locationId, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["storeInfo"] });
-			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
-			toast.success("Store information updated successfully!");
+			queryClient.invalidateQueries({ queryKey: ["storeLocation", locationId] });
+			toast.success("Location information updated successfully!");
 		},
 		onError: (error) => {
-			toast.error("Failed to update store information", {
+			toast.error("Failed to update location information", {
 				description: error.message,
 			});
 		},
@@ -68,24 +75,31 @@ export function StoreInfoSettings() {
 	const form = useForm({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			store_name: "",
-			store_address: "",
-			store_phone: "",
-			store_email: "",
+			name: "",
+			address_line1: "",
+			city: "",
+			state: "",
+			postal_code: "",
+			phone: "",
+			email: "",
 		},
 	});
 
 	// Update form when data is loaded
 	React.useEffect(() => {
-		if (storeInfo) {
+		if (storeLocation) {
 			form.reset({
-				store_name: storeInfo.store_name || "",
-				store_address: storeInfo.store_address || "",
-				store_phone: storeInfo.store_phone || "",
-				store_email: storeInfo.store_email || "",
+				name: storeLocation.name || "",
+				address_line1: storeLocation.address_line1 || "",
+				city: storeLocation.city || "",
+				state: storeLocation.state || "",
+				postal_code: storeLocation.postal_code || "",
+				phone: storeLocation.phone || "",
+				email: storeLocation.email || "",
 			});
 		}
-	}, [storeInfo, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [storeLocation]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const onSubmit = (values) => {
 		mutation.mutate(values);
@@ -119,10 +133,10 @@ export function StoreInfoSettings() {
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<Store className="h-5 w-5" />
-					Store Information
+					Location Information
 				</CardTitle>
 				<CardDescription>
-					Configure your business information that appears on receipts and communications.
+					Configure information for this store location that appears on receipts and communications.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -133,21 +147,21 @@ export function StoreInfoSettings() {
 					>
 						<FormField
 							control={form.control}
-							name="store_name"
+							name="name"
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel className="flex items-center gap-2">
 										<Store className="h-4 w-4" />
-										Store Name
+										Location Name
 									</FormLabel>
 									<FormControl>
 										<Input
-											placeholder="Your Business Name"
+											placeholder="Downtown Branch"
 											{...field}
 										/>
 									</FormControl>
 									<FormDescription>
-										The name of your business as it appears on receipts and documents.
+										The name of this location (e.g., "Downtown", "Airport").
 									</FormDescription>
 									<FormMessage />
 								</FormItem>
@@ -156,22 +170,21 @@ export function StoreInfoSettings() {
 
 						<FormField
 							control={form.control}
-							name="store_address"
+							name="address_line1"
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel className="flex items-center gap-2">
 										<MapPin className="h-4 w-4" />
-										Store Address
+										Street Address
 									</FormLabel>
 									<FormControl>
-										<Textarea
-											placeholder="123 Main Street&#10;City, State 12345"
-											rows={3}
+										<Input
+											placeholder="123 Main Street"
 											{...field}
 										/>
 									</FormControl>
 									<FormDescription>
-										Full business address that appears on receipts.
+										Primary street address for this location.
 									</FormDescription>
 									<FormMessage />
 								</FormItem>
@@ -181,7 +194,60 @@ export function StoreInfoSettings() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<FormField
 								control={form.control}
-								name="store_phone"
+								name="city"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>City</FormLabel>
+										<FormControl>
+											<Input
+												placeholder="New York"
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name="state"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>State/Province</FormLabel>
+										<FormControl>
+											<Input
+												placeholder="NY"
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						</div>
+
+						<FormField
+							control={form.control}
+							name="postal_code"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Postal Code</FormLabel>
+									<FormControl>
+										<Input
+											placeholder="10001"
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							<FormField
+								control={form.control}
+								name="phone"
 								render={({ field }) => (
 									<FormItem>
 										<FormLabel className="flex items-center gap-2">
@@ -199,7 +265,7 @@ export function StoreInfoSettings() {
 											/>
 										</FormControl>
 										<FormDescription>
-											Business phone number for customer contact.
+											Location phone number for customer contact.
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
@@ -208,7 +274,7 @@ export function StoreInfoSettings() {
 
 							<FormField
 								control={form.control}
-								name="store_email"
+								name="email"
 								render={({ field }) => (
 									<FormItem>
 										<FormLabel className="flex items-center gap-2">
@@ -218,12 +284,12 @@ export function StoreInfoSettings() {
 										<FormControl>
 											<Input
 												type="email"
-												placeholder="contact@yourbusiness.com"
+												placeholder="downtown@yourbusiness.com"
 												{...field}
 											/>
 										</FormControl>
 										<FormDescription>
-											Business email address for customer contact.
+											Location email address for customer contact.
 										</FormDescription>
 										<FormMessage />
 									</FormItem>

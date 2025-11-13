@@ -46,9 +46,10 @@ class CustomerRegistrationSerializer(BaseModelSerializer, PIISerializerMixin):
         pii_mask_fields = ["email", "phone_number"]
 
     def validate_email(self, value):
-        """Validate email uniqueness"""
+        """Validate email uniqueness (tenant-scoped)"""
+        # TenantManager automatically scopes to current tenant from request
         if Customer.objects.filter(email=value).exists():
-            raise serializers.ValidationError("A customer with this email already exists.")
+            raise serializers.ValidationError("A customer with this email already exists for this restaurant.")
         return value
 
     def validate_password(self, value):
@@ -68,10 +69,13 @@ class CustomerRegistrationSerializer(BaseModelSerializer, PIISerializerMixin):
         return attrs
 
     def create(self, validated_data):
-        """Create customer account"""
+        """Create customer account (tenant-scoped)"""
         # Remove fields that aren't part of the Customer model
         validated_data.pop("confirm_password")
         is_rewards_opted_in = validated_data.pop("is_rewards_opted_in", False)
+
+        # Tenant should be passed from view via serializer.save(tenant=request.tenant)
+        # Customer.objects.create_customer() will use it
 
         # Create customer
         customer = Customer.objects.create_customer(**validated_data)
@@ -153,10 +157,11 @@ class CustomerProfileSerializer(BaseModelSerializer, PIISerializerMixin):
         pii_mask_fields = ["email", "phone_number"]
 
     def validate_email(self, value):
-        """Validate email uniqueness (if being changed)"""
+        """Validate email uniqueness (if being changed, tenant-scoped)"""
+        # TenantManager automatically scopes to current tenant from request
         if self.instance and self.instance.email != value:
             if Customer.objects.filter(email=value).exists():
-                raise serializers.ValidationError("A customer with this email already exists.")
+                raise serializers.ValidationError("A customer with this email already exists for this restaurant.")
         return value
 
 
@@ -229,7 +234,7 @@ class CustomerAddressSerializer(BaseModelSerializer, PIISerializerMixin):
         pii_mask_fields = ["street_address", "apartment", "delivery_instructions"]
 
     def create(self, validated_data):
-        """Create address and link to customer"""
+        """Create address and link to customer (tenant-scoped)"""
         # Get customer from request context
         request = self.context.get("request")
         if not request or not hasattr(request, "user"):
@@ -241,7 +246,9 @@ class CustomerAddressSerializer(BaseModelSerializer, PIISerializerMixin):
         if not customer:
             raise serializers.ValidationError("No authenticated customer found.")
 
+        # Inherit tenant from customer
         validated_data["customer"] = customer
+        validated_data["tenant"] = customer.tenant
         return super().create(validated_data)
 
 

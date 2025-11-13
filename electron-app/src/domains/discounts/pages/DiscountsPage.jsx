@@ -65,20 +65,20 @@ export default function DiscountsPage() {
 	});
 
 	useEffect(() => {
-		fetchDiscounts();
-	}, [fetchDiscounts]);
+		// Fetch discounts with include_archived parameter based on toggle state
+		const params = showArchivedDiscounts ? { include_archived: "only" } : {};
+		fetchDiscounts(params);
+	}, [fetchDiscounts, showArchivedDiscounts]);
 
 	useEffect(() => {
 		applyFilters();
-	}, [discounts, filters.search, showArchivedDiscounts]);
+	}, [discounts, filters.search]);
 
 	const applyFilters = () => {
 		let filtered = [...(discounts || [])];
 
-		// Filter by archived status
-		filtered = filtered.filter((discount) =>
-			showArchivedDiscounts ? !discount.is_active : discount.is_active
-		);
+		// No need to filter by archived status - backend already handles this
+		// via the include_archived parameter
 
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();

@@ -6,12 +6,16 @@ import apiClient from "@/shared/lib/apiClient";
  */
 
 // === Global Settings ===
+// READ-ONLY: For brand info display only (logo, colors, name)
+// Editing should be done via admin site
 
 export const getGlobalSettings = async () => {
 	const response = await apiClient.get("settings/global-settings/");
 	return response.data;
 };
 
+// DEPRECATED: Global settings should only be edited via admin site
+// @deprecated Use updateStoreLocation() for location-specific settings
 export const updateGlobalSettings = async (settingsData) => {
 	// The GlobalSettings model is a singleton, so we always target the object with pk=1.
 	const response = await apiClient.patch(
@@ -40,6 +44,11 @@ export const getStoreLocations = async () => {
 	return response.data.results;
 };
 
+export const getStoreLocation = async (locationId) => {
+	const response = await apiClient.get(`settings/store-locations/${locationId}/`);
+	return response.data;
+};
+
 export const createStoreLocation = async (locationData) => {
 	const response = await apiClient.post(
 		"settings/store-locations/",
@@ -64,34 +73,38 @@ export const deleteStoreLocation = async (locationId) => {
 
 export const getTerminalRegistration = async (machineId) => {
 	const response = await apiClient.get(
-		`/settings/terminal-registrations/${machineId}/`
+		`/terminals/registrations/${machineId}/`
 	);
 	return response.data;
 };
 
 export const upsertTerminalRegistration = async (data) => {
-	// The backend API expects `device_id`, but the hook sends `machineId`.
-	// This function acts as an adapter to map the keys correctly.
+	// Terminal already exists from pairing flow - we're updating it with printer info
 	const payload = {
 		nickname: data.nickname,
-		store_location_id: data.store_location,
+		store_location: data.store_location,
 		reader_id: data.reader_id,
-		device_id: data.machineId, // Map machineId to device_id
 	};
 
-	const response = await apiClient.post(
-		`/settings/terminal-registrations/`,
+	// Use PATCH to update the existing terminal registration
+	const response = await apiClient.patch(
+		`/terminals/registrations/${data.device_id}/`,
 		payload
 	);
 	return response.data;
 };
 
+// DEPRECATED: These were for global settings
+// @deprecated Use getStoreLocation() / updateStoreLocation() instead
+
 // Store Information Section
+// @deprecated Use storeLocation.{name, address_line1, city, state, phone, email}
 export const getStoreInfo = async () => {
 	const response = await apiClient.get("/settings/global-settings/store-info/");
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateStoreInfo = async (storeData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/store-info/",
@@ -101,11 +114,13 @@ export const updateStoreInfo = async (storeData) => {
 };
 
 // Financial Settings Section
+// @deprecated Use storeLocation.tax_rate
 export const getFinancialSettings = async () => {
 	const response = await apiClient.get("/settings/global-settings/financial/");
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateFinancialSettings = async (financialData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/financial/",
@@ -115,6 +130,7 @@ export const updateFinancialSettings = async (financialData) => {
 };
 
 // Receipt Configuration Section
+// @deprecated Use storeLocation.{receipt_header, receipt_footer}
 export const getReceiptConfig = async () => {
 	const response = await apiClient.get(
 		"/settings/global-settings/receipt-config/"
@@ -122,6 +138,7 @@ export const getReceiptConfig = async () => {
 	return response.data;
 };
 
+// @deprecated Use updateStoreLocation() instead
 export const updateReceiptConfig = async (receiptData) => {
 	const response = await apiClient.patch(
 		"/settings/global-settings/receipt-config/",

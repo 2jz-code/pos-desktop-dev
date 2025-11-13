@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from core_backend.admin.mixins import TenantAdminMixin
 from .models import User
 from .forms import UserAdminChangeForm, UserAdminCreationForm
 from django.core.cache import cache
@@ -33,7 +34,7 @@ def clear_login_locks(modeladmin, request, queryset):
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class UserAdmin(TenantAdminMixin, BaseUserAdmin):
     form = UserAdminChangeForm
     add_form = UserAdminCreationForm
 
@@ -42,12 +43,15 @@ class UserAdmin(BaseUserAdmin):
         "username",
         "first_name",
         "last_name",
+        "get_tenant_name",
+        "get_tenant_id",
         "role",
         "is_pos_staff",
         "is_staff",
         "is_active",
     )
     list_filter = (
+        "tenant",
         "role",
         "is_pos_staff",
         "is_staff",
@@ -55,12 +59,30 @@ class UserAdmin(BaseUserAdmin):
         "is_active",
         "groups",
     )
-    search_fields = ("email", "username", "first_name", "last_name")
+    search_fields = ("email", "username", "first_name", "last_name", "tenant__name", "tenant__slug")
     ordering = ("email",)
+
+    def get_queryset(self, request):
+        """Show users from ALL tenants in Django admin"""
+        return User.all_objects.select_related('tenant')
+
+    def get_tenant_name(self, obj):
+        """Display tenant name"""
+        return obj.tenant.name if obj.tenant else "⚠️ NO TENANT"
+    get_tenant_name.short_description = "Tenant"
+    get_tenant_name.admin_order_field = "tenant__name"
+
+    def get_tenant_id(self, obj):
+        """Display tenant ID for verification"""
+        if obj.tenant:
+            return str(obj.tenant.id)[:8] + "..."  # Show first 8 chars of UUID
+        return "NULL"
+    get_tenant_id.short_description = "Tenant ID"
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         ("Personal Info", {"fields": ("first_name", "last_name", "username")}),
+        ("Tenant", {"fields": ("tenant",)}),
         (
             "Permissions & Role",
             {
@@ -87,6 +109,7 @@ class UserAdmin(BaseUserAdmin):
                     "email",
                     "password",
                     "password2",
+                    "tenant",
                     "role",
                     "is_pos_staff",
                     "username",
@@ -95,6 +118,16 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly only when editing (not when creating)."""
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+
+        # Remove tenant from readonly fields during creation (obj is None)
+        if obj is None and 'tenant' in readonly_fields:
+            readonly_fields.remove('tenant')
+
+        return readonly_fields
 
     # PIN is managed via API, so we don't include it in the admin forms.
 

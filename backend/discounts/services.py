@@ -25,9 +25,26 @@ class DiscountService:
     
     @staticmethod
     @cache_static_data(timeout=3600*2)  # 2 hours - discounts change moderately
-    def get_active_discounts():
-        """Cache active discounts for quick order calculations"""
+    def get_active_discounts(tenant=None):
+        """
+        Cache active discounts for quick order calculations.
+
+        Args:
+            tenant: Tenant instance (if None, uses current tenant from context)
+
+        Returns:
+            List of active Discount objects for the tenant
+        """
+        if tenant is None:
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+
+        if not tenant:
+            logger.warning("No tenant context for get_active_discounts()")
+            return []
+
         now = timezone.now()
+        # TenantManager will automatically filter by tenant
         return list(Discount.objects.filter(
             is_active=True,
             start_date__lte=now,
@@ -39,16 +56,27 @@ class DiscountService:
     
     @staticmethod
     @cache_dynamic_data(timeout=1800)  # 30 minutes - order-specific calculations
-    def get_discount_eligibility_for_order_type(order_total, item_count, has_categories=None):
-        """Cache discount eligibility for common order patterns"""
-        active_discounts = DiscountService.get_active_discounts()
+    def get_discount_eligibility_for_order_type(order_total, item_count, tenant=None, has_categories=None):
+        """
+        Cache discount eligibility for common order patterns.
+
+        Args:
+            order_total: Total order amount
+            item_count: Number of items in order
+            tenant: Tenant instance (if None, uses current tenant from context)
+            has_categories: Optional category filter
+
+        Returns:
+            List of eligible discount dictionaries
+        """
+        active_discounts = DiscountService.get_active_discounts(tenant=tenant)
         eligible_discounts = []
-        
+
         for discount in active_discounts:
             # Basic eligibility checks that don't require full order context
             if discount.minimum_purchase_amount and order_total < discount.minimum_purchase_amount:
                 continue
-                
+
             # Check if discount type could apply to this order pattern
             if discount.type in ['PERCENTAGE', 'FIXED_AMOUNT']:
                 eligible_discounts.append({
@@ -59,7 +87,7 @@ class DiscountService:
                     'scope': discount.scope,
                     'minimum_purchase_amount': discount.minimum_purchase_amount
                 })
-                
+
         return eligible_discounts
 
     @staticmethod
@@ -96,8 +124,14 @@ class DiscountService:
         # Only apply the discount if it has a positive value
         if calculated_amount > 0:
             # Create or update the link table entry for this discount
+            # Include tenant in defaults to ensure it's set on creation
             OrderDiscount.objects.update_or_create(
-                order=order, discount=discount, defaults={"amount": calculated_amount}
+                order=order,
+                discount=discount,
+                defaults={
+                    "amount": calculated_amount,
+                    "tenant": order.tenant
+                }
             )
             logger.info(f"Discount applied: discount_id {discount.id}")
         else:
@@ -143,6 +177,8 @@ class DiscountValidationService:
         """
         Extract discount code validation logic from apply_discount_code view.
         Handles code lookup, order lookup, and discount application.
+
+        Note: TenantManager automatically filters by current tenant for both Order and Discount.
         """
         # Input validation
         if not order_id or not code:
@@ -150,18 +186,19 @@ class DiscountValidationService:
                 "success": False,
                 "error": "Order ID and code are required."
             }
-        
+
         try:
-            # Order lookup with validation
+            # Order lookup with validation (TenantManager auto-filters by tenant)
             order = Order.objects.get(id=order_id)
         except Order.DoesNotExist:
             return {
                 "success": False,
                 "error": "Order not found."
             }
-        
+
         try:
-            # Discount code lookup with case-insensitive search (only active/non-archived)
+            # Discount code lookup with case-insensitive search
+            # TenantManager ensures only discounts from current tenant are searched
             discount = Discount.objects.filter(is_active=True).get(code__iexact=code)
         except Discount.DoesNotExist:
             return {
@@ -226,11 +263,14 @@ class DiscountValidationService:
         """
         Extract filtering logic for discount queries.
         Handles delta sync and other filtering operations.
+
+        Note: TenantManager automatically filters by current tenant.
         """
         from django.utils.dateparse import parse_datetime
-        
+
+        # TenantManager will automatically filter by tenant
         queryset = Discount.objects.all()
-        
+
         # Delta sync filtering
         modified_since = filters.get("modified_since")
         if modified_since:
@@ -244,7 +284,7 @@ class DiscountValidationService:
             except (ValueError, TypeError):
                 # If parsing fails, ignore the parameter and continue
                 pass
-        
+
         return queryset
     
     @staticmethod

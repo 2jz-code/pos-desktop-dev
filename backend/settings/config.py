@@ -64,65 +64,89 @@ class AppSettings:
         """
         Load settings from the database and populate instance attributes.
         This method performs the database query and caches the results.
+
+        Multi-tenant: TenantManager automatically filters by current tenant.
+        Each tenant gets their own GlobalSettings instance.
         """
         # Import here to avoid circular imports
         from .models import GlobalSettings
+        from tenant.managers import get_current_tenant
 
         try:
-            # Use get_or_create with pk=1 to ensure we always have settings
-            settings_obj, created = GlobalSettings.objects.get_or_create(pk=1)
+            tenant = get_current_tenant()
+            if not tenant:
+                raise ImproperlyConfigured("No tenant context available for settings")
 
-            # === TAX & FINANCIAL SETTINGS ===
-            self.tax_rate: Decimal = settings_obj.tax_rate
+            # Try to get existing settings for this tenant
+            try:
+                settings_obj = GlobalSettings.objects.get(tenant=tenant)
+                created = False
+            except GlobalSettings.DoesNotExist:
+                # Create new settings for this tenant
+                # Note: Don't use get_or_create due to potential id sequence conflicts
+                # from pre-multi-tenancy data
+                settings_obj = GlobalSettings(
+                    tenant=tenant,
+                    brand_name=f"{tenant.name}",
+                )
+                settings_obj.save()
+                created = True
+
+            # === FINANCIAL SETTINGS (Tenant-wide) ===
             self.surcharge_percentage: Decimal = settings_obj.surcharge_percentage
             self.currency: str = settings_obj.currency
             self.allow_discount_stacking: bool = settings_obj.allow_discount_stacking
 
-            # === STORE INFORMATION ===
-            self.store_name: str = settings_obj.store_name
-            self.store_address: str = settings_obj.store_address
-            self.store_phone: str = settings_obj.store_phone
-            self.store_email: str = settings_obj.store_email
+            # === BRAND IDENTITY (Tenant-wide) ===
+            self.brand_name: str = settings_obj.brand_name
+            self.brand_primary_color: str = settings_obj.brand_primary_color
+            self.brand_secondary_color: str = settings_obj.brand_secondary_color
 
-            # === RECEIPT CONFIGURATION ===
-            self.receipt_header: str = settings_obj.receipt_header
-            self.receipt_footer: str = settings_obj.receipt_footer
+            # === RECEIPT TEMPLATES (Brand-level, locations can override) ===
+            self.brand_receipt_header: str = settings_obj.brand_receipt_header
+            self.brand_receipt_footer: str = settings_obj.brand_receipt_footer
 
-            # === PAYMENT PROCESSING ===
+            # === PAYMENT PROCESSING (Tenant-wide) ===
             self.active_terminal_provider: str = settings_obj.active_terminal_provider
-
-            # === BUSINESS HOURS ===
-            self.opening_time = settings_obj.opening_time
-            self.closing_time = settings_obj.closing_time
-            self.timezone: str = settings_obj.timezone
-
-            # === DEFAULTS ===
-            self.default_inventory_location = settings_obj.default_inventory_location
-            self.default_store_location = settings_obj.default_store_location
-            self.default_inventory_location_id: int | None = (
-                settings_obj.default_inventory_location_id
-            )
-            
-            # === INVENTORY THRESHOLD DEFAULTS ===
-            self.default_low_stock_threshold: Decimal = settings_obj.default_low_stock_threshold
-            self.default_expiration_threshold: int = settings_obj.default_expiration_threshold
 
             if created:
                 logger.info("Created default GlobalSettings instance")
 
             # Load extended configurations from their own singleton models
             self._load_printer_config()
-            self._load_web_order_config()
+
+            # Set hardcoded web order defaults (no tenant-wide settings anymore)
+            # Location-specific overrides are managed via StoreLocation.get_effective_web_order_settings()
+            self.enable_web_order_notifications: bool = True
+            self.web_order_notification_sound: bool = True
+            self.web_order_auto_print_receipt: bool = True
+            self.web_order_auto_print_kitchen: bool = True
 
         except Exception as e:
             raise ImproperlyConfigured(f"Failed to load settings: {e}")
 
     def _load_printer_config(self) -> None:
-        """Load printer configurations from the singleton PrinterConfiguration model."""
+        """
+        Load printer configurations from tenant-scoped PrinterConfiguration model.
+        TenantManager automatically filters by current tenant.
+        """
         from .models import PrinterConfiguration
+        from tenant.managers import get_current_tenant
 
         try:
-            printer_config, created = PrinterConfiguration.objects.get_or_create(pk=1)
+            tenant = get_current_tenant()
+            if not tenant:
+                raise Exception("No tenant context available")
+
+            # Try to get existing config for this tenant
+            try:
+                printer_config = PrinterConfiguration.objects.get(tenant=tenant)
+                created = False
+            except PrinterConfiguration.DoesNotExist:
+                # Create new config - avoid get_or_create due to id sequence conflicts
+                printer_config = PrinterConfiguration(tenant=tenant)
+                printer_config.save()
+                created = True
             self.receipt_printers: List[Dict[str, Any]] = (
                 printer_config.receipt_printers
             )
@@ -139,26 +163,9 @@ class AppSettings:
             self.kitchen_printers = []
             self.kitchen_zones = []
 
-    def _load_web_order_config(self) -> None:
-        """Load web order settings from the singleton WebOrderSettings model."""
-        from .models import WebOrderSettings
-
-        try:
-            web_settings, created = WebOrderSettings.objects.get_or_create(pk=1)
-            # Map model fields to AppSettings attributes
-            self.enable_web_order_notifications: bool = web_settings.enable_notifications
-            self.web_order_notification_sound: bool = web_settings.play_notification_sound
-            self.web_order_auto_print_receipt: bool = web_settings.auto_print_receipt
-            self.web_order_auto_print_kitchen: bool = web_settings.auto_print_kitchen
-            if created:
-                logger.info("Created default WebOrderSettings instance")
-        except Exception as e:
-            logger.warning(f"Failed to load web order configuration: {e}")
-            # Set sensible defaults to prevent crashes
-            self.enable_web_order_notifications = False
-            self.web_order_notification_sound = False
-            self.web_order_auto_print_receipt = False
-            self.web_order_auto_print_kitchen = False
+    # _load_web_order_config() REMOVED - WebOrderSettings model no longer exists
+    # Web order settings are now hardcoded defaults in load_settings()
+    # Location-specific overrides managed via StoreLocation.get_effective_web_order_settings()
 
     def reload(self) -> None:
         """
@@ -168,65 +175,6 @@ class AppSettings:
         self.load_settings()
         logger.info("AppSettings cache reloaded")
 
-    def get_default_inventory_location(self):
-        """
-        Get the default inventory location. Creates one if none exists.
-        Maintained for backwards compatibility and inventory separation.
-        """
-        if self.default_inventory_location is None:
-            # Import here to avoid circular imports
-            from inventory.models import Location
-            from .models import GlobalSettings
-
-            # Create a default location if none exists
-            default_location, created = Location.objects.get_or_create(
-                name="Main Store",
-                defaults={"description": "Default main store location"},
-            )
-
-            # Update the settings to use this location
-            settings_obj = GlobalSettings.objects.get(pk=1)
-            settings_obj.default_inventory_location = default_location
-            settings_obj.save()
-
-            self.default_inventory_location = default_location
-
-            if created:
-                logger.info("Created default inventory location: Main Store")
-
-        return self.default_inventory_location
-
-    def get_default_store_location(self):
-        """
-        Get the default store location. Creates one if none exists.
-        This is the primary method for getting the default physical location.
-        """
-        if self.default_store_location is None:
-            from .models import StoreLocation, GlobalSettings
-
-            # Create or get a default store location
-            default_location, created = StoreLocation.objects.get_or_create(
-                is_default=True, defaults={"name": "Main Location"}
-            )
-
-            # Update the global settings to use this new location
-            settings_obj = GlobalSettings.objects.get(pk=1)
-            settings_obj.default_store_location = default_location
-            settings_obj.save()
-
-            self.default_store_location = default_location
-
-            if created:
-                logger.info("Created default store location: Main Location")
-
-        return self.default_store_location
-
-    def get_default_location(self):
-        """
-        Backwards compatibility method for inventory system.
-        Returns the default inventory location.
-        """
-        return self.get_default_inventory_location()
 
     @cache_static_data(timeout=3600*24)  # 24 hours in static cache
     def get_cached_global_settings(self):
@@ -248,13 +196,9 @@ class AppSettings:
             
             # Pre-load core settings that are frequently accessed
             critical_settings = [
-                'tax_rate',
-                'surcharge_percentage', 
+                'surcharge_percentage',
                 'currency',
-                'store_name',
-                'opening_time',
-                'closing_time',
-                'timezone',
+                'brand_name',
                 'active_terminal_provider'
             ]
             
@@ -268,7 +212,7 @@ class AppSettings:
             self.get_store_locations()
             
             # Pre-load configuration dictionaries
-            self.get_store_info()
+            self.get_brand_info()
             self.get_financial_settings()
             self.get_receipt_config()
             self.get_web_order_config()
@@ -281,18 +225,6 @@ class AppSettings:
             logger.warning(f"Failed to warm settings cache: {e}")
             return False
     
-    @cache_static_data(timeout=3600*4)  # 4 hours in static cache
-    def get_cached_business_hours(self):
-        """Cache business hours configuration for frequent access"""
-        if not self._initialized:
-            self._setup()
-            
-        return {
-            'opening_time': self.opening_time.isoformat() if self.opening_time else None,
-            'closing_time': self.closing_time.isoformat() if self.closing_time else None,
-            'timezone': self.timezone,
-            'is_24_hours': self.opening_time is None or self.closing_time is None
-        }
     
     @cache_static_data(timeout=3600*6)  # 6 hours in static cache  
     def get_cached_payment_config(self):
@@ -308,55 +240,57 @@ class AppSettings:
         }
     
     @cache_static_data(timeout=3600*12)  # 12 hours in static cache
-    def get_cached_store_branding(self):
-        """Cache store branding information for receipts and displays"""
+    def get_cached_brand_info(self):
+        """Cache brand information for receipts and displays"""
         if not self._initialized:
             self._setup()
-            
+
         return {
-            'store_name': self.store_name,
-            'store_address': self.store_address,
-            'store_phone': self.store_phone,
-            'store_email': self.store_email,
-            'receipt_header': self.receipt_header,
-            'receipt_footer': self.receipt_footer
+            'brand_name': self.brand_name,
+            'brand_primary_color': self.brand_primary_color,
+            'brand_secondary_color': self.brand_secondary_color,
+            'brand_receipt_header': self.brand_receipt_header,
+            'brand_receipt_footer': self.brand_receipt_footer
         }
 
-    def get_store_info(self) -> dict:
+    def get_brand_info(self) -> dict:
         """
-        Get store information as a dictionary.
-        Useful for receipt generation and display purposes.
+        Get brand information as a dictionary.
+        Useful for branding across all locations.
         """
         return {
-            "name": self.store_name,
-            "address": self.store_address,
-            "phone": self.store_phone,
-            "email": self.store_email,
+            "name": self.brand_name,
+            "primary_color": self.brand_primary_color,
+            "secondary_color": self.brand_secondary_color,
         }
 
     def get_financial_settings(self) -> dict:
         """
         Get financial settings as a dictionary.
         Useful for order calculations.
+        Note: tax_rate is location-specific, get from StoreLocation model.
         """
         return {
-            "tax_rate": self.tax_rate,
             "surcharge_percentage": self.surcharge_percentage,
             "currency": self.currency,
         }
 
     def get_receipt_config(self) -> dict:
         """
-        Get receipt configuration as a dictionary.
-        Useful for receipt generation.
+        Get receipt template configuration as a dictionary.
+        These are brand-level templates. Locations can override.
         """
         return {
-            "header": self.receipt_header,
-            "footer": self.receipt_footer,
+            "header": self.brand_receipt_header,
+            "footer": self.brand_receipt_footer,
         }
 
     def get_web_order_config(self) -> dict:
-        """Get web order notification configuration as a dictionary."""
+        """
+        Get web order notification configuration as a dictionary.
+        Returns hardcoded tenant-wide defaults (all True).
+        For location-specific settings, use StoreLocation.get_effective_web_order_settings().
+        """
         return {
             "notifications_enabled": self.enable_web_order_notifications,
             "play_notification_sound": self.web_order_notification_sound,
@@ -374,9 +308,8 @@ class AppSettings:
 
     def __str__(self) -> str:
         return (
-            f"AppSettings(store='{self.store_name}', "
+            f"AppSettings(brand='{self.brand_name}', "
             f"currency={self.currency}, "
-            f"tax_rate={self.tax_rate}, "
             f"provider={self.active_terminal_provider})"
         )
 

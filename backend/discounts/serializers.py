@@ -1,11 +1,12 @@
 from rest_framework import serializers
 from core_backend.base import BaseModelSerializer, BasicProductSerializer, BasicCategorySerializer
+from core_backend.base.serializers import TenantFilteredSerializerMixin
 from .models import Discount
 from orders.models import Order
 from products.models import Product, Category
 
 
-class DiscountSerializer(BaseModelSerializer):
+class DiscountSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     """
     Serializes Discount objects, including details about what they apply to.
     """
@@ -76,7 +77,13 @@ class DiscountSerializer(BaseModelSerializer):
             raise serializers.ValidationError(
                 {"write_applicable_categories": "At least one category must be selected for a category-specific discount."}
             )
-        
+
+        # Convert empty string to None for code field to avoid unique constraint issues
+        # The unique constraint only applies when code is not NULL, so empty strings
+        # should be stored as NULL to allow multiple discounts without codes
+        if 'code' in data and data['code'] == '':
+            data['code'] = None
+
         return data
 
 
@@ -107,7 +114,7 @@ class DiscountSyncSerializer(BaseModelSerializer):
         prefetch_related_fields = []
 
 
-class DiscountApplySerializer(serializers.Serializer):
+class DiscountApplySerializer(TenantFilteredSerializerMixin, serializers.Serializer):
     """
     Serializer for applying a discount to an order.
     Requires the ID of the discount to be applied. The order is typically
@@ -115,7 +122,7 @@ class DiscountApplySerializer(serializers.Serializer):
     """
 
     discount_id = serializers.PrimaryKeyRelatedField(
-        queryset=Discount.objects.filter(is_active=True),  # Only active (non-archived) discounts
+        queryset=Discount.objects.all(),  # Mixin will auto-filter by tenant
         help_text="The ID of the discount to apply.",
     )
 

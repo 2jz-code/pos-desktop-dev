@@ -19,6 +19,7 @@ class ReportParameterSerializer(serializers.Serializer):
 
     start_date = serializers.DateTimeField()
     end_date = serializers.DateTimeField()
+    location_id = serializers.IntegerField(required=False, allow_null=True, help_text="Filter by store location ID")
 
     def validate(self, data):
         """Validate date range parameters"""
@@ -43,13 +44,13 @@ class ReportParameterSerializer(serializers.Serializer):
         try:
             from settings.config import AppSettings
             from .services_new.timezone_utils import TimezoneUtils
-            
+
             business_tz = TimezoneUtils.get_local_timezone()
-            
+
             # Convert dates to business timezone
             data["start_date"] = start_date.astimezone(business_tz)
             data["end_date"] = end_date.astimezone(business_tz)
-            
+
         except Exception as e:
             # Log the error but don't fail validation
             import logging
@@ -58,12 +59,24 @@ class ReportParameterSerializer(serializers.Serializer):
 
         return data
 
+    def validate_location_id(self, value):
+        """Validate location belongs to tenant"""
+        if value is not None:
+            # Import here to avoid circular imports
+            from settings.models import StoreLocation
+            from tenant.managers import get_current_tenant
+
+            tenant = get_current_tenant()
+            if tenant and not StoreLocation.objects.filter(tenant=tenant, id=value).exists():
+                raise serializers.ValidationError("Invalid location ID for current tenant")
+        return value
+
 
 class ProductReportParameterSerializer(ReportParameterSerializer):
     """Extended parameters for product reports"""
 
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    limit = serializers.IntegerField(default=10, min_value=1, max_value=100)
+    limit = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=1000)
     sort_by = serializers.ChoiceField(
         choices=["revenue", "quantity", "margin"], default="revenue"
     )

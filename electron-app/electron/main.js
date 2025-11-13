@@ -13,6 +13,7 @@ import {
 	formatKitchenTicket,
 } from "./receipt-formatter.js";
 import sound from "sound-play";
+import deviceFingerprintService from "./device-fingerprint.js";
 // Offline services removed - moving to online-only architecture
 
 const __filename = fileURLToPath(import.meta.url);
@@ -499,6 +500,11 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
 // IPC handler for getting the unique machine ID
 ipcMain.handle("get-machine-id", () => {
 	return machineIdSync({ original: true });
+});
+
+// IPC handler for getting hardware-based device fingerprint
+ipcMain.handle("get-device-fingerprint", () => {
+	return deviceFingerprintService.getDeviceFingerprint();
 });
 
 ipcMain.on("shutdown-app", () => {

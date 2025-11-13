@@ -2,9 +2,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import {
-	getGlobalSettings,
-	updateGlobalSettings,
+	getStoreLocation,
+	updateStoreLocation,
 } from "../services/settingsService";
 
 import { Button } from "@/shared/components/ui/button";
@@ -36,15 +37,19 @@ const formSchema = z.object({
 export function ReceiptSettings() {
 	const queryClient = useQueryClient();
 
-	const { data: settings, isLoading } = useQuery({
-		queryKey: ["globalSettings"],
-		queryFn: getGlobalSettings,
+	// Get location ID from terminal config
+	const locationId = terminalRegistrationService.getLocationId();
+
+	const { data: storeLocation, isLoading } = useQuery({
+		queryKey: ["storeLocation", locationId],
+		queryFn: () => getStoreLocation(locationId),
+		enabled: !!locationId,
 	});
 
 	const mutation = useMutation({
-		mutationFn: updateGlobalSettings,
+		mutationFn: (data) => updateStoreLocation(locationId, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
+			queryClient.invalidateQueries({ queryKey: ["storeLocation", locationId] });
 			toast.success("Receipt settings updated successfully!");
 		},
 		onError: (error) => {
@@ -55,8 +60,8 @@ export function ReceiptSettings() {
 	const form = useForm({
 		resolver: zodResolver(formSchema),
 		values: {
-			receipt_header: settings?.receipt_header || "",
-			receipt_footer: settings?.receipt_footer || "",
+			receipt_header: storeLocation?.receipt_header || "",
+			receipt_footer: storeLocation?.receipt_footer || "",
 		},
 		disabled: isLoading || mutation.isPending,
 	});

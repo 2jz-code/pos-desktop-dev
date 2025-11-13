@@ -4,16 +4,32 @@ from django.utils import timezone
 from datetime import timedelta
 from products.models import Product
 from core_backend.utils.archiving import SoftDeleteMixin
+from tenant.managers import TenantManager, TenantSoftDeleteManager
 
 
 class Location(SoftDeleteMixin):
     """
     Represents a physical location where inventory is stored.
     e.g., 'Back Storeroom', 'Front Customer Cooler', 'Main Walk-in Freezer'.
+
+    Phase 5: Each storage location now belongs to a specific StoreLocation.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='inventory_locations'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='inventory_locations',
+        null=True,  # Temporarily null for migration - will be required after data migration
+        blank=True,
+        help_text=_("The store this storage location belongs to.")
+    )
     name = models.CharField(
-        max_length=100, unique=True, help_text=_("Name of the inventory location.")
+        max_length=100, help_text=_("Name of the inventory location.")
     )
     description = models.TextField(
         blank=True, help_text=_("Description of the location.")
@@ -31,32 +47,59 @@ class Location(SoftDeleteMixin):
         help_text=_("Default number of days before expiration to warn about expiring stock for this location. If not set, uses global default."),
     )
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Location")
         verbose_name_plural = _("Locations")
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_location_name_per_tenant'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'name']),
+            models.Index(fields=['tenant', 'store_location'], name='inventory_loc_tenant_store_idx'),
+        ]
 
     def __str__(self):
         return self.name
 
     @property
     def effective_low_stock_threshold(self):
-        """Returns the effective low stock threshold (location-specific or global default)."""
+        """
+        Returns the effective low stock threshold using 2-tier hierarchy:
+        1. Storage location-specific override
+        2. Store location default (or hardcoded fallback if no store location)
+        """
         if self.low_stock_threshold is not None:
             return self.low_stock_threshold
-        
-        # Import here to avoid circular imports
-        from settings.config import app_settings
-        return app_settings.default_low_stock_threshold
+
+        # Fall back to store location default
+        if self.store_location:
+            return self.store_location.low_stock_threshold
+
+        # Hardcoded fallback for legacy data without store_location
+        return 10
 
     @property
     def effective_expiration_threshold(self):
-        """Returns the effective expiration threshold (location-specific or global default)."""
+        """
+        Returns the effective expiration threshold using 2-tier hierarchy:
+        1. Storage location-specific override
+        2. Store location default (or hardcoded fallback if no store location)
+        """
         if self.expiration_threshold is not None:
             return self.expiration_threshold
-        
-        # Import here to avoid circular imports
-        from settings.config import app_settings
-        return app_settings.default_expiration_threshold
+
+        # Fall back to store location default
+        if self.store_location:
+            return self.store_location.expiration_threshold
+
+        # Hardcoded fallback for legacy data without store_location
+        return 7
 
 
 class InventoryStock(SoftDeleteMixin):
@@ -64,6 +107,19 @@ class InventoryStock(SoftDeleteMixin):
     Tracks the quantity of a specific product at a specific location.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='inventory_stocks'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='inventory_stocks',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text=_('Denormalized from location.store_location for fast queries')
+    )
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="stock_levels"
     )
@@ -103,40 +159,30 @@ class InventoryStock(SoftDeleteMixin):
         """
         Returns the effective low stock threshold using 3-tier hierarchy:
         1. Individual stock override
-        2. Location-specific default
-        3. Global default
+        2. Storage location default
+        3. Store location default
         """
         # First check for item-specific override
         if self.low_stock_threshold is not None:
             return self.low_stock_threshold
-        
-        # Then check for location-specific default
-        if self.location.low_stock_threshold is not None:
-            return self.location.low_stock_threshold
-        
-        # Finally fall back to global default
-        from settings.config import app_settings
-        return app_settings.default_low_stock_threshold
+
+        # Then fall back to location's effective threshold (which uses store location)
+        return self.location.effective_low_stock_threshold
 
     @property
     def effective_expiration_threshold(self):
         """
         Returns the effective expiration threshold using 3-tier hierarchy:
         1. Individual stock override
-        2. Location-specific default
-        3. Global default
+        2. Storage location default
+        3. Store location default
         """
         # First check for item-specific override
         if self.expiration_threshold is not None:
             return self.expiration_threshold
-        
-        # Then check for location-specific default
-        if self.location.expiration_threshold is not None:
-            return self.location.expiration_threshold
-        
-        # Finally fall back to global default
-        from settings.config import app_settings
-        return app_settings.default_expiration_threshold
+
+        # Then fall back to location's effective threshold (which uses store location)
+        return self.location.effective_expiration_threshold
 
     @property
     def is_low_stock(self):
@@ -153,15 +199,19 @@ class InventoryStock(SoftDeleteMixin):
         threshold_date = today + timedelta(days=self.effective_expiration_threshold)
         return self.expiration_date <= threshold_date
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Inventory Stock")
         verbose_name_plural = _("Inventory Stocks")
         unique_together = ("product", "location")
         indexes = [
-            models.Index(fields=['product', 'location'], name='inventory_product_location_idx'),
-            models.Index(fields=['quantity'], name='inventory_quantity_idx'),
-            models.Index(fields=['expiration_date'], name='inventory_expiration_idx'),
-            models.Index(fields=['location'], name='inventory_location_idx'),
+            models.Index(fields=['tenant', 'product', 'location'], name='inventory_tenant_prod_loc_idx'),
+            models.Index(fields=['tenant', 'quantity'], name='inventory_tenant_qty_idx'),
+            models.Index(fields=['tenant', 'expiration_date'], name='inventory_tenant_exp_idx'),
+            models.Index(fields=['tenant', 'store_location'], name='invstock_ten_store_idx'),
+            models.Index(fields=['tenant', 'store_location', 'product'], name='invstock_ten_store_prod_idx'),
         ]
 
     def __str__(self):
@@ -173,6 +223,11 @@ class Recipe(SoftDeleteMixin):
     Defines the recipe for a MenuItem.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='recipes'
+    )
     menu_item = models.OneToOneField(
         Product,
         on_delete=models.PROTECT,
@@ -188,11 +243,14 @@ class Recipe(SoftDeleteMixin):
         Product, through="RecipeItem", related_name="recipes"
     )
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Recipe")
         verbose_name_plural = _("Recipes")
         indexes = [
-            models.Index(fields=['menu_item']),  # For recipe lookups
+            models.Index(fields=['tenant', 'menu_item']),
         ]
 
     def __str__(self):
@@ -204,6 +262,11 @@ class RecipeItem(SoftDeleteMixin):
     A through model representing an ingredient in a recipe.
     """
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='recipe_items'
+    )
     recipe = models.ForeignKey(Recipe, on_delete=models.PROTECT)
     product = models.ForeignKey(
         Product,
@@ -220,12 +283,15 @@ class RecipeItem(SoftDeleteMixin):
         help_text=_("Unit of measure, e.g., 'grams', 'oz', 'slices', 'each'."),
     )
 
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Recipe Item")
         verbose_name_plural = _("Recipe Items")
         unique_together = ("recipe", "product")
         indexes = [
-            models.Index(fields=['recipe', 'product']),  # For ingredient lookups
+            models.Index(fields=['tenant', 'recipe', 'product']),
         ]
 
     def __str__(self):
@@ -238,7 +304,7 @@ class StockHistoryEntry(models.Model):
     """
     Tracks all stock operations for audit trail and history purposes.
     """
-    
+
     OPERATION_CHOICES = [
         ('CREATED', _('Stock Created')),
         ('ADJUSTED_ADD', _('Stock Added')),
@@ -250,15 +316,28 @@ class StockHistoryEntry(models.Model):
         ('BULK_TRANSFER', _('Bulk Transfer')),
     ]
 
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='stock_history_entries'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='stock_history_entries',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text=_('Denormalized from location.store_location for fast audit queries')
+    )
     product = models.ForeignKey(
-        Product, 
-        on_delete=models.PROTECT, 
+        Product,
+        on_delete=models.PROTECT,
         related_name="stock_history",
         help_text=_("Product involved in the stock operation")
     )
     location = models.ForeignKey(
-        Location, 
-        on_delete=models.PROTECT, 
+        Location,
+        on_delete=models.PROTECT,
         related_name="stock_history",
         help_text=_("Location where the stock operation occurred")
     )
@@ -337,18 +416,22 @@ class StockHistoryEntry(models.Model):
         help_text=_("User agent information")
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         verbose_name = _("Stock History Entry")
         verbose_name_plural = _("Stock History Entries")
         ordering = ['-timestamp']
         indexes = [
-            models.Index(fields=['product', 'timestamp'], name='stock_hist_prod_time_idx'),
-            models.Index(fields=['location', 'timestamp'], name='stock_hist_loc_time_idx'),
-            models.Index(fields=['user', 'timestamp'], name='stock_hist_user_time_idx'),
-            models.Index(fields=['operation_type'], name='stock_hist_operation_idx'),
-            models.Index(fields=['timestamp'], name='stock_hist_timestamp_idx'),
-            models.Index(fields=['reference_id'], name='stock_hist_reference_idx'),
-            models.Index(fields=['reason_config'], name='stock_hist_reason_idx'),
+            models.Index(fields=['tenant', 'product', 'timestamp'], name='stock_hist_ten_prod_time_idx'),
+            models.Index(fields=['tenant', 'location', 'timestamp'], name='stock_hist_ten_loc_time_idx'),
+            models.Index(fields=['tenant', 'user', 'timestamp'], name='stock_hist_ten_user_time_idx'),
+            models.Index(fields=['tenant', 'operation_type'], name='stock_hist_ten_operation_idx'),
+            models.Index(fields=['tenant', 'timestamp'], name='stock_hist_ten_timestamp_idx'),
+            models.Index(fields=['tenant', 'reference_id'], name='stock_hist_ten_reference_idx'),
+            models.Index(fields=['tenant', 'store_location', 'timestamp'], name='stock_hist_ten_store_time_idx'),
+            models.Index(fields=['tenant', 'store_location', 'operation_type'], name='stock_hist_ten_store_op_idx'),
         ]
 
     def __str__(self):

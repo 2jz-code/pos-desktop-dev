@@ -34,12 +34,14 @@ export const checkBusinessHours = async (datetime, profileId = null) => {
 
 // === Admin: Business Hours Profiles ===
 
-export const getBusinessHoursProfiles = async () => {
-	const response = await apiClient.get("business-hours/admin/profiles/");
+export const getBusinessHoursProfiles = async (storeLocationId = null) => {
+	const params = storeLocationId ? { store_location: storeLocationId } : {};
+	const response = await apiClient.get("business-hours/admin/profiles/", { params });
 	return response.data;
 };
 
 export const createBusinessHoursProfile = async (profileData) => {
+	// Ensure store_location is included if provided
 	const response = await apiClient.post("business-hours/admin/profiles/", profileData);
 	return response.data;
 };
@@ -227,12 +229,15 @@ export const getShortDayName = (dayNumber) => {
 
 /**
  * Default business hours profile structure
+ * @param {number} storeLocationId - Optional store location ID to link profile to
+ * @param {string} locationName - Optional location name for profile name
  */
-export const createDefaultProfile = () => ({
-	name: 'Main Store',
+export const createDefaultProfile = (storeLocationId = null, locationName = null) => ({
+	name: locationName ? `${locationName} - Business Hours` : 'Main Store',
+	store_location: storeLocationId,
 	timezone: 'America/New_York',
 	is_active: true,
-	is_default: true
+	is_default: !storeLocationId // Only set as default if not linked to a location
 });
 
 /**

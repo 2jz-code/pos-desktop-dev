@@ -25,6 +25,7 @@ import inventoryService from "../services/api/inventoryService";
 import productService from "../services/api/productService";
 import SearchableSelect from "./shared/SearchableSelect";
 import { ReasonInput } from "./inventory/ReasonInput";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 const StockAdjustmentDialog = ({
 	isOpen,
@@ -32,6 +33,7 @@ const StockAdjustmentDialog = ({
 	product = null,
 	onSuccess,
 }) => {
+	const { selectedLocationId } = useStoreLocation();
 	const [formData, setFormData] = useState({
 		product_id: "",
 		location_id: "",
@@ -90,11 +92,20 @@ const StockAdjustmentDialog = ({
 	const loadInitialData = async () => {
 		setLoadingData(true);
 		try {
-			const [productsResponse, locationsResponse, defaultsResponse] = await Promise.all([
+			// Build promises array - only fetch defaults if a specific location is selected
+			const promises = [
 				productService.getAllActiveProducts(), // Fetch all active products
-				inventoryService.getLocations(),
-				inventoryService.getInventoryDefaults(),
-			]);
+				inventoryService.getLocations(), // Store location filter is automatic from X-Store-Location header
+			];
+
+			// Only fetch defaults if we have a specific store location selected
+			// (getInventoryDefaults will use X-Store-Location header from axios interceptor)
+			if (selectedLocationId) {
+				promises.push(inventoryService.getInventoryDefaults());
+			}
+
+			const responses = await Promise.all(promises);
+			const [productsResponse, locationsResponse, defaultsResponse] = responses;
 
 			const productsData =
 				productsResponse?.data?.results ||
@@ -108,10 +119,11 @@ const StockAdjustmentDialog = ({
 				locationsResponse?.results ||
 				locationsResponse ||
 				[];
-			const defaultsData =
-				defaultsResponse?.data ||
-				defaultsResponse ||
-				{};
+
+			// Only use defaults if we got a response (i.e., if a location was selected)
+			const defaultsData = defaultsResponse
+				? (defaultsResponse?.data || defaultsResponse || {})
+				: { default_low_stock_threshold: 10, default_expiration_threshold: 7 };
 
 			setProducts(Array.isArray(productsData) ? productsData : []);
 			setLocations(Array.isArray(locationsData) ? locationsData : []);
@@ -121,7 +133,7 @@ const StockAdjustmentDialog = ({
 			setError("Failed to load products and locations");
 			setProducts([]);
 			setLocations([]);
-			setInventoryDefaults({});
+			setInventoryDefaults({ default_low_stock_threshold: 10, default_expiration_threshold: 7 });
 		} finally {
 			setLoadingData(false);
 		}

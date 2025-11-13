@@ -11,8 +11,14 @@ from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
 from core_backend.utils.pii import PIIProtection
+from core_backend.admin.mixins import TenantAdminMixin, TenantFilter
 
-from .models import Customer, CustomerAddress
+from .models import (
+    Customer,
+    CustomerAddress,
+    CustomerPasswordResetToken,
+    CustomerEmailVerificationToken,
+)
 
 
 def _norm_email(email: str) -> str:
@@ -127,24 +133,29 @@ class CustomerAddressInline(admin.TabularInline):
     extra = 0
     readonly_fields = ('created_at', 'updated_at', 'masked_address_display')
     fields = ('address_type', 'is_default', 'masked_address_display', 'city', 'state', 'country')
-    
+
+    def get_queryset(self, request):
+        """Use all_objects to show addresses in inline"""
+        return CustomerAddress.all_objects.filter(customer=self.parent_obj) if hasattr(self, 'parent_obj') else CustomerAddress.all_objects.all()
+
     def masked_address_display(self, obj):
         """Show masked street address for privacy"""
         if obj.street_address:
             return PIIProtection.mask_address(obj.street_address)
         return "-"
     masked_address_display.short_description = "Street Address"
-    
+
     def has_add_permission(self, request, obj=None):
         """Allow adding addresses"""
         return True
 
 
 @admin.register(Customer)
-class CustomerAdmin(admin.ModelAdmin):
+class CustomerAdmin(TenantAdminMixin, admin.ModelAdmin):
     """Admin interface for customer management with PII protection"""
-    
+
     list_display = (
+        "tenant",
         "masked_email_display",
         "masked_name_display",
         "masked_phone_display",
@@ -154,8 +165,9 @@ class CustomerAdmin(admin.ModelAdmin):
         "total_orders_display",
         "account_status_display",
     )
-    
+
     list_filter = (
+        TenantFilter,
         "is_active",
         "email_verified",
         "phone_verified",
@@ -170,6 +182,9 @@ class CustomerAdmin(admin.ModelAdmin):
     ordering = ("-date_joined",)
     
     fieldsets = (
+        ("Tenant", {
+            "fields": ("tenant",)
+        }),
         ("Account Information", {
             "fields": ("email", "is_active", "password_change_link")
         }),
@@ -285,17 +300,23 @@ class CustomerAdmin(admin.ModelAdmin):
         return form
 
     def get_queryset(self, request):
-        """Optimize queryset for admin list view"""
-        qs = super().get_queryset(request)
-        # Add any needed optimizations here
-        return qs
+        """Use all_objects to show all tenants' customers"""
+        return Customer.all_objects.select_related('tenant').all()
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly after creation"""
+        readonly = list(self.readonly_fields)
+        if obj:  # Editing existing customer
+            readonly.append('tenant')
+        return readonly
 
 
 @admin.register(CustomerAddress)
-class CustomerAddressAdmin(admin.ModelAdmin):
+class CustomerAddressAdmin(TenantAdminMixin, admin.ModelAdmin):
     """Admin interface for customer addresses"""
-    
+
     list_display = (
+        "tenant",
         "customer_display",
         "address_type",
         "is_default",
@@ -305,8 +326,9 @@ class CustomerAddressAdmin(admin.ModelAdmin):
         "country",
         "created_at",
     )
-    
+
     list_filter = (
+        TenantFilter,
         "address_type",
         "is_default",
         "country",
@@ -318,6 +340,9 @@ class CustomerAddressAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     
     fieldsets = (
+        ("Tenant", {
+            "fields": ("tenant",)
+        }),
         ("Customer", {
             "fields": ("customer",)
         }),
@@ -336,8 +361,19 @@ class CustomerAddressAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
-    
+
     readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        """Use all_objects to show all tenants' addresses"""
+        return CustomerAddress.all_objects.select_related('tenant', 'customer').all()
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly after creation"""
+        readonly = list(self.readonly_fields)
+        if obj:  # Editing existing address
+            readonly.append('tenant')
+        return readonly
     
     def customer_display(self, obj):
         """Display customer with masked email"""
@@ -380,3 +416,169 @@ class CustomerStats:
             'customers_with_orders': customers_with_orders,
             'new_customers_30_days': new_customers,
         }
+
+
+@admin.register(CustomerPasswordResetToken)
+class CustomerPasswordResetTokenAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """Admin interface for customer password reset tokens"""
+
+    list_display = (
+        "tenant",
+        "customer_display",
+        "token_preview",
+        "status_display",
+        "created_at",
+        "expires_at",
+        "used_at",
+    )
+
+    list_filter = (
+        TenantFilter,
+        "created_at",
+        "expires_at",
+        "used_at",
+    )
+
+    search_fields = ("customer__email", "customer__first_name", "customer__last_name", "token")
+    ordering = ("-created_at",)
+
+    fieldsets = (
+        ("Tenant", {
+            "fields": ("tenant",)
+        }),
+        ("Customer", {
+            "fields": ("customer",)
+        }),
+        ("Token Details", {
+            "fields": ("token", "created_at", "expires_at", "used_at")
+        }),
+    )
+
+    readonly_fields = ("token", "created_at", "expires_at", "used_at")
+
+    def get_queryset(self, request):
+        """Use all_objects to show all tenants' tokens"""
+        return CustomerPasswordResetToken.all_objects.select_related('tenant', 'customer').all()
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly after creation"""
+        readonly = list(self.readonly_fields)
+        if obj:  # Editing existing token
+            readonly.extend(['tenant', 'customer'])
+        return readonly
+
+    def has_add_permission(self, request):
+        """Prevent creating tokens from admin (use API)"""
+        return False
+
+    def customer_display(self, obj):
+        """Display customer with masked email"""
+        return PIIProtection.mask_email(obj.customer.email)
+    customer_display.short_description = "Customer"
+    customer_display.admin_order_field = "customer__email"
+
+    def token_preview(self, obj):
+        """Show truncated token for security"""
+        if obj.token:
+            return f"{obj.token[:8]}...{obj.token[-4:]}"
+        return "-"
+    token_preview.short_description = "Token"
+
+    def status_display(self, obj):
+        """Display token status with color coding"""
+        if obj.is_used:
+            return format_html(
+                '<span style="color: gray;">Used</span>'
+            )
+        elif obj.is_expired:
+            return format_html(
+                '<span style="color: red;">Expired</span>'
+            )
+        else:
+            return format_html(
+                '<span style="color: green; font-weight: bold;">Valid</span>'
+            )
+    status_display.short_description = "Status"
+
+
+@admin.register(CustomerEmailVerificationToken)
+class CustomerEmailVerificationTokenAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """Admin interface for customer email verification tokens"""
+
+    list_display = (
+        "tenant",
+        "customer_display",
+        "token_preview",
+        "status_display",
+        "created_at",
+        "expires_at",
+        "used_at",
+    )
+
+    list_filter = (
+        TenantFilter,
+        "created_at",
+        "expires_at",
+        "used_at",
+    )
+
+    search_fields = ("customer__email", "customer__first_name", "customer__last_name", "token")
+    ordering = ("-created_at",)
+
+    fieldsets = (
+        ("Tenant", {
+            "fields": ("tenant",)
+        }),
+        ("Customer", {
+            "fields": ("customer",)
+        }),
+        ("Token Details", {
+            "fields": ("token", "created_at", "expires_at", "used_at")
+        }),
+    )
+
+    readonly_fields = ("token", "created_at", "expires_at", "used_at")
+
+    def get_queryset(self, request):
+        """Use all_objects to show all tenants' tokens"""
+        return CustomerEmailVerificationToken.all_objects.select_related('tenant', 'customer').all()
+
+    def get_readonly_fields(self, request, obj=None):
+        """Make tenant readonly after creation"""
+        readonly = list(self.readonly_fields)
+        if obj:  # Editing existing token
+            readonly.extend(['tenant', 'customer'])
+        return readonly
+
+    def has_add_permission(self, request):
+        """Prevent creating tokens from admin (use API)"""
+        return False
+
+    def customer_display(self, obj):
+        """Display customer with masked email"""
+        return PIIProtection.mask_email(obj.customer.email)
+    customer_display.short_description = "Customer"
+    customer_display.admin_order_field = "customer__email"
+
+    def token_preview(self, obj):
+        """Show truncated token for security"""
+        if obj.token:
+            return f"{obj.token[:8]}...{obj.token[-4:]}"
+        return "-"
+    token_preview.short_description = "Token"
+
+    def status_display(self, obj):
+        """Display token status with color coding"""
+        if obj.is_used:
+            return format_html(
+                '<span style="color: gray;">Used</span>'
+            )
+        elif obj.is_expired:
+            return format_html(
+                '<span style="color: red;">Expired</span>'
+            )
+        else:
+            return format_html(
+                '<span style="color: green; font-weight: bold;">Valid</span>'
+            )
+    status_display.short_description = "Status"

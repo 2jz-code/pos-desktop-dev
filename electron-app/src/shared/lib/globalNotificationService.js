@@ -1,5 +1,6 @@
 import EventEmitter from "eventemitter3";
 import apiClient from "@/shared/lib/apiClient";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import {
 	printReceipt,
 	printKitchenTicket,
@@ -27,7 +28,14 @@ class GlobalNotificationService extends EventEmitter {
 		if (this.isInitialized) return;
 		console.log("GlobalNotificationService: Initializing...");
 		try {
-			this.deviceId = await window.electronAPI.getMachineId();
+			// Get device_id from terminal registration (from pairing flow)
+			const terminalConfig = terminalRegistrationService.getTerminalConfig();
+			if (!terminalConfig?.device_id) {
+				console.warn("GlobalNotificationService: Terminal not registered yet. Cannot connect to notifications.");
+				return;
+			}
+			this.deviceId = terminalConfig.device_id;
+			console.log(`GlobalNotificationService: Using device_id: ${this.deviceId}`);
 			this.isInitialized = true;
 			this.connect();
 		} catch (error) {
@@ -239,7 +247,7 @@ class GlobalNotificationService extends EventEmitter {
 			}
 
 			// 2. Handle Kitchen Ticket Printing
-			// Assuming kitchen printing should always happen for web orders if configured,
+			// Kitchen printing happens for web orders if configured,
 			// independent of the `auto_print_receipt` setting for customer receipts.
 			const kitchenZones = await getKitchenZonesWithPrinters();
 			if (kitchenZones.length > 0) {
@@ -247,14 +255,12 @@ class GlobalNotificationService extends EventEmitter {
 					`Printing kitchen tickets for order ${order.order_number} to ${kitchenZones.length} zones.`
 				);
 				for (const zone of kitchenZones) {
-					// The filterConfig for a zone defines which categories/products go to which printer.
-					// This logic is encapsulated in the main process 'print-kitchen-ticket' handler,
-					// which will filter order items based on the zone's config.
-
-					// Create proper filter config matching POS format
+					// Create filter config
+					// Backend returns ["ALL"] when print_all_items is true, match that behavior
+					const categories = zone.categories || [];
 					const filterConfig = {
-						categories: zone.categories || zone.category_ids || [],
-						productTypes: zone.productTypes || [],
+						categories: zone.print_all_items ? ["ALL"] : categories,
+						productTypes: zone.productTypes || [], // Kept for compatibility, no longer used
 					};
 
 					// Skip zones with no categories configured
@@ -265,11 +271,12 @@ class GlobalNotificationService extends EventEmitter {
 						continue;
 					}
 
+					// Use zone.printer directly (already has {id, name, ip, port, connection_type})
 					await printKitchenTicket(
 						zone.printer,
 						order,
 						zone.name,
-						filterConfig // Pass properly formatted filter config
+						filterConfig
 					);
 					console.log(
 						`Sent kitchen ticket for zone '${zone.name}' to printer ${zone.printer.name}`

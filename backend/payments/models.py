@@ -6,6 +6,7 @@ from decimal import Decimal
 import re
 from django.db.models import Max
 from django.db import transaction
+from tenant.managers import TenantManager
 
 
 class Payment(models.Model):
@@ -23,11 +24,24 @@ class Payment(models.Model):
         PENDING = "PENDING", _("Pending")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='payments'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.PROTECT,
+        related_name='payments',
+        null=True,  # Nullable initially for migration, will be required after backfill
+        blank=True,
+        help_text='Denormalized from Order for fast location-based queries'
+    )
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name="payment_details"
     )
 
-    payment_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    payment_number = models.CharField(max_length=20, blank=True, null=True)
 
     status = models.CharField(
         max_length=20,
@@ -88,16 +102,27 @@ class Payment(models.Model):
     created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-created_at", "payment_number"]
         verbose_name = _("Payment")
         verbose_name_plural = _("Payments")
         indexes = [
-            models.Index(fields=["status"], name="payment_status_idx"),
-            models.Index(fields=["order", "status"], name="payment_order_status_idx"),
-            models.Index(fields=["created_at"], name="payment_created_at_idx"),
-            models.Index(fields=["order"], name="payment_order_idx"),
-            models.Index(fields=["payment_number"], name="payment_number_idx"),
+            models.Index(fields=["tenant", "status"], name="payment_tenant_status_idx"),
+            models.Index(fields=["tenant", "order", "status"], name="payment_ten_order_status_idx"),
+            models.Index(fields=["tenant", "created_at"], name="payment_tenant_created_idx"),
+            models.Index(fields=["tenant", "payment_number"], name="payment_tenant_number_idx"),
+            models.Index(fields=["tenant", "store_location", "status"], name="payment_tenant_loc_status_idx"),
+            models.Index(fields=["tenant", "store_location", "created_at"], name="payment_tenant_loc_created_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "payment_number"],
+                condition=models.Q(payment_number__isnull=False),
+                name="unique_payment_number_per_tenant",
+            ),
         ]
 
     def __str__(self):
@@ -199,6 +224,11 @@ class PaymentTransaction(models.Model):
         # Specific providers like Stripe, Clover, etc., will be handled by the strategy, not named here.
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='payment_transactions'
+    )
     payment = models.ForeignKey(
         Payment, on_delete=models.CASCADE, related_name="transactions"
     )
@@ -265,17 +295,20 @@ class PaymentTransaction(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = _("Payment Transaction")
         verbose_name_plural = _("Payment Transactions")
         indexes = [
-            models.Index(fields=['payment']),
-            models.Index(fields=['method']),
-            models.Index(fields=['status']),
-            models.Index(fields=['transaction_id']),
-            models.Index(fields=['created_at']),
-            models.Index(fields=['payment', 'status'])
+            models.Index(fields=['tenant', 'payment']),
+            models.Index(fields=['tenant', 'method']),
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['tenant', 'transaction_id']),
+            models.Index(fields=['tenant', 'created_at']),
+            models.Index(fields=['tenant', 'payment', 'status'])
         ]
 
     def save(self, *args, **kwargs):
@@ -304,9 +337,13 @@ class GiftCard(models.Model):
         REDEEMED = "REDEEMED", _("Fully Redeemed")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='gift_cards'
+    )
     code = models.CharField(
         max_length=20,
-        unique=True,
         help_text=_("Unique gift card code"),
         db_index=True,
     )
@@ -348,16 +385,25 @@ class GiftCard(models.Model):
     created_at = models.DateTimeField(auto_now_add=False, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=False, blank=True, null=True)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = _("Gift Card")
         verbose_name_plural = _("Gift Cards")
         indexes = [
-            models.Index(fields=["code"]),
-            models.Index(fields=["status"]),
-            models.Index(fields=['current_balance']),
-            models.Index(fields=['expiry_date']),
-            models.Index(fields=['status', 'current_balance']),
+            models.Index(fields=["tenant", "code"]),
+            models.Index(fields=["tenant", "status"]),
+            models.Index(fields=['tenant', 'current_balance']),
+            models.Index(fields=['tenant', 'expiry_date']),
+            models.Index(fields=['tenant', 'status', 'current_balance']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "code"],
+                name="unique_gift_card_code_per_tenant",
+            ),
         ]
 
     def __str__(self):

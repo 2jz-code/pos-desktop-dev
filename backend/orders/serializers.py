@@ -170,10 +170,12 @@ class SimpleOrderSerializer(BaseModelSerializer):
             "status",
             "order_type",
             "payment_status",
+            "store_location",
             "grand_total",
             "created_at",
             "updated_at",
         ]
+        select_related_fields = ["store_location"]
 
 
 class OrderSerializer(BaseModelSerializer):
@@ -182,6 +184,7 @@ class OrderSerializer(BaseModelSerializer):
     customer = UserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
     payment_details = serializers.SerializerMethodField()
+    store_location_details = serializers.SerializerMethodField()
     # Essential payment fields for frontend compatibility
     total_with_tip = serializers.SerializerMethodField()
     amount_paid = serializers.SerializerMethodField()
@@ -208,13 +211,15 @@ class OrderSerializer(BaseModelSerializer):
             "created_at",
             "updated_at",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details"]
+        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
         prefetch_related_fields = [
-            Prefetch('items', queryset=OrderItem.objects.select_related(
-                'product__category', 'product__product_type'
-            ).prefetch_related('selected_modifiers_snapshot')),
-            Prefetch('applied_discounts', queryset=OrderDiscount.objects.select_related('discount')),
-            Prefetch('payment_details__transactions')
+            # Let Django use the default manager to respect tenant context at request time
+            # Don't use explicit querysets with TenantManager - they're evaluated at class definition time
+            'items__product__category',
+            'items__product__product_type',
+            'items__selected_modifiers_snapshot',
+            'applied_discounts__discount',
+            'payment_details__transactions'
         ]
 
     def get_payment_details(self, obj):
@@ -225,6 +230,17 @@ class OrderSerializer(BaseModelSerializer):
 
         if hasattr(obj, "payment_details") and obj.payment_details:
             return PaymentSerializer(obj.payment_details).data
+        return None
+
+    def get_store_location_details(self, obj):
+        """
+        Return nested store location details for confirmation page.
+        Includes all relevant contact and address information.
+        """
+        from settings.serializers import StoreLocationSerializer
+
+        if hasattr(obj, "store_location") and obj.store_location:
+            return StoreLocationSerializer(obj.store_location).data
         return None
 
     def get_total_with_tip(self, obj):
@@ -293,6 +309,7 @@ class OptimizedOrderSerializer(BaseModelSerializer):
             "status",
             "order_type",
             "payment_status",
+            "store_location",
             "total_with_tip",
             "total_collected",
             "item_count",
@@ -302,7 +319,7 @@ class OptimizedOrderSerializer(BaseModelSerializer):
             "updated_at",
             "payment_in_progress",
         ]
-        select_related_fields = ["customer", "cashier", "payment_details"]
+        select_related_fields = ["customer", "cashier", "payment_details", "store_location"]
         prefetch_related_fields = ["items"]  # Fix: prefetch items for item_count
 
 
@@ -344,12 +361,32 @@ class OrderCreateSerializer(BaseModelSerializer):
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically set store_location field with tenant-filtered queryset
+        from settings.models import StoreLocation
+        request = self.context.get('request')
+
+        # IMPORTANT: Tenant context is required - no fallback to all locations
+        if request and hasattr(request, 'tenant'):
+            queryset = StoreLocation.objects.filter(tenant=request.tenant)
+        else:
+            # If no tenant context, use empty queryset to prevent cross-tenant access
+            queryset = StoreLocation.objects.none()
+
+        self.fields['store_location'] = serializers.PrimaryKeyRelatedField(
+            queryset=queryset,
+            required=True,
+            help_text="Store location where this order is placed (REQUIRED)"
+        )
+
     class Meta:
         model = Order
         fields = [
             "order_type",
             "dining_preference",
             "customer",
+            "store_location",
             "guest_first_name",
             "guest_last_name",
             "guest_email",

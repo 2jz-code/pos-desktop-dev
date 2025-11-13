@@ -68,15 +68,18 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_redis",
     # My Apps
+    "tenant",  # Multi-tenancy support
     "business_hours",
     "products",
     "inventory",
+    "cart",  # Shopping cart (ephemeral, converts to orders)
     "orders",
     "payments",
     "discounts",
     "users.apps.UsersConfig",
     "customers.apps.CustomersConfig",
     "settings",
+    "terminals",  # Terminal registration & pairing
     "integrations",
     "notifications",
     "reports",
@@ -91,6 +94,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "tenant.middleware.TenantMiddleware",  # Multi-tenancy: Resolve tenant from request
+    "core_backend.infrastructure.store_location_middleware.StoreLocationMiddleware",  # Extract store location from X-Store-Location header
     "django_ratelimit.middleware.RatelimitMiddleware",
     # "core_backend.infrastructure.middleware.BusinessHoursMiddleware",  # Business hours enforcement - TEMPORARILY DISABLED FOR TESTING
     "core_backend.infrastructure.electron_middleware.ElectronPOSMiddleware",  # Electron POS handling
@@ -101,15 +106,43 @@ MIDDLEWARE = [
     "core_backend.infrastructure.csrf_api_middleware.CSRFApiMiddleware",
 ]
 
+# ==============================================================================
+# MULTI-TENANCY CONFIGURATION
+# ==============================================================================
+# Fallback tenant resolution for development and system hosts
+# DEFAULT_TENANT_SLUG: Used for localhost/IPs during local development
+# SYSTEM_TENANT_SLUG: Used for admin.ajeen.com, api.ajeen.com, and bare domain
+DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG")
+SYSTEM_TENANT_SLUG = os.getenv("SYSTEM_TENANT_SLUG")
+
+# ==============================================================================
+# MULTI-TENANCY & SUBSCRIPTIONS (Phase 1 Configuration)
+# ==============================================================================
+# Phase 1: Permissive defaults (allow everything during transition)
+# Phase 2: Set DEFAULT_FEATURE_ACCESS = False to enforce subscription limits
+DEFAULT_FEATURE_ACCESS = True
+
+# Custom domain verification settings
+CUSTOM_DOMAIN_VERIFICATION_METHODS = ["manual", "txt", "cname", "meta", "file"]
+CUSTOM_DOMAIN_AUTO_VERIFY = False  # Phase 3: Enable automated verification
+
+# Future Phase 2 settings (commented for now):
+# STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+# STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+# STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+# DEFAULT_TRIAL_DAYS = 14
+# DEFAULT_SUBSCRIPTION_TIER = 'starter'
+
 INTERNAL_IPS = [
     "127.0.0.1",
+    "192.168.5.144",
+    "192.168.2.27",
 ]
 
 DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
+    "IS_RUNNING_TESTS": False,  # Allow tests to run without debug toolbar
 }
-
-INTERNAL_IPS = ["192.168.5.144", "192.168.2.27"]
 
 ROOT_URLCONF = "core_backend.urls"
 
@@ -137,6 +170,7 @@ WSGI_APPLICATION = "core_backend.wsgi.application"
 
 # Database configuration
 import dj_database_url
+import sys
 
 DATABASES = {
     "default": dj_database_url.config(
@@ -145,6 +179,22 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+
+# ==============================================================================
+# TEST DATABASE PROTECTION
+# ==============================================================================
+# Use a separate test database to protect dev data from being deleted during tests
+# This prevents pytest from dropping/recreating your dev database
+if "test" in sys.argv or "pytest" in sys.modules:
+    # Override database name for tests
+    db_name = DATABASES["default"].get("NAME", "")
+    if db_name and db_name != ":memory:":
+        # Append '_tests' suffix to database name to create separate test database
+        # E.g., 'test_ajeen_db' becomes 'test_ajeen_db_tests'
+        DATABASES["default"]["NAME"] = f"{db_name}_tests"
+        logger.info(
+            f"Test mode detected - using test database: {DATABASES['default']['NAME']}"
+        )
 
 # Rate Limiting Configuration
 RATELIMIT_ENABLE = True
@@ -262,6 +312,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Custom User Model
 AUTH_USER_MODEL = "users.User"
 
+# Silence system checks for multi-tenancy
+# auth.E003: USERNAME_FIELD must be unique - we enforce uniqueness per tenant via DB constraint
+SILENCED_SYSTEM_CHECKS = [
+    "auth.E003",
+]
+
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
 # CORS settings - dynamically load from environment
@@ -289,6 +345,21 @@ CORS_ALLOWED_ORIGINS = (
 )
 
 # Allow custom headers for Electron POS app
+# CORS regex patterns for dynamic subdomains (DEV ONLY - for *.localhost testing)
+# IMPORTANT: Remove or disable in production!
+# Allows: jimmys-pizza.localhost:5174, marias-cafe.localhost:5174, etc.
+CORS_ALLOWED_ORIGIN_REGEXES = []
+if DEBUG:  # Only enable in development
+    CORS_ALLOWED_ORIGIN_REGEXES = (
+        [
+            regex.strip()
+            for regex in os.getenv("CORS_ALLOWED_ORIGIN_REGEXES", "").split(",")
+            if regex.strip()
+        ]
+        if os.getenv("CORS_ALLOWED_ORIGIN_REGEXES")
+        else []
+    )
+
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -302,6 +373,8 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
     "x-client-type",
     "x-client-version",
+    "x-store-location",  # Store location header from admin site
+    "x-tenant",  # Tenant slug header from customer site
 ]
 
 # CSRF Trusted Origins - dynamically load from environment

@@ -32,7 +32,8 @@ class UserRegistrationSerializer(BaseModelSerializer):
 
     class Meta:
         model = User
-        fields = ("email", "username", "password", "first_name", "last_name", "role")
+        fields = ("id", "email", "username", "password", "first_name", "last_name", "role")
+        read_only_fields = ("id",)
         # User model typically has no FK relationships to optimize
         select_related_fields = []
         prefetch_related_fields = []
@@ -71,6 +72,31 @@ class POSLoginSerializer(serializers.Serializer):
     pin = serializers.CharField(
         required=True, write_only=True, style={"input_type": "password"}
     )
+    device_id = serializers.CharField(
+        required=True,
+        help_text="Device ID from terminal registration - validates terminal and enforces tenant isolation"
+    )
+
+
+class AdminLoginSerializer(serializers.Serializer):
+    """
+    Email-first admin login serializer.
+    Searches across all tenants and returns either:
+    - User data (single tenant)
+    - Tenant picker list (multiple tenants)
+    """
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True, style={"input_type": "password"})
+
+
+class TenantSelectionSerializer(serializers.Serializer):
+    """
+    Serializer for selecting a tenant when user belongs to multiple tenants.
+    Used after AdminLoginSerializer returns multiple_tenants response.
+    """
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True, style={"input_type": "password"})
+    tenant_id = serializers.CharField(required=True, help_text="Selected tenant ID from tenant picker")
 
 
 class WebLoginSerializer(TokenObtainPairSerializer):

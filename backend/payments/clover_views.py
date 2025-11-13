@@ -21,19 +21,31 @@ def clover_authorize(request):
     This generates the authorization URL that merchants need to visit.
     """
     try:
+        # Get tenant from request (set by middleware)
+        tenant = getattr(request, 'tenant', None)
+
+        if not tenant:
+            return Response(
+                {'error': 'Tenant context required for OAuth authorization'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Generate state parameter for CSRF protection
         state = str(uuid.uuid4())
         request.session['clover_oauth_state'] = state
-        
+
+        # Store tenant ID in session so callback can retrieve it
+        request.session['clover_oauth_tenant_id'] = str(tenant.id)
+
         # Build redirect URI - adjust this to match your domain
         redirect_uri = f"{settings.BASE_URL}/api/payments/clover/callback/"
-        
-        oauth_service = CloverOAuthService()
+
+        oauth_service = CloverOAuthService(tenant=tenant)
         auth_url = oauth_service.get_authorization_url(
             redirect_uri=redirect_uri,
             state=state
         )
-        
+
         return Response({
             'authorization_url': auth_url,
             'state': state,
@@ -60,31 +72,47 @@ def clover_callback(request):
         code = request.GET.get('code')
         state = request.GET.get('state')
         error = request.GET.get('error')
-        
+
         if error:
             logger.error(f"OAuth error from Clover: {error}")
             return JsonResponse({'error': f'Authorization failed: {error}'}, status=400)
-        
+
         if not code:
             return JsonResponse({'error': 'No authorization code received'}, status=400)
-        
+
         # Verify state parameter (CSRF protection)
         session_state = request.session.get('clover_oauth_state')
         if not session_state or session_state != state:
             return JsonResponse({'error': 'Invalid state parameter'}, status=400)
-        
-        # Exchange code for token
+
+        # Retrieve tenant from session (stored during authorization)
+        tenant_id = request.session.get('clover_oauth_tenant_id')
+        if not tenant_id:
+            logger.error("No tenant ID found in session during OAuth callback")
+            return JsonResponse({'error': 'Session expired or invalid'}, status=400)
+
+        # Get tenant object
+        from tenant.models import Tenant
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            logger.error(f"Tenant {tenant_id} not found during OAuth callback")
+            return JsonResponse({'error': 'Invalid tenant'}, status=400)
+
+        # Exchange code for token with tenant context
         redirect_uri = f"{settings.BASE_URL}/api/payments/clover/callback/"
-        oauth_service = CloverOAuthService()
-        
+        oauth_service = CloverOAuthService(tenant=tenant)
+
         token_data = oauth_service.exchange_code_for_token(
             code=code,
             redirect_uri=redirect_uri
         )
-        
+
         # Clean up session
         if 'clover_oauth_state' in request.session:
             del request.session['clover_oauth_state']
+        if 'clover_oauth_tenant_id' in request.session:
+            del request.session['clover_oauth_tenant_id']
         
         # Success response
         merchant_id = token_data.get('merchant_id')
@@ -111,17 +139,20 @@ def clover_status(request):
     Check Clover integration status for a merchant.
     """
     try:
+        # Get tenant from request (set by middleware)
+        tenant = getattr(request, 'tenant', None)
+
         merchant_id = request.GET.get('merchant_id')
         if not merchant_id:
             merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
-        
+
         if not merchant_id:
             return Response({
                 'configured': False,
                 'error': 'No merchant ID provided or configured'
             })
-        
-        oauth_service = CloverOAuthService(merchant_id)
+
+        oauth_service = CloverOAuthService(merchant_id, tenant=tenant)
         token = oauth_service.get_cached_token(merchant_id)
         
         if not token:
@@ -158,19 +189,22 @@ def clover_test_connection(request):
     Test the connection to Clover API.
     """
     try:
+        # Get tenant from request (set by middleware)
+        tenant = getattr(request, 'tenant', None)
+
         merchant_id = request.data.get('merchant_id')
         if not merchant_id:
             merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
-        
+
         if not merchant_id:
             return Response({
                 'success': False,
                 'error': 'No merchant ID provided'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         from .clover_api import CloverAPIService
-        
-        clover_api = CloverAPIService(merchant_id)
+
+        clover_api = CloverAPIService(merchant_id, tenant=tenant)
         is_valid = clover_api.validate_connection()
         
         if is_valid:

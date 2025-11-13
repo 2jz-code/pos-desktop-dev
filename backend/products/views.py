@@ -43,10 +43,15 @@ class ProductModifierSetViewSet(BaseViewSet):
     permission_classes = [IsAdminOrHigher]
 
     def get_queryset(self):
-        return self.queryset.filter(product_id=self.kwargs["product_pk"])
+        # Call .all() fresh to ensure tenant context is applied by TenantManager
+        return ProductModifierSet.objects.all().filter(product_id=self.kwargs["product_pk"])
 
     def perform_create(self, serializer):
-        serializer.save(product_id=self.kwargs["product_pk"])
+        # Set tenant from request (middleware ensures it's set)
+        serializer.save(
+            product_id=self.kwargs["product_pk"],
+            tenant=self.request.tenant
+        )
 
     @action(detail=True, methods=["post"], url_path="add-product-specific-option")
     def add_product_specific_option(self, request, product_pk=None, pk=None):
@@ -66,14 +71,15 @@ class ProductModifierSetViewSet(BaseViewSet):
                 "is_product_specific": True,  # Mark as product-specific
             }
 
-            option_serializer = ModifierOptionSerializer(data=option_data)
+            option_serializer = ModifierOptionSerializer(data=option_data, context={'request': request})
             if option_serializer.is_valid():
-                modifier_option = option_serializer.save()
+                modifier_option = option_serializer.save(tenant=request.tenant)
 
                 # Create the product-specific relationship
                 ProductSpecificOption.objects.create(
                     product_modifier_set=product_modifier_set,
                     modifier_option=modifier_option,
+                    tenant=request.tenant,
                 )
 
                 # Invalidate product cache to ensure the new option appears in API responses
@@ -262,17 +268,59 @@ class ModifierOptionViewSet(BaseViewSet):
     serializer_class = ModifierOptionSerializer
     permission_classes = [IsAdminOrHigher]
 
+    def perform_create(self, serializer):
+        # Set tenant from request (middleware ensures it's set)
+        serializer.save(tenant=self.request.tenant)
+
 
 # Create your views here.
 
 
 class ProductViewSet(BaseViewSet):
-    # Products ordered hierarchically by category (parent categories first, then subcategories)
-    queryset = (
-        Product.objects.with_archived()
-        .select_related("category", "category__parent", "product_type")
-        .prefetch_related("product_type__default_taxes")
-        .annotate(
+    # Base queryset - archiving will be handled by ArchivingViewSetMixin
+    queryset = Product.objects.all()
+    permission_classes = [
+        permissions.AllowAny
+    ]  # Allow public access for customer website
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_class = ProductFilter
+    search_fields = ["name", "description", "barcode"]
+
+    @property
+    def paginator(self):
+        """
+        Disable pagination for website and POS requests.
+        POS needs all products at once for the product grid.
+        Website needs all products for the menu display.
+        """
+        is_for_website = self.request.query_params.get("for_website") == "true"
+        is_active_filter = self.request.query_params.get("is_active") == "true"
+
+        # Disable pagination if:
+        # 1. Explicitly for website (for_website=true)
+        # 2. Fetching only active products (is_active=true) - POS use case
+        if is_for_website or is_active_filter:
+            return None
+        return super().paginator
+
+    def get_queryset(self):
+        """
+        Get queryset with archiving handled by ArchivingViewSetMixin.
+        Adds Product-specific annotations and filtering on top.
+        """
+        from .services import ProductSearchService
+
+        is_for_website = self.request.query_params.get("for_website") == "true"
+
+        if is_for_website:
+            # Use service for website-specific filtering (returns active products only)
+            return ProductSearchService.get_products_for_website()
+
+        # Call super() to let mixin chain handle tenant context and archiving
+        queryset = super().get_queryset()
+
+        # Add Product-specific annotations for hierarchical sorting
+        queryset = queryset.select_related("category", "category__parent", "product_type").prefetch_related("product_type__default_taxes").annotate(
             # Calculate parent order for hierarchical sorting
             parent_order=models.Case(
                 models.When(
@@ -287,47 +335,13 @@ class ProductViewSet(BaseViewSet):
                 default=models.Value(1),
                 output_field=models.IntegerField(),
             ),
-        )
-        .order_by(
+        ).order_by(
             "parent_order",
             "category_level",
             "category__order",
             "category__name",
             "name",
         )
-    )
-    permission_classes = [
-        permissions.AllowAny
-    ]  # Allow public access for customer website
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_class = ProductFilter
-    search_fields = ["name", "description", "barcode"]
-
-    @property
-    def paginator(self):
-        """
-        Disable pagination for website requests
-        """
-        is_for_website = self.request.query_params.get("for_website") == "true"
-        if is_for_website:
-            return None
-        return super().paginator
-
-    def get_queryset(self):
-        """
-        Get queryset using ProductSearchService for business logic.
-        Extracted filtering logic (30+ lines) to service layer.
-        """
-        from .services import ProductSearchService
-
-        is_for_website = self.request.query_params.get("for_website") == "true"
-
-        if is_for_website:
-            # Use service for website-specific filtering
-            queryset = ProductSearchService.get_products_for_website()
-        else:
-            # Use hierarchical ordering for POS and other non-website requests
-            queryset = super().get_queryset()
 
         # Handle delta sync using service
         modified_since = self.request.query_params.get("modified_since")
@@ -343,7 +357,7 @@ class ProductViewSet(BaseViewSet):
         return queryset
 
     def list(self, request, *args, **kwargs):
-        # Cache for common POS queries
+        # Cache for common POS queries (tenant-scoped via TenantManager)
         query_params = dict(request.GET.items())
 
         # Cache unfiltered requests
@@ -358,7 +372,7 @@ class ProductViewSet(BaseViewSet):
             serializer = self.get_serializer(products, many=True)
             return Response(serializer.data)
 
-        # Fall back to optimized queryset for other filtered requests
+        # Fall back to optimized queryset for filtered requests
         return super().list(request, *args, **kwargs)
 
     def get_serializer_class(self):
@@ -446,13 +460,13 @@ class ProductViewSet(BaseViewSet):
 
         # If successful, invalidate product caches
         if response.status_code == status.HTTP_200_OK:
-            # Invalidate caches in bulk (using pattern matching)
-            from core_backend.infrastructure.cache import AdvancedCacheManager
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+            # Invalidate caches in bulk (using centralized function with tenant scoping)
+            from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+            invalidate_cache_pattern('*get_cached_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_active_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_by_category*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_with_inventory_status*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_pos_menu_layout*', tenant=request.tenant)
 
         return response
 
@@ -468,13 +482,13 @@ class ProductViewSet(BaseViewSet):
 
         # If successful, invalidate product caches
         if response.status_code == status.HTTP_200_OK:
-            # Invalidate caches in bulk (using pattern matching)
-            from core_backend.infrastructure.cache import AdvancedCacheManager
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_active_products_list*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_by_category*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_cached_products_with_inventory_status*', 'static_data')
-            AdvancedCacheManager.invalidate_pattern('*get_pos_menu_layout*', 'static_data')
+            # Invalidate caches in bulk (using centralized function with tenant scoping)
+            from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
+            invalidate_cache_pattern('*get_cached_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_active_products_list*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_by_category*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_cached_products_with_inventory_status*', tenant=request.tenant)
+            invalidate_cache_pattern('*get_pos_menu_layout*', tenant=request.tenant)
 
         return response
 
@@ -535,60 +549,52 @@ class CategoryViewSet(BaseViewSet):
         return super().paginator
 
     def get_queryset(self):
-        # Get queryset with archiving logic applied by parent classes (ArchivingViewSetMixin)
+        """
+        Get queryset with archiving handled by ArchivingViewSetMixin.
+        Adds category-specific filtering and ordering on top.
+        """
+        # Call super() to let mixin chain handle tenant context and archiving
         queryset = super().get_queryset()
 
         is_for_website = self.request.query_params.get("for_website") == "true"
         if is_for_website:
+            # Website should only see public, active categories
             queryset = queryset.filter(is_public=True, is_active=True)
 
+        # Handle delta sync (placeholder - replace with updated_at when available)
         modified_since = self.request.query_params.get("modified_since")
         if modified_since:
             try:
                 modified_since_dt = parse_datetime(modified_since)
                 if modified_since_dt:
-                    queryset = queryset.filter(
-                        id__gte=1
-                    )  # Replace with updated_at if available
+                    queryset = queryset.filter(id__gte=1)
             except (ValueError, TypeError):
                 pass
 
+        # Apply parent filtering
         parent_id = self.request.query_params.get("parent")
         if parent_id is not None:
             if parent_id == "null":
-                # Show only parent categories, ordered by their order field
-                queryset = queryset.filter(parent__isnull=True).order_by(
-                    "order", "name"
-                )
+                queryset = queryset.filter(parent__isnull=True).order_by("order", "name")
             elif parent_id == "uncategorized":
-                # "uncategorized" doesn't make sense for categories - return empty queryset
                 queryset = queryset.none()
             else:
-                # Show subcategories of specific parent, ordered by their order field
                 try:
-                    # Ensure parent_id is a valid integer
                     int(parent_id)
-                    queryset = queryset.filter(parent_id=parent_id).order_by(
-                        "order", "name"
-                    )
+                    queryset = queryset.filter(parent_id=parent_id).order_by("order", "name")
                 except ValueError:
-                    # Invalid parent_id format, return empty queryset
                     queryset = queryset.none()
         elif is_for_website:
-            # Website: Hierarchical ordering - parents first, then children grouped under parents
+            # Website: Hierarchical ordering - parents first, then children grouped
             queryset = queryset.annotate(
-                # For parent categories, use their own order
-                # For child categories, use parent's order as primary sort + 0.1 + child order as secondary
                 hierarchical_order=models.Case(
                     models.When(parent__isnull=True, then=models.F("order")),
-                    default=models.F("parent__order")
-                    + 0.1
-                    + (models.F("order") * 0.01),
+                    default=models.F("parent__order") + 0.1 + (models.F("order") * 0.01),
                     output_field=models.FloatField(),
                 )
             ).order_by("hierarchical_order", "name")
         else:
-            # Admin/POS: Simple flat ordering by order field
+            # Admin/POS: Simple flat ordering
             queryset = queryset.order_by("order", "name")
 
         return queryset
@@ -597,16 +603,17 @@ class CategoryViewSet(BaseViewSet):
         # For now, disable caching to ensure proper ordering is applied
         # TODO: Update cache to respect hierarchical ordering
         # Use cache for simple requests without complex filtering
-        # if (
-        #     not request.query_params.get("parent")
-        #     and not request.query_params.get("modified_since")
-        #     and not request.query_params.get("include_archived")
-        # ):
-        #     categories = ProductService.get_cached_category_tree()
-        #     serializer = self.get_serializer(categories, many=True)
-        #     return Response(serializer.data)
+        # Cache unfiltered category tree requests (tenant-scoped via TenantManager)
+        if (
+            not request.query_params.get("parent")
+            and not request.query_params.get("modified_since")
+            and not request.query_params.get("include_archived")
+        ):
+            categories = ProductService.get_cached_category_tree()
+            serializer = self.get_serializer(categories, many=True)
+            return Response(serializer.data)
 
-        # Use queryset ordering for all requests
+        # Use queryset ordering for filtered requests
         return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["patch"], url_path="bulk-update")
@@ -644,3 +651,4 @@ class ProductTypeViewSet(BaseViewSet):
     queryset = ProductType.objects.all()
     serializer_class = ProductTypeSerializer
     permission_classes = [ReadOnlyForCashiers]
+    # Archiving handled automatically by ArchivingViewSetMixin via super()

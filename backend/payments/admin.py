@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import Payment, PaymentTransaction, GiftCard
+from core_backend.admin.mixins import TenantAdminMixin
 
 
 class PaymentTransactionInline(admin.TabularInline):
@@ -21,12 +22,16 @@ class PaymentTransactionInline(admin.TabularInline):
     )
     can_delete = False
 
+    def get_queryset(self, request):
+        """Use all_objects to bypass TenantManager, Django will filter by parent FK"""
+        return PaymentTransaction.all_objects.all()
+
     def has_add_permission(self, request, obj=None):
         return False
 
 
 @admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
+class PaymentAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the Payment model.
     """
@@ -71,15 +76,16 @@ class PaymentAdmin(admin.ModelAdmin):
     )
 
     def get_queryset(self, request):
-        """Optimize admin queryset"""
-        return super().get_queryset(request).select_related(
+        """Show all tenants in Django admin with optimized queries"""
+        return Payment.all_objects.select_related(
+            'tenant',
             'order',
             'order__customer'
         ).prefetch_related('transactions')
 
 
 @admin.register(PaymentTransaction)
-class PaymentTransactionAdmin(admin.ModelAdmin):
+class PaymentTransactionAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the PaymentTransaction model.
     """
@@ -89,9 +95,15 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
     search_fields = ("id", "payment__id", "transaction_id")
     readonly_fields = ("id", "created_at")
 
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return PaymentTransaction.all_objects.select_related(
+            'tenant', 'payment', 'payment__order'
+        )
+
 
 @admin.register(GiftCard)
-class GiftCardAdmin(admin.ModelAdmin):
+class GiftCardAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
     Admin view for the GiftCard model.
     """
@@ -113,9 +125,13 @@ class GiftCardAdmin(admin.ModelAdmin):
         "updated_at",
         "last_used_date",
     )
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin"""
+        return GiftCard.all_objects.select_related('tenant')
     
     fieldsets = (
-        (None, {"fields": ("code", "status")}),
+        (None, {"fields": ("code", "status", "tenant")}),
         (
             "Balance Information",
             {
@@ -141,7 +157,17 @@ class GiftCardAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         """Make certain fields readonly after creation"""
-        readonly = self.readonly_fields
+        # Start with base readonly fields
+        readonly = [
+            "id",
+            "issued_date",
+            "created_at",
+            "updated_at",
+            "last_used_date",
+        ]
+
         if obj:  # Editing existing object
-            readonly = readonly + ("original_balance",)  # Can't change original balance after creation
-        return readonly
+            # Add fields that can't be changed after creation
+            readonly.extend(["original_balance", "tenant"])
+
+        return tuple(readonly)

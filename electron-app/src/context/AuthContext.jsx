@@ -4,6 +4,7 @@ import {
 	checkAuthStatus,
 	logout as apiLogout, // Aliased import to avoid name collision
 } from "@/domains/auth/services/authService";
+import apiClient from "@/shared/lib/apiClient";
 
 const AuthContext = createContext(null);
 
@@ -15,7 +16,9 @@ export const AuthProvider = ({ children }) => {
 		const verifyAuth = async () => {
 			try {
 				const response = await checkAuthStatus();
-				setUser(response.data);
+				// Extract user object from response (backend returns { user, tenant })
+				const userData = response.data.user || response.data;
+				setUser(userData);
 				// eslint-disable-next-line no-unused-vars
 			} catch (error) {
 				// This is expected if the user is not logged in
@@ -29,15 +32,56 @@ export const AuthProvider = ({ children }) => {
 		verifyAuth();
 	}, []);
 
+	// Proactive token refresh - refreshes tokens before they expire
+	// This prevents WebSocket disconnections during long POS shifts
+	useEffect(() => {
+		if (!user) return; // Only run if user is logged in
+
+		const REFRESH_INTERVAL_MS = 45 * 60 * 1000; // 45 minutes (before 1-hour expiry)
+
+		const refreshTokenProactively = async () => {
+			try {
+				console.log("[Auth] Proactively refreshing token...");
+				await apiClient.post("/users/token/refresh/");
+				console.log("[Auth] Token refreshed successfully");
+			} catch (error) {
+				console.warn(
+					"[Auth] Token refresh failed, user may need to re-login",
+					error
+				);
+				// Don't logout automatically - let the user continue until next 401
+			}
+		};
+
+		// Refresh immediately on login (to reset timer)
+		refreshTokenProactively();
+
+		// Set up interval for periodic refresh
+		const intervalId = setInterval(
+			refreshTokenProactively,
+			REFRESH_INTERVAL_MS
+		);
+
+		// Cleanup interval on logout or unmount
+		return () => clearInterval(intervalId);
+	}, [user]); // Re-run when user changes (login/logout)
+
 	const login = async (username, pin) => {
-		setLoading(true);
+		// Don't set loading here - it causes the whole page to unmount
+		// Let the LoginPage handle its own loading state
 		try {
 			const response = await loginWithPin(username, pin);
-			setUser(response.data.user);
-			setLoading(false);
-			return response.data.user;
+			// Backend now returns { user, tenant } for POS login
+			const userData = response.data.user || response.data;
+			setUser(userData);
+			return userData;
 		} catch (error) {
-			setLoading(false);
+			// Extract error message from backend response for ALL errors
+			if (error.response?.data?.error) {
+				error.message = error.response.data.error;
+			} else if (!error.message) {
+				error.message = "Failed to log in. Please check your credentials.";
+			}
 			throw error;
 		}
 	};

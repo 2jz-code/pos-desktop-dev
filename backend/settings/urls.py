@@ -3,12 +3,12 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     GlobalSettingsViewSet,
     StoreLocationViewSet,
-    TerminalRegistrationViewSet,
     SyncStripeLocationsView,
+    PrinterViewSet,
+    KitchenZoneViewSet,
     PrinterConfigurationViewSet,
     TerminalLocationViewSet,
     TerminalReaderListView,
-    WebOrderSettingsViewSet,
     StockActionReasonConfigViewSet,
 )
 
@@ -18,13 +18,8 @@ app_name = "settings"
 router = DefaultRouter()
 router.register(r"global-settings", GlobalSettingsViewSet, basename="global-settings")
 router.register(r"store-locations", StoreLocationViewSet, basename="store-locations")
-router.register(
-    r"terminal-registrations",
-    TerminalRegistrationViewSet,
-    basename="terminal-registrations",
-)
-# Custom URL for singleton printer config instead of using the router
-# router.register(r"printer-config", PrinterConfigurationViewSet, basename="printer-config")
+router.register(r"printers", PrinterViewSet, basename="printer")
+router.register(r"kitchen-zones", KitchenZoneViewSet, basename="kitchen-zone")
 router.register(
     r"terminal-locations", TerminalLocationViewSet, basename="terminal-location"
 )
@@ -36,32 +31,14 @@ router.register(
 urlpatterns = [
     # Include the router-generated URLs
     path("", include(router.urls)),
-    # Custom singleton printer configuration endpoints
+    # Backward-compatible printer configuration endpoint (read-only)
+    # Use /printers/ and /kitchen-zones/ endpoints for create/update/delete
     path(
         "printer-config/",
-        PrinterConfigurationViewSet.as_view(
-            {
-                "get": "list",
-                "put": "update",
-                "patch": "partial_update",
-                "post": "create",
-            }
-        ),
+        PrinterConfigurationViewSet.as_view({"get": "list"}),
         name="printer-config",
     ),
-    # Custom singleton web order settings endpoints
-    path(
-        "web-order-settings/",
-        WebOrderSettingsViewSet.as_view(
-            {
-                "get": "list",
-                "put": "update",
-                "patch": "partial_update",
-                "post": "create",
-            }
-        ),
-        name="web-order-settings",
-    ),
+    # Web order settings endpoint REMOVED - settings now managed directly on StoreLocation
     path(
         "sync-stripe-locations/",
         SyncStripeLocationsView.as_view(),

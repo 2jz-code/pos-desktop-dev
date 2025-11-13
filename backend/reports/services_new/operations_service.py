@@ -2,7 +2,7 @@ import time
 import logging
 from decimal import Decimal
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from django.db.models import (
     Sum,
@@ -20,6 +20,9 @@ from django.utils import timezone
 from django.conf import settings
 import pytz
 
+# Export functionality imports
+from openpyxl.styles import Font, PatternFill, Alignment
+
 from orders.models import Order, OrderItem
 from .base import BaseReportService
 
@@ -33,33 +36,43 @@ class OperationsReportService(BaseReportService):
 
     @staticmethod
     def generate_operations_report(
-        start_date: datetime, end_date: datetime, use_cache: bool = True
+        tenant,
+        start_date: datetime,
+        end_date: datetime,
+        location_id: Optional[int] = None,
+        use_cache: bool = True
     ) -> Dict[str, Any]:
         """Generate comprehensive operations report"""
-        
+
         cache_key = OperationsReportService._generate_cache_key(
-            "operations", {"start_date": start_date, "end_date": end_date}
+            "operations", {"start_date": start_date, "end_date": end_date, "location_id": location_id}
         )
 
         if use_cache:
-            cached_data = OperationsReportService._get_cached_report(cache_key)
+            cached_data = OperationsReportService._get_cached_report(cache_key, tenant)
             if cached_data:
                 logger.info(f"Operations report served from cache: {cache_key[:8]}...")
                 return cached_data
 
-        logger.info(f"Generating operations report for {start_date} to {end_date}")
+        logger.info(f"Generating operations report for {start_date} to {end_date}" + (f" at location {location_id}" if location_id else " (all locations)"))
         start_time = time.time()
 
         try:
+            # Multi-location report generation
+            if location_id is None:
+                return OperationsReportService._generate_multi_location_operations_report(
+                    tenant, start_date, end_date, use_cache
+                )
+
             # Generate the operations data
             operations_data = OperationsReportService._generate_operations_data(
-                start_date, end_date
+                tenant, start_date, end_date, location_id
             )
 
             # Cache the result
             generation_time = time.time() - start_time
             OperationsReportService._cache_report(
-                cache_key, operations_data, ttl_hours=OperationsReportService.CACHE_TTL_HOURS
+                cache_key, operations_data, tenant, report_type="operations", ttl_hours=OperationsReportService.CACHE_TTL_HOURS
             )
 
             logger.info(f"Operations report generated in {generation_time:.2f}s")
@@ -70,15 +83,21 @@ class OperationsReportService(BaseReportService):
             raise
 
     @staticmethod
-    def _generate_operations_data(start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _generate_operations_data(tenant, start_date: datetime, end_date: datetime, location_id: Optional[int] = None) -> Dict[str, Any]:
         """Generate the core operations report data"""
-        
+
         # Base queryset
-        orders = Order.objects.filter(
-            status=Order.OrderStatus.COMPLETED,
-            created_at__range=(start_date, end_date),
-            subtotal__gt=0,  # Exclude orders with $0.00 subtotals
-        ).select_related("cashier")
+        filters = {
+            "tenant": tenant,
+            "status": Order.OrderStatus.COMPLETED,
+            "created_at__range": (start_date, end_date),
+            "subtotal__gt": 0,  # Exclude orders with $0.00 subtotals
+        }
+
+        if location_id is not None:
+            filters["store_location_id"] = location_id
+
+        orders = Order.objects.filter(**filters).select_related("cashier", "store_location")
 
         # Hourly patterns
         hourly_patterns = (
@@ -189,7 +208,201 @@ class OperationsReportService(BaseReportService):
             "end": end_date.isoformat(),
         }
 
+        # Add location metadata
+        location_name = "All Locations"
+        if location_id is not None:
+            from settings.models import StoreLocation
+            try:
+                location = StoreLocation.objects.get(id=location_id, tenant=tenant)
+                location_name = location.name
+            except StoreLocation.DoesNotExist:
+                location_name = f"Location ID {location_id}"
+
+        operations_data["location_info"] = {
+            "location_id": location_id,
+            "location_name": location_name,
+            "is_multi_location": location_id is None
+        }
+
         return operations_data
+
+    @staticmethod
+    def _generate_multi_location_operations_report(
+        tenant,
+        start_date: datetime,
+        end_date: datetime,
+        use_cache: bool = True,
+    ) -> Dict[str, Any]:
+        """Generate operations report for all locations with breakdown per location."""
+        from settings.models import StoreLocation
+
+        logger.info(f"Generating multi-location operations report for {start_date} to {end_date}")
+
+        # Get all active locations
+        active_locations = StoreLocation.objects.filter(
+            tenant=tenant,
+            is_active=True
+        ).order_by('name')
+
+        # Generate report for each location
+        location_reports = []
+        for location in active_locations:
+            location_report = OperationsReportService.generate_operations_report(
+                tenant=tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location.id,
+                use_cache=use_cache
+            )
+            location_reports.append({
+                "location_id": location.id,
+                "location_name": location.name,
+                "report_data": location_report
+            })
+
+        # Calculate consolidated totals
+        consolidated_totals = OperationsReportService._calculate_consolidated_operations_totals(
+            location_reports, start_date, end_date
+        )
+
+        return {
+            "is_multi_location": True,
+            "location_count": len(location_reports),
+            "locations": location_reports,
+            "consolidated": consolidated_totals,
+            "generated_at": timezone.now().isoformat(),
+            "date_range": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+            },
+            "tenant_id": tenant.id,
+            "location_info": {
+                "location_id": None,
+                "location_name": "All Locations",
+                "is_multi_location": True
+            }
+        }
+
+    @staticmethod
+    def _calculate_consolidated_operations_totals(
+        location_reports: list,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Dict[str, Any]:
+        """Calculate consolidated operations totals across all locations."""
+        from collections import defaultdict
+
+        # Initialize aggregation structures
+        hourly_patterns_agg = defaultdict(lambda: {'orders': 0, 'revenue': Decimal('0.00')})
+        daily_volume_agg = defaultdict(lambda: {'orders': 0, 'revenue': Decimal('0.00')})
+        staff_performance_agg = defaultdict(lambda: {
+            'orders_processed': 0,
+            'revenue': Decimal('0.00')
+        })
+
+        total_orders = 0
+
+        # Aggregate across locations
+        for location_data in location_reports:
+            loc_report = location_data.get('report_data', {})
+
+            # Aggregate summary
+            summary = loc_report.get('summary', {})
+            total_orders += summary.get('total_orders', 0)
+
+            # Aggregate hourly patterns
+            for hour_data in loc_report.get('hourly_patterns', []):
+                hour = hour_data['hour']
+                hourly_patterns_agg[hour]['orders'] += hour_data.get('orders', 0)
+                hourly_patterns_agg[hour]['revenue'] += Decimal(str(hour_data.get('revenue', 0)))
+
+            # Aggregate daily volume
+            for day_data in loc_report.get('daily_volume', []):
+                date = day_data['date']
+                daily_volume_agg[date]['orders'] += day_data.get('orders', 0)
+                daily_volume_agg[date]['revenue'] += Decimal(str(day_data.get('revenue', 0)))
+
+            # Aggregate staff performance
+            for staff_data in loc_report.get('staff_performance', []):
+                cashier = staff_data['cashier']
+                staff_performance_agg[cashier]['orders_processed'] += staff_data.get('orders_processed', 0)
+                staff_performance_agg[cashier]['revenue'] += Decimal(str(staff_data.get('revenue', 0)))
+
+        # Build hourly_patterns array
+        hourly_patterns = [
+            {
+                'hour': hour,
+                'orders': data['orders'],
+                'revenue': float(data['revenue']),
+                'avg_order_value': float(data['revenue'] / data['orders']) if data['orders'] > 0 else 0
+            }
+            for hour, data in sorted(hourly_patterns_agg.items())
+        ]
+
+        # Build peak_hours (top 5 by order volume)
+        peak_hours = sorted(
+            hourly_patterns,
+            key=lambda x: x['orders'],
+            reverse=True
+        )[:5]
+
+        # Build daily_volume array
+        daily_volume = [
+            {
+                'date': date,
+                'orders': data['orders'],
+                'revenue': float(data['revenue'])
+            }
+            for date, data in sorted(daily_volume_agg.items())
+        ]
+
+        # Build staff_performance array (sorted by orders processed)
+        staff_performance = [
+            {
+                'cashier': cashier,
+                'orders_processed': data['orders_processed'],
+                'revenue': float(data['revenue']),
+                'avg_order_value': float(data['revenue'] / data['orders_processed']) if data['orders_processed'] > 0 else 0
+            }
+            for cashier, data in sorted(
+                staff_performance_agg.items(),
+                key=lambda x: x[1]['orders_processed'],
+                reverse=True
+            )
+        ]
+
+        # Calculate summary
+        total_days = (end_date - start_date).days + 1
+        avg_orders_per_day = round(total_orders / total_days, 2) if total_days > 0 else 0
+
+        # Find peak and slowest days
+        peak_day = None
+        slowest_day = None
+        if daily_volume:
+            peak_day_data = max(daily_volume, key=lambda x: x['orders'])
+            slowest_day_data = min(daily_volume, key=lambda x: x['orders'])
+
+            peak_day = {
+                'date': peak_day_data['date'],
+                'orders': peak_day_data['orders']
+            }
+            slowest_day = {
+                'date': slowest_day_data['date'],
+                'orders': slowest_day_data['orders']
+            }
+
+        return {
+            'hourly_patterns': hourly_patterns,
+            'peak_hours': peak_hours,
+            'daily_volume': daily_volume,
+            'staff_performance': staff_performance,
+            'summary': {
+                'total_orders': total_orders,
+                'avg_orders_per_day': avg_orders_per_day,
+                'peak_day': peak_day,
+                'slowest_day': slowest_day
+            }
+        }
 
     @staticmethod
     def _get_local_timezone():
@@ -216,12 +429,16 @@ class OperationsReportService(BaseReportService):
 
         output = io.StringIO()
         writer = csv.writer(output)
-        
-        OperationsReportService._export_operations_to_csv(writer, report_data)
-        
+
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            OperationsReportService._export_multi_location_operations_to_csv(writer, report_data)
+        else:
+            OperationsReportService._export_operations_to_csv(writer, report_data)
+
         csv_content = output.getvalue()
         output.close()
-        
+
         return csv_content.encode('utf-8')
 
     @staticmethod
@@ -247,6 +464,12 @@ class OperationsReportService(BaseReportService):
                 pass
         
         writer.writerow(["Date Range:", f"{start_str} to {end_str}"])
+
+        # Add location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        writer.writerow(["Location:", location_name])
+
         writer.writerow([])  # Empty row
 
         # --- EXECUTIVE SUMMARY ---
@@ -425,9 +648,62 @@ class OperationsReportService(BaseReportService):
         writer.writerow(["--- END OF REPORT ---"])
 
     @staticmethod
-    def export_operations_to_xlsx(report_data: Dict[str, Any], ws, header_font, header_fill, header_alignment):
-        """Export operations report to Excel format"""
-        OperationsReportService._export_operations_to_xlsx(ws, report_data, header_font, header_fill, header_alignment)
+    def _export_multi_location_operations_to_csv(writer, report_data: Dict[str, Any]):
+        """Export multi-location operations report to CSV with sections per location"""
+        from datetime import datetime
+
+        # Write consolidated section first
+        writer.writerow(["=" * 80])
+        writer.writerow(["CONSOLIDATED REPORT - ALL LOCATIONS"])
+        writer.writerow(["=" * 80])
+        writer.writerow([])
+
+        consolidated_data = report_data.get('consolidated', {})
+        # Add metadata for consolidated section
+        consolidated_with_meta = {
+            **consolidated_data,
+            'generated_at': report_data.get('generated_at'),
+            'date_range': report_data.get('date_range'),
+            'location_info': report_data.get('location_info', {})
+        }
+
+        OperationsReportService._export_operations_to_csv(writer, consolidated_with_meta)
+
+        # Write section for each location
+        for location_report in report_data.get('locations', []):
+            location_name = location_report.get('location_name', 'Unknown')
+
+            writer.writerow([])
+            writer.writerow([])
+            writer.writerow(["=" * 80])
+            writer.writerow([f"LOCATION: {location_name.upper()}"])
+            writer.writerow(["=" * 80])
+            writer.writerow([])
+
+            # Export location-specific data
+            location_data = location_report.get('report_data', {})
+            OperationsReportService._export_operations_to_csv(writer, location_data)
+
+    @staticmethod
+    def export_operations_to_xlsx(report_data: Dict[str, Any], ws_or_wb, header_font, header_fill, header_alignment):
+        """Export operations report to Excel format
+
+        Args:
+            report_data: The report data dictionary
+            ws_or_wb: Either a worksheet (single location) or workbook (multi-location)
+            header_font, header_fill, header_alignment: Styling objects
+        """
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            # For multi-location, ws_or_wb is a workbook
+            OperationsReportService._export_multi_location_operations_to_xlsx(
+                ws_or_wb, report_data, header_font, header_fill, header_alignment
+            )
+        else:
+            # For single location, ws_or_wb is a worksheet
+            OperationsReportService._export_operations_to_xlsx(
+                ws_or_wb, report_data, header_font, header_fill, header_alignment
+            )
 
     @staticmethod
     def _export_operations_to_xlsx(ws, report_data: Dict[str, Any], header_font, header_fill, header_alignment):
@@ -463,11 +739,18 @@ class OperationsReportService(BaseReportService):
         ws.cell(row=row, column=1, value="Date Range:")
         ws.cell(row=row, column=2, value=f"{start_str} to {end_str}")
         row += 1
-        
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        ws.cell(row=row, column=1, value="Location:")
+        ws.cell(row=row, column=2, value=location_name)
+        row += 1
+
         ws.cell(row=row, column=1, value="Generated:")
         ws.cell(row=row, column=2, value=report_data.get("generated_at", "N/A"))
         row += 1
-        
+
         row += 1  # Empty row
         
         # --- EXECUTIVE SUMMARY ---
@@ -715,9 +998,49 @@ class OperationsReportService(BaseReportService):
             row += 1
 
     @staticmethod
+    def _export_multi_location_operations_to_xlsx(wb, report_data: Dict[str, Any], header_font, header_fill, header_alignment):
+        """Export multi-location operations report to Excel with separate sheets per location"""
+
+        # Create consolidated sheet first
+        ws_consolidated = wb.create_sheet(title="All Locations")
+        consolidated_data = report_data.get('consolidated', {})
+
+        # Export consolidated data
+        OperationsReportService._export_operations_to_xlsx(
+            ws_consolidated,
+            {**consolidated_data, 'location_info': report_data.get('location_info', {})},
+            header_font,
+            header_fill,
+            header_alignment
+        )
+
+        # Create a sheet for each location
+        for location_report in report_data.get('locations', []):
+            location_name = location_report.get('location_name', 'Unknown')
+            # Excel sheet names must be <= 31 characters
+            sheet_name = location_name[:31] if len(location_name) > 31 else location_name
+
+            # Create sheet for this location
+            ws_location = wb.create_sheet(title=sheet_name)
+
+            # Export location data
+            location_data = location_report.get('report_data', {})
+            OperationsReportService._export_operations_to_xlsx(
+                ws_location,
+                location_data,
+                header_font,
+                header_fill,
+                header_alignment
+            )
+
+    @staticmethod
     def export_operations_to_pdf(story, report_data: Dict[str, Any], styles):
         """Export operations report to PDF format (concise version)"""
-        OperationsReportService._export_operations_to_pdf(story, report_data, styles)
+        # Check if this is a multi-location report
+        if report_data.get('is_multi_location', False):
+            OperationsReportService._export_multi_location_operations_to_pdf(story, report_data, styles)
+        else:
+            OperationsReportService._export_operations_to_pdf(story, report_data, styles)
 
     @staticmethod
     def _export_operations_to_pdf(story, report_data: Dict[str, Any], styles):
@@ -746,8 +1069,14 @@ class OperationsReportService(BaseReportService):
                 pass
         
         story.append(Paragraph(f"<b>Date Range:</b> {start_str} to {end_str}", styles['Normal']))
+
+        # Location info
+        location_info = report_data.get("location_info", {})
+        location_name = location_info.get("location_name", "All Locations")
+        story.append(Paragraph(f"<b>Location:</b> {location_name}", styles['Normal']))
+
         story.append(Spacer(1, 12))
-        
+
         # === EXECUTIVE SUMMARY ===
         story.append(Paragraph("EXECUTIVE SUMMARY", styles['Heading1']))
         story.append(Spacer(1, 6))
@@ -905,3 +1234,35 @@ class OperationsReportService(BaseReportService):
         
         story.append(Spacer(1, 12))
         story.append(Paragraph("<i>For detailed hourly patterns and complete data, use CSV or Excel export.</i>", styles['Normal']))
+
+    @staticmethod
+    def _export_multi_location_operations_to_pdf(story, report_data: Dict[str, Any], styles):
+        """Export multi-location operations report to PDF with separate pages per location"""
+        from reportlab.platypus import PageBreak, Paragraph, Spacer
+
+        # Export consolidated report first
+        story.append(Paragraph("CONSOLIDATED REPORT - ALL LOCATIONS", styles['Title']))
+        story.append(Spacer(1, 12))
+
+        consolidated_data = report_data.get('consolidated', {})
+        # Add metadata for consolidated section
+        consolidated_with_meta = {
+            **consolidated_data,
+            'generated_at': report_data.get('generated_at'),
+            'date_range': report_data.get('date_range'),
+            'location_info': report_data.get('location_info', {})
+        }
+
+        OperationsReportService._export_operations_to_pdf(story, consolidated_with_meta, styles)
+
+        # Export each location on a new page
+        for location_report in report_data.get('locations', []):
+            story.append(PageBreak())
+
+            location_name = location_report.get('location_name', 'Unknown')
+            story.append(Paragraph(f"LOCATION: {location_name.upper()}", styles['Title']))
+            story.append(Spacer(1, 12))
+
+            # Export location-specific data
+            location_data = location_report.get('report_data', {})
+            OperationsReportService._export_operations_to_pdf(story, location_data, styles)

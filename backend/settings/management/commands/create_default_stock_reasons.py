@@ -4,17 +4,18 @@ from settings.models import StockActionReasonConfig
 
 
 class Command(BaseCommand):
-    help = 'Create default system stock action reasons'
+    help = 'Create global default system stock action reasons (shared across all tenants)'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--recreate',
             action='store_true',
-            help='Delete existing system reasons and recreate them',
+            help='Delete existing global system reasons and recreate them',
         )
 
     def handle(self, *args, **options):
-        # Default system reasons based on existing categories and common use cases
+        # Default system reasons - these are GLOBAL (tenant=NULL)
+        # Available to all tenants, usage tracked per tenant in StockHistoryEntry
         default_reasons = [
             # SYSTEM category
             {
@@ -176,19 +177,24 @@ class Command(BaseCommand):
         with transaction.atomic():
             if options['recreate']:
                 self.stdout.write(
-                    self.style.WARNING('Deleting existing system reasons...')
+                    self.style.WARNING('Deleting existing global system reasons...')
                 )
-                StockActionReasonConfig.objects.filter(is_system_reason=True).delete()
+                StockActionReasonConfig.objects.filter(
+                    tenant__isnull=True,
+                    is_system_reason=True
+                ).delete()
 
             created_count = 0
             updated_count = 0
 
             for reason_data in default_reasons:
+                # Create global system reasons (tenant=NULL)
                 reason, created = StockActionReasonConfig.objects.get_or_create(
                     name=reason_data['name'],
-                    defaults=reason_data
+                    tenant__isnull=True,
+                    defaults={**reason_data, 'tenant': None}
                 )
-                
+
                 if created:
                     created_count += 1
                     self.stdout.write(
@@ -214,22 +220,19 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'\nCompleted! Created {created_count} new reasons, '
-                f'updated {updated_count} existing reasons.'
+                f'\n=== Summary ==='
+                f'\nCreated: {created_count} new global reasons'
+                f'\nUpdated: {updated_count} existing reasons'
             )
         )
-        
+
         # Display summary
         total_system_reasons = StockActionReasonConfig.objects.filter(
+            tenant__isnull=True,
             is_system_reason=True
         ).count()
-        total_custom_reasons = StockActionReasonConfig.objects.filter(
-            is_system_reason=False
-        ).count()
-        
+
         self.stdout.write(
-            f'\nSummary:'
-            f'\n  System reasons: {total_system_reasons}'
-            f'\n  Custom reasons: {total_custom_reasons}'
-            f'\n  Total active reasons: {StockActionReasonConfig.objects.filter(is_active=True).count()}'
+            f'\nTotal global system reasons: {total_system_reasons}'
+            f'\nThese reasons are available to all tenants.'
         )

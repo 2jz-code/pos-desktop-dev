@@ -58,12 +58,18 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
 
             # Use cache by default, but allow bypassing with ?use_cache=false
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SummaryReportService.generate_summary_report(
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                tenant=request.tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -85,11 +91,18 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             group_by = request.query_params.get("group_by", "day")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = SalesReportService.generate_sales_report(
-                start_date=start_date, end_date=end_date, group_by=group_by, use_cache=use_cache
+                tenant=request.tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                group_by=group_by,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -111,14 +124,21 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             category_id = serializer.validated_data.get("category_id")
-            limit = serializer.validated_data.get("limit", 10)
+            # If limit is None, don't use a limit (fetch all). Otherwise use the provided limit or default to 10
+            limit = serializer.validated_data.get("limit")
+            if limit is None:
+                limit = None  # No limit - fetch all products
             trend_period = request.query_params.get("trend_period", "auto")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = ProductsReportService.generate_products_report(
+                tenant=request.tenant,
                 start_date=start_date,
                 end_date=end_date,
+                location_id=location_id,
                 category_id=category_id,
                 limit=limit,
                 trend_period=trend_period,
@@ -144,10 +164,20 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
+
+            # Debug logging
+            logger.info(f"Payments report: request.store_location_id={getattr(request, 'store_location_id', 'NOT SET')}, X-Store-Location header={request.META.get('HTTP_X_STORE_LOCATION', 'NOT SET')}, final location_id={location_id}")
+
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = PaymentsReportService.generate_payments_report(
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                tenant=request.tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -169,10 +199,16 @@ class ReportViewSet(viewsets.ViewSet):
         try:
             start_date = serializer.validated_data["start_date"]
             end_date = serializer.validated_data["end_date"]
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None) or serializer.validated_data.get("location_id")
             use_cache = request.query_params.get("use_cache", "true").lower() != "false"
 
             report_data = OperationsReportService.generate_operations_report(
-                start_date=start_date, end_date=end_date, use_cache=use_cache
+                tenant=request.tenant,
+                start_date=start_date,
+                end_date=end_date,
+                location_id=location_id,
+                use_cache=use_cache
             )
 
             return Response(report_data, status=status.HTTP_200_OK)
@@ -188,7 +224,24 @@ class ReportViewSet(viewsets.ViewSet):
     def quick_metrics(self, request):
         """Get today/MTD/YTD quick metrics for dashboard"""
         try:
-            metrics_data = SummaryReportService.get_quick_metrics()
+            # Get location from middleware (X-Store-Location header) or fall back to query param
+            location_id = getattr(request, 'store_location_id', None)
+            if not location_id:
+                location_param = request.query_params.get("location_id")
+                if location_param:
+                    try:
+                        location_id = int(location_param)
+                    except (ValueError, TypeError):
+                        return Response(
+                            {"error": "Invalid location_id parameter"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+            logger.info(f"Quick metrics for location: {location_id}")
+            metrics_data = SummaryReportService.get_quick_metrics(
+                tenant=request.tenant,
+                location_id=location_id
+            )
             return Response(metrics_data, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -209,11 +262,11 @@ class ReportViewSet(viewsets.ViewSet):
             report_type = serializer.validated_data["report_type"]
             parameters = serializer.validated_data["parameters"]
             format_type = serializer.validated_data["format"]
-            
+
             # Extract date parameters
             start_date = parameters.get("start_date")
             end_date = parameters.get("end_date")
-            
+
             if not start_date or not end_date:
                 return Response(
                     {"error": "start_date and end_date are required"},
@@ -229,23 +282,55 @@ class ReportViewSet(viewsets.ViewSet):
                     {"error": "Invalid date format. Use ISO 8601 format."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
+            # Extract location_id from middleware (X-Store-Location header) or parameters
+            location_id = getattr(request, 'store_location_id', None) or parameters.get("location_id")
+
             # Generate the report data first
             if report_type == "summary":
-                report_data = SummaryReportService.generate_summary_report(start_date, end_date)
+                report_data = SummaryReportService.generate_summary_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             elif report_type == "sales":
-                report_data = SalesReportService.generate_sales_report(start_date, end_date)
+                group_by = parameters.get("group_by", "day")
+                report_data = SalesReportService.generate_sales_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id,
+                    group_by=group_by,
+                    use_cache=True
+                )
             elif report_type == "products":
                 category_id = parameters.get("category_id")
-                limit = parameters.get("limit", 10)
+                limit = parameters.get("limit")  # None means no limit
                 trend_period = parameters.get("trend_period", "auto")
                 report_data = ProductsReportService.generate_products_report(
-                    start_date, end_date, category_id, limit, trend_period
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id,
+                    category_id=category_id,
+                    limit=limit,
+                    trend_period=trend_period
                 )
             elif report_type == "payments":
-                report_data = PaymentsReportService.generate_payments_report(start_date, end_date)
+                report_data = PaymentsReportService.generate_payments_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             elif report_type == "operations":
-                report_data = OperationsReportService.generate_operations_report(start_date, end_date)
+                report_data = OperationsReportService.generate_operations_report(
+                    tenant=request.tenant,
+                    start_date=start_date,
+                    end_date=end_date,
+                    location_id=location_id
+                )
             else:
                 return Response(
                     {"error": f"Unknown report type: {report_type}"},
@@ -286,8 +371,12 @@ class ReportViewSet(viewsets.ViewSet):
                     header_alignment = Alignment(horizontal="center", vertical="center")
                     
                     # Call the new SalesReportService export method
-                    SalesReportService.export_sales_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        SalesReportService.export_sales_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        SalesReportService.export_sales_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
@@ -306,10 +395,14 @@ class ReportViewSet(viewsets.ViewSet):
                         start_color="366092", end_color="366092", fill_type="solid"
                     )
                     header_alignment = Alignment(horizontal="center", vertical="center")
-                    
+
                     # Call the new PaymentsReportService export method
-                    PaymentsReportService.export_payments_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        PaymentsReportService.export_payments_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        PaymentsReportService.export_payments_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
@@ -330,7 +423,11 @@ class ReportViewSet(viewsets.ViewSet):
                     header_alignment = Alignment(horizontal="center", vertical="center")
                     
                     # Call the new ProductsReportService export method
-                    ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        ProductsReportService.export_products_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        ProductsReportService.export_products_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
                     
                     # Save to bytes
                     output = io.BytesIO()
@@ -339,21 +436,25 @@ class ReportViewSet(viewsets.ViewSet):
                 elif report_type == "operations":
                     from openpyxl import Workbook
                     from openpyxl.styles import Font, PatternFill, Alignment
-                    
+
                     wb = Workbook()
                     ws = wb.active
                     ws.title = "Operations Report"
-                    
+
                     # Styles
                     header_font = Font(bold=True, color="FFFFFF")
                     header_fill = PatternFill(
                         start_color="366092", end_color="366092", fill_type="solid"
                     )
                     header_alignment = Alignment(horizontal="center", vertical="center")
-                    
+
                     # Call the new OperationsReportService export method
-                    OperationsReportService.export_operations_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
-                    
+                    # For multi-location reports, pass the workbook; for single-location, pass the worksheet
+                    if report_data.get('is_multi_location', False):
+                        OperationsReportService.export_operations_to_xlsx(report_data, wb, header_font, header_fill, header_alignment)
+                    else:
+                        OperationsReportService.export_operations_to_xlsx(report_data, ws, header_font, header_fill, header_alignment)
+
                     # Save to bytes
                     output = io.BytesIO()
                     wb.save(output)
@@ -579,8 +680,10 @@ class SavedReportViewSet(BaseViewSet):
         return SavedReportSerializer
 
     def perform_create(self, serializer):
-        """Set user on creation"""
-        serializer.save(user=self.request.user)
+        """Set user and tenant on creation"""
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant, user=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="run")
     def run(self, request, pk=None):
@@ -658,8 +761,10 @@ class ReportTemplateViewSet(BaseViewSet):
     ordering = ["name"]
 
     def perform_create(self, serializer):
-        """Set created_by on creation"""
-        serializer.save(created_by=self.request.user)
+        """Set created_by and tenant on creation"""
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        serializer.save(tenant=tenant, created_by=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="create-report")
     def create_report(self, request, pk=None):
@@ -858,9 +963,11 @@ class BulkExportViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="status/(?P<operation_id>[^/.]+)")
     def get_export_status(self, request, operation_id=None):
-        """Get the status of a bulk export operation"""
+        """Get the status of a bulk export operation with tenant isolation"""
         try:
-            status_data = AdvancedExportService.get_export_status(operation_id)
+            # Pass tenant_id for proper cache isolation
+            tenant_id = str(request.user.tenant.id) if hasattr(request.user, 'tenant') else None
+            status_data = AdvancedExportService.get_export_status(operation_id, tenant_id)
             serializer = BulkExportStatusSerializer(data=status_data)
 
             if serializer.is_valid():
@@ -880,14 +987,16 @@ class BulkExportViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="queue-status")
     def get_queue_status(self, request):
-        """Get the current status of the export queue (admin only)"""
+        """Get the current status of the export queue (admin only) with tenant isolation"""
         if not request.user.is_staff:
             return Response(
                 {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
             )
 
         try:
-            queue_status = ExportQueue.get_queue_status()
+            # Pass tenant_id for proper queue isolation
+            tenant_id = str(request.user.tenant.id) if hasattr(request.user, 'tenant') else None
+            queue_status = ExportQueue.get_queue_status(tenant_id)
             serializer = ExportQueueStatusSerializer(data=queue_status)
 
             if serializer.is_valid():

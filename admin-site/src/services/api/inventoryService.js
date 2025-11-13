@@ -3,11 +3,16 @@ import apiClient from "./client";
 class InventoryService {
 	/**
 	 * Get inventory dashboard data
+	 * @param {Object} filters - Filter options {store_location}
 	 * @returns {Promise} API response with dashboard data
 	 */
-	async getDashboardData() {
+	async getDashboardData(filters = {}) {
 		try {
-			const response = await apiClient.get("/inventory/dashboard/");
+			const params = new URLSearchParams();
+			if (filters.store_location) {
+				params.append("store_location", filters.store_location);
+			}
+			const response = await apiClient.get("/inventory/dashboard/", { params });
 			return response.data;
 		} catch (error) {
 			console.error("Failed to get inventory dashboard data:", error);
@@ -17,11 +22,15 @@ class InventoryService {
 
 	/**
 	 * Get all inventory stock levels
+	 * @param {Object} filters - Filter options {store_location, location, search, is_low_stock, is_expiring_soon}
 	 * @returns {Promise} API response with all stock records
 	 */
 	async getAllStock(filters = {}) {
 		try {
 			const params = new URLSearchParams();
+			if (filters.store_location) {
+				params.append("store_location", filters.store_location);
+			}
 			if (filters.location) {
 				params.append("location", filters.location);
 			}
@@ -62,11 +71,16 @@ class InventoryService {
 
 	/**
 	 * Get all locations
+	 * @param {Object} filters - Filter options {store_location}
 	 * @returns {Promise} API response with locations
 	 */
-	async getLocations() {
+	async getLocations(filters = {}) {
 		try {
-			const response = await apiClient.get("/inventory/locations/");
+			const params = new URLSearchParams();
+			if (filters.store_location) {
+				params.append("store_location", filters.store_location);
+			}
+			const response = await apiClient.get("/inventory/locations/", { params });
 			return response.data;
 		} catch (error) {
 			console.error("Failed to get locations:", error);
@@ -442,7 +456,8 @@ class InventoryService {
 	}
 
 	/**
-	 * Get inventory defaults (global threshold settings)
+	 * Get inventory defaults (threshold settings) for the selected store location
+	 * Store location is automatically sent via X-Store-Location header from axios interceptor
 	 * @returns {Promise} API response with default thresholds
 	 */
 	async getInventoryDefaults() {
@@ -457,19 +472,20 @@ class InventoryService {
 
 	/**
 	 * Get stock history with optional filters
-	 * @param {Object} filters - Filter options {search, location, operation_type, user, date_range, tab}
+	 * @param {Object} filters - Filter options {store_location, search, location, operation_type, user, date_range, tab}
 	 * @returns {Promise} API response with stock history entries
 	 */
 	async getStockHistory(filters = {}) {
 		try {
 			const params = new URLSearchParams();
+			if (filters.store_location) params.append("store_location", filters.store_location);
 			if (filters.search) params.append("search", filters.search);
 			if (filters.location) params.append("location", filters.location);
 			if (filters.operation_type) params.append("operation_type", filters.operation_type);
 			if (filters.user) params.append("user", filters.user);
 			if (filters.date_range) params.append("date_range", filters.date_range);
 			if (filters.tab) params.append("tab", filters.tab);
-			
+
 			const response = await apiClient.get("/inventory/stock-history/", { params });
 			return response.data.results || response.data;
 		} catch (error) {

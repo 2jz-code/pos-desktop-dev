@@ -3,6 +3,7 @@
 
 // Pages
 export { LoginPage } from "./pages/LoginPage.jsx";
+export { TerminalPairingPage } from "./pages/TerminalPairingPage.jsx";
 
 // Services
 export * as authService from "./services/authService.js";

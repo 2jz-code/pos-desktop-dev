@@ -1,10 +1,12 @@
 # In desktop-combined/backend/discounts/models.py
 
 from django.db import models
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.utils import timezone
 from products.models import Product, Category
 from core_backend.utils.archiving import SoftDeleteMixin
+from tenant.managers import TenantSoftDeleteManager
 
 
 class Discount(SoftDeleteMixin):
@@ -18,9 +20,13 @@ class Discount(SoftDeleteMixin):
         PRODUCT = "PRODUCT", "Specific Products"
         CATEGORY = "CATEGORY", "Specific Categories"
 
-    name = models.CharField(max_length=255, unique=True)
+    # Multi-tenancy
+    tenant = models.ForeignKey('tenant.Tenant', on_delete=models.CASCADE, related_name='discounts')
+
+    # Name and code are unique per tenant
+    name = models.CharField(max_length=255)
     code = models.CharField(
-        max_length=50, unique=True, null=True, blank=True, help_text="Optional code for manual discounts"
+        max_length=50, null=True, blank=True, help_text="Optional code for manual discounts (unique per tenant)"
     )
     type = models.CharField(
         max_length=20,
@@ -79,14 +85,51 @@ class Discount(SoftDeleteMixin):
             return False
         return True
 
+    def clean(self):
+        """Validate discount value based on type."""
+        super().clean()
+
+        # Skip validation for Buy X Get Y discounts (value not used)
+        if self.type == self.DiscountType.BUY_X_GET_Y:
+            return
+
+        # Validate value is positive (not zero or negative)
+        if self.value <= 0:
+            raise ValidationError({
+                'value': 'Discount value must be greater than zero.'
+            })
+
+        # Validate percentage discounts don't exceed 100%
+        if self.type == self.DiscountType.PERCENTAGE and self.value > 100:
+            raise ValidationError({
+                'value': 'Percentage discount cannot exceed 100%.'
+            })
+
+    # Managers - use combined manager for tenant + soft delete
+    objects = TenantSoftDeleteManager()
+    all_objects = models.Manager()  # Bypass tenant filter
+
     def __str__(self):
         return f"{self.name} ({self.get_type_display()} on {self.get_scope_display()})"
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            # Name must be unique per tenant
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_discount_name_per_tenant'
+            ),
+            # Code must be unique per tenant (if provided)
+            models.UniqueConstraint(
+                fields=['tenant', 'code'],
+                name='unique_discount_code_per_tenant',
+                condition=models.Q(code__isnull=False)
+            ),
+        ]
         indexes = [
-            models.Index(fields=['is_active', 'start_date', 'end_date']),  # For active discount queries
-            models.Index(fields=['type', 'scope']),  # For discount strategy queries
-            models.Index(fields=['code']),  # For discount code lookups
-            models.Index(fields=['is_active', 'type']),  # Composite for common filtering
+            models.Index(fields=['tenant', 'is_active', 'start_date', 'end_date']),
+            models.Index(fields=['tenant', 'type', 'scope']),
+            models.Index(fields=['tenant', 'code']),  # For discount code lookups
+            models.Index(fields=['tenant', 'is_active', 'type']),
         ]

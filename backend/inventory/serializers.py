@@ -4,6 +4,7 @@ from products.models import Product
 from products.serializers import ProductSerializer
 from .services import InventoryService
 from core_backend.base import BaseModelSerializer
+from core_backend.base.serializers import TenantFilteredSerializerMixin
 
 
 class LocationSerializer(BaseModelSerializer):
@@ -83,6 +84,7 @@ class OptimizedInventoryStockSerializer(BaseModelSerializer):
             "id",
             "product",
             "location",
+            "store_location",
             "quantity",
             "expiration_date",
             "low_stock_threshold",
@@ -93,7 +95,7 @@ class OptimizedInventoryStockSerializer(BaseModelSerializer):
             "is_expiring_soon",
         ]
         # Optimized for list view - minimal relationships
-        select_related_fields = ["product__category", "product__product_type", "location"]
+        select_related_fields = ["product__category", "product__product_type", "location", "store_location"]
 
 
 class FullInventoryStockSerializer(BaseModelSerializer):
@@ -112,6 +114,7 @@ class FullInventoryStockSerializer(BaseModelSerializer):
             "id",
             "product",
             "location",
+            "store_location",
             "quantity",
             "expiration_date",
             "low_stock_threshold",
@@ -121,11 +124,11 @@ class FullInventoryStockSerializer(BaseModelSerializer):
             "is_low_stock",
             "is_expiring_soon",
         ]
-        select_related_fields = ["product__category", "location"]
+        select_related_fields = ["product__category", "location", "store_location"]
         prefetch_related_fields = ["product__taxes"]
 
 
-class RecipeItemSerializer(BaseModelSerializer):
+class RecipeItemSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     product = OptimizedProductSerializer(read_only=True)
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product", write_only=True
@@ -137,7 +140,7 @@ class RecipeItemSerializer(BaseModelSerializer):
         select_related_fields = ["product__category", "product__product_type"]
 
 
-class RecipeSerializer(BaseModelSerializer):
+class RecipeSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
     menu_item = OptimizedProductSerializer(read_only=True)
     menu_item_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.filter(product_type__name="menu"),
@@ -164,10 +167,18 @@ class RecipeSerializer(BaseModelSerializer):
         return representation
 
     def create(self, validated_data):
+        from tenant.managers import get_current_tenant
+
         ingredients_data = validated_data.pop("ingredients")
-        recipe = Recipe.objects.create(**validated_data)
+        tenant = get_current_tenant()
+
+        # Create recipe with tenant
+        recipe = Recipe.objects.create(tenant=tenant, **validated_data)
+
+        # Create recipe items with tenant
         for ingredient_data in ingredients_data:
-            RecipeItem.objects.create(recipe=recipe, **ingredient_data)
+            RecipeItem.objects.create(recipe=recipe, tenant=tenant, **ingredient_data)
+
         return recipe
 
 
@@ -482,12 +493,19 @@ class StockHistoryUserSerializer(serializers.Serializer):
     username = serializers.CharField()
 
 
+class StockHistoryStoreLocationSerializer(serializers.Serializer):
+    """Lightweight store location serializer for stock history"""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
 class StockHistoryEntrySerializer(BaseModelSerializer):
     """
     Serializer for stock history entries with optimized queries.
     """
     product = OptimizedProductSerializer(read_only=True)
     location = OptimizedLocationSerializer(read_only=True)
+    store_location = StockHistoryStoreLocationSerializer(read_only=True)
     user = StockHistoryUserSerializer(read_only=True)
     operation_display = serializers.ReadOnlyField()
     reason_category = serializers.ReadOnlyField()
@@ -504,31 +522,32 @@ class StockHistoryEntrySerializer(BaseModelSerializer):
         fields = [
             'id',
             'product',
-            'location', 
+            'location',
+            'store_location',
             'user',
             'operation_type',
             'operation_display',
             'quantity_change',
             'previous_quantity',
             'new_quantity',
-            
+
             # New structured reason fields
             'reason_config',
             'detailed_reason',
             'get_reason_display',
             'get_full_reason',
-            
+
             # Legacy reason fields (for backward compatibility)
             'reason',
             'notes',
             'reason_category',
             'reason_category_display',
             'truncated_reason',
-            
+
             'reference_id',
             'timestamp',
         ]
-        select_related_fields = ['product__category', 'product__product_type', 'location', 'user', 'reason_config']
+        select_related_fields = ['product__category', 'product__product_type', 'location', 'store_location', 'user', 'reason_config']
         
     def get_reason_config(self, obj):
         """Return basic reason config information"""

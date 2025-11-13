@@ -144,7 +144,10 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                     if store_location_to_link:
                         location, created = TerminalLocation.objects.update_or_create(
                             stripe_id=loc.id,
-                            defaults={"store_location": store_location_to_link},
+                            defaults={
+                                "store_location": store_location_to_link,
+                                "tenant": store_location_to_link.tenant  # Add tenant for NOT NULL constraint
+                            },
                         )
                         if created:
                             created_count += 1
@@ -194,6 +197,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
             surcharge=surcharge,
             method=PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             status=PaymentTransaction.TransactionStatus.PENDING,
+            tenant=payment.tenant,
         )
 
         amount_cents = int(total_amount_for_intent * 100)
@@ -342,23 +346,31 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 class CloverTerminalStrategy(TerminalPaymentStrategy):
     """
     Strategy for processing payments via a Clover card terminal using REST API.
+
+    IMPORTANT: This strategy is tenant-aware and will get tenant from context.
     """
 
-    def __init__(self, merchant_id: str = None):
+    def __init__(self, merchant_id: str = None, tenant=None):
         from .clover_api import CloverAPIService
         from settings.models import GlobalSettings
-        
+
         self.merchant_id = merchant_id
         if not self.merchant_id:
             # Try to get merchant_id from settings or use a default
             # You'll need to add this to your settings model
             self.merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
-        
+
         if not self.merchant_id:
             logger.warning("No Clover merchant ID configured")
             return
-            
-        self.clover_api = CloverAPIService(self.merchant_id)
+
+        # Get tenant from parameter or from context
+        if tenant is None:
+            from tenant.managers import get_current_tenant
+            tenant = get_current_tenant()
+
+        self.tenant = tenant
+        self.clover_api = CloverAPIService(self.merchant_id, tenant=tenant)
 
     def get_frontend_configuration(self):
         return {

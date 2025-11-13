@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getAllOrders, voidOrder } from "@/services/api/orderService";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableHead } from "@/components/ui/table";
@@ -11,6 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
 	EllipsisVertical,
 	ClipboardList,
 	Eye,
@@ -18,10 +24,12 @@ import {
 	Filter,
 	X,
 	RotateCw,
+	Info,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Select,
 	SelectContent,
@@ -29,6 +37,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { DualDatePicker } from "@/components/ui/dual-date-picker";
 import { DomainPageLayout } from "@/components/shared/DomainPageLayout";
 import { StandardTable } from "@/components/shared/StandardTable";
 import { PaginationControls } from "@/components/ui/pagination";
@@ -49,6 +58,7 @@ interface Order {
 	status: string;
 	payment_status: string;
 	order_type: string;
+	store_location: number | null;
 	total_collected: number;
 	total_with_tip: number;
 	item_count: number;
@@ -57,9 +67,36 @@ interface Order {
 
 export default function OrdersPage() {
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const { toast } = useToast();
-	const { user } = useAuth();
+	const { user, tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [isRefreshing, setIsRefreshing] = useState(false);
+	const { selectedLocationId, locations } = useStoreLocation();
+
+	// Helper to get location name by ID
+	const getLocationName = (locationId: number | null) => {
+		if (!locationId) return "N/A";
+		const location = locations.find(loc => loc.id === locationId);
+		return location?.name || "Unknown";
+	};
+
+	// Helper to navigate to order details while preserving current search params
+	const navigateToOrder = (orderId: string) => {
+		// Use window.location.search to get the actual current URL params
+		// This avoids issues with searchParams being stale due to async state updates
+		const currentParams = window.location.search.substring(1);
+		const url = `/${tenantSlug}/orders/${orderId}${currentParams ? `?${currentParams}` : ''}`;
+		navigate(url);
+	};
+
+	// Additional filters (store location is now handled by middleware via X-Store-Location header)
+	// Include selectedLocationId to trigger refetch when location changes
+	// Note: This is not sent to the API - middleware handles it via X-Store-Location header
+	// But we need it in the object so useOrdersData can detect location changes
+	const additionalFilters = useMemo(() => {
+		return { _locationTrigger: selectedLocationId };
+	}, [selectedLocationId]);
 
 	// Use shared orders data hook
 	const {
@@ -71,6 +108,7 @@ export default function OrdersPage() {
 		count,
 		currentPage,
 		filters,
+		searchInput,
 		hasFilters,
 		handleNavigate,
 		handleFilterChange,
@@ -78,7 +116,8 @@ export default function OrdersPage() {
 		clearFilters,
 		refetch
 	} = useOrdersData({
-		getAllOrdersService: getAllOrders
+		getAllOrdersService: getAllOrders,
+		additionalFilters
 	});
 
 	// Use shared order actions hook
@@ -86,6 +125,25 @@ export default function OrdersPage() {
 		toast,
 		refetch
 	});
+
+	// Date range state
+	const [startDate, setStartDate] = useState<Date | undefined>(() => {
+		return filters.created_at__gte ? new Date(filters.created_at__gte) : undefined;
+	});
+	const [endDate, setEndDate] = useState<Date | undefined>(() => {
+		return filters.created_at__lte ? new Date(filters.created_at__lte) : undefined;
+	});
+
+	// Handle date changes
+	const handleStartDateChange = (date: Date | undefined) => {
+		setStartDate(date);
+		handleFilterChange('created_at__gte', date ? format(date, 'yyyy-MM-dd') : '');
+	};
+
+	const handleEndDateChange = (date: Date | undefined) => {
+		setEndDate(date);
+		handleFilterChange('created_at__lte', date ? format(date, 'yyyy-MM-dd') : '');
+	};
 
 	const handleRefresh = async () => {
 		setIsRefreshing(true);
@@ -140,9 +198,11 @@ export default function OrdersPage() {
 		}
 	};
 
+	// Conditionally include location column when viewing all locations
 	const headers = [
 		{ label: "Order", className: "pl-6 w-[200px]" },
 		{ label: "Source", className: "w-[120px]" },
+		...((!selectedLocationId && locations.length > 1) ? [{ label: "Location", className: "w-[140px]" }] : []),
 		{ label: "Customer", className: "w-[160px]" },
 		{ label: "Status", className: "w-[160px]" },
 		{ label: "Amount", className: "text-right w-[120px]" },
@@ -173,6 +233,15 @@ export default function OrdersPage() {
 					{order.order_type}
 				</Badge>
 			</TableCell>
+
+			{/* Location - Only show when viewing all locations */}
+			{!selectedLocationId && locations.length > 1 && (
+				<TableCell className="py-3">
+					<span className="text-sm text-foreground font-medium">
+						{getLocationName(order.store_location)}
+					</span>
+				</TableCell>
+			)}
 
 			{/* Customer */}
 			<TableCell className="py-3">
@@ -233,7 +302,7 @@ export default function OrdersPage() {
 					<DropdownMenuContent align="end" className="w-40">
 						<DropdownMenuItem onClick={(e) => {
 							e.stopPropagation();
-							navigate(`/orders/${order.id}`);
+							navigateToOrder(order.id);
 						}}>
 							<Eye className="mr-2 h-4 w-4" />
 							View Details
@@ -264,44 +333,71 @@ export default function OrdersPage() {
 	);
 
 	const filterControls = (
-		<>
-			<Select
-				value={filters.status || "ALL"}
-				onValueChange={(value) => handleFilterChange("status", value)}
-			>
-				<SelectTrigger className="w-[180px] border-border">
-					<SelectValue placeholder="Filter by Status" />
-				</SelectTrigger>
-				<SelectContent className="border-border">
-					{STATUS_FILTER_OPTIONS.map((option) => (
-						<SelectItem key={option.value} value={option.value}>
-							{option.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-			<Select
-				value={filters.order_type || "ALL"}
-				onValueChange={(value) => handleFilterChange("order_type", value)}
-			>
-				<SelectTrigger className="w-[180px] border-border">
-					<SelectValue placeholder="Filter by Type" />
-				</SelectTrigger>
-				<SelectContent className="border-border">
-					{ORDER_TYPE_FILTER_OPTIONS.map((option) => (
-						<SelectItem key={option.value} value={option.value}>
-							{option.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-		</>
+		<div className="flex items-center w-full">
+			<div className="flex items-center gap-2">
+				<Select
+					value={filters.status || "ALL"}
+					onValueChange={(value) => handleFilterChange("status", value)}
+				>
+					<SelectTrigger className="w-[180px] border-border">
+						<SelectValue placeholder="Filter by Status" />
+					</SelectTrigger>
+					<SelectContent className="border-border">
+						{STATUS_FILTER_OPTIONS.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<Select
+					value={filters.order_type || "ALL"}
+					onValueChange={(value) => handleFilterChange("order_type", value)}
+				>
+					<SelectTrigger className="w-[180px] border-border">
+						<SelectValue placeholder="Filter by Type" />
+					</SelectTrigger>
+					<SelectContent className="border-border">
+						{ORDER_TYPE_FILTER_OPTIONS.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
+			<div className="ml-auto">
+				<DualDatePicker
+					startDate={startDate}
+					endDate={endDate}
+					onStartDateChange={handleStartDateChange}
+					onEndDateChange={handleEndDateChange}
+				/>
+			</div>
+		</div>
 	);
 
-	// Active filters
+	// Active filters - include search query and date range
 	const activeFilters = Object.entries(filters)
-		.filter(([key, value]) => value && value !== "ALL" && key !== "search")
+		.filter(([key, value]) => {
+			if (key === "search") {
+				return value && value.trim() !== "";
+			}
+			// Skip individual date fields, we'll show them as one "Date Range" filter
+			if (key === "created_at__gte" || key === "created_at__lte") {
+				return false;
+			}
+			return value && value !== "ALL";
+		})
 		.map(([key, value]) => ({ key, value }));
+
+	// Add date range as a single filter if either date is set
+	if (filters.created_at__gte || filters.created_at__lte) {
+		activeFilters.push({
+			key: "dateRange",
+			value: `${filters.created_at__gte || "..."} to ${filters.created_at__lte || "..."}`,
+		});
+	}
 
 	return (
 		<DomainPageLayout
@@ -321,12 +417,54 @@ export default function OrdersPage() {
 				</Button>
 			}
 			title="Filters & Search"
-			searchPlaceholder="Search orders..."
-			searchValue={filters.search}
-			onSearchChange={handleSearchChange}
+			showSearch={false}
 			filterControls={filterControls}
 			error={error}
 		>
+			{/* Custom Search Bar with Tooltip */}
+			<div className="mb-6">
+				<div className="relative max-w-md flex items-center gap-2">
+					<div className="relative flex-1">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground"
+						>
+							<circle cx="11" cy="11" r="8" />
+							<path d="m21 21-4.3-4.3" />
+						</svg>
+						<input
+							type="text"
+							placeholder="Search orders..."
+							value={searchInput}
+							onChange={handleSearchChange}
+							className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-8 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+						/>
+					</div>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									className="text-muted-foreground hover:text-foreground transition-colors"
+								>
+									<Info className="h-4 w-4" />
+								</button>
+							</TooltipTrigger>
+							<TooltipContent side="top" align="start" className="max-w-xs bg-popover text-popover-foreground border border-border shadow-lg">
+								<p className="text-xs">Search by: Order #, Customer/Guest info, Cashier, Product name, or Barcode</p>
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+				</div>
+			</div>
 			{/* Active Filters Display */}
 			{activeFilters.length > 0 && (
 				<div className="flex items-center gap-2 mb-6 flex-wrap">
@@ -338,11 +476,36 @@ export default function OrdersPage() {
 							variant="secondary"
 							className="gap-1.5 px-3 py-1"
 						>
-							<span className="text-xs font-medium capitalize">
-								{key === "status" ? `${value}` : value.replace("_", " ")}
+							<span className="text-xs font-medium">
+								{key === "search" ? (
+									<>
+										<span className="text-muted-foreground">Search:</span>{" "}
+										<span className="font-semibold">{value}</span>
+									</>
+								) : key === "dateRange" ? (
+									<>
+										<span className="text-muted-foreground">Date:</span>{" "}
+										<span className="font-semibold">{value}</span>
+									</>
+								) : (
+									<span className="capitalize">
+										{key === "status" ? `${value}` : value.replace("_", " ")}
+									</span>
+								)}
 							</span>
 							<button
-								onClick={() => handleFilterChange(key, "ALL")}
+								onClick={() => {
+									if (key === "search") {
+										setSearchInput("");
+									} else if (key === "dateRange") {
+										setStartDate(undefined);
+										setEndDate(undefined);
+										handleFilterChange("created_at__gte", "");
+										handleFilterChange("created_at__lte", "");
+									} else {
+										handleFilterChange(key, "ALL");
+									}
+								}}
 								className="hover:bg-muted-foreground/20 rounded-full p-0.5 transition-colors"
 							>
 								<X className="h-3 w-3" />
@@ -353,7 +516,11 @@ export default function OrdersPage() {
 						<Button
 							variant="ghost"
 							size="sm"
-							onClick={clearFilters}
+							onClick={() => {
+								clearFilters();
+								setStartDate(undefined);
+								setEndDate(undefined);
+							}}
 							className="h-7 text-xs"
 						>
 							Clear all
@@ -368,9 +535,9 @@ export default function OrdersPage() {
 				data={orders}
 				loading={loading}
 				emptyMessage="No orders found for the selected filters."
-				onRowClick={(order) => navigate(`/orders/${order.id}`)}
+				onRowClick={(order) => navigateToOrder(order.id)}
 				renderRow={renderOrderRow}
-				colSpan={7}
+				colSpan={headers.length}
 				className="border-0"
 			/>
 

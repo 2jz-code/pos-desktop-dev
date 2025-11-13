@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getStoreLocations, deleteStoreLocation, setDefaultStoreLocation } from "@/services/api/settingsService";
+import { getStoreLocations, deleteStoreLocation } from "@/services/api/settingsService";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -9,10 +9,13 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { PlusCircle, Edit, Trash2, Home, Phone, Mail, Star, MapPin } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { PlusCircle, Edit, Trash2, Home, Phone, Mail, MapPin, Globe, Clock, DollarSign, ShoppingCart } from "lucide-react";
 import { formatPhoneNumber } from "@ajeen/ui";
 import { toast } from "sonner";
 import StoreLocationFormDialog from "./StoreLocationFormDialog";
+import { LocationBusinessHoursDialog } from "./LocationBusinessHoursDialog";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -30,6 +33,8 @@ export function StoreLocationsManagement() {
 		useState(false);
 	const [selectedLocation, setSelectedLocation] = useState(null);
 	const [locationToDelete, setLocationToDelete] = useState(null);
+	const [isBusinessHoursOpen, setIsBusinessHoursOpen] = useState(false);
+	const [locationForHours, setLocationForHours] = useState(null);
 
 	const queryClient = useQueryClient();
 
@@ -62,22 +67,6 @@ export function StoreLocationsManagement() {
 		},
 	});
 
-	const setDefaultMutation = useMutation({
-		mutationFn: setDefaultStoreLocation,
-		onSuccess: (data) => {
-			queryClient.invalidateQueries({ queryKey: ["storeLocations"] });
-			queryClient.invalidateQueries({ queryKey: ["globalSettings"] });
-			toast.success(data.message || "Default location updated successfully!");
-		},
-		onError: (error) => {
-			toast.error(
-				`Failed to set default location: ${
-					error.response?.data?.detail || error.message
-				}`
-			);
-		},
-	});
-
 	const handleAddNew = () => {
 		setSelectedLocation(null);
 		setIsFormOpen(true);
@@ -99,8 +88,25 @@ export function StoreLocationsManagement() {
 		}
 	};
 
-	const handleSetDefault = (location) => {
-		setDefaultMutation.mutate(location.id);
+	const handleManageHours = (location) => {
+		setLocationForHours(location);
+		setIsBusinessHoursOpen(true);
+	};
+
+	// Format structured address
+	const formatAddress = (location) => {
+		if (!location.address_line1) {
+			return "No address provided";
+		}
+
+		const parts = [location.address_line1];
+		if (location.address_line2) parts.push(location.address_line2);
+		const cityLine = [location.city, location.state, location.postal_code]
+			.filter(Boolean)
+			.join(", ");
+		if (cityLine) parts.push(cityLine);
+		if (location.country && location.country !== "US") parts.push(location.country);
+		return parts.join("\n");
 	};
 
 	if (isLoading) return <div>Loading locations...</div>;
@@ -114,7 +120,7 @@ export function StoreLocationsManagement() {
 					Store Locations
 				</CardTitle>
 				<CardDescription>
-					Manage your physical store locations and terminal configurations
+					Manage your physical store locations with Phase 5 multi-location settings
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -127,66 +133,133 @@ export function StoreLocationsManagement() {
 
 				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 				{locations?.map((location) => (
-					<Card key={location.id}>
-						<CardHeader>
-							<CardTitle className="flex justify-between items-center">
-								{location.name}
-							</CardTitle>
-							<CardDescription>
-								{location.is_default && (
-									<span className="flex items-center text-amber-600 font-medium">
-										<Star className="h-4 w-4 mr-1 fill-current" />
-										Default Store Location
-									</span>
-								)}
-							</CardDescription>
+					<Card key={location.id} className="border-border">
+						<CardHeader className="pb-3">
+							<div className="flex justify-between items-start">
+								<CardTitle className="text-lg">{location.name}</CardTitle>
+							</div>
+							{location.slug && (
+								<CardDescription className="text-xs font-mono">
+									/{location.slug}
+								</CardDescription>
+							)}
 						</CardHeader>
-						<CardContent className="space-y-2 text-sm text-muted-foreground">
-							{location.address && (
-								<div className="flex items-start">
-									<Home className="h-4 w-4 mr-2 mt-1 flex-shrink-0" />
-									<span>{location.address}</span>
+
+						<CardContent className="space-y-3 text-sm">
+							{/* Address */}
+							{formatAddress(location) && (
+								<div className="flex items-start gap-2">
+									<Home className="h-4 w-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+									<span className="text-muted-foreground whitespace-pre-line">
+										{formatAddress(location)}
+									</span>
 								</div>
 							)}
-							{location.phone && (
-								<div className="flex items-center">
-									<Phone className="h-4 w-4 mr-2" />
-									<span>{formatPhoneNumber(location.phone)}</span>
-								</div>
-							)}
-							{location.email && (
-								<div className="flex items-center">
-									<Mail className="h-4 w-4 mr-2" />
-									<span>{location.email}</span>
-								</div>
-							)}
+
+							{/* Contact Info */}
+							<div className="space-y-2">
+								{location.phone && (
+									<div className="flex items-center gap-2">
+										<Phone className="h-4 w-4 text-muted-foreground" />
+										<span className="text-muted-foreground">
+											{formatPhoneNumber(location.phone)}
+										</span>
+									</div>
+								)}
+								{location.email && (
+									<div className="flex items-center gap-2">
+										<Mail className="h-4 w-4 text-muted-foreground" />
+										<span className="text-muted-foreground">
+											{location.email}
+										</span>
+									</div>
+								)}
+							</div>
+
+							<Separator />
+
+							{/* Location Settings */}
+							<div className="space-y-2 text-xs">
+								{location.timezone && (
+									<div className="flex items-center gap-2">
+										<Clock className="h-3 w-3 text-muted-foreground" />
+										<span className="text-muted-foreground">
+											{location.timezone}
+										</span>
+									</div>
+								)}
+								{location.tax_rate !== null && location.tax_rate !== undefined && (
+									<div className="flex items-center gap-2">
+										<DollarSign className="h-3 w-3 text-muted-foreground" />
+										<span className="text-muted-foreground">
+											Tax: {(location.tax_rate * 100).toFixed(2)}%
+										</span>
+									</div>
+								)}
+								{location.accepts_web_orders !== undefined && (
+									<div className="flex items-center gap-2">
+										<ShoppingCart className="h-3 w-3 text-muted-foreground" />
+										<span className="text-muted-foreground">
+											{location.accepts_web_orders ? (
+												<Badge variant="success" className="text-xs">
+													Accepts Web Orders
+												</Badge>
+											) : (
+												<Badge variant="secondary" className="text-xs">
+													No Web Orders
+												</Badge>
+											)}
+										</span>
+									</div>
+								)}
+								{location.google_place_id && (
+									<div className="flex items-center gap-2">
+										<Globe className="h-3 w-3 text-muted-foreground" />
+										<span className="text-muted-foreground text-xs">
+											Google integrated
+										</span>
+									</div>
+								)}
+								{/* Business Hours Indicator */}
+								{location.business_hours ? (
+									<div className="flex items-center gap-2">
+										<Clock className="h-3 w-3 text-muted-foreground" />
+										<Badge variant={location.business_hours.is_active ? "default" : "secondary"} className="text-xs">
+											{location.business_hours.is_active ? "Hours Configured" : "Hours Inactive"}
+										</Badge>
+									</div>
+								) : (
+									<div className="flex items-center gap-2">
+										<Clock className="h-3 w-3 text-muted-foreground" />
+										<span className="text-muted-foreground text-xs">
+											No hours set
+										</span>
+									</div>
+								)}
+							</div>
 						</CardContent>
-						<div className="p-4 border-t flex justify-end gap-2">
-							{!location.is_default && (
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() => handleSetDefault(location)}
-									disabled={setDefaultMutation.isPending}
-								>
-									<Star className="mr-2 h-4 w-4" />
-									{setDefaultMutation.isPending ? "Setting..." : "Set Default"}
-								</Button>
-							)}
+
+						<div className="p-4 border-t flex justify-end gap-2 flex-wrap">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => handleManageHours(location)}
+							>
+								<Clock className="mr-1 h-3 w-3" /> Manage Hours
+							</Button>
 							<Button
 								variant="outline"
 								size="sm"
 								onClick={() => handleEdit(location)}
 							>
-								<Edit className="mr-2 h-4 w-4" /> Edit
+								<Edit className="mr-1 h-3 w-3" /> Edit
 							</Button>
 							<Button
 								variant="destructive"
 								size="sm"
 								onClick={() => handleDeleteClick(location)}
-								disabled={location.is_default}
 							>
-								<Trash2 className="mr-2 h-4 w-4" /> Delete
+								<Trash2 className="mr-1 h-3 w-3" /> Delete
 							</Button>
 						</div>
 					</Card>
@@ -223,6 +296,15 @@ export function StoreLocationsManagement() {
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>
+
+				{/* Business Hours Dialog */}
+				{locationForHours && (
+					<LocationBusinessHoursDialog
+						location={locationForHours}
+						isOpen={isBusinessHoursOpen}
+						setIsOpen={setIsBusinessHoursOpen}
+					/>
+				)}
 			</CardContent>
 		</Card>
 	);

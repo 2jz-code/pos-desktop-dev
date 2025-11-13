@@ -30,9 +30,10 @@ const PaymentForm = ({
 
 	// Get current tip from formData, default to 0
 	const currentTip = formData.tip || 0;
-	
-	// Get subtotal for tip calculation
-	const subtotal = cart?.subtotal || 0;
+
+	// Get grand total for tip calculation (subtotal + tax, before surcharge)
+	// Customers typically tip on the total after tax
+	const subtotal = cart?.totals?.grand_total || 0;
 
 	useEffect(() => {
 		if (!isLoading) {

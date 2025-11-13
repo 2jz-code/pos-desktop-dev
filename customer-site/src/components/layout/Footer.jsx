@@ -8,16 +8,23 @@ import {
 	FaHeart,
 	FaTiktok,
 } from "react-icons/fa";
+import { MapPinIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
 import Logo from "../../assets/logo.png"; // Import the logo
 import { useStoreInfo } from "@/hooks/useSettings";
+import { useLocationSelector } from "@/hooks/useLocationSelector";
 import OptimizedImage from "@/components/OptimizedImage";
 import BusinessHours from "@/components/common/BusinessHours";
 
 const Footer = () => {
 	const currentYear = new Date().getFullYear();
 	const { data: storeInfo } = useStoreInfo();
+	const { locations } = useLocationSelector();
 	const navigate = useNavigate();
 	const location = useLocation();
+
+	// Determine if we have multiple locations
+	const hasMultipleLocations = locations && locations.length > 1;
+	const singleLocation = locations && locations.length === 1 ? locations[0] : null;
 
 	const handleNavClick = (path) => {
 		if (location.pathname === "/" && path.includes("/#")) {
@@ -35,6 +42,7 @@ const Footer = () => {
 		{ name: "Home", path: "/" },
 		{ name: "Menu", path: "/menu" },
 		{ name: "About Us", path: "/#about" },
+		{ name: "Locations", path: "/locations" },
 		{ name: "Contact", path: "/#contact" },
 		{ name: "FAQ", path: "/#faq" },
 	];
@@ -130,110 +138,223 @@ const Footer = () => {
 					{/* Contact Info */}
 					<div>
 						<h3 className="text-accent-light-beige text-lg font-semibold mb-4 border-b border-primary-green pb-2">
-							Contact Us
+							{hasMultipleLocations ? "Get In Touch" : "Contact Us"}
 						</h3>
-						<ul className="space-y-3 text-sm text-primary-beige">
-							{/* Address */}
-							<li className="flex items-start group">
-								<svg
-									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
+
+						{hasMultipleLocations ? (
+							/* Multiple Locations - Generic Contact */
+							<div className="space-y-4">
+								<ul className="space-y-3 text-sm text-primary-beige">
+									{/* General Email */}
+									<li className="flex items-start group">
+										<svg
+											className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke="currentColor"
+										>
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth={2}
+												d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+											/>
+										</svg>
+										<a
+											href={`mailto:${storeInfo?.store_email || "contact@bakeajeen.com"}`}
+											className="group-hover:text-accent-light-beige transition-colors duration-300"
+										>
+											{storeInfo?.store_email || "contact@bakeajeen.com"}
+										</a>
+									</li>
+
+									{/* Location count */}
+									<li className="flex items-start group">
+										<MapPinIcon className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300" />
+										<span className="text-primary-beige">
+											{locations.length} Locations
+										</span>
+									</li>
+								</ul>
+
+								{/* Find a Location CTA */}
+								<Link
+									to="/locations"
+									className="inline-flex items-center space-x-2 bg-primary-green hover:bg-accent-dark-green text-white px-4 py-2.5 rounded-lg transition-all duration-300 transform hover:scale-105 text-sm font-medium shadow-md"
 								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-									/>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-									/>
-								</svg>
-								<span className="group-hover:text-accent-light-beige transition-colors duration-300">
-									<Link
-										to="https://maps.app.goo.gl/42MgvJxT5Fn2eJAN7"
-										target="_blank"
+									<MapPinIcon className="w-4 h-4" />
+									<span>Find a Location</span>
+									<ArrowRightIcon className="w-4 h-4" />
+								</Link>
+							</div>
+						) : (
+							/* Single Location - Specific Contact */
+							<ul className="space-y-3 text-sm text-primary-beige">
+								{/* Address */}
+								<li className="flex items-start group">
+									<svg
+										className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
 									>
-										{storeInfo?.store_address ||
-											"2105 Cliff Rd Suite 300, Eagan, MN, 55124"}
-									</Link>
-								</span>
-							</li>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+										/>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+										/>
+									</svg>
+									<span className="group-hover:text-accent-light-beige transition-colors duration-300">
+										{singleLocation ? (
+											<a
+												href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+													[
+														singleLocation.address_line1,
+														singleLocation.address_line2,
+														singleLocation.city,
+														singleLocation.state,
+														singleLocation.postal_code,
+													]
+														.filter(Boolean)
+														.join(", ")
+												)}`}
+												target="_blank"
+												rel="noopener noreferrer"
+											>
+												{[
+													singleLocation.address_line1,
+													singleLocation.address_line2,
+													singleLocation.city && singleLocation.state
+														? `${singleLocation.city}, ${singleLocation.state} ${singleLocation.postal_code || ""}`
+														: null,
+												]
+													.filter(Boolean)
+													.join(", ")}
+											</a>
+										) : (
+											<Link to="https://maps.app.goo.gl/42MgvJxT5Fn2eJAN7" target="_blank">
+												{storeInfo?.store_address || "2105 Cliff Rd Suite 300, Eagan, MN, 55124"}
+											</Link>
+										)}
+									</span>
+								</li>
 
-							{/* Phone */}
-							<li className="flex items-start group">
-								<svg
-									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-									/>
-								</svg>
-								<a
-									href={`tel:+1${(
-										storeInfo?.store_phone || "6514125336"
-									).replace(/\D/g, "")}`}
-									className="group-hover:text-accent-light-beige transition-colors duration-300"
-								>
-									{storeInfo?.store_phone || "(651) 412-5336"}
-								</a>
-							</li>
+								{/* Phone */}
+								<li className="flex items-start group">
+									<svg
+										className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+										/>
+									</svg>
+									<a
+										href={`tel:+1${(
+											singleLocation?.phone || storeInfo?.store_phone || "6514125336"
+										).replace(/\D/g, "")}`}
+										className="group-hover:text-accent-light-beige transition-colors duration-300"
+									>
+										{singleLocation?.phone || storeInfo?.store_phone || "(651) 412-5336"}
+									</a>
+								</li>
 
-							{/* Email */}
-							<li className="flex items-start group">
-								<svg
-									className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-									/>
-								</svg>
-								<a
-									href={`mailto:${
-										storeInfo?.store_email || "contact@bakeajeen.com"
-									}`}
-									className="group-hover:text-accent-light-beige transition-colors duration-300"
-								>
-									{storeInfo?.store_email || "contact@bakeajeen.com"}
-								</a>
-							</li>
-						</ul>
+								{/* Email */}
+								<li className="flex items-start group">
+									<svg
+										className="h-5 w-5 text-accent-subtle-gray group-hover:text-primary-green mr-3 mt-0.5 transition-colors duration-300"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+										/>
+									</svg>
+									<a
+										href={`mailto:${
+											singleLocation?.email || storeInfo?.store_email || "contact@bakeajeen.com"
+										}`}
+										className="group-hover:text-accent-light-beige transition-colors duration-300"
+									>
+										{singleLocation?.email || storeInfo?.store_email || "contact@bakeajeen.com"}
+									</a>
+								</li>
+							</ul>
+						)}
 					</div>
 
 					{/* Opening Hours */}
 					<div>
 						<h3 className="text-accent-light-beige text-lg font-semibold mb-4 border-b border-primary-green pb-2">
-							Opening Hours
+							{hasMultipleLocations ? "Visit Us" : "Opening Hours"}
 						</h3>
 						<div className="bg-accent-dark-brown rounded-lg p-4">
-							<div className="text-sm">
-								<BusinessHours mode="detailed" showStatus={true} />
-							</div>
-							<div className="mt-4 pt-3 border-t border-accent-subtle-gray/50">
-								<Link
-									to="/menu"
-									className="text-accent-light-beige bg-accent-warm-brown hover:bg-opacity-80 transition-colors duration-300 text-sm font-medium rounded-md py-2 px-4 inline-block w-full text-center"
-								>
-									Order Online
-								</Link>
-							</div>
+							{hasMultipleLocations ? (
+								/* Multiple Locations - Location Finder */
+								<div className="space-y-4">
+									<div className="flex items-center space-x-3">
+										<MapPinIcon className="w-8 h-8 text-primary-green" />
+										<div>
+											<p className="text-accent-light-beige font-semibold text-base">
+												{locations.length} Locations
+											</p>
+											<p className="text-primary-beige/80 text-xs">
+												Each with unique hours
+											</p>
+										</div>
+									</div>
+									<p className="text-primary-beige/90 text-sm leading-relaxed">
+										Find your nearest location and view hours specific to that store.
+									</p>
+									<div className="pt-2 space-y-2">
+										<Link
+											to="/locations"
+											className="text-accent-light-beige bg-primary-green hover:bg-accent-dark-green transition-all duration-300 text-sm font-medium rounded-md py-2.5 px-4 inline-flex items-center justify-center w-full space-x-2 shadow-md transform hover:scale-105"
+										>
+											<MapPinIcon className="w-4 h-4" />
+											<span>View All Locations</span>
+											<ArrowRightIcon className="w-4 h-4" />
+										</Link>
+										<Link
+											to="/menu"
+											className="text-accent-light-beige bg-accent-warm-brown hover:bg-opacity-80 transition-colors duration-300 text-sm font-medium rounded-md py-2.5 px-4 inline-block w-full text-center"
+										>
+											Order Online
+										</Link>
+									</div>
+								</div>
+							) : (
+								/* Single Location - Business Hours */
+								<>
+									<div className="text-sm">
+										<BusinessHours mode="detailed" showStatus={true} />
+									</div>
+									<div className="mt-4 pt-3 border-t border-accent-subtle-gray/50">
+										<Link
+											to="/menu"
+											className="text-accent-light-beige bg-accent-warm-brown hover:bg-opacity-80 transition-colors duration-300 text-sm font-medium rounded-md py-2 px-4 inline-block w-full text-center"
+										>
+											Order Online
+										</Link>
+									</div>
+								</>
+							)}
 						</div>
 					</div>
 				</div>

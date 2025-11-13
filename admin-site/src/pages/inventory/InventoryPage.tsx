@@ -3,6 +3,8 @@ import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
 import { useInventoryBarcodeWithScroll } from "@/hooks/useBarcode";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import {
 	Card,
 	CardContent,
@@ -112,6 +114,9 @@ interface DashboardData {
 
 export const InventoryPage = () => {
 	const navigate = useNavigate();
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
+	const { selectedLocationId } = useStoreLocation();
 	const [highlightedProductId] = useState<number | null>(null);
 	const [currentEditingProduct, setCurrentEditingProduct] =
 		useState<Product | null>(null);
@@ -236,11 +241,17 @@ export const InventoryPage = () => {
 	]);
 
 
-	// Data fetching
+	// Data fetching (store location is now handled by middleware via X-Store-Location header)
+	// Keep selectedLocationId in deps to trigger refetch when location changes
+	const dashboardFilters = useMemo(
+		() => ({}),
+		[selectedLocationId]
+	);
+
 	const { data: dashboardData, isLoading: dashboardLoading } =
 		useQuery<DashboardData>({
-			queryKey: ["inventory-dashboard"],
-			queryFn: inventoryService.getDashboardData,
+			queryKey: ["inventory-dashboard", selectedLocationId, dashboardFilters],
+			queryFn: () => inventoryService.getDashboardData(dashboardFilters),
 		});
 
 	const stockQueryFilters = useMemo(
@@ -250,18 +261,23 @@ export const InventoryPage = () => {
 			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
 			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
 		}),
-		[selectedLocation, debouncedSearchQuery, stockFilter]
+		[selectedLocationId, selectedLocation, debouncedSearchQuery, stockFilter]
 	);
 
 	const { data: stockData, isLoading: stockLoading } = useQuery<StockItem[]>({
-		queryKey: ["inventory-stock", stockQueryFilters],
+		queryKey: ["inventory-stock", selectedLocationId, stockQueryFilters],
 		queryFn: () => inventoryService.getAllStock(stockQueryFilters),
 	});
 
+	const locationsFilters = useMemo(
+		() => ({}),
+		[selectedLocationId]
+	);
+
 	const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>(
 		{
-			queryKey: ["inventory-locations"],
-			queryFn: inventoryService.getLocations,
+			queryKey: ["inventory-locations", selectedLocationId, locationsFilters],
+			queryFn: () => inventoryService.getLocations(locationsFilters),
 			select: (data) => data.results,
 		}
 	);
@@ -440,20 +456,20 @@ export const InventoryPage = () => {
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
-								onClick={() => navigate("/inventory/bulk-operations")}
+								onClick={() => navigate(`/${tenantSlug}/inventory/bulk-operations`)}
 							>
 								<Warehouse className="mr-2 h-4 w-4" />
 								Bulk Operations
 							</DropdownMenuItem>
 							<DropdownMenuItem
-								onClick={() => navigate("/inventory/stock-history")}
+								onClick={() => navigate(`/${tenantSlug}/inventory/stock-history`)}
 							>
 								<Clock className="mr-2 h-4 w-4" />
 								Stock History
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
-								onClick={() => navigate("/settings?tab=inventory")}
+								onClick={() => navigate(`/${tenantSlug}/settings?tab=inventory`)}
 							>
 								<Settings className="mr-2 h-4 w-4" />
 								Configure Defaults

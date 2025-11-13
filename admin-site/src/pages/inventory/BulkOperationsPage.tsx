@@ -45,6 +45,7 @@ import { toast } from "sonner";
 // @ts-expect-error - No types for JS file
 import inventoryService from "@/services/api/inventoryService";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 import { ReasonSelector } from "@/components/inventory/ReasonSelector";
 
 // Helper component for adjustment quantity field with stock validation
@@ -150,8 +151,10 @@ const TransferQuantityField = ({ index, control, productStockLevels }) => {
 
 export const BulkOperationsPage = () => {
 	const navigate = useNavigate();
-	const { user } = useAuth();
+	const { user, tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const queryClient = useQueryClient();
+	const { selectedLocationId } = useStoreLocation();
 
 	// State for tracking stock levels for selected products
 	const [productStockLevels, setProductStockLevels] = useState({});
@@ -179,9 +182,21 @@ export const BulkOperationsPage = () => {
 		}
 	};
 
+	// Create filters with memoization (store location is now handled by middleware via X-Store-Location header)
+	// Keep selectedLocationId in deps to trigger refetch when location changes
+	const stockQueryFilters = useMemo(
+		() => ({}),
+		[selectedLocationId]
+	);
+
+	const locationsFilters = useMemo(
+		() => ({}),
+		[selectedLocationId]
+	);
+
 	const { data: stockItems, isLoading: stockLoading } = useQuery({
-		queryKey: ["inventory-stock"],
-		queryFn: () => inventoryService.getAllStock(),
+		queryKey: ["inventory-stock", selectedLocationId, stockQueryFilters],
+		queryFn: () => inventoryService.getAllStock(stockQueryFilters),
 	});
 
 	const products = useMemo(() => {
@@ -196,8 +211,8 @@ export const BulkOperationsPage = () => {
 	}, [stockItems]);
 
 	const { data: locations, isLoading: locationsLoading } = useQuery({
-		queryKey: ["locations"],
-		queryFn: () => inventoryService.getLocations(),
+		queryKey: ["locations", selectedLocationId, locationsFilters],
+		queryFn: () => inventoryService.getLocations(locationsFilters),
 		select: (data) => data.results,
 	});
 
@@ -376,7 +391,7 @@ export const BulkOperationsPage = () => {
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => navigate("/inventory")}
+						onClick={() => navigate(`/${tenantSlug}/inventory`)}
 					>
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back to Inventory

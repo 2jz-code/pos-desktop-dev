@@ -196,15 +196,36 @@ export const removeModifierSetFromProduct = async (
 ) => {
 	// First, get the current relationships to find the relationship ID
 	const relationships = await getProductModifierRelationships(productId);
+
+	// Debug logging
+	console.log('Removing modifier set:', modifierSetId);
+	console.log('Available relationships:', relationships.map(r => ({
+		id: r.id,
+		relationship_id: r.relationship_id,
+		modifier_set: r.modifier_set,
+		modifier_set_id: r.modifier_set_id
+	})));
+
+	// The modifierSetId could be either:
+	// 1. The modifier_set ID (from rel.id which is sourced from modifier_set.id)
+	// 2. The modifier_set_id field
+	// 3. The relationship_id (if passed incorrectly)
 	const relationship = relationships.find(
-		(rel) => rel.id === modifierSetId || rel.id === parseInt(modifierSetId.toString())
+		(rel) =>
+			rel.id === modifierSetId ||
+			rel.id === parseInt(modifierSetId.toString()) ||
+			rel.modifier_set === modifierSetId ||
+			rel.modifier_set_id === modifierSetId ||
+			rel.relationship_id === modifierSetId
 	);
 
 	if (!relationship) {
+		console.error('Modifier set not found. Looking for ID:', modifierSetId);
+		console.error('Available relationships:', JSON.stringify(relationships, null, 2));
 		throw new Error("Modifier set relationship not found");
 	}
 
-	// Use the relationship_id for deletion, fallback to id if not available
+	// Use the relationship_id for deletion
 	const relationshipId = relationship.relationship_id || relationship.id;
 
 	// Try different URL patterns for deletion

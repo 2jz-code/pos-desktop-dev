@@ -114,11 +114,11 @@ class SpecialHoursTimeSlotAdminSerializer(BaseModelSerializer):
 class SpecialHoursAdminSerializer(BaseModelSerializer):
     """Admin serializer for special hours"""
     special_time_slots = SpecialHoursTimeSlotAdminSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = SpecialHours
         fields = [
-            'id', 'date', 'is_closed', 'reason', 
+            'id', 'profile', 'date', 'is_closed', 'reason',
             'special_time_slots', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -129,11 +129,11 @@ class SpecialHoursAdminSerializer(BaseModelSerializer):
 class HolidayAdminSerializer(BaseModelSerializer):
     """Admin serializer for holidays"""
     date_display = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Holiday
         fields = [
-            'id', 'name', 'month', 'day', 'date_display', 
+            'id', 'profile', 'name', 'month', 'day', 'date_display',
             'is_closed', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'date_display', 'created_at', 'updated_at']
@@ -147,50 +147,45 @@ class HolidayAdminSerializer(BaseModelSerializer):
 
 
 class BusinessHoursProfileAdminSerializer(BaseModelSerializer):
-    """Admin serializer for business hours profiles"""
+    """
+    Admin serializer for business hours profiles.
+    Phase 5: Now includes store_location link.
+
+    Note: Timezone is synced from StoreLocation automatically via signals.
+    It's read-only here - change it on the location instead.
+    """
     regular_hours = RegularHoursAdminSerializer(many=True, read_only=True)
     special_hours_count = serializers.SerializerMethodField()
     holidays_count = serializers.SerializerMethodField()
-    
+    store_location_name = serializers.CharField(source='store_location.name', read_only=True)
+
     class Meta:
         model = BusinessHoursProfile
         fields = [
-            'id', 'name', 'timezone', 'is_active', 'is_default',
-            'regular_hours', 'special_hours_count', 'holidays_count',
-            'created_at', 'updated_at'
+            'id', 'name', 'store_location', 'store_location_name', 'timezone',
+            'is_active', 'is_default', 'regular_hours', 'special_hours_count',
+            'holidays_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'special_hours_count', 'holidays_count', 'created_at', 'updated_at']
-        select_related_fields = []
+        read_only_fields = [
+            'id', 'timezone', 'store_location_name', 'special_hours_count',
+            'holidays_count', 'created_at', 'updated_at'
+        ]
+        select_related_fields = ['store_location']
         prefetch_related_fields = [
-            'regular_hours', 
-            'regular_hours__time_slots', 
-            'special_hours', 
+            'regular_hours',
+            'regular_hours__time_slots',
+            'special_hours',
             'holidays'
         ]
-    
+
     def get_special_hours_count(self, obj):
         return obj.special_hours.count()
-    
+
     def get_holidays_count(self, obj):
         return obj.holidays.count()
-    
-    def create(self, validated_data):
-        """Override create to set up default regular hours"""
-        profile = super().create(validated_data)
-        
-        # Create regular hours for each day
-        days = [
-            (0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'),
-            (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')
-        ]
-        for day_num, day_name in days:
-            RegularHours.objects.create(
-                profile=profile,
-                day_of_week=day_num,
-                is_closed=True  # Start with all days closed
-            )
-        
-        return profile
+
+    # Note: RegularHours creation is handled in BusinessHoursProfileViewSet.perform_create()
+    # to ensure tenant is properly set
 
 
 # Service-driven serializers for complex operations

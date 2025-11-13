@@ -37,25 +37,41 @@ class BaseViewSet(OptimizedQuerysetMixin, ArchivingViewSetMixin, viewsets.ModelV
         """
         Enhanced queryset with automatic optimization and archiving support.
         Child classes should override this if they need custom filtering.
+
+        IMPORTANT: Re-evaluates queryset at request time to ensure tenant context is applied.
+        The class-level queryset attribute is evaluated at import time (before tenant context exists),
+        so we must call Model.objects again here to get a fresh queryset with tenant filtering,
+        THEN pass it through the mixin chain.
         """
-        queryset = super().get_queryset()
-        
-        # Add any project-wide filtering logic here
-        # For example: tenant filtering, permission-based filtering, etc.
-        
-        return queryset
+        # If we have a class-level queryset, replace it with a fresh tenant-scoped one
+        if hasattr(self, 'queryset') and self.queryset is not None:
+            model = self.queryset.model
+            # Temporarily replace queryset so mixins process the fresh tenant-scoped version
+            original_queryset = self.queryset
+            self.queryset = model.objects.all()
+
+            # Call super() to let mixins process the fresh queryset
+            # MRO: OptimizedQuerysetMixin → ArchivingViewSetMixin → ModelViewSet
+            result = super().get_queryset()
+
+            # Restore original to avoid side effects on other requests
+            self.queryset = original_queryset
+            return result
+        else:
+            # No class-level queryset, just let mixins handle it
+            return super().get_queryset()
 
 
 class ReadOnlyBaseViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
     """
     Base ViewSet for read-only endpoints.
-    
+
     Features:
     - Automatic query optimization
     - Standard pagination and filtering
     - No archiving (since read-only)
     """
-    
+
     pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
@@ -63,6 +79,14 @@ class ReadOnlyBaseViewSet(OptimizedQuerysetMixin, viewsets.ReadOnlyModelViewSet)
         filters.OrderingFilter,
     ]
     ordering = ['-id']
+
+    def get_queryset(self):
+        """Re-evaluate queryset at request time for tenant context"""
+        if hasattr(self, 'queryset') and self.queryset is not None:
+            queryset = self.queryset.model.objects.all()
+        else:
+            queryset = super().get_queryset()
+        return queryset
 
 
 class BaseAPIView(viewsets.GenericViewSet):

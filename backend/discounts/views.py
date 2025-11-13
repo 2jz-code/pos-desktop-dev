@@ -19,10 +19,14 @@ from .filters import DiscountFilter
 class ApplyDiscountView(APIView):
     """
     API view to apply a discount to a specific order.
+
+    Note: TenantManager automatically filters Order.objects.get() by current tenant,
+    ensuring users can only apply discounts to orders within their tenant.
     """
 
     def post(self, request, order_id, *args, **kwargs):
         try:
+            # TenantManager automatically ensures order belongs to current tenant
             order = Order.objects.get(pk=order_id)
         except Order.DoesNotExist:
             return Response(
@@ -30,7 +34,7 @@ class ApplyDiscountView(APIView):
             )
 
         serializer = DiscountApplySerializer(
-            data=request.data, context={"order": order}
+            data=request.data, context={"order": order, "request": request}
         )
 
         if serializer.is_valid():
@@ -56,9 +60,12 @@ class DiscountViewSet(BaseViewSet):
     Provides list, create, retrieve, update, and destroy actions.
     Supports filtering by 'type', 'is_active', and 'scope'.
     Supports delta sync with modified_since parameter.
+
+    Note: ArchivingViewSetMixin handles include_archived parameter automatically.
+    Default queryset should use .all(), not .with_archived().
     """
 
-    queryset = Discount.objects.with_archived()
+    queryset = Discount.objects.all()
     serializer_class = DiscountSerializer
     filterset_class = DiscountFilter
     ordering = ['-start_date']
@@ -72,29 +79,49 @@ class DiscountViewSet(BaseViewSet):
 
         return DiscountSerializer
 
+    def perform_create(self, serializer):
+        """Set tenant on discount creation"""
+        from tenant.managers import get_current_tenant
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValueError("No tenant context available for discount creation")
+        serializer.save(tenant=tenant)
+
     def get_queryset(self):
         # First get the base queryset with archiving support from parent
+        # This handles tenant filtering AND include_archived parameter
         base_queryset = super().get_queryset()
-        
-        # Then apply any additional filtering from the service
-        filters = dict(self.request.query_params)
-        
-        # Apply service filtering on top of the base queryset (which includes archiving)
+
+        # Check if we have any service-specific filters (not include_archived)
+        # include_archived is handled by ArchivingViewSetMixin, so exclude it
+        filters = {k: v for k, v in self.request.query_params.items()
+                  if k not in ['include_archived', 'page', 'page_size', 'limit', 'offset']}
+
+        # Apply service filtering on top of the base queryset only if we have actual filters
         if filters:
             # Get filtered queryset from service but starting from our base queryset
             filtered_queryset = DiscountValidationService.get_filtered_discounts(filters)
             # Combine with base queryset to maintain archiving logic
             return base_queryset.filter(id__in=filtered_queryset.values_list('id', flat=True))
-        
+
         return base_queryset
 
 class AvailableDiscountListView(ReadOnlyBaseViewSet):
     """
     Provides a read-only list of all currently active discounts.
     This view is optimized to prefetch related fields to avoid N+1 queries.
+
+    Note: TenantManager automatically filters by current tenant.
     """
-    queryset = Discount.objects.filter(is_active=True)  # Only non-archived active discounts
+    queryset = Discount.objects.all()  # Will be filtered by TenantManager and is_active
     serializer_class = DiscountSerializer
+
+    def get_queryset(self):
+        """Filter for only active, non-archived discounts"""
+        # Call super() first to get tenant-filtered queryset
+        queryset = super().get_queryset()
+        # Then apply active filter
+        return queryset.filter(is_active=True)
 
 @api_view(['POST'])
 def apply_discount_code(request):

@@ -58,6 +58,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 interface Transaction {
 	order_number: string;
@@ -139,6 +140,7 @@ interface SalesTabProps {
 }
 
 export function SalesTab({ dateRange }: SalesTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<SalesData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -200,12 +202,21 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 				return;
 			}
 
+			const filters = selectedLocationId ? { location_id: selectedLocationId } : {};
 			const salesData = await reportsService.generateSalesReport(
 				startDate,
 				endDate,
-				groupBy
+				groupBy,
+				filters
 			);
-			setData(salesData as SalesData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (salesData && typeof salesData === 'object' && 'is_multi_location' in salesData && salesData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(salesData.consolidated as SalesData);
+			} else {
+				setData(salesData as SalesData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
@@ -215,7 +226,7 @@ export function SalesTab({ dateRange }: SalesTabProps) {
 
 	useEffect(() => {
 		fetchSalesData();
-	}, [dateRange, groupBy]);
+	}, [dateRange, groupBy, selectedLocationId]);
 
 	if (loading) {
 		return (

@@ -3,21 +3,22 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
 from .models import ReportCache, SavedReport, ReportTemplate, ReportExecution
-from core_backend.admin.mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin, TenantFilter
 
 
 @admin.register(ReportCache)
-class ReportCacheAdmin(admin.ModelAdmin):
+class ReportCacheAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = (
+        "tenant",
         "report_type",
         "parameters_hash_short",
         "generated_at",
         "expires_at",
         "is_expired",
     )
-    list_filter = ("report_type", "generated_at", "expires_at")
+    list_filter = (TenantFilter, "report_type", "generated_at", "expires_at")
     search_fields = ("parameters_hash", "report_type")
-    readonly_fields = ("parameters_hash", "generated_at", "is_expired")
+    readonly_fields = ("tenant", "parameters_hash", "generated_at", "is_expired")
     ordering = ("-generated_at",)
 
     def parameters_hash_short(self, obj):
@@ -47,8 +48,9 @@ class ReportCacheAdmin(admin.ModelAdmin):
 
 
 @admin.register(SavedReport)
-class SavedReportAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class SavedReportAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = (
+        "tenant",
         "name",
         "user",
         "report_type",
@@ -59,9 +61,10 @@ class SavedReportAdmin(ArchivingAdminMixin, admin.ModelAdmin):
         "next_run",
         "file_size_display",
     )
-    list_filter = ("report_type", "schedule", "format", "status", "created_at")
+    list_filter = (TenantFilter, "report_type", "schedule", "format", "status", "created_at")
     search_fields = ("name", "user__username", "user__email")
     readonly_fields = (
+        "tenant",
         "created_at",
         "updated_at",
         "last_run",
@@ -125,17 +128,18 @@ class SavedReportAdmin(ArchivingAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(ReportTemplate)
-class ReportTemplateAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class ReportTemplateAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = (
+        "tenant",
         "name",
         "report_type",
         "is_system_template",
         "created_by",
         "created_at",
     )
-    list_filter = ("report_type", "is_system_template", "created_at")
+    list_filter = (TenantFilter, "report_type", "is_system_template", "created_at")
     search_fields = ("name", "description", "created_by__username")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("tenant", "created_at", "updated_at")
     ordering = ("name",)
 
     fieldsets = (
@@ -157,8 +161,9 @@ class ReportTemplateAdmin(ArchivingAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(ReportExecution)
-class ReportExecutionAdmin(admin.ModelAdmin):
+class ReportExecutionAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = (
+        "tenant",
         "saved_report",
         "status",
         "started_at",
@@ -167,9 +172,10 @@ class ReportExecutionAdmin(admin.ModelAdmin):
         "row_count",
         "file_size_display",
     )
-    list_filter = ("status", "started_at", "completed_at")
+    list_filter = (TenantFilter, "status", "started_at", "completed_at")
     search_fields = ("saved_report__name", "saved_report__user__username")
     readonly_fields = (
+        "tenant",
         "started_at",
         "completed_at",
         "execution_time",

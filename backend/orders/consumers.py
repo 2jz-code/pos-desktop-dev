@@ -53,21 +53,39 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         logging.info("OrderConsumer: Attempting to connect...")
+
+        # Extract tenant from scope (set by middleware)
+        self.tenant = self.scope.get('tenant')
+
+        if not self.tenant:
+            logging.warning("OrderConsumer: No tenant in scope. Closing connection.")
+            await self.close(code=4003)  # Forbidden
+            return
+
+        # Validate user has access to this tenant
+        user = self.scope.get('user')
+        if user and user.is_authenticated:
+            if hasattr(user, 'tenant') and user.tenant != self.tenant:
+                logging.warning(f"OrderConsumer: User tenant mismatch. User: {user.tenant}, Scope: {self.tenant}")
+                await self.close(code=4003)  # Forbidden
+                return
+
         self.order_id = self.scope["url_route"]["kwargs"]["order_id"]
-        self.order_group_name = f"order_{self.order_id}"
+        # Use tenant-scoped channel group
+        self.order_group_name = f"tenant_{self.tenant.id}_order_{self.order_id}"
 
         try:
-            self.order = await sync_to_async(Order.objects.get)(id=self.order_id)
-            logging.info(f"OrderConsumer: Found order {self.order.id}")
+            self.order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
+            logging.info(f"OrderConsumer: Found order {self.order.id} for tenant {self.tenant.slug}")
         except Order.DoesNotExist:
             logging.warning(
-                f"OrderConsumer: Order {self.order_id} does not exist. Closing connection."
+                f"OrderConsumer: Order {self.order_id} does not exist for tenant {self.tenant.slug}. Closing connection."
             )
-            await self.close()
+            await self.close(code=4004)  # Not found
             return
 
         await self.channel_layer.group_add(self.order_group_name, self.channel_name)
-        logging.info(f"OrderConsumer: Joined group {self.order_group_name}")
+        logging.info(f"OrderConsumer: Joined tenant-scoped group {self.order_group_name}")
         await self.accept()
 
         await self.send_full_order_state()
@@ -310,11 +328,13 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         if not force_update:
                             from django.conf import settings
                             from inventory.services import InventoryService
-                            from settings.config import app_settings
                             from django.db.models import Sum
                             from decimal import Decimal
 
-                            default_location = await sync_to_async(app_settings.get_default_location)()
+                            # Get inventory location from order's store location
+                            order_for_location = await sync_to_async(lambda: order)()
+                            store_location = await sync_to_async(lambda: order_for_location.store_location)()
+                            default_location = await sync_to_async(lambda: store_location.default_inventory_location)()
 
                             if getattr(settings, 'USE_PRODUCT_TYPE_POLICY', False):
                                 # Only enforce for inventory-tracked and BLOCK enforcement

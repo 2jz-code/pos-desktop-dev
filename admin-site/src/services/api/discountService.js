@@ -15,7 +15,8 @@ const discountService = {
 		if (filters.search) {
 			params.append("search", filters.search);
 		}
-		if (filters.include_archived) {
+		// Only add include_archived if it's explicitly set (not undefined)
+		if (filters.include_archived !== undefined) {
 			params.append("include_archived", filters.include_archived);
 		}
 		const response = await apiClient.get("/discounts/", { params });

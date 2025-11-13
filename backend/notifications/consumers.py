@@ -19,6 +19,14 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
         Called when the WebSocket connection is opened.
         Authenticate the terminal and join appropriate groups.
         """
+        # Extract tenant from scope (set by middleware)
+        self.tenant = self.scope.get('tenant')
+
+        if not self.tenant:
+            logger.warning("GlobalPOSConsumer: No tenant in scope. Closing connection.")
+            await self.close(code=4003)  # Forbidden
+            return
+
         query_string = self.scope.get("query_string", b"").decode()
 
         # Correctly parse the query string into a dictionary
@@ -39,17 +47,31 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
             await self.close(code=4000)
             return
 
+        # Validate device belongs to this tenant
+        try:
+            from terminals.models import TerminalRegistration
+            terminal = await sync_to_async(TerminalRegistration.objects.get)(
+                device_id=device_id,
+                tenant=self.tenant
+            )
+            logger.info(f"GlobalPOSConsumer: Validated terminal {device_id} belongs to tenant {self.tenant.slug}")
+        except TerminalRegistration.DoesNotExist:
+            logger.warning(f"GlobalPOSConsumer: Terminal {device_id} does not exist for tenant {self.tenant.slug}. Closing connection.")
+            await self.close(code=4004)  # Not found
+            return
+
         # Store device_id for this connection
         self.device_id = device_id
-        self.terminal_group = f"terminal_{device_id}"
+        # Use tenant-scoped channel group
+        self.terminal_group = f"tenant_{self.tenant.id}_terminal_{device_id}"
 
-        # Join terminal-specific group
+        # Join tenant-specific terminal group
         await self.channel_layer.group_add(self.terminal_group, self.channel_name)
 
         # Accept the connection
         await self.accept()
 
-        logger.info(f"Terminal {device_id} connected to global notifications")
+        logger.info(f"Terminal {device_id} connected to tenant {self.tenant.slug} notifications")
 
         # Send connection confirmation
         await self.send(
@@ -57,6 +79,7 @@ class GlobalPOSConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "connection_established",
                     "device_id": device_id,
+                    "tenant": self.tenant.slug,
                     "timestamp": self.get_timestamp(),
                     "message": "Connected to global notification system",
                 }

@@ -41,6 +41,7 @@ import { StandardTable } from "@/components/shared/StandardTable";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, useScrollToScannedItem } from "@ajeen/ui";
 import { useProductBarcodeWithScroll } from "@/hooks/useBarcode";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Import dialog components
 import { ProductFormDialog } from "@/components/ProductFormDialog";
@@ -50,6 +51,8 @@ import { BulkActionsToolbar } from "@/components/products/BulkActionsToolbar";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const ProductsPage = () => {
+	const { tenant } = useAuth();
+	const tenantSlug = tenant?.slug || '';
 	const [products, setProducts] = useState([]);
 	const [allProducts, setAllProducts] = useState([]); // Keep unfiltered copy
 	const [parentCategories, setParentCategories] = useState([]);
@@ -360,7 +363,7 @@ export const ProductsPage = () => {
 
 	const handleBackToModifiers = () => {
 		// Clear URL params and navigate back to modifier management
-		navigate("/products/modifiers");
+		navigate(`/${tenantSlug}/products/modifiers`);
 	};
 
 	const handleArchiveToggle = async (productId: any, isActive: any) => {
@@ -594,7 +597,7 @@ export const ProductsPage = () => {
 	};
 
 	const filterControls = (
-		<>
+		<div className="flex items-center gap-2 flex-wrap">
 			<Select
 				value={selectedParentCategory}
 				onValueChange={setSelectedParentCategory}
@@ -664,13 +667,12 @@ export const ProductsPage = () => {
 					variant="outline"
 					size="sm"
 					onClick={handleClearModifierFilter}
-					className="mr-2"
 				>
 					<Tags className="mr-2 h-4 w-4" />
 					Show All Products
 				</Button>
 			)}
-		</>
+		</div>
 	);
 
 	const headerActions = (
@@ -724,7 +726,7 @@ export const ProductsPage = () => {
 						Manage Categories
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => navigate("/products/modifiers")}>
+					<DropdownMenuItem onClick={() => navigate(`/${tenantSlug}/products/modifiers`)}>
 						<Settings className="mr-2 h-4 w-4" />
 						Manage Modifiers
 					</DropdownMenuItem>
@@ -781,7 +783,7 @@ export const ProductsPage = () => {
 							? "No archived products found."
 							: "No active products found for the selected filters."
 					}
-					onRowClick={(product) => navigate(`/products/${product.id}`)}
+					onRowClick={(product) => navigate(`/${tenantSlug}/products/${product.id}`)}
 					renderRow={renderProductRow}
 					getRowProps={(product) => ({
 						"data-product-id": product.id,

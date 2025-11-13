@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cartAPI, ordersAPI } from "@/api/orders";
+import cartAPI from "@/api/cart";
+import { ordersAPI } from "@/api/orders";
 import { useCartStore } from "@/store/cartStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStoreStatus } from "@/contexts/StoreStatusContext";
@@ -23,15 +24,8 @@ export const useCartQuery = () => {
 			if (checkoutCompleted) {
 				return null;
 			}
-			return ordersAPI.getPendingOrder().then(result => {
-				return result;
-			}).catch(error => {
-				// For 404 errors (no cart found), return null instead of throwing
-				if (error.response?.status === 404) {
-					return null;
-				}
-				throw error;
-			});
+			// Use new cart API - returns empty cart structure if no cart exists
+			return cartAPI.getCart();
 		},
 		staleTime: 1000 * 30, // 30 seconds
 		cacheTime: 1000 * 60 * 5, // 5 minutes
@@ -49,7 +43,6 @@ export const useCartMutations = () => {
 	const queryClient = useQueryClient();
 	const cartStore = useCartStore();
 	const { isAuthenticated } = useAuth();
-	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	const invalidateCart = () => {
 		queryClient.invalidateQueries({ queryKey: cartKeys.current() });
@@ -59,32 +52,10 @@ export const useCartMutations = () => {
 
 	const addToCartMutation = useMutation({
 		mutationFn: async ({ productId, quantity, notes, selectedModifiers }) => {
-			// Check if store is open and can accept orders before allowing cart additions
-			if (!isOpen || !canPlaceOrder) {
-				throw new Error("Store is currently closed and not accepting orders");
-			}
-
-			// Initialize guest session for unauthenticated users (only if needed)
-			if (!isAuthenticated) {
-				try {
-					// Try adding to cart first - if it fails due to session, then initialize
-					return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
-				} catch (error) {
-					// If it's a permission/session error, initialize guest session and retry
-					if (error.response?.status === 403 || error.response?.status === 401) {
-						try {
-							await ordersAPI.initGuestSession();
-							return await cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
-						} catch (sessionError) {
-							console.warn('Guest session initialization failed:', sessionError);
-							throw error; // Re-throw original error
-						}
-					} else {
-						throw error; // Re-throw non-session related errors
-					}
-				}
-			}
-			return cartAPI.addToCart(productId, quantity, notes, selectedModifiers);
+			// Users can add to cart anytime - location selection during checkout will handle business hours
+			// New cart API handles session creation automatically
+			// Just call addItem - backend creates cart if needed
+			return await cartAPI.addItem(productId, quantity, notes, selectedModifiers);
 		},
 		// Temporarily disable optimistic update to avoid state conflicts
 		// onMutate: async ({ product, quantity }) => {
@@ -129,12 +100,6 @@ export const useCartMutations = () => {
 				queryClient.setQueryData(cartKeys.current(), context.previousCart);
 			}
 
-			// Handle store closed errors with specific messaging
-			if (error.message === "Store is currently closed and not accepting orders") {
-				toast.error("Sorry, we're currently closed and not accepting orders. You can still browse our menu!");
-				return;
-			}
-
 			// Handle stock-related errors with user-friendly messages
 			const errorData = error.response?.data;
 			const rawErrorMessage = errorData?.error || errorData?.detail || "Failed to add item to cart";
@@ -163,8 +128,8 @@ export const useCartMutations = () => {
 	});
 
 	const updateCartItemMutation = useMutation({
-		mutationFn: ({ orderId, itemId, quantity }) =>
-			cartAPI.updateCartItem(orderId, itemId, quantity),
+		mutationFn: ({ itemId, quantity }) =>
+			cartAPI.updateItem(itemId, quantity),
 		// Optimistic update for quantity changes
 		onMutate: async ({ itemId, quantity }) => {
 			// Cancel any outgoing refetches
@@ -224,8 +189,8 @@ export const useCartMutations = () => {
 	});
 
 	const removeFromCartMutation = useMutation({
-		mutationFn: ({ orderId, itemId }) =>
-			cartAPI.removeFromCart(orderId, itemId),
+		mutationFn: ({ itemId }) =>
+			cartAPI.removeItem(itemId),
 		// Optimistic update for item removal
 		onMutate: async ({ itemId }) => {
 			// Cancel any outgoing refetches
@@ -266,7 +231,7 @@ export const useCartMutations = () => {
 	});
 
 	const clearCartMutation = useMutation({
-		mutationFn: (orderId) => cartAPI.clearCart(orderId),
+		mutationFn: () => cartAPI.clearCart(),
 		onMutate: async () => {
 			await queryClient.cancelQueries({ queryKey: cartKeys.current() });
 			const previousCart = queryClient.getQueryData(cartKeys.current());
@@ -325,11 +290,13 @@ export const useCartSummary = () => {
 
 	return {
 		cart,
-		itemCount:
-			cart?.items?.reduce((total, item) => total + item.quantity, 0) || 0,
-		subtotal: cart?.subtotal || 0,
-		tax: cart?.tax_total || 0,
-		total: cart?.grand_total || 0,
+		// New cart API returns totals in a nested object
+		itemCount: cart?.totals?.item_count || 0,
+		subtotal: parseFloat(cart?.totals?.subtotal || "0"),
+		tax: parseFloat(cart?.totals?.tax_total || "0"),
+		total: parseFloat(cart?.totals?.grand_total || "0"),
+		discountTotal: parseFloat(cart?.totals?.discount_total || "0"),
+		hasLocation: cart?.totals?.has_location || false,
 		isEmpty: !cart?.items?.length,
 		isLoading: false, // React Query handles loading state
 	};
@@ -341,7 +308,6 @@ export const useCart = () => {
 	const mutations = useCartMutations();
 	const summary = useCartSummary();
 	const cartStore = useCartStore();
-	const { isOpen, canPlaceOrder } = useStoreStatus();
 
 	return {
 		// Data
@@ -370,43 +336,25 @@ export const useCart = () => {
 		},
 
 		updateCartItem: (itemId, quantity) => {
-			const orderId = cartQuery.data?.id;
-			if (!orderId) {
-				toast.error("Cannot update item: cart not found.");
-				return;
-			}
-			mutations.updateCartItem.mutate({ orderId, itemId, quantity });
+			// New cart API doesn't need orderId - backend finds cart automatically
+			mutations.updateCartItem.mutate({ itemId, quantity });
 		},
 
 		removeFromCart: (itemId) => {
-			const orderId = cartQuery.data?.id;
-			if (!orderId) {
-				toast.error("Cannot remove item: cart not found.");
-				return;
-			}
-			mutations.removeFromCart.mutate({ orderId, itemId });
+			// New cart API doesn't need orderId - backend finds cart automatically
+			mutations.removeFromCart.mutate({ itemId });
 		},
 
 		updateCartItemWithModifiers: async (itemId, product, quantity, notes = "", selectedModifiers = []) => {
 			// For modifier updates, we remove the old item and add a new one
 			// This ensures all calculations and snapshots are handled correctly
-			const orderId = cartQuery.data?.id;
-			if (!orderId) {
-				toast.error("Cannot update item: cart not found.");
-				return;
-			}
+			// Users can modify cart anytime - location selection during checkout will handle business hours
 
-			// Check store status before allowing cart modifications
-			if (!isOpen || !canPlaceOrder) {
-				toast.error("Sorry, we're currently closed and not accepting order modifications. You can still browse our menu!");
-				return;
-			}
-			
 			try {
-				// Remove the old item
-				await mutations.removeFromCart.mutateAsync({ orderId, itemId });
-				
-				// Add the updated item (this will also check store status in the mutation)
+				// Remove the old item (no orderId needed)
+				await mutations.removeFromCart.mutateAsync({ itemId });
+
+				// Add the updated item
 				return mutations.addToCart.mutateAsync({
 					productId: product.id,
 					product,
@@ -421,12 +369,8 @@ export const useCart = () => {
 		},
 
 		clearCart: () => {
-			const orderId = cartQuery.data?.id;
-			if (!orderId) {
-				toast.error("Cannot clear cart: cart not found.");
-				return;
-			}
-			mutations.clearCart.mutate(orderId);
+			// New cart API doesn't need orderId - backend finds cart automatically
+			mutations.clearCart.mutate();
 		},
 
 		updateGuestInfo: (contactData) => {

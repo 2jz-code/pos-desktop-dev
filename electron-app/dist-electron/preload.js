@@ -10,6 +10,8 @@ const c = [
   "open-cash-drawer",
   "get-session-cookies",
   "get-machine-id",
+  "get-device-fingerprint",
+  // Hardware-based terminal identity
   "print-kitchen-ticket",
   "test-network-printer"
 ];
@@ -21,6 +23,12 @@ s.exposeInMainWorld("electronAPI", {
    * @returns {Promise<string>} The unique machine ID.
    */
   getMachineId: () => n.invoke("get-machine-id"),
+  /**
+   * Gets the hardware-based device fingerprint (stable across reinstalls).
+   * Used for terminal registration and location context.
+   * @returns {Promise<string>} The hardware fingerprint (UUID format).
+   */
+  getDeviceFingerprint: () => n.invoke("get-device-fingerprint"),
   /**
    * Gets a list of connected printers from the main process.
    * @returns {Promise<Array>} A list of printer objects.
@@ -58,15 +66,15 @@ s.exposeInMainWorld("electronAPI", {
    * @returns {function} A cleanup function to remove the listener.
    */
   onCustomerDisplayAction: (e) => {
-    const r = ["CUSTOMER_TO_POS_TIP"], i = [];
+    const r = ["CUSTOMER_TO_POS_TIP"], t = [];
     return r.forEach((o) => {
-      const t = (l, a) => {
+      const i = (l, a) => {
         e({ channel: o, data: a });
       };
-      n.on(o, t), i.push({ channel: o, handler: t });
+      n.on(o, i), t.push({ channel: o, handler: i });
     }), () => {
-      i.forEach(({ channel: o, handler: t }) => {
-        n.removeListener(o, t);
+      t.forEach(({ channel: o, handler: i }) => {
+        n.removeListener(o, i);
       });
     };
   },
@@ -75,8 +83,8 @@ s.exposeInMainWorld("electronAPI", {
   },
   onMessage: (e, r) => {
     if (c.includes(e)) {
-      const i = (o, ...t) => r(...t);
-      return n.on(e, i), () => n.removeListener(e, i);
+      const t = (o, ...i) => r(...i);
+      return n.on(e, t), () => n.removeListener(e, t);
     }
   },
   /**

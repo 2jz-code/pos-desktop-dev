@@ -53,16 +53,17 @@ export default function AddEditDiscountDialog({
 				setIsLoading(true);
 				try {
 					const [productsRes, categoriesRes] = await Promise.all([
-						productService.getProducts(),
+						productService.getAllProducts(), // Use getAllProducts to fetch all products across pages
 						categoryService.getCategories(),
 					]);
 					console.log("Raw products response:", productsRes.data);
 					console.log("Raw categories response:", categoriesRes.data);
 
-					// Handle different response structures
+					// getAllProducts returns { data: [...] } directly (array of all products)
+					// getCategories returns paginated { data: { results: [...] } }
 					const productsData = Array.isArray(productsRes.data)
 						? productsRes.data
-						: productsRes.data.results || [];
+						: [];
 					const categoriesData = categoriesRes.data.results || [];
 					console.log("Loaded products:", productsData);
 					console.log("Loaded categories:", categoriesData);

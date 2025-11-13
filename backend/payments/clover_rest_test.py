@@ -18,12 +18,15 @@ def test_clover_device_connection(request):
     """
     Test direct REST API connection to Clover Compact device.
     """
-    
+
+    # Get tenant from request (set by middleware)
+    tenant = getattr(request, 'tenant', None)
+
     # Device details
     device_ip = "192.168.5.120"
     device_serial = "C081UG44220071"
     pos_id = "AjeenPOS"  # Arbitrary identifier for your POS
-    
+
     # Get OAuth token
     merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
     if not merchant_id:
@@ -31,8 +34,8 @@ def test_clover_device_connection(request):
             'success': False,
             'error': 'No merchant ID configured'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
-    oauth_service = CloverOAuthService(merchant_id)
+
+    oauth_service = CloverOAuthService(merchant_id, tenant=tenant)
     access_token = oauth_service.get_cached_token(merchant_id)
     
     if not access_token:
@@ -132,17 +135,20 @@ def test_clover_payment(request):
     """
     Test making a payment through Clover Compact REST API.
     """
-    
+
+    # Get tenant from request (set by middleware)
+    tenant = getattr(request, 'tenant', None)
+
     device_ip = "192.168.5.120"
-    device_serial = "C081UG44220071" 
+    device_serial = "C081UG44220071"
     pos_id = "AjeenPOS"
-    
+
     # Get amount from request
     amount = request.data.get('amount', 100)  # Default $1.00 in cents
-    
+
     # Get OAuth token
     merchant_id = getattr(settings, 'CLOVER_MERCHANT_ID', None)
-    oauth_service = CloverOAuthService(merchant_id)
+    oauth_service = CloverOAuthService(merchant_id, tenant=tenant)
     access_token = oauth_service.get_cached_token(merchant_id)
     
     if not access_token:

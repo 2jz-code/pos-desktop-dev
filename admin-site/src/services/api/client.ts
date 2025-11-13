@@ -32,10 +32,51 @@ async function ensureCsrfToken(): Promise<string | null> {
   return csrfPromise;
 }
 
-// Request interceptor: add CSRF headers for unsafe methods
+// Token refresh state management
+let isRefreshing = false;
+let refreshPromise: Promise<void> | null = null;
+
+async function refreshToken(): Promise<void> {
+  // If refresh is already in progress, wait for it
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+
+  // Start a new refresh
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      // Get CSRF token first
+      const token = await ensureCsrfToken();
+
+      // Use baseClient to avoid interceptor recursion
+      await baseClient.post("/users/token/refresh/", {}, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { 'X-CSRF-Token': token } : {})
+        }
+      });
+
+      // Success - new token is set in cookies automatically
+    } catch (error) {
+      // Refresh failed - clear state and throw
+      throw error;
+    } finally {
+      // Clear refresh state
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+// Request interceptor: add CSRF headers for unsafe methods and store location header
 apiClient.interceptors.request.use(
   async (config) => {
     const method = (config.method || "get").toLowerCase();
+
+    // Add CSRF headers for unsafe methods
     if (!["get", "head", "options"].includes(method)) {
       config.headers = config.headers || {};
       (config.headers as any)["X-Requested-With"] = "XMLHttpRequest";
@@ -48,6 +89,33 @@ apiClient.interceptors.request.use(
         // proceed; server may 403 and we will retry once in response interceptor
       }
     }
+
+    // Add store location header from localStorage if available
+    // This is set by the LocationContext when user selects a location
+    try {
+      const selectedLocationId = localStorage.getItem('selected-location-id');
+      if (selectedLocationId && selectedLocationId !== 'null') {
+        config.headers = config.headers || {};
+        (config.headers as any)["X-Store-Location"] = selectedLocationId;
+      }
+    } catch (_) {
+      // If localStorage is not available or fails, proceed without the header
+    }
+
+    // Add tenant header from URL path
+    // Admin URLs are formatted as: admin.bakeajeen.com/{tenant-slug}/...
+    // This allows tenant resolution even when JWT is expired (for token refresh)
+    try {
+      const pathSegments = window.location.pathname.split('/').filter(Boolean);
+      const tenantSlug = pathSegments[0]; // First segment is tenant slug
+      if (tenantSlug && tenantSlug !== 'login') {
+        config.headers = config.headers || {};
+        (config.headers as any)["X-Tenant"] = tenantSlug;
+      }
+    } catch (_) {
+      // If URL parsing fails, proceed without the header
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -96,7 +164,9 @@ apiClient.interceptors.response.use(
 			originalRequest._retry = true; // Mark the request to prevent infinite loops
 
 			try {
-				await apiClient.post("/users/token/refresh/");
+				// Use centralized refresh function to prevent concurrent refresh attempts
+				await refreshToken();
+				// Token refreshed successfully, retry the original request
 				return apiClient(originalRequest);
 			} catch (refreshError) {
 				// If refresh fails, just reject.

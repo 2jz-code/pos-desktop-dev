@@ -31,8 +31,12 @@ class InventoryService:
         """
         Helper method to log stock operations to StockHistoryEntry.
         """
+        from tenant.managers import get_current_tenant
+
         try:
+            tenant = get_current_tenant()
             StockHistoryEntry.objects.create(
+                tenant=tenant,
                 product=product,
                 location=location,
                 user=user,
@@ -55,7 +59,7 @@ class InventoryService:
     @staticmethod
     @cache_dynamic_data(timeout=300)  # 5 minutes - balance freshness vs performance
     def get_stock_levels_by_location(location_id):
-        """Cache stock levels for POS availability checks"""
+        """Cache stock levels for POS availability checks (tenant-scoped via TenantManager)"""
         return dict(InventoryStock.objects.filter(
             location_id=location_id
         ).values_list('product_id', 'quantity'))
@@ -63,15 +67,15 @@ class InventoryService:
     @staticmethod
     @cache_static_data(timeout=3600*6)  # 6 hours - recipes don't change often
     def get_recipe_ingredients_map():
-        """Cache recipe-to-ingredients mapping for menu items"""
+        """Cache recipe-to-ingredients mapping for menu items (tenant-scoped via TenantManager)"""
         recipes = {}
-        # FIX: Add select_related to prevent N+1 queries when accessing product.name and product.product_type.name
+        # FIX: Use menu_item field (Recipe model uses menu_item, not product)
         for recipe in Recipe.objects.prefetch_related(
             'recipeitem_set__product__product_type'
-        ).select_related('product'):
-            recipes[recipe.product_id] = [
+        ).select_related('menu_item'):
+            recipes[recipe.menu_item_id] = [
                 {
-                    'product_id': item.product_id, 
+                    'product_id': item.product_id,
                     'quantity': float(item.quantity),
                     'product_name': item.product.name,
                     'product_type': item.product.product_type.name if item.product.product_type else 'unknown'
@@ -82,12 +86,15 @@ class InventoryService:
     
     @staticmethod
     @cache_dynamic_data(timeout=900)  # 15 minutes - availability changes moderately
-    def get_inventory_availability_status(location_id=None):
-        """Cache product availability status for POS display"""
-        from settings.config import app_settings
-        
+    def get_inventory_availability_status(location_id):
+        """
+        Cache product availability status for POS display (tenant-scoped via TenantManager).
+
+        Args:
+            location_id: Required - the inventory location ID to check stock for
+        """
         if not location_id:
-            location_id = app_settings.get_default_location().id
+            raise ValueError("location_id is required for inventory availability status")
         
         # Get current stock levels
         stock_levels = InventoryService.get_stock_levels_by_location(location_id)
@@ -150,38 +157,63 @@ class InventoryService:
     @staticmethod
     @transaction.atomic
     def add_stock(
-        product: Product, 
-        location: Location, 
-        quantity, 
-        user=None, 
-        reason_config=None, 
+        product: Product,
+        location: Location,
+        quantity,
+        user=None,
+        reason_config=None,
         detailed_reason="",
         reason="",  # Legacy for backward compatibility
         legacy_reason="",  # Alternative legacy field name
-        reference_id="", 
+        reference_id="",
         skip_logging=False
     ):
         """
         Adds a specified quantity of a product to a specific inventory location.
         If stock for the product at the location does not exist, it will be created.
         """
+        # Validate quantity is positive
+        try:
+            quantity_value = float(quantity)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid quantity format: {quantity}")
+
+        if quantity_value < 0:
+            raise ValueError("Cannot add negative stock quantity. Use decrement_stock() instead.")
+
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
         stock, created = InventoryStock.objects.get_or_create(
-            product=product, location=location, defaults={"quantity": Decimal("0.0")}
+            product=product, location=location, defaults={"tenant": tenant, "quantity": Decimal("0.0")}
         )
-        
+
         # Track previous quantity for notification logic and history
         previous_quantity = stock.quantity
         quantity_decimal = Decimal(str(quantity))
-        stock.quantity += quantity_decimal
-        
+
+        # CRITICAL FIX: Use atomic F() expression to prevent race condition
+        # This prevents lost updates when multiple workers add stock simultaneously
+        from django.db.models import F
+
         # Check if stock crossed back above threshold (reset notification flag)
         threshold = stock.effective_low_stock_threshold
-        if (previous_quantity <= threshold and 
-            stock.quantity > threshold and 
+        if (previous_quantity <= threshold and
+            (previous_quantity + quantity_decimal) > threshold and
             stock.low_stock_notified):
-            stock.low_stock_notified = False
-        
-        stock.save()
+            # Update quantity atomically AND reset notification flag
+            InventoryStock.objects.filter(id=stock.id).update(
+                quantity=F('quantity') + quantity_decimal,
+                low_stock_notified=False
+            )
+        else:
+            # Just update quantity atomically
+            InventoryStock.objects.filter(id=stock.id).update(
+                quantity=F('quantity') + quantity_decimal
+            )
+
+        # Refresh to get the new quantity value
+        stock.refresh_from_db()
         
         # Log the stock operation (unless skipped for transfers)
         if not skip_logging:
@@ -276,16 +308,17 @@ class InventoryService:
     @staticmethod
     @transaction.atomic
     def transfer_stock(
-        product: Product, 
-        from_location: Location, 
-        to_location: Location, 
-        quantity, 
-        user=None, 
-        reason_config=None, 
+        product: Product,
+        from_location: Location,
+        to_location: Location,
+        quantity,
+        user=None,
+        reason_config=None,
         detailed_reason="",
         reason="",  # Legacy for backward compatibility
         legacy_reason="",  # Alternative legacy field name
-        notes=""
+        notes="",
+        reference_id=None  # Optional reference ID for bulk operations
     ):
         """
         Transfers a specified quantity of a product from one location to another.
@@ -294,9 +327,9 @@ class InventoryService:
             raise ValueError("Source and destination locations cannot be the same.")
 
         quantity_decimal = Decimal(str(quantity))
-        
-        # Generate a unique reference ID to link the two transfer operations
-        transfer_ref = f"transfer_{uuid.uuid4().hex[:12]}"
+
+        # Use provided reference_id or generate a unique one for linking operations
+        transfer_ref = reference_id if reference_id else f"transfer_{uuid.uuid4().hex[:12]}"
 
         # Get current stock levels for logging
         try:
@@ -522,7 +555,11 @@ class InventoryService:
                         logger.info(f"Used {used_from_stock} from stock, prepared {total_needed - used_from_stock} fresh")
                     except InventoryStock.DoesNotExist:
                         # No stock record - create one with 0 (all prepared fresh)
+                        from tenant.managers import get_current_tenant
+
+                        tenant = get_current_tenant()
                         InventoryStock.objects.create(
+                            tenant=tenant,
                             product=recipe_item.product,
                             location=location,
                             quantity=Decimal('0')
@@ -540,17 +577,25 @@ class InventoryService:
         Process inventory deduction for a completed order.
         Handles both regular products and menu items with recipes.
         """
-        from settings.config import app_settings
         from settings.models import StockActionReasonConfig
+
+        # Get the inventory location from the order's store location
+        if not order.store_location:
+            logger.error(f"Order {order.order_number} has no store_location set. Cannot process inventory.")
+            return
+
+        inventory_location = order.store_location.default_inventory_location
+        if not inventory_location:
+            logger.warning(f"Store location {order.store_location.name} has no default_inventory_location set. Skipping inventory processing for order {order.order_number}.")
+            return
         
-        default_location = app_settings.get_default_location()
-        
-        # Get system reason for order deductions
+        # Get global system reason for order deductions (tenant=NULL)
         try:
             order_deduction_reason = StockActionReasonConfig.objects.get(
                 name="System Order Deduction",
                 is_system_reason=True,
-                is_active=True
+                is_active=True,
+                tenant__isnull=True
             )
         except StockActionReasonConfig.DoesNotExist:
             # Fallback to any system reason
@@ -569,13 +614,13 @@ class InventoryService:
                 if hasattr(item.product, 'recipe') and item.product.recipe:
                     # Handle menu items with recipes
                     InventoryService.deduct_recipe_ingredients(
-                        item.product, item.quantity, default_location, order_deduction_reason, order.id
+                        item.product, item.quantity, inventory_location, order_deduction_reason, order.id
                     )
                 else:
                     # Handle regular products
                     InventoryService.decrement_stock(
-                        item.product, 
-                        default_location, 
+                        item.product,
+                        inventory_location,
                         item.quantity,
                         reason_config=order_deduction_reason,
                         detailed_reason=f"Order #{order.order_number or order.id} completed",
@@ -709,13 +754,18 @@ class InventoryService:
         from django.db.models import Q, F, Case, When, Value
         from django.utils import timezone
         from datetime import timedelta
-        from settings.config import app_settings
         
-        # Location filtering
+
+        # Store location filtering (physical store)
+        store_location_id = filters.get("store_location")
+        if store_location_id:
+            queryset = queryset.filter(store_location_id=store_location_id)
+
+        # Location filtering (warehouse/storage location within a store)
         location_id = filters.get("location")
         if location_id:
             queryset = queryset.filter(location_id=location_id)
-        
+
         # Search filtering
         search_query = filters.get("search")
         if search_query:
@@ -725,21 +775,33 @@ class InventoryService:
             )
         
         # Low stock filtering with effective thresholds
+        # Uses 3-tier hierarchy: InventoryStock → inventory.Location → StoreLocation (fallback: 10)
         is_low_stock = filters.get("is_low_stock")
         if is_low_stock and is_low_stock.lower() == "true":
+            from django.db import models
+            from django.db.models.functions import Cast
             queryset = queryset.filter(
                 quantity__lte=Case(
+                    # Tier 1: Individual stock threshold (DecimalField)
                     When(low_stock_threshold__isnull=False, then=F("low_stock_threshold")),
-                    default=Value(app_settings.default_low_stock_threshold),
+                    # Tier 2: Storage location threshold (DecimalField)
+                    When(location__low_stock_threshold__isnull=False, then=F("location__low_stock_threshold")),
+                    # Tier 3: Store location threshold (PositiveIntegerField - must cast to DecimalField)
+                    When(location__store_location__low_stock_threshold__isnull=False,
+                         then=Cast(F("location__store_location__low_stock_threshold"),
+                                   output_field=models.DecimalField(max_digits=10, decimal_places=2))),
+                    # Fallback: Hardcoded default
+                    default=Value(10, output_field=models.DecimalField(max_digits=10, decimal_places=2)),
+                    output_field=models.DecimalField(max_digits=10, decimal_places=2)
                 )
             )
         
         # Expiring soon filtering - simplified since SerializerOptimizedMixin handles relationships
+        # Uses 3-tier hierarchy: InventoryStock → inventory.Location → StoreLocation (handled by model property)
         is_expiring_soon = filters.get("is_expiring_soon")
         if is_expiring_soon and is_expiring_soon.lower() == "true":
             today = timezone.now().date()
-            default_threshold = app_settings.default_expiration_threshold
-            
+
             # For simplicity and database portability, use a conservative approach
             # Filter broadly first, then let the serializer's is_expiring_soon property handle exact logic
             max_possible_threshold = 90  # Conservative maximum threshold
@@ -747,9 +809,9 @@ class InventoryService:
                 expiration_date__isnull=False,
                 expiration_date__lte=today + timedelta(days=max_possible_threshold)
             )
-            
+
             # The exact expiring logic will be handled by the model's is_expiring_soon property
-            # which uses the optimized relationships loaded by SerializerOptimizedMixin
+            # which uses the 3-tier hierarchy via effective_expiration_threshold
         
         return queryset
     
@@ -757,18 +819,24 @@ class InventoryService:
     def search_inventory_by_barcode(barcode: str, location_id: int = None) -> dict:
         """Extract barcode lookup logic from barcode_stock_lookup view"""
         from products.models import Product
-        from settings.config import app_settings
-        
+
+        # location_id is required - no global default location
+        if not location_id:
+            return {
+                "success": False,
+                "error": "location_id is required for inventory lookups"
+            }
+
         try:
             product = Product.objects.get(barcode=barcode, is_active=True)
-            
-            if location_id:
-                try:
-                    location = Location.objects.get(id=location_id)
-                except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
-            else:
-                location = app_settings.get_default_location()
+
+            try:
+                location = Location.objects.get(id=location_id)
+            except Location.DoesNotExist:
+                return {
+                    "success": False,
+                    "error": f"Location {location_id} not found"
+                }
             
             stock_level = InventoryService.get_stock_level(product, location)
             
@@ -801,7 +869,7 @@ class InventoryService:
     def perform_barcode_stock_adjustment(barcode: str, quantity: float, adjustment_type: str = "add", location_id: int = None, user=None, reason: str = "") -> dict:
         """Extract barcode stock adjustment logic from barcode_stock_adjustment view"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         # Validate inputs
         if not quantity:
@@ -826,9 +894,9 @@ class InventoryService:
                 try:
                     location = Location.objects.get(id=location_id)
                 except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
+                    raise ValueError("location_id is required - no default location available")
             else:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
             
             # Perform stock adjustment using existing service methods
             if quantity > 0:
@@ -867,7 +935,7 @@ class InventoryService:
     def check_bulk_stock_availability(product_ids: list, location_id: int = None) -> dict:
         """Extract bulk stock checking logic from BulkStockCheckView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         if not product_ids:
             return {"error": "product_ids required"}
@@ -876,9 +944,9 @@ class InventoryService:
             try:
                 location = Location.objects.get(id=location_id)
             except Location.DoesNotExist:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
         else:
-            location = app_settings.get_default_location()
+            raise ValueError("location_id is required - no default location available")
         
         results = []
         
@@ -913,18 +981,25 @@ class InventoryService:
         }
     
     @staticmethod
-    def get_inventory_dashboard_data() -> dict:
-        """Extract dashboard aggregation logic from InventoryDashboardView"""
+    def get_inventory_dashboard_data(store_location=None) -> dict:
+        """
+        Extract dashboard aggregation logic from InventoryDashboardView.
+        Can be filtered by store_location to show data for a specific physical store.
+        """
         from django.db.models import Sum, F, Case, When, Value, Q
         from django.utils import timezone
         from datetime import timedelta
-        
+
         try:
-            # Get all stock records across all locations
+            # Get all stock records, optionally filtered by store_location
             # FIX: Add product__product_type to prevent N+1 queries in reporting
             all_stock_records = InventoryStock.objects.select_related(
                 "product", "location", "product__product_type"
             ).filter(archived_at__isnull=True)
+
+            # Apply store_location filter if provided
+            if store_location:
+                all_stock_records = all_stock_records.filter(store_location_id=store_location)
             
             # Aggregate total quantities per product across all locations
             product_totals = all_stock_records.values("product").annotate(
@@ -1013,7 +1088,7 @@ class InventoryService:
     def perform_quick_stock_adjustment(product_id: int, quantity: float, reason: str = None, adjustment_type: str = "FOUND_STOCK", user_id: int = None) -> dict:
         """Extract quick stock adjustment logic from QuickStockAdjustmentView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         import logging
         
         logger = logging.getLogger(__name__)
@@ -1026,7 +1101,7 @@ class InventoryService:
         
         try:
             product = Product.objects.get(id=product_id)
-            location = app_settings.get_default_location()
+            raise ValueError("location_id is required - no default location available")
             
             # Add the found stock
             stock = InventoryService.add_stock(product, location, quantity)
@@ -1069,7 +1144,7 @@ class InventoryService:
     def get_product_stock_details(product_id: int, location_id: int = None) -> dict:
         """Extract product stock checking logic from ProductStockCheckView"""
         from products.models import Product
-        from settings.config import app_settings
+        
         
         try:
             product = Product.objects.get(id=product_id)
@@ -1078,9 +1153,9 @@ class InventoryService:
                 try:
                     location = Location.objects.get(id=location_id)
                 except Location.DoesNotExist:
-                    location = app_settings.get_default_location()
+                    raise ValueError("location_id is required - no default location available")
             else:
-                location = app_settings.get_default_location()
+                raise ValueError("location_id is required - no default location available")
             
             stock_level = InventoryService.get_stock_level(product, location)
             is_available = stock_level > 0
@@ -1183,12 +1258,13 @@ class InventoryService:
         except User.DoesNotExist:
             raise ValueError(f"User with id {user_id} not found")
 
-        # Get or create system reason for bulk transfers
+        # Get global system reason for bulk transfers (tenant=NULL)
         try:
             bulk_transfer_reason = StockActionReasonConfig.objects.get(
-                name="System Bulk Transfer",
+                name="Bulk Transfer Operation",
                 is_system_reason=True,
-                is_active=True
+                is_active=True,
+                tenant__isnull=True
             )
         except StockActionReasonConfig.DoesNotExist:
             # Fallback to any bulk transfer reason
@@ -1214,19 +1290,23 @@ class InventoryService:
             item_reason_config = bulk_transfer_reason  # Default to bulk reason
             reason_id = item.get('reason_id')
             if reason_id:
-                try:
-                    item_reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
-                except StockActionReasonConfig.DoesNotExist:
-                    print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive, using bulk reason")
+                # Handle if reason_id is already a StockActionReasonConfig object or just an ID
+                if isinstance(reason_id, StockActionReasonConfig):
+                    item_reason_config = reason_id
+                else:
+                    try:
+                        item_reason_config = StockActionReasonConfig.objects.get(id=reason_id, is_active=True)
+                    except StockActionReasonConfig.DoesNotExist:
+                        print(f"Warning: StockActionReasonConfig with id {reason_id} not found or inactive, using bulk reason")
             
             item_detailed_reason = item.get('detailed_reason', notes)
 
             source_stock, destination_stock = InventoryService.transfer_stock(
-                product, 
-                from_location, 
-                to_location, 
-                quantity, 
-                user=user, 
+                product,
+                from_location,
+                to_location,
+                quantity,
+                user=user,
                 reason_config=item_reason_config,
                 detailed_reason=item_detailed_reason,
                 legacy_reason="Bulk transfer",

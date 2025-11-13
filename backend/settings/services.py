@@ -17,10 +17,9 @@ from .models import (
     GlobalSettings,
     StoreLocation,
     TerminalLocation,
-    TerminalRegistration,
     PrinterConfiguration,
-    WebOrderSettings,
 )
+from terminals.models import TerminalRegistration
 from payments.strategies import StripeTerminalStrategy
 
 
@@ -35,13 +34,35 @@ class SettingsService:
     @staticmethod
     def get_global_settings() -> GlobalSettings:
         """
-        Get the singleton GlobalSettings instance.
-        Creates one if it doesn't exist.
-        
+        Get the tenant-scoped GlobalSettings instance.
+        Creates one if it doesn't exist for the current tenant.
+
+        TenantManager automatically filters by current tenant context.
+        OneToOneField ensures only one instance per tenant.
+
         Returns:
-            GlobalSettings: The singleton settings instance
+            GlobalSettings: The tenant's settings instance
         """
-        obj, created = GlobalSettings.objects.get_or_create(pk=1)
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValidationError("No tenant context available for settings")
+
+        # Try to get existing settings for this tenant
+        try:
+            obj = GlobalSettings.objects.get(tenant=tenant)
+        except GlobalSettings.DoesNotExist:
+            # Create new settings with defaults for this tenant
+            obj = GlobalSettings(
+                tenant=tenant,
+                brand_name=f"{tenant.name}",
+                # Other fields will use their model defaults:
+                # brand_primary_color="#000000", brand_secondary_color="#FFFFFF",
+                # currency="USD", active_terminal_provider="STRIPE_TERMINAL", etc.
+            )
+            obj.save()
+
         return obj
     
     @staticmethod
@@ -141,7 +162,6 @@ class SettingsService:
         """
         instance = SettingsService.get_global_settings()
         return {
-            "tax_rate": instance.tax_rate,
             "surcharge_percentage": instance.surcharge_percentage,
             "currency": instance.currency,
         }
@@ -162,7 +182,7 @@ class SettingsService:
         Raises:
             ValidationError: If validation fails
         """
-        allowed_fields = {"tax_rate", "surcharge_percentage", "currency"}
+        allowed_fields = {"surcharge_percentage", "currency"}
         
         # Filter to only allowed fields (business rule from original view)
         filtered_data = {
@@ -390,15 +410,31 @@ class PrinterConfigurationService:
     @staticmethod
     def get_printer_configuration() -> PrinterConfiguration:
         """
-        Get the singleton PrinterConfiguration instance.
-        Creates one if it doesn't exist.
-        
+        Get the tenant-scoped PrinterConfiguration instance.
+        Creates one if it doesn't exist for the current tenant.
+
+        TenantManager automatically filters by current tenant context.
+        OneToOneField ensures only one instance per tenant.
+
         Extracted from PrinterConfigurationViewSet.get_object().
-        
+
         Returns:
-            PrinterConfiguration: The singleton printer config instance
+            PrinterConfiguration: The tenant's printer config instance
         """
-        obj, created = PrinterConfiguration.objects.get_or_create(pk=1)
+        from tenant.managers import get_current_tenant
+
+        tenant = get_current_tenant()
+        if not tenant:
+            raise ValidationError("No tenant context available for printer configuration")
+
+        # Try to get existing config for this tenant
+        try:
+            obj = PrinterConfiguration.objects.get(tenant=tenant)
+        except PrinterConfiguration.DoesNotExist:
+            # Create new config - avoid get_or_create due to id sequence conflicts
+            obj = PrinterConfiguration(tenant=tenant)
+            obj.save()
+
         return obj
     
     @staticmethod
@@ -422,93 +458,22 @@ class PrinterConfigurationService:
             ValidationError: If validation fails
         """
         instance = PrinterConfigurationService.get_printer_configuration()
-        
+
         with transaction.atomic():
-            # Apply updates to instance
+            # Apply updates to instance (exclude tenant field - it's managed by tenant context)
             for field, value in update_data.items():
-                if hasattr(instance, field):
+                if hasattr(instance, field) and field != 'tenant':
                     setattr(instance, field, value)
-                    
+
             # Save with validation
+            update_fields = [k for k in update_data.keys() if k != 'tenant']
             instance.full_clean()
-            instance.save(update_fields=list(update_data.keys()) if partial else None)
+            instance.save(update_fields=update_fields if partial else None)
             
         return instance
 
 
-class WebOrderSettingsService:
-    """
-    Service layer for managing web order settings.
-    Handles terminal receipt configuration for web orders.
-    
-    Extracted from WebOrderSettingsViewSet - previously 50+ lines in views.
-    """
-    
-    @staticmethod
-    def get_web_order_settings() -> WebOrderSettings:
-        """
-        Get the singleton WebOrderSettings instance with optimized query.
-        Creates one if it doesn't exist.
-        
-        Extracted from WebOrderSettingsViewSet.get_object() with prefetch optimization.
-        
-        Returns:
-            WebOrderSettings: The singleton web order settings instance
-        """
-        obj, created = WebOrderSettings.objects.prefetch_related(
-            'web_receipt_terminals__store_location'
-        ).get_or_create(pk=1)
-        return obj
-    
-    @staticmethod
-    def update_web_order_settings(
-        update_data: Dict[str, Any], 
-        partial: bool = True
-    ) -> WebOrderSettings:
-        """
-        Update web order settings with many-to-many field handling.
-        
-        Extracted from WebOrderSettingsViewSet update methods.
-        
-        Args:
-            update_data: Dictionary of fields to update
-            partial: Whether this is a partial update
-            
-        Returns:
-            WebOrderSettings: Updated settings instance
-            
-        Raises:
-            ValidationError: If validation fails
-        """
-        instance = WebOrderSettingsService.get_web_order_settings()
-        
-        with transaction.atomic():
-            # Handle many-to-many fields specially (business logic from original view)
-            m2m_fields = {}
-            regular_fields = {}
-            
-            for field, value in update_data.items():
-                if hasattr(instance, field):
-                    field_obj = instance._meta.get_field(field)
-                    if field_obj.many_to_many:
-                        m2m_fields[field] = value
-                    else:
-                        regular_fields[field] = value
-            
-            # Update regular fields
-            for field, value in regular_fields.items():
-                setattr(instance, field, value)
-            
-            # Save regular field changes
-            if regular_fields:
-                instance.full_clean()
-                instance.save(update_fields=list(regular_fields.keys()) if partial else None)
-            
-            # Update many-to-many fields
-            for field, value in m2m_fields.items():
-                getattr(instance, field).set(value)
-                
-        return instance
+# WebOrderSettingsService REMOVED - settings now managed directly on StoreLocation
 
 
 class TerminalService:

@@ -1,9 +1,9 @@
 from django.contrib import admin
 from mptt.admin import DraggableMPTTAdmin
-from core_backend.admin.mixins import ArchivingAdminMixin
+from core_backend.admin.mixins import ArchivingAdminMixin, TenantAdminMixin
 from .admin_mixins import CategoryDependencyAdminMixin, ProductTypeDependencyAdminMixin
 from .models import (
-    Category, Tax, Product, ProductType, 
+    Category, Tax, Product, ProductType,
     ModifierSet, ModifierOption, ProductModifierSet, ProductSpecificOption
 )
 
@@ -11,8 +11,13 @@ class ModifierOptionInline(admin.TabularInline):
     model = ModifierOption
     extra = 1
 
+    def get_queryset(self, request):
+        """Use all_objects manager to bypass TenantManager in admin"""
+        # Use all_objects to show all options, Django will filter by parent FK automatically
+        return ModifierOption.all_objects.all()
+
 @admin.register(ModifierSet)
-class ModifierSetAdmin(admin.ModelAdmin):
+class ModifierSetAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'internal_name', 'selection_type', 'min_selections', 'max_selections')
     search_fields = ('name', 'internal_name')
     list_filter = ('selection_type',)
@@ -25,7 +30,7 @@ class ProductModifierSetInline(admin.TabularInline):
     autocomplete_fields = ['modifier_set']
 
 @admin.register(ProductType)
-class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
+class ProductTypeAdmin(TenantAdminMixin, ProductTypeDependencyAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
         "inventory_behavior",
@@ -96,18 +101,11 @@ class ProductTypeAdmin(ProductTypeDependencyAdminMixin, ArchivingAdminMixin, adm
             },
         ),
     )
-    
-    def get_queryset(self, request):
-        """
-        Override to ensure archived product types are included in admin.
-        This fixes the issue where archived records don't appear when filtering by is_active=False.
-        """
-        # Explicitly include archived records using the ProductType manager
-        return ProductType.objects.with_archived()
+    # get_queryset is handled by TenantAdminMixin (uses all_objects) + ArchivingAdminMixin (includes archived)
 
 
 @admin.register(Category)
-class CategoryAdmin(CategoryDependencyAdminMixin, ArchivingAdminMixin, DraggableMPTTAdmin):
+class CategoryAdmin(TenantAdminMixin, CategoryDependencyAdminMixin, ArchivingAdminMixin, DraggableMPTTAdmin):
     list_display = (
         "tree_actions",
         "indented_title",
@@ -118,41 +116,40 @@ class CategoryAdmin(CategoryDependencyAdminMixin, ArchivingAdminMixin, Draggable
     search_fields = ("name",)
     list_filter = ("is_active", "parent")
     raw_id_fields = ("parent",)
-    
+
     def get_queryset(self, request):
         """
-        Override to ensure archived categories are included in admin.
-        This fixes MRO issues between ArchivingAdminMixin and DraggableMPTTAdmin.
+        Override to ensure archived categories from ALL tenants are included in admin.
+        Preserves MPTT tree functionality while using all_objects manager.
         """
-        # Get the MPTT queryset first to preserve tree functionality
-        queryset = super(DraggableMPTTAdmin, self).get_queryset(request)
-        
-        # Explicitly include archived records using the Category manager
-        queryset = Category.objects.with_archived().select_related('parent')
-        
+        # all_objects already includes archived records from all tenants
+        queryset = Category.all_objects.select_related('parent', 'tenant')
+
         return queryset
 
 
 @admin.register(Tax)
-class TaxAdmin(admin.ModelAdmin):
+class TaxAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ("name", "rate")
     search_fields = ("name",)
 
 
 @admin.register(Product)
-class ProductAdmin(ArchivingAdminMixin, admin.ModelAdmin):
+class ProductAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
     list_display = ("name", "product_type", "price", "category", "is_active", "is_public")
     list_filter = ("is_active", "is_public", "category", "product_type")
     search_fields = ("name", "description")
     list_editable = ("price", "is_public")  # Removed is_active from editable fields
     autocomplete_fields = ("category", "taxes")
     inlines = [ProductModifierSetInline]
-    
+
     def get_queryset(self, request):
-        """Optimize admin queryset"""
-        return super().get_queryset(request).select_related(
+        """Optimize admin queryset - show all tenants with optimizations"""
+        # all_objects already includes archived records, no need for with_archived()
+        return Product.all_objects.select_related(
             'category',
-            'product_type'
+            'product_type',
+            'tenant'
         ).prefetch_related(
             'modifier_sets__options'
         )
@@ -175,7 +172,7 @@ class ProductAdmin(ArchivingAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(ModifierOption)
-class ModifierOptionAdmin(admin.ModelAdmin):
+class ModifierOptionAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'modifier_set', 'price_delta', 'display_order')
     search_fields = ('name', 'modifier_set__name')
     list_filter = ('modifier_set',)
@@ -183,7 +180,7 @@ class ModifierOptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductSpecificOption)
-class ProductSpecificOptionAdmin(admin.ModelAdmin):
+class ProductSpecificOptionAdmin(TenantAdminMixin, admin.ModelAdmin):
     list_display = ('product_modifier_set', 'modifier_option')
     search_fields = ('product_modifier_set__product__name', 'modifier_option__name')
     raw_id_fields = ('product_modifier_set', 'modifier_option')

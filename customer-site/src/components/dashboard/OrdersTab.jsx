@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { useDashboard } from "@/contexts/DashboardContext";
 import { useCart } from "@/hooks/useCart";
 import { useNavigate } from "react-router-dom";
-import { cartAPI, ordersAPI } from "@/api/orders";
+import cartAPI from "@/api/cart";
+import ordersAPI from "@/api/orders";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { cartKeys } from "@/hooks/useCart";
@@ -206,7 +207,7 @@ const OrdersTab = () => {
 								</div>
 								<div className="flex-1 text-right">
 									<p className="font-medium">
-										{formatCurrency(order.grand_total || order.total_with_tip || order.total)}
+										{formatCurrency(order.total_collected)}
 									</p>
 								</div>
 							</div>

@@ -36,6 +36,7 @@ import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import reportsService from "@/services/api/reportsService";
 import { ExportDialog } from "@/components/reports/ExportDialog";
+import { useLocation as useStoreLocation } from "@/contexts/LocationContext";
 
 interface OperationsData {
 	hourly_patterns: Array<{
@@ -79,6 +80,7 @@ interface OperationsTabProps {
 }
 
 export function OperationsTab({ dateRange }: OperationsTabProps) {
+	const { selectedLocationId } = useStoreLocation();
 	const [data, setData] = useState<OperationsData | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -99,11 +101,20 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 				return;
 			}
 
+			const filters = selectedLocationId ? { location_id: selectedLocationId } : {};
 			const operationsData = await reportsService.generateOperationsReport(
 				startDate,
-				endDate
+				endDate,
+				filters
 			);
-			setData(operationsData as OperationsData);
+
+			// Check if this is a multi-location report and extract consolidated data
+			if (operationsData && typeof operationsData === 'object' && 'is_multi_location' in operationsData && operationsData.is_multi_location) {
+				// For multi-location reports, use the consolidated data
+				setData(operationsData.consolidated as OperationsData);
+			} else {
+				setData(operationsData as OperationsData);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
@@ -113,7 +124,7 @@ export function OperationsTab({ dateRange }: OperationsTabProps) {
 
 	useEffect(() => {
 		fetchOperationsData();
-	}, [dateRange]);
+	}, [dateRange, selectedLocationId]);
 
 	if (loading) {
 		return (

@@ -49,6 +49,8 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     # Customer app (new)
     path("api/customers/", include("customers.urls")),
+    # Cart app (customer-facing shopping cart)
+    path("api/cart/", include("cart.urls")),
     path("api/products/", include("products.urls")),
     path("api/inventory/", include("inventory.urls")),
     # *** IMPORTANT CHANGE HERE ***
@@ -58,6 +60,7 @@ urlpatterns = [
     path("api/payments/", include("payments.urls")),
     path("api/", include("discounts.urls")),
     path("api/settings/", include("settings.urls")),
+    path("api/terminals/", include("terminals.urls")),
     path("api/integrations/", include("integrations.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/reports/", include("reports.urls")),

@@ -5,6 +5,8 @@ import * as z from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import apiClient from "@/shared/lib/apiClient";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
+import { getStoreLocation, updateStoreLocation } from "../services/settingsService";
 
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -29,39 +31,52 @@ import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
 import { Badge } from "@/shared/components/ui/badge";
 
 const webOrderSettingsSchema = z.object({
-	enable_notifications: z.boolean(),
-	play_notification_sound: z.boolean(),
-	auto_print_receipt: z.boolean(),
-	auto_print_kitchen: z.boolean(),
-	web_receipt_terminals: z.array(z.string()).optional(),
+	accepts_web_orders: z.boolean(),
+	enable_web_notifications: z.boolean().nullable(),
+	play_web_notification_sound: z.boolean().nullable(),
+	auto_print_web_receipt: z.boolean().nullable(),
+	auto_print_web_kitchen: z.boolean().nullable(),
+	web_notification_terminals: z.array(z.string()).optional(),
 });
 
 export function WebOrderNotificationSettings() {
 	const queryClient = useQueryClient();
 	const { connectionStatus, isConnected } = useNotificationManager();
 
+	// Get location ID from terminal config
+	const locationId = terminalRegistrationService.getLocationId();
+
 	const { data, isLoading, isError } = useQuery({
-		queryKey: ["webOrderSettings"],
+		queryKey: ["webOrderSettings", locationId],
 		queryFn: async () => {
 			const terminalsRes = await apiClient.get(
-				"settings/terminal-registrations/"
+				`terminals/registrations/?store_location=${locationId}`
 			);
-			const webOrderSettingsRes = await apiClient.get(
-				"settings/web-order-settings/"
-			);
+			const locationRes = await getStoreLocation(locationId);
+
 			return {
-				terminals: terminalsRes.data.results,
-				settings: webOrderSettingsRes.data,
+				terminals: terminalsRes.data.results || terminalsRes.data,
+				location: locationRes,
 			};
 		},
+		enabled: !!locationId,
 	});
 
 	const { mutate: updateSettings, isPending: isUpdating } = useMutation({
-		mutationFn: (formData) =>
-			apiClient.patch("settings/web-order-settings/", formData),
+		mutationFn: (formData) => {
+			// Extract accepts_web_orders from formData
+			const { accepts_web_orders, ...overrides } = formData;
+
+			return updateStoreLocation(locationId, {
+				accepts_web_orders,
+				web_order_settings: {
+					overrides
+				}
+			});
+		},
 		onSuccess: () => {
 			toast.success("Settings updated successfully!");
-			queryClient.invalidateQueries({ queryKey: ["webOrderSettings"] });
+			queryClient.invalidateQueries({ queryKey: ["webOrderSettings", locationId] });
 		},
 		onError: (error) =>
 			toast.error("Failed to update settings.", { description: error.message }),
@@ -70,36 +85,40 @@ export function WebOrderNotificationSettings() {
 	const form = useForm({
 		resolver: zodResolver(webOrderSettingsSchema),
 		defaultValues: {
-			enable_notifications: false,
-			play_notification_sound: false,
-			auto_print_receipt: false,
-			auto_print_kitchen: false,
-			web_receipt_terminals: [],
+			accepts_web_orders: true,
+			enable_web_notifications: null,
+			play_web_notification_sound: null,
+			auto_print_web_receipt: null,
+			auto_print_web_kitchen: null,
+			web_notification_terminals: [],
 		},
 	});
 
 	useEffect(() => {
-		if (data) {
-			form.reset({
-				enable_notifications: data.settings.enable_notifications,
-				play_notification_sound: data.settings.play_notification_sound,
-				auto_print_receipt: data.settings.auto_print_receipt,
-				auto_print_kitchen: data.settings.auto_print_kitchen,
-				web_receipt_terminals:
-					data.settings.web_receipt_terminals?.map(
-						(terminal) => terminal.device_id
-					) || [],
-			});
+		if (data?.location) {
+			const overrides = data.location.web_order_settings?.overrides || {};
+
+			const formValues = {
+				accepts_web_orders: data.location.accepts_web_orders ?? true,
+				enable_web_notifications: overrides.enable_web_notifications ?? null,
+				play_web_notification_sound: overrides.play_web_notification_sound ?? null,
+				auto_print_web_receipt: overrides.auto_print_web_receipt ?? null,
+				auto_print_web_kitchen: overrides.auto_print_web_kitchen ?? null,
+				web_notification_terminals: overrides.web_notification_terminals || [],
+			};
+
+			form.reset(formValues);
 		}
-	}, [data, form]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [data]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const onSubmit = (formData) => {
 		// Find the selected terminal object for receipt printing
 		if (
-			formData.web_receipt_terminals &&
-			formData.web_receipt_terminals.length > 0
+			formData.web_notification_terminals &&
+			formData.web_notification_terminals.length > 0
 		) {
-			const selectedDeviceId = formData.web_receipt_terminals[0]; // Assuming one for now
+			const selectedDeviceId = formData.web_notification_terminals[0]; // Assuming one for now
 			const selectedTerminal = data.terminals.find(
 				(t) => t.device_id === selectedDeviceId
 			);
@@ -191,18 +210,51 @@ export function WebOrderNotificationSettings() {
 						<CardContent className="space-y-4">
 							<FormField
 								control={form.control}
-								name="enable_notifications"
+								name="accepts_web_orders"
+								render={({ field }) => (
+									<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/30">
+										<div className="space-y-0.5">
+											<FormLabel className="text-base font-semibold">
+												Accepts Web Orders
+											</FormLabel>
+											<FormDescription className="text-xs text-muted-foreground">
+												Whether this location accepts online orders for pickup/delivery
+											</FormDescription>
+										</div>
+										<FormControl>
+											<Switch
+												checked={field.value}
+												onCheckedChange={field.onChange}
+											/>
+										</FormControl>
+									</FormItem>
+								)}
+							/>
+							<FormField
+								control={form.control}
+								name="enable_web_notifications"
 								render={({ field }) => (
 									<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
 										<div className="space-y-0.5">
 											<FormLabel className="text-base">
 												Enable Notifications
 											</FormLabel>
+											<FormDescription className="text-xs text-muted-foreground">
+												{field.value === null && data?.location?.web_order_settings ? (
+													<span className="italic">
+														Using tenant default: {data.location.web_order_settings.enable_notifications ? 'Enabled' : 'Disabled'}
+													</span>
+												) : field.value !== null ? (
+													<span className="font-medium text-primary">
+														Location override active
+													</span>
+												) : null}
+											</FormDescription>
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
+												checked={field.value ?? data?.location?.web_order_settings?.enable_notifications ?? false}
+												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
 									</FormItem>
@@ -210,16 +262,27 @@ export function WebOrderNotificationSettings() {
 							/>
 							<FormField
 								control={form.control}
-								name="play_notification_sound"
+								name="play_web_notification_sound"
 								render={({ field }) => (
 									<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
 										<div className="space-y-0.5">
 											<FormLabel className="text-base">Play Sound</FormLabel>
+											<FormDescription className="text-xs text-muted-foreground">
+												{field.value === null && data?.location?.web_order_settings ? (
+													<span className="italic">
+														Using tenant default: {data.location.web_order_settings.play_notification_sound ? 'Enabled' : 'Disabled'}
+													</span>
+												) : field.value !== null ? (
+													<span className="font-medium text-primary">
+														Location override active
+													</span>
+												) : null}
+											</FormDescription>
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
+												checked={field.value ?? data?.location?.web_order_settings?.play_notification_sound ?? false}
+												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
 									</FormItem>
@@ -227,18 +290,29 @@ export function WebOrderNotificationSettings() {
 							/>
 							<FormField
 								control={form.control}
-								name="auto_print_receipt"
+								name="auto_print_web_receipt"
 								render={({ field }) => (
 									<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
 										<div className="space-y-0.5">
 											<FormLabel className="text-base">
 												Auto-Print Customer Receipts
 											</FormLabel>
+											<FormDescription className="text-xs text-muted-foreground">
+												{field.value === null && data?.location?.web_order_settings ? (
+													<span className="italic">
+														Using tenant default: {data.location.web_order_settings.auto_print_receipt ? 'Enabled' : 'Disabled'}
+													</span>
+												) : field.value !== null ? (
+													<span className="font-medium text-primary">
+														Location override active
+													</span>
+												) : null}
+											</FormDescription>
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
+												checked={field.value ?? data?.location?.web_order_settings?.auto_print_receipt ?? false}
+												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
 									</FormItem>
@@ -246,18 +320,29 @@ export function WebOrderNotificationSettings() {
 							/>
 							<FormField
 								control={form.control}
-								name="auto_print_kitchen"
+								name="auto_print_web_kitchen"
 								render={({ field }) => (
 									<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
 										<div className="space-y-0.5">
 											<FormLabel className="text-base">
 												Auto-Print Kitchen Tickets
 											</FormLabel>
+											<FormDescription className="text-xs text-muted-foreground">
+												{field.value === null && data?.location?.web_order_settings ? (
+													<span className="italic">
+														Using tenant default: {data.location.web_order_settings.auto_print_kitchen ? 'Enabled' : 'Disabled'}
+													</span>
+												) : field.value !== null ? (
+													<span className="font-medium text-primary">
+														Location override active
+													</span>
+												) : null}
+											</FormDescription>
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value}
-												onCheckedChange={field.onChange}
+												checked={field.value ?? data?.location?.web_order_settings?.auto_print_kitchen ?? false}
+												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
 									</FormItem>
@@ -281,7 +366,7 @@ export function WebOrderNotificationSettings() {
 						</CardHeader>
 						<CardContent>
 							<Controller
-								name="web_receipt_terminals"
+								name="web_notification_terminals"
 								control={form.control}
 								render={({ field }) => (
 									<div className="space-y-2">

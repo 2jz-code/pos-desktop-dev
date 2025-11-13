@@ -1,6 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction, models
 from django.db.models import Sum
+from django.utils import timezone
 from .models import (
     Payment,
     PaymentTransaction,
@@ -103,7 +104,9 @@ class PaymentService:
         payment.status = target_status
         payment.save(update_fields=["status", "updated_at"])
 
-        logger.info(f"Payment {payment.id}: Status transition {old_status} -> {target_status}")
+        logger.info(
+            f"Payment {payment.id}: Status transition {old_status} -> {target_status}"
+        )
         return payment
 
     @staticmethod
@@ -128,6 +131,8 @@ class PaymentService:
             defaults={
                 "total_amount_due": order.grand_total,
                 "status": Payment.PaymentStatus.UNPAID,
+                "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
             },
         )
 
@@ -168,10 +173,23 @@ class PaymentService:
         # CRITICAL FIX: Lock the payment FIRST to prevent race conditions between
         # frontend capture and webhook processing
         payment = Payment.objects.select_for_update().get(id=transaction.payment_id)
+        # CRITICAL FIX: Lock the payment FIRST to prevent race conditions between
+        # frontend capture and webhook processing
+        payment = Payment.objects.select_for_update().get(id=transaction.payment_id)
 
         # Idempotency Check AFTER locking: If payment is already PAID, skip all processing
         # This handles the race condition where webhook arrives immediately after frontend capture
+        # Idempotency Check AFTER locking: If payment is already PAID, skip all processing
+        # This handles the race condition where webhook arrives immediately after frontend capture
         if payment.status == Payment.PaymentStatus.PAID:
+            logger.info(
+                f"Payment {payment.id} is already marked as PAID. "
+                f"Skipping confirmation for transaction {transaction.id} (likely webhook arrived after frontend capture)."
+            )
+            # Ensure transaction is marked successful even if payment was already settled
+            if transaction.status != PaymentTransaction.TransactionStatus.SUCCESSFUL:
+                transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+                transaction.save(update_fields=["status"])
             logger.info(
                 f"Payment {payment.id} is already marked as PAID. "
                 f"Skipping confirmation for transaction {transaction.id} (likely webhook arrived after frontend capture)."
@@ -192,10 +210,21 @@ class PaymentService:
             # Mark the transaction as successful
             transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
             transaction.save(update_fields=["status"])
+        # Check transaction status - if already successful, this might be a retry
+        if transaction.status == PaymentTransaction.TransactionStatus.SUCCESSFUL:
+            logger.info(
+                f"Transaction {transaction.id} already marked as SUCCESSFUL. "
+                f"Recalculating payment {payment.id} to ensure consistency."
+            )
+        else:
+            # Mark the transaction as successful
+            transaction.status = PaymentTransaction.TransactionStatus.SUCCESSFUL
+            transaction.save(update_fields=["status"])
 
         # Recalculate amounts
         updated_payment = PaymentService._recalculate_payment_amounts(payment)
 
+        # Determine new status based on amounts - ONLY transition if status actually needs to change
         # Determine new status based on amounts - ONLY transition if status actually needs to change
         if updated_payment.amount_paid >= updated_payment.total_amount_due:
             # Check if already PAID to avoid invalid transition
@@ -203,11 +232,28 @@ class PaymentService:
                 PaymentService._transition_payment_status(updated_payment, "PAID")
                 PaymentService._handle_payment_completion(updated_payment)
             else:
-                logger.info(f"Payment {payment.id} already in PAID status. No transition needed.")
+                logger.info(
+                    f"Payment {payment.id} already in PAID status. No transition needed."
+                )
+            # Check if already PAID to avoid invalid transition
+            if updated_payment.status != Payment.PaymentStatus.PAID:
+                PaymentService._transition_payment_status(updated_payment, "PAID")
+                PaymentService._handle_payment_completion(updated_payment)
+            else:
+                logger.info(
+                    f"Payment {payment.id} already in PAID status. No transition needed."
+                )
         elif updated_payment.amount_paid > 0:
             # Only transition if not already partially paid
             if updated_payment.status != Payment.PaymentStatus.PARTIALLY_PAID:
-                PaymentService._transition_payment_status(updated_payment, "PARTIALLY_PAID")
+                PaymentService._transition_payment_status(
+                    updated_payment, "PARTIALLY_PAID"
+                )
+            # Only transition if not already partially paid
+            if updated_payment.status != Payment.PaymentStatus.PARTIALLY_PAID:
+                PaymentService._transition_payment_status(
+                    updated_payment, "PARTIALLY_PAID"
+                )
 
         return updated_payment
 
@@ -325,6 +371,10 @@ class PaymentService:
 
         CRITICAL: This method is called within a database transaction.
         Heavy operations (inventory, emails) are deferred until AFTER transaction commits.
+        Updates order status and schedules async post-completion tasks.
+
+        CRITICAL: This method is called within a database transaction.
+        Heavy operations (inventory, emails) are deferred until AFTER transaction commits.
 
         Args:
             payment: Completed payment
@@ -343,11 +393,39 @@ class PaymentService:
             """Deferred signal emission - runs after transaction commits"""
             try:
                 # Emit payment_completed signal for event-driven architecture
-                payment_completed.send(sender=PaymentService, payment=payment, order=order)
-                logger.info(f"Payment completion signals emitted for payment {payment.id}")
+                payment_completed.send(
+                    sender=PaymentService, payment=payment, order=order
+                )
+                logger.info(
+                    f"Payment completion signals emitted for payment {payment.id}"
+                )
             except Exception as e:
                 # Log but don't raise - payment is already committed
-                logger.error(f"Error in post-payment signal handlers for payment {payment.id}: {e}")
+                logger.error(
+                    f"Error in post-payment signal handlers for payment {payment.id}: {e}"
+                )
+
+        db_transaction.on_commit(emit_payment_signals)
+        # PERFORMANCE FIX: Defer signal emission until AFTER transaction commits
+        # This prevents inventory processing and email sending from blocking the payment transaction
+        # Using transaction.on_commit ensures signals only fire if the payment successfully commits
+        from django.db import transaction as db_transaction
+
+        def emit_payment_signals():
+            """Deferred signal emission - runs after transaction commits"""
+            try:
+                # Emit payment_completed signal for event-driven architecture
+                payment_completed.send(
+                    sender=PaymentService, payment=payment, order=order
+                )
+                logger.info(
+                    f"Payment completion signals emitted for payment {payment.id}"
+                )
+            except Exception as e:
+                # Log but don't raise - payment is already committed
+                logger.error(
+                    f"Error in post-payment signal handlers for payment {payment.id}: {e}"
+                )
 
         db_transaction.on_commit(emit_payment_signals)
 
@@ -366,7 +444,9 @@ class PaymentService:
             order=order,
             defaults={
                 "total_amount_due": order.grand_total,
-            }
+                "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
+            },
         )
         # If the order total has changed since the payment was initiated, update it.
         if not created and payment.total_amount_due != order.grand_total:
@@ -414,6 +494,7 @@ class PaymentService:
             if target_status == Payment.PaymentStatus.PAID:
                 PaymentService._handle_payment_completion(payment)
                 # Note: _handle_payment_completion now defers signals via transaction.on_commit
+                # Note: _handle_payment_completion now defers signals via transaction.on_commit
 
         return payment
 
@@ -448,10 +529,32 @@ class PaymentService:
         The main entry point for processing a payment. It creates a transaction,
         selects a strategy, executes it, and updates the overall payment status.
         The full, updated Payment object is returned.
+
+        Uses savepoints to preserve FAILED transaction records for audit trail
+        while rolling back any partial changes from failed payment strategies.
         """
+        # CRITICAL: Validate order has items before processing payment
+        if not order.items.exists():
+            raise ValueError("Cannot process payment for an empty order with no items")
+
         payment = PaymentService.get_or_create_payment(order)
         # Lock the payment row for the duration of this transaction
         payment = Payment.objects.select_for_update().get(id=payment.id)
+
+        # CRITICAL FIX: Prevent duplicate payment processing (race condition protection)
+        # If payment is already PAID, reject duplicate attempts (e.g., double-click on pay button)
+        if (
+            payment.status == Payment.PaymentStatus.PAID
+            and payment.amount_paid >= payment.total_amount_due
+        ):
+            logger.warning(
+                f"Payment {payment.id} is already PAID (${payment.amount_paid}). "
+                f"Rejecting duplicate payment attempt for ${amount}."
+            )
+            raise ValueError(
+                f"Payment for order {order.order_number} is already completed. "
+                f"Cannot process duplicate payment."
+            )
 
         surcharge = Decimal("0.00")
         if method in [
@@ -460,24 +563,66 @@ class PaymentService:
         ]:
             from settings.config import app_settings
 
-            surcharge = amount * app_settings.surcharge_percentage
+            # Ensure both operands are Decimal to avoid float/Decimal TypeError
+            amount_decimal = (
+                Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+            )
+            surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
             surcharge = surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-        transaction = PaymentTransaction.objects.create(
+        # Extract tip from kwargs if provided
+        tip = kwargs.get("tip", Decimal("0.00"))
+        if tip and not isinstance(tip, Decimal):
+            tip = Decimal(str(tip))
+
+        payment_transaction = PaymentTransaction.objects.create(
             payment=payment,
             amount=amount,
             method=method,
             surcharge=surcharge,
+            tip=tip,
+            tenant=payment.tenant,
         )
 
-        strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
-        strategy.process(transaction, **kwargs)
+        # AUDIT TRAIL FIX: Use savepoint to preserve failed transaction records
+        # Savepoint allows partial rollback while keeping the transaction record for audit
+        sid = transaction.savepoint()
+        try:
+            strategy = PaymentStrategyFactory.get_strategy(method, provider=provider)
+            strategy.process(payment_transaction, **kwargs)
 
-        # After the strategy runs, we need to update the parent payment's status.
-        # This will recalculate totals and set the correct status (e.g., PARTIALLY_PAID)
-        updated_payment = PaymentService._update_payment_status(payment)
+            # Strategy succeeded - commit the savepoint and update payment status
+            transaction.savepoint_commit(sid)
+            updated_payment = PaymentService._update_payment_status(payment)
+            return updated_payment
 
-        return updated_payment
+        except Exception as e:
+            # Payment strategy failed - rollback any changes made by the strategy
+            transaction.savepoint_rollback(sid)
+
+            # Now mark the transaction as FAILED (this will be committed with the outer transaction)
+            payment_transaction.status = PaymentTransaction.TransactionStatus.FAILED
+            payment_transaction.provider_response = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "timestamp": timezone.now().isoformat(),
+                "method": method,
+                "provider": provider,
+            }
+            payment_transaction.save(update_fields=["status", "provider_response"])
+
+            logger.error(
+                f"Payment transaction {payment_transaction.id} FAILED for order {order.order_number}. "
+                f"Method: {method}, Error: {str(e)}"
+            )
+
+            # Update payment status (will go back to UNPAID if no successful transactions exist)
+            updated_payment = PaymentService._update_payment_status(payment)
+
+            # DON'T re-raise - return payment with UNPAID status and FAILED transaction for audit
+            # Caller should check payment.status to see if payment succeeded
+            # This preserves the audit trail while allowing normal control flow
+            return updated_payment
 
     @staticmethod
     def _get_active_terminal_strategy() -> TerminalPaymentStrategy:
@@ -617,6 +762,9 @@ class PaymentService:
 
         DEPRECATED: Use confirm_successful_transaction instead for consistent
         idempotency handling and deferred signal processing.
+
+        DEPRECATED: Use confirm_successful_transaction instead for consistent
+        idempotency handling and deferred signal processing.
         """
         from decimal import Decimal
 
@@ -650,6 +798,7 @@ class PaymentService:
 
             # Handle payment completion (signals, etc.)
             # Note: _handle_payment_completion now defers heavy operations via transaction.on_commit
+            # Note: _handle_payment_completion now defers heavy operations via transaction.on_commit
             PaymentService._handle_payment_completion(payment)
         elif payment.amount_paid > 0:
             payment.status = Payment.PaymentStatus.PARTIALLY_PAID
@@ -682,9 +831,11 @@ class PaymentService:
             # No transaction_id or provider_response as it's internal
             refund_reason=f"Internal refund of {amount_to_refund}",
             refunded_amount=amount_to_refund,  # Mark this new transaction as refunded this amount
+            tenant=self.payment.tenant,
         )
 
-        PaymentService._recalculate_payment_amounts(self.payment)
+        # Update payment status to reflect refund (uses legacy method for backward compatibility)
+        PaymentService._update_payment_status(self.payment)
         return self.payment
 
     @transaction.atomic
@@ -772,7 +923,9 @@ class PaymentService:
         description = f"Order payment for {user_name}"
 
         intent_data = {
-            "amount": int(total_amount_with_surcharge_and_tip * 100),  # Convert to cents
+            "amount": int(
+                total_amount_with_surcharge_and_tip * 100
+            ),  # Convert to cents
             "currency": currency,
             "automatic_payment_methods": {"enabled": True},
             "description": description,
@@ -797,6 +950,7 @@ class PaymentService:
             method=PaymentTransaction.PaymentMethod.CARD_ONLINE,
             status=PaymentTransaction.TransactionStatus.PENDING,
             transaction_id=intent.id,
+            tenant=payment.tenant,
         )
 
         # Return the necessary details to the view
@@ -816,7 +970,11 @@ class PaymentService:
         """
         from settings.config import app_settings
 
-        surcharge = amount * app_settings.surcharge_percentage
+        # Ensure both operands are Decimal to avoid float/Decimal TypeError
+        amount_decimal = (
+            Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+        )
+        surcharge = amount_decimal * Decimal(str(app_settings.surcharge_percentage))
         return surcharge.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @staticmethod
@@ -837,12 +995,17 @@ class PaymentService:
             ValueError: If platform_id is invalid or order is already paid
         """
         # Validate platform_id
-        valid_platforms = [PaymentTransaction.PaymentMethod.DOORDASH, PaymentTransaction.PaymentMethod.UBER_EATS]
+        valid_platforms = [
+            PaymentTransaction.PaymentMethod.DOORDASH,
+            PaymentTransaction.PaymentMethod.UBER_EATS,
+        ]
         if platform_id not in valid_platforms:
-            raise ValueError(f"Invalid platform_id: {platform_id}. Must be one of {valid_platforms}")
+            raise ValueError(
+                f"Invalid platform_id: {platform_id}. Must be one of {valid_platforms}"
+            )
 
         # Check if order already has a payment
-        if hasattr(order, 'payment_details') and order.payment_details:
+        if hasattr(order, "payment_details") and order.payment_details:
             existing_payment = order.payment_details
             if existing_payment.status == Payment.PaymentStatus.PAID:
                 raise ValueError(f"Order {order.order_number} is already paid")
@@ -854,6 +1017,8 @@ class PaymentService:
                 "total_amount_due": order.grand_total,
                 "amount_paid": order.grand_total,
                 "status": Payment.PaymentStatus.PAID,
+                "tenant": order.tenant,
+                "store_location": order.store_location,  # Denormalize from order for fast location queries
             },
         )
 
@@ -875,23 +1040,22 @@ class PaymentService:
             provider_response={
                 "manual_entry": True,
                 "platform": platform_id,
-                "timestamp": payment.created_at.isoformat()
+                "timestamp": payment.created_at.isoformat(),
             },
+            tenant=payment.tenant,
         )
 
         # Update order status
         order.status = Order.OrderStatus.COMPLETED
         order.payment_status = Order.PaymentStatus.PAID
         order.order_type = platform_id
-        order.save(update_fields=['status', 'payment_status', 'order_type'])
+        order.save(update_fields=["status", "payment_status", "order_type"])
 
         # Emit payment completed signal
-        payment_completed.send(
-            sender=PaymentService,
-            payment=payment,
-            order=order
+        payment_completed.send(sender=PaymentService, payment=payment, order=order)
+
+        logger.info(
+            f"Delivery payment created for order {order.order_number} via {platform_id}"
         )
 
-        logger.info(f"Delivery payment created for order {order.order_number} via {platform_id}")
-        
         return payment
