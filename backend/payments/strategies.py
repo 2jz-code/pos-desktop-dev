@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import transaction
 
 from .models import Payment, PaymentTransaction, GiftCard
+from .money import to_minor
 from orders.models import Order
 from settings.models import TerminalLocation, StoreLocation
 import logging
@@ -209,7 +210,12 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
             tenant=payment.tenant,
         )
 
-        amount_cents = int(total_amount_for_intent * 100)
+        currency_code = (
+            getattr(payment.order, "currency", None)
+            or getattr(payment, "currency", None)
+            or "USD"
+        ).upper()
+        amount_cents = to_minor(currency_code, total_amount_for_intent)
         metadata = {
             "source": "terminal",
             "transaction_id": str(transaction.id),
@@ -219,7 +225,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 
         intent = stripe.PaymentIntent.create(
             amount=amount_cents,
-            currency="usd",
+            currency=currency_code.lower(),
             payment_method_types=["card_present"],
             capture_method="manual",
             metadata=metadata,
@@ -330,6 +336,10 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
         ):
             charge_id_to_refund = transaction.provider_response.get("latest_charge")
 
+        currency_code = (
+            getattr(transaction.payment.order, "currency", None) or "USD"
+        ).upper()
+
         try:
             # If the charge ID wasn't in the stored response, fetch the Payment Intent from Stripe.
             if not charge_id_to_refund:
@@ -345,7 +355,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
             # Amount already includes tip + surcharge from the refund calculation
             return stripe.Refund.create(
                 charge=charge_id_to_refund,
-                amount=int(amount * 100),
+                amount=to_minor(currency_code, amount),
                 reason=reason,
             )
         except stripe.error.StripeError as e:
@@ -401,12 +411,18 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
                 "Clover API not initialized - check merchant ID configuration"
             )
 
+        currency_code = (
+            getattr(transaction.payment.order, "currency", None) or "USD"
+        ).upper()
+
         try:
-            # Calculate amounts in cents
-            amount_cents = int(transaction.amount * 100)
-            tip_cents = int(transaction.tip * 100) if transaction.tip else 0
+            # Calculate amounts in cents using deterministic minor-unit helper
+            amount_cents = to_minor(currency_code, transaction.amount)
+            tip_cents = to_minor(currency_code, transaction.tip) if transaction.tip else 0
             surcharge_cents = (
-                int(transaction.surcharge * 100) if transaction.surcharge else 0
+                to_minor(currency_code, transaction.surcharge)
+                if transaction.surcharge
+                else 0
             )
 
             # Create payment note
@@ -461,9 +477,13 @@ class CloverTerminalStrategy(TerminalPaymentStrategy):
         if not transaction.transaction_id:
             raise ValueError("No Clover payment ID found for refund")
 
+        currency_code = (
+            getattr(transaction.payment.order, "currency", None) or "USD"
+        ).upper()
+
         try:
             # Amount already includes tip + surcharge from the refund calculation
-            amount_cents = int(amount * 100)
+            amount_cents = to_minor(currency_code, amount)
 
             # Create refund in Clover
             clover_refund = self.clover_api.refund_payment(
@@ -526,7 +546,8 @@ class StripeOnlineStrategy(PaymentStrategy):
             )
 
         order = transaction.payment.order
-        amount_cents = int(transaction.amount * 100)
+        currency_code = (getattr(order, "currency", None) or "USD").upper()
+        amount_cents = to_minor(currency_code, transaction.amount)
         metadata = {
             "order_id": str(order.id),
             "transaction_id": str(transaction.id),
@@ -536,7 +557,7 @@ class StripeOnlineStrategy(PaymentStrategy):
             if payment_method_id:
                 intent = stripe.PaymentIntent.create(
                     amount=amount_cents,
-                    currency="usd",
+                    currency=currency_code.lower(),
                     payment_method=payment_method_id,
                     confirm=True,
                     automatic_payment_methods={
@@ -595,8 +616,11 @@ class StripeOnlineStrategy(PaymentStrategy):
         if not transaction.transaction_id:
             raise ValueError("Stripe transaction ID is missing for refund.")
 
+        currency_code = (
+            getattr(transaction.payment.order, "currency", None) or "USD"
+        ).upper()
         # Amount already includes tip + surcharge from the refund calculation
-        amount_cents = int(amount * 100)
+        amount_cents = to_minor(currency_code, amount)
 
         try:
             # Create the refund - webhook will handle database updates

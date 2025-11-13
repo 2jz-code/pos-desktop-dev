@@ -19,6 +19,7 @@ from .base import (
     PAYMENT_MESSAGES,
 )
 from ..models import Payment, PaymentTransaction
+from ..money import to_minor
 from orders.models import Order
 
 logger = logging.getLogger(__name__)
@@ -124,12 +125,14 @@ class CreateGuestPaymentIntentView(
             # Convert amount and tip to Decimal for consistency
             amount_decimal = self.validate_amount(amount)
             tip_decimal = self.validate_amount(tip) if tip else Decimal("0.00")
+            currency_code = (currency or "USD").upper()
             logger.info(f"[CreateGuestPaymentIntent] Amount validated: {amount_decimal}, Tip: {tip_decimal}")
 
             # Calculate surcharge for online card payments
             from ..services import PaymentService
-            surcharge = PaymentService.calculate_surcharge(amount_decimal)
+            surcharge = PaymentService.calculate_surcharge(amount_decimal, currency_code)
             total_amount_with_surcharge_and_tip = amount_decimal + tip_decimal + surcharge
+            total_amount_minor = to_minor(currency_code, total_amount_with_surcharge_and_tip)
             logger.info(f"[CreateGuestPaymentIntent] Surcharge calculated: {surcharge}, Total with tip and surcharge: {total_amount_with_surcharge_and_tip}")
 
             # Create or get payment object
@@ -160,8 +163,8 @@ class CreateGuestPaymentIntentView(
             stripe.api_key = settings.STRIPE_SECRET_KEY
 
             intent_data = {
-                "amount": int(total_amount_with_surcharge_and_tip * 100),  # Convert to cents
-                "currency": currency,
+                "amount": total_amount_minor,
+                "currency": currency_code.lower(),
                 "automatic_payment_methods": {
                     "enabled": True,
                 },

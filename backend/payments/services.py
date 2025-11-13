@@ -523,13 +523,14 @@ class PaymentService:
                 f"Cannot process duplicate payment."
             )
 
+        currency_code = (getattr(order, "currency", None) or "USD").upper()
         surcharge = Decimal("0.00")
         if method in [
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             PaymentTransaction.PaymentMethod.CARD_ONLINE,
         ]:
             # Use centralized surcharge calculation with banker's rounding
-            surcharge = PaymentService.calculate_surcharge(amount)
+            surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # Extract tip from kwargs if provided
         tip = kwargs.get("tip", Decimal("0.00"))
@@ -624,8 +625,9 @@ class PaymentService:
 
         payment = PaymentService.initiate_payment_attempt(order=order)
 
+        currency_code = (getattr(order, "currency", None) or "USD").upper()
         # Calculate surcharge on the backend based on the base amount of the transaction.
-        surcharge = PaymentService.calculate_surcharge(amount)
+        surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # The strategy is responsible for creating the transaction and handling the tip
         return active_strategy.create_payment_intent(
@@ -1127,12 +1129,16 @@ class PaymentService:
         Creates a Stripe Payment Intent for an online payment for an authenticated user.
         Includes surcharge calculation for card payments and optional tip.
         """
+        # Normalize currency for downstream helpers/Stripe
+        currency_code = (currency or "USD").upper()
+
         # Convert tip to Decimal if provided
         tip_decimal = tip if tip else Decimal("0.00")
 
         # Calculate surcharge for online card payments
-        surcharge = PaymentService.calculate_surcharge(amount)
+        surcharge = PaymentService.calculate_surcharge(amount, currency_code)
         total_amount_with_surcharge_and_tip = amount + tip_decimal + surcharge
+        total_amount_minor = to_minor(currency_code, total_amount_with_surcharge_and_tip)
 
         # Use the existing service method to get or create the payment record
         payment = PaymentService.get_or_create_payment(order)
@@ -1152,10 +1158,8 @@ class PaymentService:
         description = f"Order payment for {user_name}"
 
         intent_data = {
-            "amount": int(
-                total_amount_with_surcharge_and_tip * 100
-            ),  # Convert to cents
-            "currency": currency,
+            "amount": total_amount_minor,
+            "currency": currency_code.lower(),
             "automatic_payment_methods": {"enabled": True},
             "description": description,
             "receipt_email": user.email,

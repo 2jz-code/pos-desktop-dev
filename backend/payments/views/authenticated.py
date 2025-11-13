@@ -21,6 +21,7 @@ from orders.serializers import UnifiedOrderSerializer
 from orders.models import Order
 from customers.authentication import CustomerCookieJWTAuthentication
 from core_backend.base import BaseViewSet
+from core_backend.base.filters import BaseFilterSet
 from core_backend.base.mixins import TenantScopedQuerysetMixin, FieldsetQueryParamsMixin
 from core_backend.pagination import StandardPagination
 from .base import (
@@ -45,7 +46,7 @@ from ..services import PaymentService
 logger = logging.getLogger(__name__)
 
 
-class PaymentFilter(django_filters.FilterSet):
+class PaymentFilter(BaseFilterSet):
     """Custom filter for payments with support for filtering by payment method, store location, and date range."""
 
     method = django_filters.CharFilter(method="filter_by_method")
@@ -55,7 +56,7 @@ class PaymentFilter(django_filters.FilterSet):
         model = Payment
         fields = {
             "status": ["exact"],
-            "created_at": ["gte", "lte", "exact", "gt", "lt"],  # Support date range filtering
+            "created_at": ["gte", "lte", "exact", "gt", "lt"],  # Support date range filtering with FlexibleDateTimeFilter
         }
 
     def filter_by_method(self, queryset, name, value):

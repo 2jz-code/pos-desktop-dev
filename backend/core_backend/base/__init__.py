@@ -11,7 +11,9 @@ from .serializers import (
     TimestampedSerializer
 )
 from .mixins import OptimizedQuerysetMixin, ArchivingViewSetMixin, SerializerOptimizedMixin
-from .filters import BaseFilterSet, ArchivingFilterSet
+from .filters import BaseFilterSet, ArchivingFilterSet, FlexibleDateTimeFilter
+# Note: ProjectFilterBackend is not imported here to avoid circular imports
+# It can be imported directly from filter_backends module when needed
 
 __all__ = [
     # ViewSets
@@ -31,4 +33,5 @@ __all__ = [
     # Filters
     'BaseFilterSet',
     'ArchivingFilterSet',
+    'FlexibleDateTimeFilter',
 ]

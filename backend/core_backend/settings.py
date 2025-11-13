@@ -451,7 +451,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    "DEFAULT_FILTER_BACKENDS": (["django_filters.rest_framework.DjangoFilterBackend"]),
+    "DEFAULT_FILTER_BACKENDS": (["core_backend.filter_backends.ProjectFilterBackend"]),
     # Removed global pagination - only applied to specific ViewSets
 }
 

@@ -63,6 +63,7 @@ interface Order {
 	total_with_tip: number;
 	item_count: number;
 	created_at: string;
+	completed_at: string | null;
 }
 
 export default function OrdersPage() {
@@ -126,23 +127,23 @@ export default function OrdersPage() {
 		refetch
 	});
 
-	// Date range state
+	// Date range state - Shows orders created OR completed in range
 	const [startDate, setStartDate] = useState<Date | undefined>(() => {
-		return filters.created_at__gte ? new Date(filters.created_at__gte) : undefined;
+		return filters.date_range_gte ? new Date(filters.date_range_gte) : undefined;
 	});
 	const [endDate, setEndDate] = useState<Date | undefined>(() => {
-		return filters.created_at__lte ? new Date(filters.created_at__lte) : undefined;
+		return filters.date_range_lte ? new Date(filters.date_range_lte) : undefined;
 	});
 
-	// Handle date changes
+	// Handle date changes - Uses OR logic (created OR completed)
 	const handleStartDateChange = (date: Date | undefined) => {
 		setStartDate(date);
-		handleFilterChange('created_at__gte', date ? format(date, 'yyyy-MM-dd') : '');
+		handleFilterChange('date_range_gte', date ? format(date, 'yyyy-MM-dd') : '');
 	};
 
 	const handleEndDateChange = (date: Date | undefined) => {
 		setEndDate(date);
-		handleFilterChange('created_at__lte', date ? format(date, 'yyyy-MM-dd') : '');
+		handleFilterChange('date_range_lte', date ? format(date, 'yyyy-MM-dd') : '');
 	};
 
 	const handleRefresh = async () => {
@@ -200,14 +201,15 @@ export default function OrdersPage() {
 
 	// Conditionally include location column when viewing all locations
 	const headers = [
-		{ label: "Order", className: "pl-6 w-[200px]" },
-		{ label: "Source", className: "w-[120px]" },
-		...((!selectedLocationId && locations.length > 1) ? [{ label: "Location", className: "w-[140px]" }] : []),
-		{ label: "Customer", className: "w-[160px]" },
-		{ label: "Status", className: "w-[160px]" },
-		{ label: "Amount", className: "text-right w-[120px]" },
-		{ label: "Time", className: "w-[140px]" },
-		{ label: "", className: "text-right pr-6 w-[100px]" },
+		{ label: "Order", className: "pl-6 w-[180px]" },
+		{ label: "Source", className: "w-[100px]" },
+		...((!selectedLocationId && locations.length > 1) ? [{ label: "Location", className: "w-[120px]" }] : []),
+		{ label: "Customer", className: "w-[140px]" },
+		{ label: "Status", className: "w-[140px]" },
+		{ label: "Amount", className: "text-right w-[100px]" },
+		{ label: "Created", className: "w-[130px]" },
+		{ label: "Completed", className: "w-[130px]" },
+		{ label: "", className: "text-right pr-6 w-[80px]" },
 	];
 
 	const renderOrderRow = (order: Order) => (
@@ -279,16 +281,34 @@ export default function OrdersPage() {
 				</span>
 			</TableCell>
 
-			{/* Time - RELATIVE */}
+			{/* Created Time - When order was placed */}
 			<TableCell className="py-3">
 				<div className="flex flex-col gap-0.5">
-					<span className="text-sm text-muted-foreground">
-						{formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
-					</span>
 					<span className="text-xs text-muted-foreground/70">
-						{format(new Date(order.created_at), "MMM d, h:mm a")}
+						{format(new Date(order.created_at), "MMM d")}
+					</span>
+					<span className="text-xs text-muted-foreground">
+						{format(new Date(order.created_at), "h:mm a")}
 					</span>
 				</div>
+			</TableCell>
+
+			{/* Completed Time - When order was finished & paid */}
+			<TableCell className="py-3">
+				{order.completed_at ? (
+					<div className="flex flex-col gap-0.5">
+						<span className="text-xs text-muted-foreground/70">
+							{format(new Date(order.completed_at), "MMM d")}
+						</span>
+						<span className="text-xs text-muted-foreground">
+							{format(new Date(order.completed_at), "h:mm a")}
+						</span>
+					</div>
+				) : (
+					<span className="text-xs text-muted-foreground italic">
+						—
+					</span>
+				)}
 			</TableCell>
 
 			{/* Actions */}
@@ -365,6 +385,22 @@ export default function OrdersPage() {
 						))}
 					</SelectContent>
 				</Select>
+				{/* Date type filter - only show when date range is selected */}
+				{(startDate || endDate) && (
+					<Select
+						value={filters.date_filter_type || "all"}
+						onValueChange={(value) => handleFilterChange("date_filter_type", value)}
+					>
+						<SelectTrigger className="w-[180px] border-border">
+							<SelectValue placeholder="Date Filter" />
+						</SelectTrigger>
+						<SelectContent className="border-border">
+							<SelectItem value="all">All Activity</SelectItem>
+							<SelectItem value="created">Created Only</SelectItem>
+							<SelectItem value="completed">Completed Only</SelectItem>
+						</SelectContent>
+					</Select>
+				)}
 			</div>
 			<div className="ml-auto">
 				<DualDatePicker
@@ -383,19 +419,21 @@ export default function OrdersPage() {
 			if (key === "search") {
 				return value && value.trim() !== "";
 			}
-			// Skip individual date fields, we'll show them as one "Date Range" filter
-			if (key === "created_at__gte" || key === "created_at__lte") {
+			// Skip individual date fields and date_filter_type - we'll show them together
+			if (key === "date_range_gte" || key === "date_range_lte" || key === "date_filter_type") {
 				return false;
 			}
-			return value && value !== "ALL";
+			return value && value !== "ALL" && value !== "all";
 		})
 		.map(([key, value]) => ({ key, value }));
 
 	// Add date range as a single filter if either date is set
-	if (filters.created_at__gte || filters.created_at__lte) {
+	if (filters.date_range_gte || filters.date_range_lte) {
+		const dateType = filters.date_filter_type || "all";
+		const dateTypeLabel = dateType === "created" ? " (Created)" : dateType === "completed" ? " (Completed)" : "";
 		activeFilters.push({
 			key: "dateRange",
-			value: `${filters.created_at__gte || "..."} to ${filters.created_at__lte || "..."}`,
+			value: `${filters.date_range_gte || "..."} to ${filters.date_range_lte || "..."}${dateTypeLabel}`,
 		});
 	}
 
@@ -500,8 +538,9 @@ export default function OrdersPage() {
 									} else if (key === "dateRange") {
 										setStartDate(undefined);
 										setEndDate(undefined);
-										handleFilterChange("created_at__gte", "");
-										handleFilterChange("created_at__lte", "");
+										handleFilterChange("date_range_gte", "");
+										handleFilterChange("date_range_lte", "");
+										handleFilterChange("date_filter_type", "");
 									} else {
 										handleFilterChange(key, "ALL");
 									}
