@@ -1,112 +1,84 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { ordersAPI } from "@/api/orders";
 
 export const useOrderConfirmation = (initialOrderData = null) => {
-	const [searchParams] = useSearchParams();
+	const { orderId } = useParams(); // Get orderId from route params
 	const [orderData, setOrderData] = useState(initialOrderData);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState(null);
 
-	// Check for order data in URL parameters (for guest users and navigation)
-	const orderDataParam = searchParams.get("orderData");
-	const orderIdParam = searchParams.get("orderId");
-
-	const loadOrderData = useCallback(async (orderId) => {
-		if (!orderId) return;
+	const loadOrderData = useCallback(async (id) => {
+		if (!id) {
+			setError("No order ID provided");
+			return;
+		}
 
 		setIsLoading(true);
 		setError(null);
 
 		try {
-			const confirmationData = await ordersAPI.getOrderForConfirmation(orderId);
+			// Try to get cached data from sessionStorage for instant display
+			const cachedData = sessionStorage.getItem(`order_${id}`);
+			if (cachedData) {
+				try {
+					const parsedCache = JSON.parse(cachedData);
+					setOrderData(parsedCache);
+					console.log("useOrderConfirmation: Loaded from sessionStorage cache");
+				} catch (e) {
+					console.warn("Failed to parse cached order data:", e);
+				}
+			}
+
+			// Fetch fresh data from API as source of truth
+			console.log("useOrderConfirmation: Fetching order from API:", id);
+			const confirmationData = await ordersAPI.getOrderForConfirmation(id);
 			setOrderData(confirmationData);
+
+			// Update cache with fresh data
+			sessionStorage.setItem(`order_${id}`, JSON.stringify(confirmationData));
+			console.log("useOrderConfirmation: Loaded fresh data from API");
 		} catch (err) {
 			console.error("Failed to load order data:", err);
-			setError(err.response?.data?.detail || "Failed to load order details");
+			const errorMsg = err.response?.data?.detail || "Failed to load order details";
+			setError(errorMsg);
 		} finally {
 			setIsLoading(false);
 		}
-	}, []);
+	}, []); // Empty dependency array - this function doesn't depend on any external values
 
-	// Effect to handle changes in initialOrderData (e.g., when checkout completes)
+	// Effect to load order data when component mounts or orderId changes
 	useEffect(() => {
+		// If initialOrderData is provided (from checkout flow), use it
 		if (initialOrderData) {
-			console.log(
-				"useOrderConfirmation: Setting order data from initialOrderData:",
-				initialOrderData
-			);
+			console.log("useOrderConfirmation: Using initialOrderData:", initialOrderData);
 			setOrderData(initialOrderData);
 			setError(null);
 			return;
 		}
-	}, [initialOrderData]);
 
-	// Effect to handle URL parameters and fallback loading
-	useEffect(() => {
-		// If we already have data from initialOrderData, don't override it
-		if (initialOrderData || orderData) {
-			return;
+		// Otherwise, load by orderId from route params
+		if (orderId) {
+			loadOrderData(orderId);
+		} else {
+			setError("No order ID provided");
 		}
-
-		console.log("useOrderConfirmation: Checking URL parameters...", {
-			orderDataParam,
-			orderIdParam,
-		});
-
-		// Try to parse order data from URL parameters (for guest checkouts)
-		if (orderDataParam) {
-			try {
-				const parsedData = JSON.parse(decodeURIComponent(orderDataParam));
-				console.log(
-					"useOrderConfirmation: Parsed order data from URL:",
-					parsedData
-				);
-				setOrderData(parsedData);
-				setError(null);
-				return;
-			} catch (e) {
-				console.error("Failed to parse order data from URL:", e);
-				setError("Failed to parse order data from URL");
-			}
-		}
-
-		// Fetch order data by ID if orderId is provided (for order history)
-		if (orderIdParam) {
-			console.log(
-				"useOrderConfirmation: Loading order data by ID:",
-				orderIdParam
-			);
-			loadOrderData(orderIdParam);
-			return;
-		}
-
-		// If no data source is available, set error
-		if (!initialOrderData && !orderDataParam && !orderIdParam) {
-			console.log("useOrderConfirmation: No data source available");
-			setError("No order data available");
-		}
-	}, [
-		orderDataParam,
-		orderIdParam,
-		loadOrderData,
-		initialOrderData,
-		orderData,
-	]);
+	}, [orderId, initialOrderData, loadOrderData]);
 
 	const refreshOrderData = useCallback(() => {
-		if (orderData?.id) {
+		if (orderId) {
+			loadOrderData(orderId);
+		} else if (orderData?.id) {
 			loadOrderData(orderData.id);
 		}
-	}, [orderData?.id, loadOrderData]);
+	}, [orderId, orderData?.id, loadOrderData]);
 
 	console.log("useOrderConfirmation state:", {
+		orderId,
 		hasInitialOrderData: !!initialOrderData,
 		hasOrderData: !!orderData,
 		isLoading,
 		error,
-		orderDataParam: !!orderDataParam,
-		orderIdParam: !!orderIdParam,
 	});
 
 	return {
