@@ -10,9 +10,9 @@ django.setup()
 
 # Now import Django-related modules
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
 from django.core.asgi import get_asgi_application
 from tenant.websocket_middleware import TenantWebSocketMiddleware
+from core_backend.jwt_websocket_middleware import JWTAuthMiddleware
 
 import orders.routing
 import notifications.routing
@@ -32,7 +32,7 @@ application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
         "websocket": TenantWebSocketMiddleware(
-            AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
+            JWTAuthMiddleware(URLRouter(websocket_urlpatterns))
         ),
     }
 )

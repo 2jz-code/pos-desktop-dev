@@ -84,6 +84,14 @@ export const defaultCartState = {
 		currentQuantity: null,
 		requestedQuantity: null,
 	},
+	approvalRequest: {
+		show: false,
+		approvalRequestId: null,
+		message: "",
+		actionType: null, // DISCOUNT, REFUND, VOID, etc.
+		discountName: null,
+		discountValue: null,
+	},
 };
 
 const loadInitialCartState = () => {
@@ -520,6 +528,24 @@ export const createCartSlice = (set, get) => {
 				itemId: null,
 				currentQuantity: null,
 				requestedQuantity: null,
+			});
+		},
+
+		// Manager approval request methods
+		setApprovalRequest: (requestState) => {
+			set({ approvalRequest: requestState });
+		},
+
+		cancelApprovalRequest: () => {
+			set({
+				approvalRequest: {
+					show: false,
+					approvalRequestId: null,
+					message: "",
+					actionType: null,
+					discountName: null,
+					discountValue: null,
+				},
 			});
 		},
 

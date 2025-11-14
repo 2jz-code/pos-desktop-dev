@@ -7,6 +7,7 @@ import TenderDialog from "@/domains/pos/components/dialogs/TenderDialog";
 import { shallow } from "zustand/shallow";
 import DiscountDialog from "@/domains/pos/components/dialogs/DiscountDialog";
 import StockOverrideDialog from "@/domains/pos/components/dialogs/StockOverrideDialog";
+import ManagerApprovalDialog from "@/domains/pos/components/dialogs/ManagerApprovalDialog";
 import { usePOSBarcode } from "@/shared/hooks";
 // This import might also be needed depending on your full file structure
 // import { OrderDiscountDialog } from "../components/dialogs/OrderDiscountDialog";
@@ -222,6 +223,7 @@ const POS = () => {
 			{isTenderDialogOpen && <TenderDialog />}
 			{isDiscountDialogOpen && <DiscountDialog />}
 			<StockOverrideDialog />
+			<ManagerApprovalDialog />
 			{/* {isOrderDiscountDialogOpen && <OrderDiscountDialog />} */}
 
 			{/* Visual indicator when scanning */}

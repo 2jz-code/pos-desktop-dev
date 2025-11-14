@@ -63,10 +63,16 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
 
         # Validate user has access to this tenant
-        user = self.scope.get('user')
-        if user and user.is_authenticated:
-            if hasattr(user, 'tenant') and user.tenant != self.tenant:
-                logging.warning(f"OrderConsumer: User tenant mismatch. User: {user.tenant}, Scope: {self.tenant}")
+        self.user = self.scope.get('user')
+        logging.info(
+            f"OrderConsumer: User in scope: {self.user}, "
+            f"Is authenticated: {getattr(self.user, 'is_authenticated', False)}, "
+            f"User type: {type(self.user).__name__}"
+        )
+        if self.user and self.user.is_authenticated:
+            # Compare tenant_id instead of tenant object to avoid async DB query
+            if hasattr(self.user, 'tenant_id') and self.user.tenant_id != self.tenant.id:
+                logging.warning(f"OrderConsumer: User tenant mismatch. User tenant_id: {self.user.tenant_id}, Scope tenant_id: {self.tenant.id}")
                 await self.close(code=4003)  # Forbidden
                 return
 
@@ -636,9 +642,27 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            await sync_to_async(OrderService.apply_discount_to_order_by_id)(
-                order=order, discount_id=discount_id
+            result = await sync_to_async(OrderService.apply_discount_to_order_by_id)(
+                order=order, discount_id=discount_id, user=self.user
             )
+
+            # Check if approval is required
+            if result and result.get('status') == 'pending_approval':
+                # Send approval_required message to frontend
+                await self.send(text_data=json.dumps({
+                    "type": "approval_required",
+                    "approval_request_id": result['approval_request_id'],
+                    "message": result['message'],
+                    "discount_name": result['discount_name'],
+                    "discount_value": result['discount_value'],
+                    "action_type": "DISCOUNT",
+                }))
+                logging.info(
+                    f"OrderConsumer: Approval required for discount {discount_id} on order {self.order_id}"
+                )
+                return  # Don't recalculate or send full order state
+
+            # Discount applied successfully
             await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount {discount_id} to order {self.order_id}"
@@ -663,9 +687,27 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            await sync_to_async(OrderService.apply_discount_to_order_by_code)(
-                order=order, code=code
+            result = await sync_to_async(OrderService.apply_discount_to_order_by_code)(
+                order=order, code=code, user=self.user
             )
+
+            # Check if approval is required
+            if result and result.get('status') == 'pending_approval':
+                # Send approval_required message to frontend
+                await self.send(text_data=json.dumps({
+                    "type": "approval_required",
+                    "approval_request_id": result['approval_request_id'],
+                    "message": result['message'],
+                    "discount_name": result['discount_name'],
+                    "discount_value": result['discount_value'],
+                    "action_type": "DISCOUNT",
+                }))
+                logging.info(
+                    f"OrderConsumer: Approval required for discount code '{code}' on order {self.order_id}"
+                )
+                return  # Don't recalculate or send full order state
+
+            # Discount applied successfully
             await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount with code {code} to order {self.order_id}"

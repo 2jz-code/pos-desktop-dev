@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "payments",
     "refunds",  # Refund and exchange system
     "discounts",
+    "approvals",  # Manager approval workflows
     "users.apps.UsersConfig",
     "customers.apps.CustomersConfig",
     "settings",
@@ -1010,6 +1011,21 @@ CELERY_BEAT_SCHEDULE = {
     "daily-database-backup": {
         "task": "core_backend.infrastructure.tasks.backup_database",
         "schedule": crontab(hour=2, minute=0),  # Every day at 2:00 AM
+        "options": {"expires": 7200},  # Task expires after 2 hours if not run
+    },
+    # ========================================================================
+    # APPROVAL MANAGEMENT TASKS
+    # ========================================================================
+    # Expire pending approvals every 5 minutes
+    "expire-pending-approvals": {
+        "task": "approvals.tasks.expire_pending_approvals",
+        "schedule": 300.0,  # Every 5 minutes
+        "options": {"expires": 240},  # Task expires after 4 minutes if not run
+    },
+    # Clean up old approval records daily at 3 AM
+    "cleanup-old-approvals": {
+        "task": "approvals.tasks.cleanup_old_approvals",
+        "schedule": crontab(hour=3, minute=0),  # Every day at 3:00 AM
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
 }

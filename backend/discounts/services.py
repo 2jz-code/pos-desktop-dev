@@ -12,6 +12,7 @@ from orders.models import Order, OrderDiscount
 # --- END FIX ---
 
 from .factories import DiscountStrategyFactory
+from .approval_rules import DiscountApprovalChecker
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 
 logger = logging.getLogger(__name__)
@@ -92,14 +93,79 @@ class DiscountService:
 
     @staticmethod
     @transaction.atomic
-    def apply_discount_to_order(order: Order, discount: Discount):
+    def apply_discount_to_order(order: Order, discount: Discount, user=None, bypass_approval=False):
         """
         Applies a discount to an order if it is eligible.
 
         This method checks the discount's strategy to determine its eligibility
         and calculated amount. If the discount is valid and can be applied,
         it creates or updates the OrderDiscount link.
+
+        Args:
+            order: Order instance to apply discount to
+            discount: Discount instance to be applied
+            user: User applying the discount (required for approval requests)
+            bypass_approval: If True, skip approval checking (used after approval granted)
+
+        Returns:
+            dict: Status dictionary if approval required, None otherwise
+                {
+                    'status': 'pending_approval',
+                    'approval_request_id': str(uuid),
+                    'message': str,
+                }
         """
+        # --- START: Manager Approval Check ---
+        # Check if approval is needed (unless bypassing)
+        if not bypass_approval and order.store_location:
+            store_location = order.store_location
+            logger.info(
+                f"Checking approval for discount '{discount.name}' on order {order.id}. "
+                f"Store location: {store_location.name}, Approvals enabled: {store_location.manager_approvals_enabled}"
+            )
+
+            # Check if this discount needs manager approval
+            if DiscountApprovalChecker.needs_approval(discount, order, store_location):
+                if not user or not user.is_authenticated:
+                    error_msg = (
+                        "Authenticated user required for discount approval. "
+                        "Please ensure the POS terminal is logged in."
+                    )
+                    logger.error(
+                        f"{error_msg} User: {user}, Is authenticated: {getattr(user, 'is_authenticated', False)}"
+                    )
+                    raise ValueError(error_msg)
+
+                logger.info(
+                    f"Approval REQUIRED for discount '{discount.name}' ({discount.value}%) on order {order.id}"
+                )
+
+                # Create approval request
+                approval_request = DiscountApprovalChecker.request_approval(
+                    discount=discount,
+                    order=order,
+                    store_location=store_location,
+                    initiator=user
+                )
+
+                # Return status indicating approval is required
+                return {
+                    'status': 'pending_approval',
+                    'approval_request_id': str(approval_request.id),
+                    'message': f'Manager approval required for {discount.name}',
+                    'discount_name': discount.name,
+                    'discount_value': str(discount.value),
+                }
+            else:
+                logger.info(
+                    f"Approval NOT required for discount '{discount.name}' on order {order.id}"
+                )
+        elif not order.store_location:
+            logger.warning(
+                f"Order {order.id} has no store_location - skipping approval check for discount '{discount.name}'"
+            )
+        # --- END: Manager Approval Check ---
+
         # --- START: Discount Stacking Logic ---
         # Use cached settings for better performance
         from settings.config import app_settings

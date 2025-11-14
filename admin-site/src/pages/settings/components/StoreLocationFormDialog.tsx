@@ -49,7 +49,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatPhoneNumber, isValidPhoneNumber } from "@ajeen/ui";
-import { MapPin, Bell } from "lucide-react";
+import { MapPin, Bell, Shield } from "lucide-react";
+import ApprovalPolicySettings from "./ApprovalPolicySettings";
 
 // Timezone options (matching backend TimezoneChoices)
 const TIMEZONE_OPTIONS = [
@@ -157,6 +158,9 @@ const formSchema = z.object({
 	auto_print_web_receipt: z.boolean().nullable().optional(),
 	auto_print_web_kitchen: z.boolean().nullable().optional(),
 	web_notification_terminals: z.array(z.string()).optional(),
+
+	// Manager Approvals (Phase 2)
+	manager_approvals_enabled: z.boolean().optional().default(false),
 });
 
 const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
@@ -231,6 +235,7 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 			auto_print_web_receipt: null,
 			auto_print_web_kitchen: null,
 			web_notification_terminals: [],
+			manager_approvals_enabled: false,
 		},
 	});
 
@@ -259,6 +264,8 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 				auto_print_web_receipt: overrides.auto_print_web_receipt,
 				auto_print_web_kitchen: overrides.auto_print_web_kitchen,
 				web_notification_terminals: overrides.web_notification_terminals || [],
+				// Manager approvals
+				manager_approvals_enabled: formLocationData.manager_approvals_enabled || false,
 			};
 			form.reset(formattedData);
 		} else {
@@ -289,6 +296,7 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 				auto_print_web_receipt: null,
 				auto_print_web_kitchen: null,
 				web_notification_terminals: [],
+				manager_approvals_enabled: false,
 			});
 		}
 	}, [formLocationData, form]);
@@ -601,6 +609,56 @@ const StoreLocationFormDialog = ({ isOpen, setIsOpen, locationData }) => {
 												</FormItem>
 											)}
 										/>
+									</AccordionContent>
+								</AccordionItem>
+
+								{/* Manager Approvals Configuration */}
+								<AccordionItem value="approvals">
+									<AccordionTrigger className="text-sm font-semibold">
+										<div className="flex items-center gap-2">
+											<Shield className="h-4 w-4" />
+											Manager Approvals
+										</div>
+									</AccordionTrigger>
+									<AccordionContent className="space-y-4 pt-4">
+										<FormField
+											control={form.control}
+											name="manager_approvals_enabled"
+											render={({ field }) => (
+												<FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+													<div className="space-y-0.5">
+														<FormLabel className="text-base">
+															Enable Manager Approvals
+														</FormLabel>
+														<FormDescription>
+															Require manager approval for sensitive operations like
+															large discounts, voids, and refunds
+														</FormDescription>
+													</div>
+													<FormControl>
+														<Switch
+															checked={field.value}
+															onCheckedChange={field.onChange}
+														/>
+													</FormControl>
+												</FormItem>
+											)}
+										/>
+
+										{/* Show approval policy settings if enabled and editing existing location */}
+										{form.watch("manager_approvals_enabled") && isEditing && locationData?.id && (
+											<ApprovalPolicySettings locationId={locationData.id} />
+										)}
+
+										{/* Show info message if enabled but creating new location */}
+										{form.watch("manager_approvals_enabled") && !isEditing && (
+											<div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+												<p className="text-sm text-blue-800">
+													Approval policy settings will be available after creating the location.
+													Default thresholds will be applied automatically.
+												</p>
+											</div>
+										)}
 									</AccordionContent>
 								</AccordionItem>
 

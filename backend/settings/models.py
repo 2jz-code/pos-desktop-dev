@@ -137,6 +137,12 @@ class StoreLocation(SoftDeleteMixin):
         help_text="Minimum lead time for web orders in minutes"
     )
 
+    # === OPERATIONAL FEATURES ===
+    manager_approvals_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable manager approval workflows for sensitive operations (discounts, voids, refunds)"
+    )
+
     # === WEB ORDER NOTIFICATION OVERRIDES (Phase 5) ===
     # These override tenant-wide defaults from WebOrderSettings
     enable_web_notifications = models.BooleanField(

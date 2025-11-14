@@ -177,6 +177,19 @@ const connect = (orderId) => {
 						requestedQuantity: data.requested_quantity,
 					});
 				}
+			} else if (data.type === "approval_required") {
+				// Handle manager approval requirement
+				console.log("Manager approval required:", data);
+				if (store) {
+					store.getState().setApprovalRequest({
+						show: true,
+						approvalRequestId: data.approval_request_id,
+						message: data.message,
+						actionType: data.action_type, // DISCOUNT, REFUND, VOID, etc.
+						discountName: data.discount_name,
+						discountValue: data.discount_value,
+					});
+				}
 			} else {
 				console.warn(
 					"Received unknown WebSocket message type:",

@@ -692,13 +692,30 @@ class OrderService:
 
     @staticmethod
     @transaction.atomic
-    def apply_discount_to_order_by_id(order: Order, discount_id: int):
+    def apply_discount_to_order_by_id(order: Order, discount_id: int, user=None):
         """
         Applies a discount to an order by DELEGATING to the DiscountService.
+
+        Args:
+            order: Order instance
+            discount_id: ID of the discount to apply
+            user: User applying the discount (required for approval requests)
+
+        Returns:
+            dict or None: If approval required, returns dict with:
+                {
+                    'status': 'pending_approval',
+                    'approval_request_id': str,
+                    'message': str,
+                    'discount_name': str,
+                    'discount_value': str,
+                }
+            Otherwise returns None (discount applied successfully)
         """
         try:
             discount = Discount.objects.get(id=discount_id)
-            DiscountService.apply_discount_to_order(order, discount)
+            result = DiscountService.apply_discount_to_order(order, discount, user=user)
+            return result  # Returns dict if approval needed, None otherwise
         except Discount.DoesNotExist:
             raise ValueError("Discount not found.")
         except Exception as e:
@@ -706,13 +723,23 @@ class OrderService:
 
     @staticmethod
     @transaction.atomic
-    def apply_discount_to_order_by_code(order: Order, code: str):
+    def apply_discount_to_order_by_code(order: Order, code: str, user=None):
         """
         Applies a discount to an order by its code, delegating to the DiscountService.
+
+        Args:
+            order: Order instance
+            code: Discount code to apply
+            user: User applying the discount (required for approval requests)
+
+        Returns:
+            dict or None: If approval required, returns dict with approval info.
+            Otherwise returns None (discount applied successfully)
         """
         try:
             discount = Discount.objects.get(code__iexact=code)
-            DiscountService.apply_discount_to_order(order, discount)
+            result = DiscountService.apply_discount_to_order(order, discount, user=user)
+            return result  # Returns dict if approval needed, None otherwise
         except Discount.DoesNotExist:
             raise ValueError("Invalid discount code.")
         except Exception as e:
