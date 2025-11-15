@@ -1122,6 +1122,90 @@ class PaymentService:
 
     @staticmethod
     @transaction.atomic
+    def refund_order_payment(order: Order, reason: str = "Order voided") -> bool:
+        """
+        Refunds all successful payment transactions for an order.
+        Used when voiding an order to reverse all payments.
+
+        Args:
+            order: Order instance to refund payments for
+            reason: Reason for the refund
+
+        Returns:
+            bool: True if any refunds were processed, False otherwise
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Get the payment record for the order
+        try:
+            payment = order.payment_details
+        except Payment.DoesNotExist:
+            logger.warning(f"No payment record found for order {order.order_number}. Cannot process refund.")
+            return False
+
+        # Only refund if payment was actually made
+        if payment.status == Payment.PaymentStatus.UNPAID:
+            logger.info(f"Order {order.order_number} has no payments to refund (status: UNPAID)")
+            return False
+
+        # Get all successful transactions
+        successful_transactions = payment.transactions.filter(
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+        )
+
+        if not successful_transactions.exists():
+            logger.warning(f"No successful transactions found for order {order.order_number}. Cannot process refund.")
+            return False
+
+        refund_processed = False
+        payment_service = PaymentService(payment)
+
+        # Refund each successful transaction
+        for transaction in successful_transactions:
+            # Calculate amount to refund (total - already refunded)
+            total_transaction_amount = (
+                transaction.amount +
+                transaction.tip +
+                transaction.surcharge
+            )
+            amount_to_refund = total_transaction_amount - transaction.refunded_amount
+
+            if amount_to_refund <= 0:
+                logger.info(f"Transaction {transaction.id} already fully refunded. Skipping.")
+                continue
+
+            try:
+                payment_service.refund_transaction_with_provider(
+                    transaction_id=transaction.id,
+                    amount_to_refund=amount_to_refund,
+                    reason=reason
+                )
+                logger.info(
+                    f"Refunded ${amount_to_refund} for transaction {transaction.id} "
+                    f"(order {order.order_number})"
+                )
+                refund_processed = True
+
+            except ValueError as ve:
+                # Validation error - log but continue with other transactions
+                logger.error(
+                    f"Validation error refunding transaction {transaction.id} "
+                    f"for order {order.order_number}: {ve}"
+                )
+
+            except Exception as e:
+                # Unexpected error - log but continue with other transactions
+                logger.error(
+                    f"Failed to refund transaction {transaction.id} "
+                    f"for order {order.order_number}: {e}",
+                    exc_info=True
+                )
+
+        return refund_processed
+
+    @staticmethod
+    @transaction.atomic
     def create_online_payment_intent(
         order: Order, amount: Decimal, currency: str, user, tip: Decimal = None
     ) -> dict:

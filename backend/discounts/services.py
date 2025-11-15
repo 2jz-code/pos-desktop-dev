@@ -12,7 +12,7 @@ from orders.models import Order, OrderDiscount
 # --- END FIX ---
 
 from .factories import DiscountStrategyFactory
-from .approval_rules import DiscountApprovalChecker
+from approvals.checkers import DiscountApprovalChecker
 from core_backend.infrastructure.cache_utils import cache_static_data, cache_dynamic_data
 
 logger = logging.getLogger(__name__)
@@ -140,22 +140,39 @@ class DiscountService:
                     f"Approval REQUIRED for discount '{discount.name}' ({discount.value}%) on order {order.id}"
                 )
 
-                # Create approval request
-                approval_request = DiscountApprovalChecker.request_approval(
-                    discount=discount,
-                    order=order,
-                    store_location=store_location,
-                    initiator=user
+                # Check if user can self-approve
+                from approvals.models import ApprovalPolicy
+                from users.models import User
+                policy = ApprovalPolicy.get_for_location(store_location)
+
+                can_self_approve = (
+                    policy.allow_self_approval and
+                    user.role in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]
                 )
 
-                # Return status indicating approval is required
-                return {
-                    'status': 'pending_approval',
-                    'approval_request_id': str(approval_request.id),
-                    'message': f'Manager approval required for {discount.name}',
-                    'discount_name': discount.name,
-                    'discount_value': str(discount.value),
-                }
+                if can_self_approve:
+                    logger.info(
+                        f"Self-approval enabled and user {user.email} is a {user.role} - "
+                        f"bypassing approval dialog and proceeding with discount"
+                    )
+                    # Continue execution - discount will be applied without approval dialog
+                else:
+                    # Create approval request
+                    approval_request = DiscountApprovalChecker.request_approval(
+                        discount=discount,
+                        order=order,
+                        store_location=store_location,
+                        initiator=user
+                    )
+
+                    # Return status indicating approval is required
+                    return {
+                        'status': 'pending_approval',
+                        'approval_request_id': str(approval_request.id),
+                        'message': f'Manager approval required for {discount.name}',
+                        'discount_name': discount.name,
+                        'discount_value': str(discount.value),
+                    }
             else:
                 logger.info(
                     f"Approval NOT required for discount '{discount.name}' on order {order.id}"

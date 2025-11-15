@@ -906,6 +906,9 @@ CELERY_TASK_ROUTES = {
         "queue": "maintenance"
     },
     "core_backend.infrastructure.tasks.backup_database": {"queue": "maintenance"},
+    # Approval management tasks
+    "approvals.tasks.expire_pending_approvals": {"queue": "maintenance"},
+    "approvals.tasks.cleanup_old_approvals": {"queue": "maintenance"},
 }
 
 # Beat schedule for periodic tasks

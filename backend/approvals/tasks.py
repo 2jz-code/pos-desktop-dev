@@ -24,8 +24,9 @@ def expire_pending_approvals():
         now = timezone.now()
 
         # Find all pending requests that have expired
+        # Use all_objects to query across all tenants (Celery tasks run without tenant context)
         expired_ids = list(
-            ManagerApprovalRequest.objects.filter(
+            ManagerApprovalRequest.all_objects.filter(
                 status=ApprovalStatus.PENDING,
                 expires_at__lt=now
             ).values_list('id', flat=True)

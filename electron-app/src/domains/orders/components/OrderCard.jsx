@@ -40,7 +40,9 @@ export const OrderCard = ({
   };
 
   const canResume = order.status === "HOLD" || order.status === "PENDING";
-  const canVoid = isOwner && (order.status === "PENDING" || order.status === "HOLD");
+  // Allow all authenticated users to void (approval system handles permissions)
+  // Can void any order except already voided or cancelled
+  const canVoid = showActions && !["VOID", "CANCELLED"].includes(order.status);
 
   return (
     <Card

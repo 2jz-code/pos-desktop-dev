@@ -287,8 +287,31 @@ class OrderViewSet(TenantScopedQuerysetMixin, FieldsetQueryParamsMixin, BaseView
 
     @action(detail=True, methods=["post"], url_path="void")
     def void(self, request: Request, pk=None) -> Response:
-        """Voids the order."""
-        return self._handle_status_change(request, OrderService.void_order)
+        """
+        Voids the order with manager approval check.
+
+        Returns either:
+        - 200: Order voided successfully
+        - 202: Approval required (returns approval request info)
+        - 400: Validation error
+        """
+        order = self.get_object()
+        try:
+            result = OrderService.void_order_with_approval_check(
+                order=order,
+                user=request.user
+            )
+
+            # Check if approval is required
+            if isinstance(result, dict) and result.get('status') == 'pending_approval':
+                return Response(result, status=status.HTTP_202_ACCEPTED)
+
+            # Order voided successfully - return serialized order
+            serializer = self.get_serializer(result)
+            return Response(serializer.data)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request: Request, pk=None) -> Response:

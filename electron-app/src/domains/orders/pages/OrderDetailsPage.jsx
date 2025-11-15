@@ -35,6 +35,7 @@ import {
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useMutation } from "@tanstack/react-query";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { openCashDrawer } from "@/shared/lib/hardware";
 import { isDeliveryPlatform } from "@/domains/pos/constants/deliveryPlatforms";
 import { format } from "date-fns";
 import {
@@ -44,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { ItemCard } from "../components/ItemCard";
+import OrderApprovalDialog from "../components/OrderApprovalDialog";
 
 // Compact Transaction Detail Component
 const TransactionDetail = ({ transaction }) => {
@@ -200,6 +202,8 @@ const OrderDetailsPage = () => {
   const navigate = useNavigate();
   const permissions = useRolePermissions();
   const [isPrinting, setIsPrinting] = useState(false);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState(null);
 
   const order = usePosStore((state) => state.selectedOrder);
   const fetchOrderById = usePosStore((state) => state.fetchOrderById);
@@ -211,6 +215,8 @@ const OrderDetailsPage = () => {
     (state) => state.getLocalReceiptPrinter
   );
   const settings = useSettingsStore((state) => state.settings);
+  const printers = useSettingsStore((state) => state.printers);
+  const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
   useEffect(() => {
     if (orderId) {
@@ -329,6 +335,76 @@ const OrderDetailsPage = () => {
     }
   };
 
+  const handleVoid = async () => {
+    try {
+      const response = await orderService.voidOrder(orderId);
+
+      // Check if approval is required (202 status)
+      if (response.status === 202) {
+        const data = response.data;
+        setApprovalRequest({
+          approvalRequestId: data.approval_request_id,
+          message: data.message,
+          actionType: "ORDER_VOID",
+          orderNumber: data.order_number,
+          orderTotal: data.order_total,
+        });
+        setApprovalDialogOpen(true);
+        return;
+      }
+
+      // Order voided successfully without approval
+      toast({
+        title: "Success",
+        description: "Order has been voided successfully.",
+      });
+
+      // Refresh the order
+      await fetchOrderById(orderId);
+    } catch (err) {
+      const description =
+        err?.response?.data?.error || "An unknown error occurred.";
+      toast({
+        title: "Operation Failed",
+        description,
+        variant: "destructive",
+      });
+      console.error(`Failed to void order ${orderId}:`, err);
+    }
+  };
+
+  const handleApprovalSuccess = async ({ approved }) => {
+    setApprovalDialogOpen(false);
+    setApprovalRequest(null);
+
+    if (approved) {
+      // Open cash drawer for refund
+      try {
+        const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+        if (receiptPrinter) {
+          await openCashDrawer(receiptPrinter);
+        }
+      } catch (error) {
+        console.error("Failed to open cash drawer:", error);
+        // Don't block the success flow if cash drawer fails
+      }
+
+      toast({
+        title: "Approved",
+        description: "Order void approved by manager. Order has been voided.",
+      });
+    } else {
+      toast({
+        title: "Denied",
+        description: "Order void request denied by manager.",
+        variant: "destructive",
+      });
+    }
+
+    // Refresh the order
+    await fetchOrderById(orderId);
+  };
+
   const resendEmailMutation = useMutation({
     mutationFn: () => orderService.resendConfirmationEmail(orderId),
     onSuccess: (data) => {
@@ -375,6 +451,8 @@ const OrderDetailsPage = () => {
   const paymentConfig = getPaymentStatusConfig(payment_status);
   const canResume = status === "HOLD" || status === "PENDING";
   const canCancel = (status === "PENDING" || status === "HOLD") && permissions?.canCancelOrders();
+  // Can void any order except already voided or cancelled
+  const canVoid = !["VOID", "CANCELLED"].includes(status);
 
   return (
     <div className="flex flex-col h-full">
@@ -606,7 +684,7 @@ const OrderDetailsPage = () => {
               )}
 
               {/* More Actions Menu */}
-              {canCancel && (
+              {(canCancel || canVoid) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="lg" className="min-h-[48px] px-3">
@@ -614,18 +692,29 @@ const OrderDetailsPage = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem
-                      className="h-12 px-4 text-destructive focus:text-destructive"
-                      onClick={() =>
-                        handleStatusChange(
-                          orderService.cancelOrder,
-                          "Order has been cancelled."
-                        )
-                      }
-                    >
-                      <XCircle className="mr-3 h-4 w-4" />
-                      Cancel Order
-                    </DropdownMenuItem>
+                    {canVoid && (
+                      <DropdownMenuItem
+                        className="h-12 px-4 text-destructive focus:text-destructive"
+                        onClick={handleVoid}
+                      >
+                        <XCircle className="mr-3 h-4 w-4" />
+                        Void Order
+                      </DropdownMenuItem>
+                    )}
+                    {canCancel && (
+                      <DropdownMenuItem
+                        className="h-12 px-4 text-destructive focus:text-destructive"
+                        onClick={() =>
+                          handleStatusChange(
+                            orderService.cancelOrder,
+                            "Order has been cancelled."
+                          )
+                        }
+                      >
+                        <XCircle className="mr-3 h-4 w-4" />
+                        Cancel Order
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -633,6 +722,14 @@ const OrderDetailsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Manager Approval Dialog */}
+      <OrderApprovalDialog
+        open={approvalDialogOpen}
+        onClose={() => setApprovalDialogOpen(false)}
+        approvalRequest={approvalRequest}
+        onSuccess={handleApprovalSuccess}
+      />
     </div>
   );
 };

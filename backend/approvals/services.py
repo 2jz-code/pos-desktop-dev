@@ -316,7 +316,8 @@ class ManagerApprovalService:
 
         now = timezone.now()
 
-        count = ManagerApprovalRequest.objects.filter(
+        # Use all_objects to update across all tenants (called from Celery task without tenant context)
+        count = ManagerApprovalRequest.all_objects.filter(
             id__in=request_ids,
             status=ApprovalStatus.PENDING,
             expires_at__lt=now
@@ -347,7 +348,8 @@ class ManagerApprovalService:
         cutoff_date = timezone.now() - timezone.timedelta(days=days)
 
         # Delete resolved requests (APPROVED, DENIED, EXPIRED) older than cutoff
-        count, _ = ManagerApprovalRequest.objects.filter(
+        # Use all_objects to cleanup across all tenants (called from Celery task without tenant context)
+        count, _ = ManagerApprovalRequest.all_objects.filter(
             status__in=[ApprovalStatus.APPROVED, ApprovalStatus.DENIED, ApprovalStatus.EXPIRED],
             updated_at__lt=cutoff_date
         ).delete()

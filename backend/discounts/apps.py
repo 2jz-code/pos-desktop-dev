@@ -8,5 +8,4 @@ class DiscountsConfig(AppConfig):
     def ready(self):
         # Import signals when the app is ready.
         import discounts.signals
-        # Import approval handlers to register signal receivers
-        import discounts.approval_handlers
+        # Note: Approval handlers are now registered in approvals/apps.py

@@ -38,6 +38,8 @@ import { createIconMapper } from "@ajeen/ui/lib/iconUtils";
 import { toast } from "@/shared/components/ui/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { openCashDrawer } from "@/shared/lib/hardware";
 import { shallow } from "zustand/shallow";
 import { format } from "date-fns";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
@@ -45,12 +47,15 @@ import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 import { FilterPill } from "../components/FilterPill";
 import { OrderCard } from "../components/OrderCard";
 import { OrdersTableView } from "../components/OrdersTableView";
+import OrderApprovalDialog from "../components/OrderApprovalDialog";
 
 export default function OrdersPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState(() => {
     return localStorage.getItem('ordersViewMode') || 'cards';
   });
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState(null);
   const navigate = useNavigate();
 
   const { isAuthenticated, isOwner } = useAuth();
@@ -60,6 +65,8 @@ export default function OrdersPage() {
     }),
     shallow
   );
+  const printers = useSettingsStore((state) => state.printers);
+  const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
   // Use shared orders data hook
   const {
@@ -136,7 +143,71 @@ export default function OrdersPage() {
   };
 
   const handleVoidAction = async (orderId) => {
-    await handleAction(orderId, voidOrder, "Order has been voided successfully.");
+    try {
+      const response = await voidOrder(orderId);
+
+      // Check if approval is required (202 status)
+      if (response.status === 202) {
+        const data = response.data;
+        setApprovalRequest({
+          approvalRequestId: data.approval_request_id,
+          message: data.message,
+          actionType: "ORDER_VOID",
+          orderNumber: data.order_number,
+          orderTotal: data.order_total,
+        });
+        setApprovalDialogOpen(true);
+        return;
+      }
+
+      // Order voided successfully without approval
+      toast({
+        title: "Success",
+        description: "Order has been voided successfully.",
+      });
+      refetch();
+    } catch (err) {
+      const description =
+        err?.response?.data?.error || "An unknown error occurred.";
+      toast({
+        title: "Operation Failed",
+        description,
+        variant: "destructive",
+      });
+      console.error(`Failed to void order ${orderId}:`, err);
+    }
+  };
+
+  const handleApprovalSuccess = async ({ approved }) => {
+    setApprovalDialogOpen(false);
+    setApprovalRequest(null);
+
+    if (approved) {
+      // Open cash drawer for refund
+      try {
+        const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+        if (receiptPrinter) {
+          await openCashDrawer(receiptPrinter);
+        }
+      } catch (error) {
+        console.error("Failed to open cash drawer:", error);
+        // Don't block the success flow if cash drawer fails
+      }
+
+      toast({
+        title: "Approved",
+        description: "Order void approved by manager. Order has been voided.",
+      });
+    } else {
+      toast({
+        title: "Denied",
+        description: "Order void request denied by manager.",
+        variant: "destructive",
+      });
+    }
+
+    // Refresh orders list
+    refetch();
   };
 
   const handleCardClick = (order) => {
@@ -402,6 +473,14 @@ export default function OrdersPage() {
           </div>
         </ScrollArea>
       </div>
+
+      {/* Manager Approval Dialog */}
+      <OrderApprovalDialog
+        open={approvalDialogOpen}
+        onClose={() => setApprovalDialogOpen(false)}
+        approvalRequest={approvalRequest}
+        onSuccess={handleApprovalSuccess}
+      />
     </div>
   );
 }

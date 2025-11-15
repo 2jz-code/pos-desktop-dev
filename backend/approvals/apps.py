@@ -8,3 +8,4 @@ class ApprovalsConfig(AppConfig):
     def ready(self):
         """Import signal handlers when app is ready"""
         import approvals.signals  # noqa
+        import approvals.handlers  # noqa - Register approval signal handlers
