@@ -415,6 +415,10 @@ class ManagerApprovalService:
         # Get policy for location
         policy = ApprovalPolicy.get_for_location(store_location)
 
+        # Check if this action type always requires approval
+        if policy.requires_approval_for_action(action_type):
+            return True
+
         # Check threshold based on action type
         if action_type == ActionType.DISCOUNT:
             return value > policy.max_discount_percent

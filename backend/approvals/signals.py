@@ -36,6 +36,7 @@ def auto_create_approval_policy(sender, instance, created, **kwargs):
         store_location=instance,
         defaults={
             'max_discount_percent': Decimal('15.00'),
+            'max_fixed_discount_amount': Decimal('20.00'),
             'max_refund_amount': Decimal('50.00'),
             'max_price_override_amount': Decimal('50.00'),
             'max_void_order_amount': Decimal('100.00'),

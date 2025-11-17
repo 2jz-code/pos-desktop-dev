@@ -57,6 +57,14 @@ class ApprovalPolicy(SoftDeleteMixin):
         help_text=_("Maximum discount percentage allowed without approval (e.g., 15.00 for 15%)")
     )
 
+    max_fixed_discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('20.00'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text=_("Maximum fixed dollar discount allowed without approval (e.g., $20 off)")
+    )
+
     max_refund_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -70,7 +78,7 @@ class ApprovalPolicy(SoftDeleteMixin):
         decimal_places=2,
         default=Decimal('50.00'),
         validators=[MinValueValidator(Decimal('0.00'))],
-        help_text=_("Maximum price override amount allowed without approval")
+        help_text=_("Maximum price override amount allowed without approval (total difference including quantity)")
     )
 
     max_void_order_amount = models.DecimalField(
@@ -79,6 +87,16 @@ class ApprovalPolicy(SoftDeleteMixin):
         default=Decimal('100.00'),
         validators=[MinValueValidator(Decimal('0.00'))],
         help_text=_("Maximum order total that can be voided without approval")
+    )
+
+    # "Always require approval" configuration
+    always_require_approval_for = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=_(
+            "List of action types that always require approval regardless of threshold. "
+            "Valid values: DISCOUNT, REFUND, PRICE_OVERRIDE, ORDER_VOID"
+        )
     )
 
     # Expiry settings
@@ -124,6 +142,20 @@ class ApprovalPolicy(SoftDeleteMixin):
     def __str__(self):
         return f"Approval Policy - {self.store_location.name}"
 
+    def requires_approval_for_action(self, action_type):
+        """
+        Check if a specific action type should always require approval.
+
+        Args:
+            action_type: ActionType value (e.g., ActionType.DISCOUNT)
+
+        Returns:
+            bool: True if action should always require approval
+        """
+        # Handle both enum values and string values
+        action_value = action_type.value if hasattr(action_type, 'value') else action_type
+        return action_value in (self.always_require_approval_for or [])
+
     @classmethod
     def get_for_location(cls, store_location):
         """
@@ -135,9 +167,11 @@ class ApprovalPolicy(SoftDeleteMixin):
             store_location=store_location,
             defaults={
                 'max_discount_percent': Decimal('15.00'),
+                'max_fixed_discount_amount': Decimal('20.00'),
                 'max_refund_amount': Decimal('50.00'),
                 'max_price_override_amount': Decimal('50.00'),
                 'max_void_order_amount': Decimal('100.00'),
+                'always_require_approval_for': [],
                 'approval_expiry_minutes': 30,
                 'allow_self_approval': False,
                 'purge_after_days': 90,

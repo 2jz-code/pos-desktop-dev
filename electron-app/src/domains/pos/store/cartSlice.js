@@ -66,11 +66,13 @@ export const defaultCartState = {
 	total: 0,
 	taxAmount: 0,
 	totalDiscountsAmount: 0,
+	totalAdjustmentsAmount: 0,
 	tip: 0, // Keep tip for now, might be used later
 	isSocketConnected: false,
 	addingItemId: null,
 	updatingItems: [],
 	appliedDiscounts: [],
+	adjustments: [],
 	customerFirstName: "",
 	diningPreference: "TAKE_OUT", // Default to take-out
 	pendingOperations: new Set(), // Track pending WebSocket operations
@@ -551,6 +553,8 @@ export const createCartSlice = (set, get) => {
 
 		setCartFromSocket: (orderData) => {
 			console.log(`⏱️ [TIMING] WebSocket update received, reconciling cart state (${orderData.items?.length || 0} items)`);
+			console.log('📊 Adjustments from backend:', orderData.adjustments);
+			console.log('📊 Total adjustments amount:', orderData.total_adjustments_amount);
 			set({
 				items: orderData.items || [],
 				orderId: orderData.id,
@@ -560,7 +564,9 @@ export const createCartSlice = (set, get) => {
 				subtotal: safeParseFloat(orderData.subtotal),
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
+				totalAdjustmentsAmount: safeParseFloat(orderData.total_adjustments_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
+				adjustments: orderData.adjustments || [],
 				addingItemId: null,
 				updatingItems: [],
 				isSyncing: false,
@@ -791,6 +797,7 @@ export const createCartSlice = (set, get) => {
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
+				adjustments: orderData.adjustments || [],
 				customerFirstName: orderData.guest_first_name || "",
 				diningPreference: orderData.dining_preference || "TAKE_OUT",
 				isLoadingCart: false,

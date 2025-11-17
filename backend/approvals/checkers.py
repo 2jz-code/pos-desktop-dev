@@ -368,3 +368,293 @@ class VoidOrderApprovalChecker:
                 exc_info=True
             )
             raise
+
+
+class OneOffDiscountApprovalChecker:
+    """
+    Checker for one-off discount approvals.
+    Determines if applying a one-off discount requires manager approval.
+    """
+
+    @staticmethod
+    def needs_approval(discount_type, discount_value, order, store_location, order_item=None):
+        """
+        Check if applying this one-off discount needs approval.
+
+        Uses cumulative discount checking to prevent threshold gaming:
+        - For order-level: Sums all existing order-level discounts of the same type
+        - For item-level: Sums all existing discounts on that SPECIFIC ITEM
+        - Adds the new discount value
+        - Checks if cumulative total exceeds threshold
+
+        Args:
+            discount_type: 'PERCENTAGE' or 'FIXED'
+            discount_value: Percentage or fixed amount value
+            order: Order instance to apply discount to
+            store_location: StoreLocation instance
+            order_item: Optional OrderItem for item-level discounts
+
+        Returns:
+            bool: True if approval required, False otherwise
+        """
+        # Check if approvals are enabled for this location
+        if not store_location.manager_approvals_enabled:
+            return False
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+        from orders.models import OrderAdjustment
+
+        # Get policy for threshold checks
+        from approvals.models import ApprovalPolicy
+        policy = ApprovalPolicy.get_for_location(store_location)
+
+        # Check if discounts always require approval (regardless of amount)
+        if policy.requires_approval_for_action(ActionType.DISCOUNT):
+            return True
+
+        # Calculate cumulative discount value (sum of existing + new)
+        # This prevents threshold gaming by applying multiple small discounts
+        if order_item:
+            # Item-level: Check cumulative for THIS SPECIFIC ITEM
+            existing_discounts = order.adjustments.filter(
+                adjustment_type=OrderAdjustment.AdjustmentType.ONE_OFF_DISCOUNT,
+                discount_type=discount_type,
+                order_item=order_item  # Only discounts on this specific item
+            )
+            scope = f"item {order_item.product.name if order_item.product else order_item.custom_name}"
+        else:
+            # Order-level: Check cumulative across all order-level discounts
+            existing_discounts = order.adjustments.filter(
+                adjustment_type=OrderAdjustment.AdjustmentType.ONE_OFF_DISCOUNT,
+                discount_type=discount_type,
+                order_item__isnull=True  # Only order-level discounts
+            )
+            scope = "order"
+
+        # Sum existing discount values (not amounts, but the original discount_value field)
+        cumulative_value = sum(
+            adj.discount_value for adj in existing_discounts
+        ) + discount_value
+
+        logger.info(
+            f"Cumulative {discount_type} discount check for {scope} in order {order.order_number}: "
+            f"existing={sum(adj.discount_value for adj in existing_discounts)}, "
+            f"new={discount_value}, cumulative={cumulative_value}"
+        )
+
+        # For percentage discounts, check cumulative against max_discount_percent threshold
+        if discount_type == OrderAdjustment.DiscountType.PERCENTAGE:
+            return cumulative_value > policy.max_discount_percent
+        else:
+            # For fixed discounts, check cumulative against max_fixed_discount_amount threshold
+            return cumulative_value > policy.max_fixed_discount_amount
+
+    @staticmethod
+    def request_approval(discount_type, discount_value, order, store_location, initiator, reason='', order_item=None):
+        """
+        Create approval request for one-off discount application.
+
+        Args:
+            discount_type: 'PERCENTAGE' or 'FIXED'
+            discount_value: Percentage or fixed amount value
+            order: Order instance to apply discount to
+            store_location: StoreLocation instance
+            initiator: User requesting the approval
+            reason: Reason for the discount
+            order_item: Optional OrderItem for item-level discounts
+
+        Returns:
+            ManagerApprovalRequest instance
+
+        Raises:
+            ValueError: If initiator is None
+        """
+        if not initiator:
+            raise ValueError("Initiator user is required for approval requests")
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+        from orders.models import OrderAdjustment
+
+        # Calculate threshold value
+        # For both percentage and fixed, use the discount_value directly
+        # (percentage as %, fixed as $)
+        threshold_value = discount_value
+
+        # Build descriptive reason
+        if not reason:
+            if order_item:
+                # Item-level discount
+                item_name = order_item.product.name if order_item.product else order_item.custom_name
+                if discount_type == OrderAdjustment.DiscountType.PERCENTAGE:
+                    reason = f"One-off {discount_value}% discount on {item_name} in order {order.order_number}"
+                else:
+                    reason = f"One-off ${discount_value} discount on {item_name} in order {order.order_number}"
+            else:
+                # Order-level discount
+                if discount_type == OrderAdjustment.DiscountType.PERCENTAGE:
+                    reason = f"One-off {discount_value}% discount on order {order.order_number}"
+                else:
+                    reason = f"One-off ${discount_value} discount on order {order.order_number}"
+
+        # Build payload with detailed context
+        payload = {
+            'order_id': str(order.id),
+            'order_number': order.order_number,
+            'discount_type': discount_type,
+            'discount_value': str(discount_value),
+            'order_subtotal': str(order.subtotal),
+            'calculated_threshold': str(threshold_value),
+            'reason': reason,
+        }
+
+        # Add order_item_id if this is an item-level discount
+        if order_item:
+            payload['order_item_id'] = str(order_item.id)
+
+        # Request approval using approval service
+        try:
+            approval_request = ManagerApprovalService.request_approval(
+                action_type=ActionType.DISCOUNT,
+                initiator=initiator,
+                store_location=store_location,
+                context={
+                    'order': order,
+                    'payload': payload,
+                    'reason': reason,
+                    'threshold_value': threshold_value,
+                }
+            )
+
+            logger.info(
+                f"Created approval request {approval_request.id} for one-off discount "
+                f"on order {order.order_number} ({discount_type}: {discount_value})"
+            )
+
+            return approval_request
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create approval request for one-off discount on order {order.order_number}: {e}",
+                exc_info=True
+            )
+            raise
+
+
+class PriceOverrideApprovalChecker:
+    """
+    Checker for price override approvals.
+    Determines if overriding an item's price requires manager approval.
+    """
+
+    @staticmethod
+    def needs_approval(price_override_amount, store_location):
+        """
+        Check if this price override needs approval.
+
+        Args:
+            price_override_amount: Absolute difference in price (always positive)
+            store_location: StoreLocation instance
+
+        Returns:
+            bool: True if approval required, False otherwise
+        """
+        # Check if approvals are enabled for this location
+        if not store_location.manager_approvals_enabled:
+            return False
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+
+        # Check against max_price_override_amount threshold
+        return ManagerApprovalService.check_if_needs_approval(
+            action_type=ActionType.PRICE_OVERRIDE,
+            store_location=store_location,
+            value=price_override_amount
+        )
+
+    @staticmethod
+    def request_approval(order_item, new_price, order, store_location, initiator, reason=''):
+        """
+        Create approval request for price override.
+
+        Args:
+            order_item: OrderItem instance to override price for
+            new_price: New price to set
+            order: Order instance
+            store_location: StoreLocation instance
+            initiator: User requesting the approval
+            reason: Reason for the override
+
+        Returns:
+            ManagerApprovalRequest instance
+
+        Raises:
+            ValueError: If initiator is None
+        """
+        if not initiator:
+            raise ValueError("Initiator user is required for approval requests")
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+
+        original_price = order_item.price_at_sale
+        price_diff = new_price - original_price
+        total_diff = abs(price_diff * order_item.quantity)
+
+        # Build descriptive reason
+        if not reason:
+            item_name = order_item.custom_name if not order_item.product else order_item.product.name
+            reason = (
+                f"Price override on {item_name} in order {order.order_number}: "
+                f"${original_price} → ${new_price} (diff: ${abs(price_diff)})"
+            )
+
+        # Build payload with detailed context
+        payload = {
+            'order_id': str(order.id),
+            'order_number': order.order_number,
+            'order_item_id': str(order_item.id),
+            'item_name': order_item.custom_name if not order_item.product else order_item.product.name,
+            'original_price': str(original_price),
+            'new_price': str(new_price),
+            'price_difference': str(price_diff),
+            'quantity': order_item.quantity,
+            'total_difference': str(total_diff),
+            'reason': reason,
+        }
+
+        # Request approval using approval service
+        try:
+            approval_request = ManagerApprovalService.request_approval(
+                action_type=ActionType.PRICE_OVERRIDE,
+                initiator=initiator,
+                store_location=store_location,
+                context={
+                    'order': order,
+                    'order_item': order_item,
+                    'payload': payload,
+                    'reason': reason,
+                    'threshold_value': total_diff,
+                }
+            )
+
+            logger.info(
+                f"Created approval request {approval_request.id} for price override "
+                f"on item {order_item.id} in order {order.order_number} "
+                f"(${original_price} → ${new_price})"
+            )
+
+            return approval_request
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create approval request for price override on item {order_item.id}: {e}",
+                exc_info=True
+            )
+            raise

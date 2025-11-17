@@ -7,7 +7,12 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import sync_to_async
 
 from .models import Order, OrderItem, Product
-from .services import OrderService
+from .services import (
+    OrderService,
+    OrderCalculationService,
+    OrderItemService,
+    OrderDiscountService,
+)
 from .serializers import UnifiedOrderSerializer
 
 # No longer need DjangoJSONEncoder if we pre-process the data
@@ -113,7 +118,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 pass
             order_instance = cached_state
         else:
-            order_instance = await sync_to_async(OrderService.recalculate_order_totals)(order)
+            order_instance = await sync_to_async(OrderCalculationService.recalculate_order_totals)(order)
 
         serialize_start = time.monotonic()
         serialized_order = await self.serialize_order(order_instance)
@@ -209,8 +214,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     f"OrderConsumer: FORCE OVERRIDE - Adding {product.name} despite stock validation failure"
                 )
 
-                # Add the item without stock validation using OrderService
-                await sync_to_async(OrderService.add_item_to_order)(
+                # Add the item without stock validation using OrderItemService
+                await sync_to_async(OrderItemService.add_item_to_order)(
                     order=order,
                     product=product,
                     quantity=quantity,
@@ -260,7 +265,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
                 order = await sync_to_async(get_order)()
                 product = await sync_to_async(get_product)()
-                await sync_to_async(OrderService.add_item_to_order)(
+                await sync_to_async(OrderItemService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
                 # Use recalculate_and_cache_order for consistency with other operations
@@ -320,7 +325,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             price_decimal = Decimal(str(price))
 
             # Add the custom item using OrderService
-            await sync_to_async(OrderService.add_custom_item_to_order)(
+            await sync_to_async(OrderItemService.add_custom_item_to_order)(
                 order=order,
                 name=name,
                 price=price_decimal,
@@ -481,7 +486,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         
                         # Create new individual items (cloning the original modifiers)
                         for i in range(additional_quantity):
-                            await sync_to_async(OrderService.add_item_to_order)(
+                            await sync_to_async(OrderItemService.add_item_to_order)(
                                 order=order,
                                 product=product,
                                 quantity=1,
@@ -517,7 +522,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         await self.recalculate_and_cache_order(order_obj)
                     else:
                         # Regular items: use service method for policy-aware validation
-                        await sync_to_async(OrderService.update_item_quantity)(item, new_quantity)
+                        await sync_to_async(OrderItemService.update_item_quantity)(item, new_quantity)
                         order_obj = await sync_to_async(lambda i: i.order)(item)
                         await self.recalculate_and_cache_order(order_obj)
 
@@ -594,7 +599,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(item.delete)()
 
             # Add new item with updated modifiers
-            await sync_to_async(OrderService.add_item_to_order)(
+            await sync_to_async(OrderItemService.add_item_to_order)(
                 order=order,
                 product=product,
                 quantity=quantity,
@@ -623,6 +628,16 @@ class OrderConsumer(AsyncWebsocketConsumer):
         item = await sync_to_async(OrderItem.objects.get)(id=item_id)
         order = await sync_to_async(lambda i: i.order)(item)
         await sync_to_async(item.delete)()
+
+        # If no items left in the cart, remove order-level discounts and adjustments
+        def cleanup_empty_cart(order):
+            if not order.items.exists():
+                # Remove order-level discounts (not item-level)
+                order.discounts.all().delete()
+                # Remove order-level adjustments (not item-level)
+                order.adjustments.filter(order_item__isnull=True).delete()
+
+        await sync_to_async(cleanup_empty_cart)(order)
         await self.recalculate_and_cache_order(order)
 
     async def apply_discount(self, payload):
@@ -642,7 +657,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            result = await sync_to_async(OrderService.apply_discount_to_order_by_id)(
+            result = await sync_to_async(OrderDiscountService.apply_discount_to_order_by_id)(
                 order=order, discount_id=discount_id, user=self.user
             )
 
@@ -687,7 +702,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            result = await sync_to_async(OrderService.apply_discount_to_order_by_code)(
+            result = await sync_to_async(OrderDiscountService.apply_discount_to_order_by_code)(
                 order=order, code=code, user=self.user
             )
 
@@ -724,7 +739,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
         try:
-            await sync_to_async(OrderService.remove_discount_from_order_by_id)(
+            await sync_to_async(OrderDiscountService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
             )
             await self.recalculate_and_cache_order(order)
@@ -742,7 +757,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             )
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
-        await sync_to_async(OrderService.clear_order_items)(order)
+        await sync_to_async(OrderItemService.clear_order_items)(order)
         await self.recalculate_and_cache_order(order)
 
     async def send_full_order_state(self, order=None):

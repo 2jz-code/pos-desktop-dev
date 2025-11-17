@@ -9,7 +9,7 @@ import { toast } from "@/shared/components/ui/use-toast";
 import { Loader2, Tag, X, ChefHat, CreditCard } from "lucide-react";
 import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
 import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
-import { markSentToKitchen } from "@/domains/orders/services/orderService";
+import { markSentToKitchen, removeAdjustment } from "@/domains/orders/services/orderService";
 
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
@@ -54,6 +54,7 @@ const CartSummary = () => {
 		subtotal,
 		taxAmount,
 		appliedDiscounts,
+		adjustments,
 		setIsDiscountDialogOpen,
 		removeDiscountViaSocket,
 	} = usePosStore(
@@ -66,11 +67,15 @@ const CartSummary = () => {
 			subtotal: state.subtotal,
 			taxAmount: state.taxAmount,
 			appliedDiscounts: state.appliedDiscounts,
+			adjustments: state.adjustments,
 			setIsDiscountDialogOpen: state.setIsDiscountDialogOpen,
 			removeDiscountViaSocket: state.removeDiscountViaSocket,
 		}),
 		shallow
 	);
+
+	// Debug logging to see if component re-renders with updated adjustments
+	console.log('🔄 CartSummary render - adjustments:', adjustments);
 
 	// Get kitchen zones from cloud configuration (includes printer info)
 	const { data: kitchenZones = [] } = useKitchenZones();
@@ -239,9 +244,46 @@ const CartSummary = () => {
 		}
 	};
 
+	const handleRemoveAdjustment = async (adjustmentId) => {
+		if (!orderId) return;
+
+		try {
+			await removeAdjustment(orderId, adjustmentId);
+			// Cart will update automatically via WebSocket
+		} catch (error) {
+			console.error("Error removing adjustment:", error);
+			toast({
+				title: "Error",
+				description: error.message || "Failed to remove adjustment. Please try again.",
+				variant: "destructive",
+			});
+		}
+	};
+
 	const hasItems = items.length > 0;
 	const hasDiscounts = appliedDiscounts && appliedDiscounts.length > 0;
+	const hasAdjustments = adjustments && adjustments.length > 0;
 	const hasKitchenZones = kitchenZones && kitchenZones.length > 0;
+
+	// Calculate effective subtotal (including item-level discounts in the item prices)
+	const effectiveSubtotal = items.reduce((sum, item) => {
+		// Find item-level one-off discounts for this item
+		const itemDiscounts = adjustments?.filter(
+			(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
+		) || [];
+
+		// Calculate total item-level discount amount
+		const totalItemDiscount = itemDiscounts.reduce((discSum, disc) => discSum + parseFloat(disc.amount || 0), 0);
+
+		// Calculate effective price per unit (including discounts)
+		const basePrice = parseFloat(item.price_at_sale);
+		const effectivePricePerUnit = itemDiscounts.length > 0
+			? basePrice + (totalItemDiscount / item.quantity)  // discount.amount is negative
+			: basePrice;
+
+		// Add this item's effective total to the sum
+		return sum + (item.quantity * effectivePricePerUnit);
+	}, 0);
 
 	return (
 		<div className="border-t border-border/60 bg-muted/20">
@@ -250,7 +292,7 @@ const CartSummary = () => {
 				<div className="space-y-2">
 					<SummaryRow
 						label="Subtotal"
-						amount={subtotal}
+						amount={effectiveSubtotal}
 					/>
 					{hasDiscounts && (
 						<>
@@ -269,7 +311,7 @@ const CartSummary = () => {
 							<SummaryRow
 								label="Discounted Subtotal"
 								amount={
-									subtotal -
+									effectiveSubtotal -
 									(appliedDiscounts?.reduce(
 										(sum, d) => sum + parseFloat(d.amount || 0),
 										0
@@ -277,6 +319,45 @@ const CartSummary = () => {
 								}
 								className="border-t border-border/60 pt-2 font-medium text-foreground"
 							/>
+						</>
+					)}
+					{hasAdjustments && (
+						<>
+							{/* Show order-level one-off discounts only (item-level discounts show on items) */}
+							{adjustments
+								.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
+								.map((adjustment) => {
+									let label = "";
+									if (adjustment.discount_type === "PERCENTAGE") {
+										label = `${adjustment.discount_value}% Discount`;
+									} else {
+										label = `$${adjustment.discount_value} Discount`;
+									}
+
+									return (
+										<SummaryRow
+											key={adjustment.id}
+											label={label}
+											amount={adjustment.amount}
+											className="text-emerald-600 dark:text-emerald-400"
+											onRemove={() => handleRemoveAdjustment(adjustment.id)}
+										/>
+									);
+								})}
+
+							{/* Show discounted subtotal if there are order-level one-off discounts */}
+							{adjustments.some((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item) && (
+								<SummaryRow
+									label="Discounted Subtotal"
+									amount={
+										effectiveSubtotal +
+										adjustments
+											.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
+											.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
+									}
+									className="border-t border-border/60 pt-2 font-medium text-foreground"
+								/>
+							)}
 						</>
 					)}
 					<SummaryRow

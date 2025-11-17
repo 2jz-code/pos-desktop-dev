@@ -143,9 +143,11 @@ class UnifiedApprovalPolicySerializer(
                 'store_location_id',
                 'store_location_name',
                 'max_discount_percent',
+                'max_fixed_discount_amount',
                 'max_refund_amount',
                 'max_price_override_amount',
                 'max_void_order_amount',
+                'always_require_approval_for',
                 'approval_expiry_minutes',
                 'allow_self_approval',
             ],
@@ -222,9 +224,11 @@ class ApprovalPolicyUpdateSerializer(
         model = ApprovalPolicy
         fields = [
             'max_discount_percent',
+            'max_fixed_discount_amount',
             'max_refund_amount',
             'max_price_override_amount',
             'max_void_order_amount',
+            'always_require_approval_for',
             'approval_expiry_minutes',
             'allow_self_approval',
             'purge_after_days',
@@ -246,6 +250,24 @@ class ApprovalPolicyUpdateSerializer(
         """Ensure purge period is reasonable"""
         if value < 1 or value > 730:
             raise serializers.ValidationError("Purge period must be between 1 and 730 days (2 years)")
+        return value
+
+    def validate_always_require_approval_for(self, value):
+        """Ensure only valid action types are provided"""
+        from .models import ActionType
+
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Must be a list of action types")
+
+        valid_action_types = [choice[0] for choice in ActionType.choices]
+        invalid_types = [v for v in value if v not in valid_action_types]
+
+        if invalid_types:
+            raise serializers.ValidationError(
+                f"Invalid action types: {', '.join(invalid_types)}. "
+                f"Valid options: {', '.join(valid_action_types)}"
+            )
+
         return value
 
 

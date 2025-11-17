@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { OneOffDiscountDialog } from "../OneOffDiscountDialog";
+import { PriceOverrideDialog } from "../PriceOverrideDialog";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { openCashDrawer } from "@/shared/lib/hardware";
@@ -9,9 +12,11 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle, Printer } from "lucide-react";
+import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle, Printer, Tag, Edit3 } from "lucide-react";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { printReceipt } from "@/shared/lib/hardware/printerService";
 import { getReceiptFormatData } from "@/domains/settings/services/settingsService";
@@ -19,6 +24,9 @@ import { toast } from "@/shared/components/ui/use-toast";
 import { shallow } from "zustand/shallow";
 
 const CartActionsDropdown = () => {
+	const [showDiscountDialog, setShowDiscountDialog] = useState(false);
+	const [showPriceOverrideDialog, setShowPriceOverrideDialog] = useState(false);
+
 	const { clearCart, holdOrder, items, subtotal, total, taxAmount, totalDiscountsAmount, surchargesAmount, customerFirstName, diningPreference } = usePosStore(
 		(state) => ({
 			clearCart: state.clearCart,
@@ -164,6 +172,9 @@ const CartActionsDropdown = () => {
 				align="end"
 				className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
 			>
+				<DropdownMenuLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+					Cart Actions
+				</DropdownMenuLabel>
 				<DropdownMenuItem
 					onClick={handleClearCart}
 					disabled={isCartEmpty}
@@ -188,18 +199,54 @@ const CartActionsDropdown = () => {
 					<Printer className="mr-2 h-4 w-4" />
 					<span>Print Transaction Receipt</span>
 				</DropdownMenuItem>
+
+				<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+				<DropdownMenuLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+					Order Adjustments
+				</DropdownMenuLabel>
+				<DropdownMenuItem
+					onClick={() => setShowDiscountDialog(true)}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+				>
+					<Tag className="mr-2 h-4 w-4" />
+					<span>Apply One-Off Discount</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() => setShowPriceOverrideDialog(true)}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+				>
+					<Edit3 className="mr-2 h-4 w-4" />
+					<span>Modify Item Price</span>
+				</DropdownMenuItem>
+
 				{canOpenCashDrawer && (
-					<DropdownMenuItem
-						onClick={handleOpenCashDrawer}
-						className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-					>
-						<DollarSign className="mr-2 h-4 w-4" />
-						<span>Open Cash Drawer</span>
-					</DropdownMenuItem>
+					<>
+						<DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
+						<DropdownMenuLabel className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+							Other
+						</DropdownMenuLabel>
+						<DropdownMenuItem
+							onClick={handleOpenCashDrawer}
+							className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+						>
+							<DollarSign className="mr-2 h-4 w-4" />
+							<span>Open Cash Drawer</span>
+						</DropdownMenuItem>
+					</>
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 		{confirmation.dialog}
+		<OneOffDiscountDialog
+			open={showDiscountDialog}
+			onClose={() => setShowDiscountDialog(false)}
+		/>
+		<PriceOverrideDialog
+			open={showPriceOverrideDialog}
+			onClose={() => setShowPriceOverrideDialog(false)}
+		/>
 	</>);
 };
 

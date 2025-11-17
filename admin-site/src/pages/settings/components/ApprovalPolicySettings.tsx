@@ -46,9 +46,11 @@ export default function ApprovalPolicySettings({
 	// Local state for form values
 	const [formValues, setFormValues] = useState({
 		max_discount_percent: 15,
+		max_fixed_discount_amount: 20,
 		max_refund_amount: 50,
 		max_price_override_amount: 50,
 		max_void_order_amount: 100,
+		always_require_approval_for: [] as string[],
 		approval_expiry_minutes: 30,
 		allow_self_approval: false,
 		purge_after_days: 90,
@@ -62,10 +64,12 @@ export default function ApprovalPolicySettings({
 		if (policy) {
 			setFormValues({
 				max_discount_percent: Number(policy.max_discount_percent) || 15,
+				max_fixed_discount_amount: Number(policy.max_fixed_discount_amount) || 20,
 				max_refund_amount: Number(policy.max_refund_amount) || 50,
 				max_price_override_amount:
 					Number(policy.max_price_override_amount) || 50,
 				max_void_order_amount: Number(policy.max_void_order_amount) || 100,
+				always_require_approval_for: policy.always_require_approval_for || [],
 				approval_expiry_minutes: policy.approval_expiry_minutes || 30,
 				allow_self_approval: policy.allow_self_approval || false,
 				purge_after_days: policy.purge_after_days || 90,
@@ -102,6 +106,24 @@ export default function ApprovalPolicySettings({
 		// Save the entire form when a field loses focus
 		setLastSavedField(field);
 		mutation.mutate(formValues);
+	};
+
+	const toggleAlwaysRequireApproval = (actionType: string, enabled: boolean) => {
+		setFormValues((prev) => {
+			const newList = enabled
+				? [...prev.always_require_approval_for, actionType]
+				: prev.always_require_approval_for.filter((type) => type !== actionType);
+
+			const newValues = { ...prev, always_require_approval_for: newList };
+			// Save immediately
+			setLastSavedField(`always_require_${actionType}`);
+			mutation.mutate(newValues);
+			return newValues;
+		});
+	};
+
+	const isAlwaysRequired = (actionType: string) => {
+		return formValues.always_require_approval_for.includes(actionType);
 	};
 
 	if (isLoading) {
@@ -185,132 +207,265 @@ export default function ApprovalPolicySettings({
 
 					{/* Max Discount Percentage */}
 					<div className="space-y-2">
-						<Label htmlFor="max_discount_percent">
-							Maximum Discount Percentage
-							{lastSavedField === "max_discount_percent" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<Input
-								id="max_discount_percent"
-								type="number"
-								step="0.01"
-								min="0"
-								max="100"
-								value={formValues.max_discount_percent}
-								onChange={(e) =>
-									handleFieldChange(
-										"max_discount_percent",
-										Number(e.target.value)
-									)
-								}
-								onBlur={() => handleFieldBlur("max_discount_percent")}
-							/>
-							<span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								%
-							</span>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="max_discount_percent">
+								Maximum Discount Percentage
+								{lastSavedField === "max_discount_percent" && (
+									<Check className="inline h-3 w-3 ml-2 text-green-600" />
+								)}
+							</Label>
+							<div className="flex items-center gap-2">
+								<Label
+									htmlFor="always_discount"
+									className="text-sm font-normal text-muted-foreground"
+								>
+									Always require
+								</Label>
+								<Switch
+									id="always_discount"
+									checked={isAlwaysRequired("DISCOUNT")}
+									onCheckedChange={(checked) =>
+										toggleAlwaysRequireApproval("DISCOUNT", checked)
+									}
+								/>
+								{lastSavedField === "always_require_DISCOUNT" && (
+									<Check className="h-3 w-3 text-green-600" />
+								)}
+							</div>
 						</div>
+						{!isAlwaysRequired("DISCOUNT") && (
+							<div className="relative">
+								<Input
+									id="max_discount_percent"
+									type="number"
+									step="0.01"
+									min="0"
+									max="100"
+									value={formValues.max_discount_percent}
+									onChange={(e) =>
+										handleFieldChange(
+											"max_discount_percent",
+											Number(e.target.value)
+										)
+									}
+									onBlur={() => handleFieldBlur("max_discount_percent")}
+								/>
+								<span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+									%
+								</span>
+							</div>
+						)}
 						<p className="text-sm text-muted-foreground">
-							Discounts exceeding this percentage will require manager approval.
+							{isAlwaysRequired("DISCOUNT")
+								? "All discounts will require manager approval regardless of percentage."
+								: "Percentage discounts exceeding this value will require manager approval."}
+						</p>
+					</div>
+
+					{/* Max Fixed Discount Amount */}
+					<div className="space-y-2">
+						<div className="flex items-center justify-between">
+							<Label htmlFor="max_fixed_discount_amount">
+								Maximum Fixed Discount Amount
+								{lastSavedField === "max_fixed_discount_amount" && (
+									<Check className="inline h-3 w-3 ml-2 text-green-600" />
+								)}
+							</Label>
+						</div>
+						{!isAlwaysRequired("DISCOUNT") && (
+							<div className="relative">
+								<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+									$
+								</span>
+								<Input
+									id="max_fixed_discount_amount"
+									type="number"
+									step="0.01"
+									min="0"
+									className="pl-7"
+									value={formValues.max_fixed_discount_amount}
+									onChange={(e) =>
+										handleFieldChange(
+											"max_fixed_discount_amount",
+											Number(e.target.value)
+										)
+									}
+									onBlur={() => handleFieldBlur("max_fixed_discount_amount")}
+								/>
+							</div>
+						)}
+						<p className="text-sm text-muted-foreground">
+							{isAlwaysRequired("DISCOUNT")
+								? "Controlled by 'Always require' toggle for discounts above."
+								: "Fixed amount discounts exceeding this value will require manager approval."}
 						</p>
 					</div>
 
 					{/* Max Refund Amount */}
 					<div className="space-y-2">
-						<Label htmlFor="max_refund_amount">
-							Maximum Refund Amount
-							{lastSavedField === "max_refund_amount" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								$
-							</span>
-							<Input
-								id="max_refund_amount"
-								type="number"
-								step="0.01"
-								min="0"
-								className="pl-7"
-								value={formValues.max_refund_amount}
-								onChange={(e) =>
-									handleFieldChange("max_refund_amount", Number(e.target.value))
-								}
-								onBlur={() => handleFieldBlur("max_refund_amount")}
-							/>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="max_refund_amount">
+								Maximum Refund Amount
+								{lastSavedField === "max_refund_amount" && (
+									<Check className="inline h-3 w-3 ml-2 text-green-600" />
+								)}
+							</Label>
+							<div className="flex items-center gap-2">
+								<Label
+									htmlFor="always_refund"
+									className="text-sm font-normal text-muted-foreground"
+								>
+									Always require
+								</Label>
+								<Switch
+									id="always_refund"
+									checked={isAlwaysRequired("REFUND")}
+									onCheckedChange={(checked) =>
+										toggleAlwaysRequireApproval("REFUND", checked)
+									}
+								/>
+								{lastSavedField === "always_require_REFUND" && (
+									<Check className="h-3 w-3 text-green-600" />
+								)}
+							</div>
 						</div>
+						{!isAlwaysRequired("REFUND") && (
+							<div className="relative">
+								<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+									$
+								</span>
+								<Input
+									id="max_refund_amount"
+									type="number"
+									step="0.01"
+									min="0"
+									className="pl-7"
+									value={formValues.max_refund_amount}
+									onChange={(e) =>
+										handleFieldChange("max_refund_amount", Number(e.target.value))
+									}
+									onBlur={() => handleFieldBlur("max_refund_amount")}
+								/>
+							</div>
+						)}
 						<p className="text-sm text-muted-foreground">
-							Refunds exceeding this amount will require manager approval.
+							{isAlwaysRequired("REFUND")
+								? "All refunds will require manager approval regardless of amount."
+								: "Refunds exceeding this amount will require manager approval."}
 						</p>
 					</div>
 
 					{/* Max Price Override Amount */}
 					<div className="space-y-2">
-						<Label htmlFor="max_price_override_amount">
-							Maximum Price Override Amount
-							{lastSavedField === "max_price_override_amount" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								$
-							</span>
-							<Input
-								id="max_price_override_amount"
-								type="number"
-								step="0.01"
-								min="0"
-								className="pl-7"
-								value={formValues.max_price_override_amount}
-								onChange={(e) =>
-									handleFieldChange(
-										"max_price_override_amount",
-										Number(e.target.value)
-									)
-								}
-								onBlur={() => handleFieldBlur("max_price_override_amount")}
-							/>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="max_price_override_amount">
+								Maximum Price Override Amount
+								{lastSavedField === "max_price_override_amount" && (
+									<Check className="inline h-3 w-3 ml-2 text-green-600" />
+								)}
+							</Label>
+							<div className="flex items-center gap-2">
+								<Label
+									htmlFor="always_price_override"
+									className="text-sm font-normal text-muted-foreground"
+								>
+									Always require
+								</Label>
+								<Switch
+									id="always_price_override"
+									checked={isAlwaysRequired("PRICE_OVERRIDE")}
+									onCheckedChange={(checked) =>
+										toggleAlwaysRequireApproval("PRICE_OVERRIDE", checked)
+									}
+								/>
+								{lastSavedField === "always_require_PRICE_OVERRIDE" && (
+									<Check className="h-3 w-3 text-green-600" />
+								)}
+							</div>
 						</div>
+						{!isAlwaysRequired("PRICE_OVERRIDE") && (
+							<div className="relative">
+								<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+									$
+								</span>
+								<Input
+									id="max_price_override_amount"
+									type="number"
+									step="0.01"
+									min="0"
+									className="pl-7"
+									value={formValues.max_price_override_amount}
+									onChange={(e) =>
+										handleFieldChange(
+											"max_price_override_amount",
+											Number(e.target.value)
+										)
+									}
+									onBlur={() => handleFieldBlur("max_price_override_amount")}
+								/>
+							</div>
+						)}
 						<p className="text-sm text-muted-foreground">
-							Price overrides exceeding this amount will require manager
-							approval.
+							{isAlwaysRequired("PRICE_OVERRIDE")
+								? "All price overrides will require manager approval regardless of amount."
+								: "Price overrides exceeding this amount will require manager approval."}
 						</p>
 					</div>
 
 					{/* Max Void Order Amount */}
 					<div className="space-y-2">
-						<Label htmlFor="max_void_order_amount">
-							Maximum Void Order Amount
-							{lastSavedField === "max_void_order_amount" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								$
-							</span>
-							<Input
-								id="max_void_order_amount"
-								type="number"
-								step="0.01"
-								min="0"
-								className="pl-7"
-								value={formValues.max_void_order_amount}
-								onChange={(e) =>
-									handleFieldChange(
-										"max_void_order_amount",
-										Number(e.target.value)
-									)
-								}
-								onBlur={() => handleFieldBlur("max_void_order_amount")}
-							/>
+						<div className="flex items-center justify-between">
+							<Label htmlFor="max_void_order_amount">
+								Maximum Void Order Amount
+								{lastSavedField === "max_void_order_amount" && (
+									<Check className="inline h-3 w-3 ml-2 text-green-600" />
+								)}
+							</Label>
+							<div className="flex items-center gap-2">
+								<Label
+									htmlFor="always_void"
+									className="text-sm font-normal text-muted-foreground"
+								>
+									Always require
+								</Label>
+								<Switch
+									id="always_void"
+									checked={isAlwaysRequired("ORDER_VOID")}
+									onCheckedChange={(checked) =>
+										toggleAlwaysRequireApproval("ORDER_VOID", checked)
+									}
+								/>
+								{lastSavedField === "always_require_ORDER_VOID" && (
+									<Check className="h-3 w-3 text-green-600" />
+								)}
+							</div>
 						</div>
+						{!isAlwaysRequired("ORDER_VOID") && (
+							<div className="relative">
+								<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+									$
+								</span>
+								<Input
+									id="max_void_order_amount"
+									type="number"
+									step="0.01"
+									min="0"
+									className="pl-7"
+									value={formValues.max_void_order_amount}
+									onChange={(e) =>
+										handleFieldChange(
+											"max_void_order_amount",
+											Number(e.target.value)
+										)
+									}
+									onBlur={() => handleFieldBlur("max_void_order_amount")}
+								/>
+							</div>
+						)}
 						<p className="text-sm text-muted-foreground">
-							Voiding orders exceeding this amount will require manager
-							approval.
+							{isAlwaysRequired("ORDER_VOID")
+								? "All order voids will require manager approval regardless of amount."
+								: "Voiding orders exceeding this amount will require manager approval."}
 						</p>
 					</div>
 				</div>
