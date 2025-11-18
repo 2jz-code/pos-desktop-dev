@@ -50,6 +50,7 @@ class CustomerActionsMixin:
     This mixin provides action methods for OrderViewSet.
     """
 
+    @action(detail=True, methods=["post"], url_path="update-customer-info")
     def update_customer_info(self, request, pk=None):
         """
         Updates the customer information for an order, supporting both
@@ -75,6 +76,7 @@ class CustomerActionsMixin:
             )
 
 
+    @action(detail=True, methods=["post"], url_path="resend-confirmation")
     def resend_confirmation(self, request: Request, pk=None) -> Response:
         """
         Resends the order confirmation email to the customer.

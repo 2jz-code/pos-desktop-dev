@@ -14,10 +14,28 @@ class OrderAdjustmentSerializer(BaseModelSerializer):
     Serializer for reading OrderAdjustment instances.
     Used for listing adjustments applied to an order.
     """
-    applied_by = UnifiedUserSerializer(read_only=True)
     approved_by = UnifiedUserSerializer(read_only=True)
     adjustment_type_display = serializers.CharField(source='get_adjustment_type_display', read_only=True)
     discount_type_display = serializers.CharField(source='get_discount_type_display', read_only=True)
+
+    # Simple string fields for frontend display
+    approved_by_name = serializers.SerializerMethodField()
+    order_item_name = serializers.SerializerMethodField()
+    approval_status = serializers.CharField(read_only=True)
+
+    def get_approved_by_name(self, obj):
+        """Return the full name or username of the user who approved the adjustment."""
+        if obj.approved_by:
+            return obj.approved_by.get_full_name() or obj.approved_by.username
+        return None
+
+    def get_order_item_name(self, obj):
+        """Return the product name of the order item (for price overrides)."""
+        if obj.order_item and obj.order_item.product:
+            return obj.order_item.product.name
+        elif obj.order_item:
+            return obj.order_item.custom_name or obj.order_item.display_name or "Custom Item"
+        return None
 
     class Meta:
         model = OrderAdjustment
@@ -32,8 +50,10 @@ class OrderAdjustmentSerializer(BaseModelSerializer):
             'new_price',
             'amount',
             'reason',
-            'applied_by',
             'approved_by',
+            'approved_by_name',
+            'order_item_name',
+            'approval_status',
             'created_at',
             'order_item',
         ]

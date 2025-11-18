@@ -4,6 +4,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import * as orderService from "@/domains/orders/services/orderService";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/components/ui/hover-card";
 import { toast } from "@/shared/components/ui/use-toast";
 import FullScreenLoader from "@/shared/components/common/FullScreenLoader";
 import {
@@ -134,6 +135,11 @@ const CustomerInfo = ({ customer_display_name, customer_email, customer_phone })
 
 // Compact Order Summary Component
 const OrderSummary = ({ order }) => {
+  // Find order-level one-off discounts (no specific order_item)
+  const orderLevelDiscounts = (order.adjustments || []).filter(
+    (adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item
+  );
+
   return (
     <Card className="p-5 border border-border/60 bg-card/80">
       <div className="space-y-4">
@@ -154,11 +160,59 @@ const OrderSummary = ({ order }) => {
             <span className="text-foreground font-medium">{formatCurrency(order.subtotal)}</span>
           </div>
 
-          {order.total_discounts_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Discounts</span>
-              <span className="text-destructive font-medium">-{formatCurrency(order.total_discounts_amount)}</span>
-            </div>
+          {/* Order-Level One-Off Discounts */}
+          {orderLevelDiscounts.map((discount) => {
+            let discountLabel = "One-Off Discount";
+            if (discount.discount_type === "PERCENTAGE") {
+              discountLabel = `${discount.discount_value}% Discount`;
+            } else if (discount.discount_value) {
+              discountLabel = `${formatCurrency(discount.discount_value)} Discount`;
+            }
+            return (
+              <div key={discount.id} className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-sm">{discountLabel}</span>
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 cursor-help"
+                      >
+                        {discount.discount_type === "PERCENTAGE" ? `${discount.discount_value}%` : formatCurrency(discount.discount_value)}
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{discount.reason}</p>
+                        </div>
+                        {discount.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {discount.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  -{formatCurrency(Math.abs(parseFloat(discount.amount || 0)))}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Applied code-based discounts */}
+          {order.total_discounts_amount > 0 && order.applied_discounts?.length > 0 && (
+            <>
+              {order.applied_discounts.map((orderDiscount) => (
+                <div key={orderDiscount.id} className="flex justify-between">
+                  <span className="text-muted-foreground">{orderDiscount.discount?.name || "Discount"}</span>
+                  <span className="text-destructive font-medium">-{formatCurrency(orderDiscount.amount)}</span>
+                </div>
+              ))}
+            </>
           )}
 
           <div className="flex justify-between">
@@ -517,7 +571,12 @@ const OrderDetailsPage = () => {
                   {/* Grid layout for items on larger screens for better space usage */}
                   <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
                     {order.items.map((item) => (
-                      <ItemCard key={item.id} item={item} compact={order.items.length > 2} />
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        adjustments={order.adjustments || []}
+                        compact={order.items.length > 2}
+                      />
                     ))}
                   </div>
                 </div>

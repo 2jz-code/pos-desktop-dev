@@ -50,21 +50,7 @@ class AdjustmentActionsMixin:
     This mixin provides action methods for OrderViewSet.
     """
 
-    def list_adjustments(self, request, pk=None):
-        """
-        Lists all adjustments applied to an order.
-
-        Returns a list of OrderAdjustment instances with details about
-        one-off discounts and price overrides.
-        """
-        order = self.get_object()
-        from orders.services import OrderAdjustmentService
-
-        adjustments = OrderAdjustmentService.get_order_adjustments(order)
-        serializer = OrderAdjustmentSerializer(adjustments, many=True)
-        return Response(serializer.data)
-
-
+    @action(detail=True, methods=["post"], url_path="apply-one-off-discount")
     def apply_one_off_discount(self, request, pk=None):
         """
         Applies a one-off discount to an order.
@@ -108,6 +94,7 @@ class AdjustmentActionsMixin:
             )
 
 
+    @action(detail=True, methods=["post"], url_path="apply-price-override")
     def apply_price_override(self, request, pk=None):
         """
         Applies a price override to an order item.
@@ -151,6 +138,7 @@ class AdjustmentActionsMixin:
             )
 
 
+    @action(detail=True, methods=["delete"], url_path="adjustments/(?P<adjustment_id>[^/.]+)")
     def remove_adjustment(self, request, pk=None, adjustment_id=None):
         """
         Remove an adjustment (one-off discount or price override) from an order.

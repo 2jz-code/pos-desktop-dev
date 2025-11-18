@@ -70,6 +70,8 @@ class OrderViewSet(
     queryset = Order.objects.all()
     serializer_class = UnifiedOrderSerializer
     permission_classes = [IsAuthenticatedOrGuestOrder]
+    filterset_class = OrderFilter
+    ordering = ["-created_at", "order_number"]  # Override BaseViewSet default ordering
 
 
     def get_queryset(self):

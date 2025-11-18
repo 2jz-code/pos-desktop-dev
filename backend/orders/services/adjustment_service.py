@@ -108,7 +108,17 @@ class OrderAdjustmentService:
                         f"Self-approval enabled and user {applied_by.email} is a {applied_by.role} - "
                         f"bypassing approval dialog and proceeding with discount"
                     )
-                    # Continue execution - discount will proceed without approval dialog
+                    # Self-approved - set approved_by to the user who applied it
+                    return OrderAdjustmentService.apply_one_off_discount(
+                        order=order,
+                        discount_type=discount_type,
+                        discount_value=discount_value,
+                        reason=reason,
+                        applied_by=applied_by,
+                        approved_by=applied_by,  # Self-approved
+                        order_item=order_item,
+                        bypass_approval_check=True
+                    )
                 else:
                     # Create approval request
                     approval_request = OneOffDiscountApprovalChecker.request_approval(
@@ -141,13 +151,14 @@ class OrderAdjustmentService:
             )
         # --- END: Manager Approval Check ---
 
-        # No approval needed - apply the discount
+        # No approval needed - apply the discount (approved_by=None since below threshold)
         return OrderAdjustmentService.apply_one_off_discount(
             order=order,
             discount_type=discount_type,
             discount_value=discount_value,
             reason=reason,
             applied_by=applied_by,
+            approved_by=None,  # No approval needed (below threshold)
             order_item=order_item,
             bypass_approval_check=True
         )
@@ -474,7 +485,16 @@ class OrderAdjustmentService:
                         f"Self-approval enabled and user {applied_by.email} is a {applied_by.role} - "
                         f"bypassing approval dialog and proceeding with price override"
                     )
-                    # Continue execution - price override will proceed without approval dialog
+                    # Self-approved - set approved_by to the user who applied it
+                    return OrderAdjustmentService.apply_price_override(
+                        order_item=order_item,
+                        new_price=new_price,
+                        reason=reason,
+                        applied_by=applied_by,
+                        order=order,
+                        approved_by=applied_by,  # Self-approved
+                        bypass_approval_check=True
+                    )
                 else:
                     # Create approval request
                     approval_request = PriceOverrideApprovalChecker.request_approval(
@@ -507,13 +527,14 @@ class OrderAdjustmentService:
             )
         # --- END: Manager Approval Check ---
 
-        # No approval needed - apply the price override
+        # No approval needed - apply the price override (approved_by=None since below threshold)
         return OrderAdjustmentService.apply_price_override(
             order_item=order_item,
             new_price=new_price,
             reason=reason,
             applied_by=applied_by,
             order=order,
+            approved_by=None,  # No approval needed (below threshold)
             bypass_approval_check=True
         )
 

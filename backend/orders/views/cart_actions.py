@@ -50,6 +50,7 @@ class CartActionsMixin:
     This mixin provides action methods for OrderViewSet.
     """
 
+    @action(detail=False, methods=["post"], url_path="add-item-to-cart")
     def add_item_to_cart(self, request, *args, **kwargs):
         """
         A dedicated endpoint to add an item to the current user's cart.

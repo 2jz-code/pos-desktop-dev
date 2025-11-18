@@ -74,11 +74,6 @@ export const applyPriceOverride = async (orderId, overrideData) => {
 	return response.data;
 };
 
-export const getOrderAdjustments = async (orderId) => {
-	const response = await apiClient.get(`/orders/${orderId}/adjustments/`);
-	return response.data;
-};
-
 export const removeAdjustment = async (orderId, adjustmentId) => {
 	const response = await apiClient.delete(`/orders/${orderId}/adjustments/${adjustmentId}/`);
 	return response.data;
