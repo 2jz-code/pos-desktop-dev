@@ -316,6 +316,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
         price = payload.get("price")
         quantity = payload.get("quantity", 1)
         notes = payload.get("notes", "")
+        tax_exempt = payload.get("tax_exempt", False)
 
         try:
             from decimal import Decimal
@@ -330,7 +331,9 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 name=name,
                 price=price_decimal,
                 quantity=quantity,
-                notes=notes
+                notes=notes,
+                tax_exempt=tax_exempt,
+                applied_by=self.user
             )
             await self.recalculate_and_cache_order(order)
 

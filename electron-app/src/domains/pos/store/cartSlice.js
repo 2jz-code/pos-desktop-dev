@@ -109,7 +109,7 @@ export const createCartSlice = (set, get) => {
 		...initialState,
 
 		addCustomItem: async (customItemData) => {
-			const { name, price, quantity, notes } = customItemData;
+			const { name, price, quantity, notes, taxExempt } = customItemData;
 
 			// Store original state for rollback
 			const originalItems = [...get().items];
@@ -167,6 +167,7 @@ export const createCartSlice = (set, get) => {
 						price,
 						quantity,
 						notes,
+						tax_exempt: taxExempt || false,
 					},
 				});
 
@@ -239,7 +240,7 @@ export const createCartSlice = (set, get) => {
 					// For subsequent items, do optimistic update since socket is already synced
 					const existingItemIndex = get().items.findIndex(
 						(item) =>
-							item.product.id === product.id &&
+							item.product && product && item.product.id === product.id &&
 							!item.id.toString().startsWith("temp-")
 					);
 					let optimisticItems = [...get().items];

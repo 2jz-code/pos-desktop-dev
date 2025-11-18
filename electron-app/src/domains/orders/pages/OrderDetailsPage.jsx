@@ -140,9 +140,9 @@ const OrderSummary = ({ order }) => {
     (adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item
   );
 
-  // Check for exemptions
-  const taxExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "TAX_EXEMPT");
-  const feeExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+  // Check for ORDER-LEVEL exemptions only (item-level exemptions are already reflected in tax_total)
+  const taxExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
+  const feeExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
 
   return (
     <Card className="p-5 border border-border/60 bg-card/80">

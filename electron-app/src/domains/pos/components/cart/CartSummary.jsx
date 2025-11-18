@@ -269,9 +269,9 @@ const CartSummary = () => {
 	const hasAdjustments = adjustments && adjustments.length > 0;
 	const hasKitchenZones = kitchenZones && kitchenZones.length > 0;
 
-	// Check for exemptions
-	const taxExemption = adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT");
-	const feeExemption = adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+	// Check for ORDER-LEVEL exemptions only (item-level exemptions are already reflected in taxAmount)
+	const taxExemption = adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
+	const feeExemption = adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
 
 	// Calculate effective subtotal (including item-level discounts in the item prices)
 	const effectiveSubtotal = items.reduce((sum, item) => {

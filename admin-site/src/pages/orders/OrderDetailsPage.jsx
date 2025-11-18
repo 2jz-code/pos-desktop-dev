@@ -35,6 +35,7 @@ import {
 	Download,
 	Activity,
 	RotateCw,
+	ShieldOff,
 } from "lucide-react";
 
 // Clean Transaction Display Component
@@ -457,6 +458,9 @@ const OrderDetailsPage = () => {
 												const itemDiscounts = order.adjustments?.filter(
 													(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
 												) || [];
+												const taxExemption = order.adjustments?.find(
+													(adj) => adj.adjustment_type === "TAX_EXEMPT" && adj.order_item === item.id
+												);
 
 												// Calculate effective price
 												const basePrice = parseFloat(item.price_at_sale);
@@ -469,14 +473,35 @@ const OrderDetailsPage = () => {
 												const hasOriginalPrice = priceOverride && item.product?.price;
 												const originalPrice = hasOriginalPrice ? parseFloat(item.product.price) : null;
 
+												const isCustomItem = !item.product;
+												const itemName = isCustomItem
+													? (item.custom_name || item.display_name || "Custom Item")
+													: item.product.name;
+
 												return (
 													<tr key={item.id} className="hover:bg-muted/20 transition-colors">
 														<td className="px-4 py-3">
 															<div>
-																<div className="font-medium text-foreground mb-1">
-																	{item.product.name}
+																<div className="flex items-center gap-2 mb-1">
+																	<span className="font-medium text-foreground">
+																		{itemName}
+																	</span>
+																	{isCustomItem && (
+																		<Badge variant="outline" className="text-xs shrink-0">
+																			Custom
+																		</Badge>
+																	)}
+																	{taxExemption && (
+																		<Badge
+																			variant="outline"
+																			className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 flex items-center gap-1 shrink-0"
+																		>
+																			<ShieldOff className="h-3 w-3" />
+																			No Tax
+																		</Badge>
+																	)}
 																</div>
-															{item.product.barcode && (
+															{!isCustomItem && item.product.barcode && (
 																<div className="mt-1">
 																	<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-xs font-mono text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
 																		<svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -695,7 +720,7 @@ const OrderDetailsPage = () => {
 									)}
 									{/* Show either Tax OR Tax Exemption */}
 									{(() => {
-										const taxExemption = order.adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT");
+										const taxExemption = order.adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
 										return taxExemption ? (
 											<div className="flex justify-between items-center text-sm">
 												<div className="flex items-center gap-2">
@@ -748,7 +773,7 @@ const OrderDetailsPage = () => {
 
 									{/* Show fee exemption if applied */}
 									{(() => {
-										const feeExemption = order.adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+										const feeExemption = order.adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
 										return feeExemption ? (
 											<div className="flex justify-between items-center text-sm">
 												<div className="flex items-center gap-2">

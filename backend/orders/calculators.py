@@ -155,6 +155,22 @@ class OrderCalculator:
             # Quantize BEFORE converting to minor units (CRITICAL)
             discounted_item_price_quantized = quantize(currency, discounted_item_price)
 
+            # Check if this specific item has a tax exemption (item-level adjustment)
+            # This is used for custom items that should be tax exempt
+            if not self._is_cart and hasattr(self.source, 'adjustments') and hasattr(item, 'id'):
+                from orders.models import OrderAdjustment
+                has_item_tax_exemption = self.source.adjustments.filter(
+                    adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT,
+                    order_item_id=item.id  # Use explicit ID comparison
+                ).exists()
+                if has_item_tax_exemption:
+                    # Skip tax calculation for this item
+                    line_tax_amounts_minor.append(0)
+                    if not self._is_cart and hasattr(item, 'id') and item.id:
+                        item.tax_amount = Decimal('0.00')
+                        items_to_update.append(item)
+                    continue
+
             # Get tax rate for this item's product (hierarchical lookup)
             product = item.product
             tax_rate = None

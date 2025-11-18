@@ -247,9 +247,11 @@ class OrderCalculationService:
         order.surcharges_total = Decimal("0.00")
 
         # 5. Calculate tax (delegated to calculator with discount-aware logic)
-        # Check if there's a tax exemption - if so, tax should be $0
+        # Check if there's an ORDER-LEVEL tax exemption - if so, tax should be $0
+        # Note: Item-level tax exemptions are handled in the calculator
         has_tax_exemption = order.adjustments.filter(
-            adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT
+            adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT,
+            order_item__isnull=True  # Only order-level exemptions
         ).exists()
 
         if has_tax_exemption:

@@ -5,7 +5,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2, ShieldOff } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import ProductModifierSelector from "../ProductModifierSelector";
 import { removeAdjustment } from "@/domains/orders/services/orderService";
@@ -111,6 +111,11 @@ export default function CartItem({ item }) {
 	const totalItemDiscount = itemDiscounts.reduce((sum, disc) => sum + parseFloat(disc.amount || 0), 0);
 	const hasItemDiscount = itemDiscounts.length > 0;
 
+	// Find tax exemption for this specific item
+	const taxExemption = adjustments?.find(
+		(adj) => adj.adjustment_type === "TAX_EXEMPT" && adj.order_item === item.id
+	);
+
 	// Calculate effective price per unit (including discounts)
 	const basePrice = parseFloat(item.price_at_sale);
 	const effectivePricePerUnit = hasItemDiscount
@@ -164,6 +169,17 @@ export default function CartItem({ item }) {
 						{isCustomItem && (
 							<Badge variant="secondary" className="text-xs px-1.5 py-0">
 								Custom
+							</Badge>
+						)}
+
+						{/* Tax Exempt Badge */}
+						{taxExemption && (
+							<Badge
+								variant="outline"
+								className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 flex items-center gap-1"
+							>
+								<ShieldOff className="h-3 w-3" />
+								No Tax
 							</Badge>
 						)}
 

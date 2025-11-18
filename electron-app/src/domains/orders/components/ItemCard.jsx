@@ -1,7 +1,7 @@
 import { Card } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/components/ui/hover-card";
-import { Package } from "lucide-react";
+import { Package, ShieldOff } from "lucide-react";
 import { formatCurrency } from "@ajeen/ui";
 import ModifierDisplay from "@/shared/components/ui/ModifierDisplay";
 
@@ -16,6 +16,11 @@ export const ItemCard = ({ item, adjustments = [], compact = false }) => {
   // Find item-level one-off discounts for this specific item
   const itemDiscounts = adjustments.filter(
     (adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
+  );
+
+  // Find tax exemption for this specific item
+  const taxExemption = adjustments.find(
+    (adj) => adj.adjustment_type === "TAX_EXEMPT" && adj.order_item === item.id
   );
 
   // Calculate effective price
@@ -59,6 +64,16 @@ export const ItemCard = ({ item, adjustments = [], compact = false }) => {
                 {!item.product && (
                   <Badge variant="outline" className="text-xs shrink-0">
                     Custom
+                  </Badge>
+                )}
+                {/* Tax Exempt Badge */}
+                {taxExemption && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 flex items-center gap-1 shrink-0"
+                  >
+                    <ShieldOff className="h-3 w-3" />
+                    No Tax
                   </Badge>
                 )}
               </div>

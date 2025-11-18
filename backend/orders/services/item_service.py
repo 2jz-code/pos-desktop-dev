@@ -249,13 +249,22 @@ class OrderItemService:
     @staticmethod
     @transaction.atomic
     def add_custom_item_to_order(
-        order: Order, name: str, price: Decimal, quantity: int = 1, notes: str = ""
+        order: Order, name: str, price: Decimal, quantity: int = 1, notes: str = "", tax_exempt: bool = False, applied_by=None
     ) -> OrderItem:
         """
         Add a custom item (no product reference) to an order.
         Used for miscellaneous charges that aren't in the product catalog.
+
+        Args:
+            order: The order to add the item to
+            name: Name of the custom item
+            price: Price of the custom item
+            quantity: Quantity to add (default: 1)
+            notes: Optional notes for the item
+            tax_exempt: If True, creates a TAX_EXEMPT adjustment for this item
         """
         from orders.services.calculation_service import OrderCalculationService
+        from orders.models import OrderAdjustment
 
         if order.status not in [Order.OrderStatus.PENDING, Order.OrderStatus.HOLD]:
             raise ValueError(
@@ -280,6 +289,19 @@ class OrderItemService:
             item_sequence=1,  # Custom items don't need sequence tracking
             tenant=order.tenant
         )
+
+        # If tax exempt, create an item-level TAX_EXEMPT adjustment
+        if tax_exempt:
+            OrderAdjustment.objects.create(
+                tenant=order.tenant,
+                order=order,
+                order_item=order_item,
+                adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT,
+                amount=Decimal('0.00'),  # Amount is 0 since it's just a flag
+                reason="Custom item marked as tax exempt",
+                applied_by=applied_by or order.cashier,  # Use provided user or fallback to cashier
+                approved_by=None,
+            )
 
         OrderCalculationService.recalculate_order_totals(order)
         return order_item
