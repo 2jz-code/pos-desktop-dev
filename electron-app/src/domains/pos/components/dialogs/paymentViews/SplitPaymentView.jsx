@@ -7,11 +7,12 @@ import { shallow } from "zustand/shallow";
 import { calculateSurcharge } from "@/domains/payments/services/paymentService";
 
 const SplitPaymentView = () => {
-	const { balanceDue, prepareToPaySplit, goBack } = usePosStore(
+	const { balanceDue, prepareToPaySplit, goBack, orderId } = usePosStore(
 		(state) => ({
 			balanceDue: state.balanceDue,
 			prepareToPaySplit: state.prepareToPaySplit,
 			goBack: state.goBack,
+			orderId: state.orderId,
 		}),
 		shallow
 	);
@@ -22,14 +23,14 @@ const SplitPaymentView = () => {
 	useEffect(() => {
 		const calculate = async () => {
 			if (customAmount > 0) {
-				const response = await calculateSurcharge(customAmount);
+				const response = await calculateSurcharge(customAmount, orderId);
 				setSurcharge(parseFloat(response.surcharge) || 0);
 			} else {
 				setSurcharge(0);
 			}
 		};
 		calculate();
-	}, [customAmount]);
+	}, [customAmount, orderId]);
 
 	const handleSplitEqually = (numSplits) => {
 		const amount = balanceDue / numSplits;

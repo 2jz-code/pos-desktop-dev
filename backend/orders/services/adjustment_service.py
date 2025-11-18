@@ -689,3 +689,408 @@ class OrderAdjustmentService:
 
         total = queryset.aggregate(total=Sum('amount'))['total']
         return total or Decimal('0.00')
+    @staticmethod
+    def apply_tax_exempt_with_approval_check(
+        order: Order,
+        reason: str,
+        applied_by: User,
+        bypass_approval: bool = False,
+    ) -> dict:
+        """
+        Apply tax exemption to an order with manager approval check.
+
+        Tax exemptions ALWAYS require manager approval for compliance.
+
+        Args:
+            order: Order instance
+            reason: Reason for tax exemption (required for audit trail)
+            applied_by: User requesting the exemption
+            bypass_approval: If True, skip approval check (used when already approved)
+
+        Returns:
+            dict with:
+                - 'adjustment': OrderAdjustment instance OR
+                - 'status': 'pending_approval'
+                - 'approval_request_id': ID of approval request
+
+        Raises:
+            ValidationError: If inputs are invalid
+        """
+        from orders.signals import order_needs_recalculation
+
+        # Validate tenant consistency
+        if applied_by.tenant_id != order.tenant_id:
+            raise ValidationError("User must belong to the same tenant as the order")
+
+        # Validate reason is provided
+        if not reason or not reason.strip():
+            raise ValidationError("Reason is required for tax exemptions (compliance requirement)")
+
+        # Check if order has tax to exempt
+        if not order.tax_total or order.tax_total <= 0:
+            raise ValidationError("Order has no tax to exempt")
+
+        # --- Manager Approval Check ---
+        if not bypass_approval and order.store_location:
+            from approvals.checkers import TaxExemptApprovalChecker
+
+            if TaxExemptApprovalChecker.needs_approval(order, order.store_location):
+                if not applied_by or not applied_by.is_authenticated:
+                    error_msg = (
+                        "Authenticated user required for tax exemption approval. "
+                        "Please ensure the POS terminal is logged in."
+                    )
+                    logger.error(
+                        f"{error_msg} User: {applied_by}, Is authenticated: {getattr(applied_by, 'is_authenticated', False)}"
+                    )
+                    raise ValidationError(error_msg)
+
+                logger.info(
+                    f"Approval REQUIRED for tax exemption on order {order.order_number} "
+                    f"(tax amount: ${order.tax_total})"
+                )
+
+                # Check if user can self-approve
+                from approvals.models import ApprovalPolicy
+                from users.models import User
+                policy = ApprovalPolicy.get_for_location(order.store_location)
+
+                can_self_approve = (
+                    policy.allow_self_approval and
+                    applied_by.role in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]
+                )
+
+                if can_self_approve:
+                    logger.info(
+                        f"Self-approval enabled and user {applied_by.email} is a {applied_by.role} - "
+                        f"bypassing approval dialog and proceeding with tax exemption"
+                    )
+                    # Self-approved - apply with approved_by set
+                    return OrderAdjustmentService.apply_tax_exempt(
+                        order=order,
+                        reason=reason,
+                        applied_by=applied_by,
+                        approved_by=applied_by,  # Self-approved
+                        bypass_approval_check=True
+                    )
+                else:
+                    # Create approval request
+                    approval_request = TaxExemptApprovalChecker.request_approval(
+                        order=order,
+                        store_location=order.store_location,
+                        initiator=applied_by,
+                        reason=reason
+                    )
+
+                    # Return status indicating approval is required
+                    return {
+                        'status': 'pending_approval',
+                        'approval_request_id': str(approval_request.id),
+                        'message': 'Manager approval required for tax exemption',
+                        'order_number': order.order_number,
+                        'tax_amount': str(order.tax_total),
+                    }
+            else:
+                logger.info(
+                    f"Approval NOT required for tax exemption on order {order.order_number}"
+                )
+        elif not order.store_location:
+            logger.warning(
+                f"Order {order.id} has no store_location - skipping approval check for tax exemption"
+            )
+        # --- END: Manager Approval Check ---
+
+        # No approval needed - apply the exemption
+        return OrderAdjustmentService.apply_tax_exempt(
+            order=order,
+            reason=reason,
+            applied_by=applied_by,
+            approved_by=None,  # No approval needed
+            bypass_approval_check=True
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def apply_tax_exempt(
+        order: Order,
+        reason: str,
+        applied_by: User,
+        approved_by: User = None,
+        bypass_approval_check: bool = False,
+    ) -> dict:
+        """
+        Apply tax exemption to an order.
+
+        NOTE: Creates adjustment with negative tax amount. Order recalculation
+        will set tax_total to 0.
+
+        Args:
+            order: Order instance
+            reason: Reason for exemption (audit trail)
+            applied_by: User who initiated the exemption
+            approved_by: Manager who approved (if applicable)
+            bypass_approval_check: If True, skip approval check
+
+        Returns:
+            dict with:
+                - 'adjustment': OrderAdjustment instance
+                - 'order': Updated order instance
+                - 'amount': Tax amount exempted
+
+        Raises:
+            ValidationError: If inputs are invalid or approval required
+        """
+        from orders.signals import order_needs_recalculation
+
+        # Validate tenant consistency
+        if applied_by.tenant_id != order.tenant_id:
+            raise ValidationError("User must belong to the same tenant as the order")
+
+        # Validate reason
+        if not reason or not reason.strip():
+            raise ValidationError("Reason is required for tax exemptions")
+
+        # Check if order has tax to exempt
+        if not order.tax_total or order.tax_total <= 0:
+            raise ValidationError("Order has no tax to exempt")
+
+        # Check if approval is required (unless bypassed)
+        if not bypass_approval_check and order.store_location:
+            from approvals.checkers import TaxExemptApprovalChecker
+            if TaxExemptApprovalChecker.needs_approval(order, order.store_location):
+                if not approved_by:
+                    raise ValidationError(
+                        "Manager approval is required for tax exemption. "
+                        "Use the approval workflow or provide approved_by parameter."
+                    )
+
+        # Amount is negative of current tax (will reduce total)
+        amount = -order.tax_total
+
+        # Create the adjustment
+        adjustment = OrderAdjustment.objects.create(
+            tenant=order.tenant,
+            order=order,
+            order_item=None,  # Order-level only
+            adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT,
+            amount=amount,
+            reason=reason,
+            applied_by=applied_by,
+            approved_by=approved_by,
+        )
+
+        logger.info(
+            f"Applied tax exemption on order {order.order_number}: "
+            f"tax amount exempted: ${-amount} by {applied_by.email}"
+        )
+
+        # Trigger order recalculation
+        order_needs_recalculation.send(sender=Order, order=order)
+
+        # Refresh order from DB to get updated totals
+        order.refresh_from_db()
+
+        return {
+            'adjustment': adjustment,
+            'order': order,
+            'amount': amount,
+        }
+
+    @staticmethod
+    def apply_fee_exempt_with_approval_check(
+        order: Order,
+        reason: str,
+        applied_by: User,
+        bypass_approval: bool = False,
+    ) -> dict:
+        """
+        Apply fee exemption to an order with manager approval check.
+
+        Fee exemptions ALWAYS require manager approval.
+
+        Args:
+            order: Order instance
+            reason: Reason for fee exemption
+            applied_by: User requesting the exemption
+            bypass_approval: If True, skip approval check (used when already approved)
+
+        Returns:
+            dict with:
+                - 'adjustment': OrderAdjustment instance OR
+                - 'status': 'pending_approval'
+                - 'approval_request_id': ID of approval request
+
+        Raises:
+            ValidationError: If inputs are invalid
+        """
+        from orders.signals import order_needs_recalculation
+
+        # Validate tenant consistency
+        if applied_by.tenant_id != order.tenant_id:
+            raise ValidationError("User must belong to the same tenant as the order")
+
+        # NOTE: We don't check if order.surcharges_total > 0 because service fees
+        # are only calculated during payment processing, not during cart operations.
+        # Fee exemptions must be applied BEFORE payment to prevent fees from being added.
+
+        # --- Manager Approval Check ---
+        if not bypass_approval and order.store_location:
+            from approvals.checkers import FeeExemptApprovalChecker
+
+            if FeeExemptApprovalChecker.needs_approval(order, order.store_location):
+                if not applied_by or not applied_by.is_authenticated:
+                    error_msg = (
+                        "Authenticated user required for fee exemption approval. "
+                        "Please ensure the POS terminal is logged in."
+                    )
+                    logger.error(
+                        f"{error_msg} User: {applied_by}, Is authenticated: {getattr(applied_by, 'is_authenticated', False)}"
+                    )
+                    raise ValidationError(error_msg)
+
+                logger.info(
+                    f"Approval REQUIRED for fee exemption on order {order.order_number} "
+                    f"(fee amount: ${order.surcharges_total})"
+                )
+
+                # Check if user can self-approve
+                from approvals.models import ApprovalPolicy
+                from users.models import User
+                policy = ApprovalPolicy.get_for_location(order.store_location)
+
+                can_self_approve = (
+                    policy.allow_self_approval and
+                    applied_by.role in [User.Role.OWNER, User.Role.ADMIN, User.Role.MANAGER]
+                )
+
+                if can_self_approve:
+                    logger.info(
+                        f"Self-approval enabled and user {applied_by.email} is a {applied_by.role} - "
+                        f"bypassing approval dialog and proceeding with fee exemption"
+                    )
+                    # Self-approved - apply with approved_by set
+                    return OrderAdjustmentService.apply_fee_exempt(
+                        order=order,
+                        reason=reason,
+                        applied_by=applied_by,
+                        approved_by=applied_by,  # Self-approved
+                        bypass_approval_check=True
+                    )
+                else:
+                    # Create approval request
+                    approval_request = FeeExemptApprovalChecker.request_approval(
+                        order=order,
+                        store_location=order.store_location,
+                        initiator=applied_by,
+                        reason=reason
+                    )
+
+                    # Return status indicating approval is required
+                    return {
+                        'status': 'pending_approval',
+                        'approval_request_id': str(approval_request.id),
+                        'message': 'Manager approval required for fee exemption',
+                        'order_number': order.order_number,
+                        'fee_amount': str(order.surcharges_total),
+                    }
+            else:
+                logger.info(
+                    f"Approval NOT required for fee exemption on order {order.order_number}"
+                )
+        elif not order.store_location:
+            logger.warning(
+                f"Order {order.id} has no store_location - skipping approval check for fee exemption"
+            )
+        # --- END: Manager Approval Check ---
+
+        # No approval needed - apply the exemption
+        return OrderAdjustmentService.apply_fee_exempt(
+            order=order,
+            reason=reason,
+            applied_by=applied_by,
+            approved_by=None,  # No approval needed
+            bypass_approval_check=True
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def apply_fee_exempt(
+        order: Order,
+        reason: str,
+        applied_by: User,
+        approved_by: User = None,
+        bypass_approval_check: bool = False,
+    ) -> dict:
+        """
+        Apply fee exemption to an order.
+
+        NOTE: Creates adjustment with negative fee amount. Order recalculation
+        will set total_surcharges to 0.
+
+        Args:
+            order: Order instance
+            reason: Reason for exemption (audit trail)
+            applied_by: User who initiated the exemption
+            approved_by: Manager who approved (if applicable)
+            bypass_approval_check: If True, skip approval check
+
+        Returns:
+            dict with:
+                - 'adjustment': OrderAdjustment instance
+                - 'order': Updated order instance
+                - 'amount': Fee amount exempted
+
+        Raises:
+            ValidationError: If inputs are invalid or approval required
+        """
+        from orders.signals import order_needs_recalculation
+
+        # Validate tenant consistency
+        if applied_by.tenant_id != order.tenant_id:
+            raise ValidationError("User must belong to the same tenant as the order")
+
+        # NOTE: We don't check if order.surcharges_total > 0 because service fees
+        # are only calculated during payment processing, not during cart operations.
+        # Fee exemptions must be applied BEFORE payment to prevent fees from being added.
+
+        # Check if approval is required (unless bypassed)
+        if not bypass_approval_check and order.store_location:
+            from approvals.checkers import FeeExemptApprovalChecker
+            if FeeExemptApprovalChecker.needs_approval(order, order.store_location):
+                if not approved_by:
+                    raise ValidationError(
+                        "Manager approval is required for fee exemption. "
+                        "Use the approval workflow or provide approved_by parameter."
+                    )
+
+        # Amount is negative of current fees (will reduce total)
+        amount = -order.surcharges_total
+
+        # Create the adjustment
+        adjustment = OrderAdjustment.objects.create(
+            tenant=order.tenant,
+            order=order,
+            order_item=None,  # Order-level only
+            adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT,
+            amount=amount,
+            reason=reason,
+            applied_by=applied_by,
+            approved_by=approved_by,
+        )
+
+        logger.info(
+            f"Applied fee exemption on order {order.order_number}: "
+            f"fee amount exempted: ${-amount} by {applied_by.email}"
+        )
+
+        # Trigger order recalculation
+        order_needs_recalculation.send(sender=Order, order=order)
+
+        # Refresh order from DB to get updated totals
+        order.refresh_from_db()
+
+        return {
+            'adjustment': adjustment,
+            'order': order,
+            'amount': amount,
+        }

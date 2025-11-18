@@ -4,6 +4,8 @@ import { useState } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { OneOffDiscountDialog } from "../OneOffDiscountDialog";
 import { PriceOverrideDialog } from "../PriceOverrideDialog";
+import { TaxExemptDialog } from "../TaxExemptDialog";
+import { FeeExemptDialog } from "../FeeExemptDialog";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { openCashDrawer } from "@/shared/lib/hardware";
@@ -16,7 +18,7 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle, Printer, Tag, Edit3 } from "lucide-react";
+import { MoreVertical, Trash2, PauseCircle, DollarSign, AlertTriangle, Printer, Tag, Edit3, ShieldOff, Ban } from "lucide-react";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { printReceipt } from "@/shared/lib/hardware/printerService";
 import { getReceiptFormatData } from "@/domains/settings/services/settingsService";
@@ -26,6 +28,8 @@ import { shallow } from "zustand/shallow";
 const CartActionsDropdown = () => {
 	const [showDiscountDialog, setShowDiscountDialog] = useState(false);
 	const [showPriceOverrideDialog, setShowPriceOverrideDialog] = useState(false);
+	const [showTaxExemptDialog, setShowTaxExemptDialog] = useState(false);
+	const [showFeeExemptDialog, setShowFeeExemptDialog] = useState(false);
 
 	const { clearCart, holdOrder, items, subtotal, total, taxAmount, totalDiscountsAmount, surchargesAmount, customerFirstName, diningPreference } = usePosStore(
 		(state) => ({
@@ -220,6 +224,22 @@ const CartActionsDropdown = () => {
 					<Edit3 className="mr-2 h-4 w-4" />
 					<span>Modify Item Price</span>
 				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() => setShowTaxExemptDialog(true)}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+				>
+					<ShieldOff className="mr-2 h-4 w-4" />
+					<span>Tax Exempt</span>
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() => setShowFeeExemptDialog(true)}
+					disabled={isCartEmpty}
+					className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+				>
+					<Ban className="mr-2 h-4 w-4" />
+					<span>Fee Exempt</span>
+				</DropdownMenuItem>
 
 				{canOpenCashDrawer && (
 					<>
@@ -246,6 +266,14 @@ const CartActionsDropdown = () => {
 		<PriceOverrideDialog
 			open={showPriceOverrideDialog}
 			onClose={() => setShowPriceOverrideDialog(false)}
+		/>
+		<TaxExemptDialog
+			open={showTaxExemptDialog}
+			onClose={() => setShowTaxExemptDialog(false)}
+		/>
+		<FeeExemptDialog
+			open={showFeeExemptDialog}
+			onClose={() => setShowFeeExemptDialog(false)}
 		/>
 	</>);
 };

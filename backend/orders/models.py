@@ -57,6 +57,8 @@ class OrderAdjustment(models.Model):
     class AdjustmentType(models.TextChoices):
         ONE_OFF_DISCOUNT = 'ONE_OFF_DISCOUNT', _('One-Off Discount')
         PRICE_OVERRIDE = 'PRICE_OVERRIDE', _('Price Override')
+        TAX_EXEMPT = 'TAX_EXEMPT', _('Tax Exempt')
+        FEE_EXEMPT = 'FEE_EXEMPT', _('Fee Exempt')
         # Future extensibility: COMP, LOYALTY_CREDIT, DAMAGE_DISCOUNT, etc.
 
     class DiscountType(models.TextChoices):

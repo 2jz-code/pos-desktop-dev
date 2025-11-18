@@ -468,3 +468,181 @@ def notify_pos_of_approval_resolution(sender, instance, outcome, **kwargs):
             f"{instance.get_action_type_display()} approval {instance.id} resolved as {outcome} "
             f"for order {order.order_number}. POS will reload order automatically."
         )
+
+
+@receiver(approval_request_resolved)
+def handle_tax_exempt_approval(sender, instance, outcome, **kwargs):
+    """
+    Apply tax exemption when approval request is resolved.
+
+    Listens to approval_request_resolved signal and applies tax exemption
+    if the request was approved and action_type is TAX_EXEMPT.
+
+    Args:
+        sender: Signal sender (usually ManagerApprovalService)
+        instance: ManagerApprovalRequest instance
+        outcome: 'approved' or 'denied'
+        **kwargs: Additional signal arguments
+    """
+    # Import here to avoid circular dependencies
+    from approvals.models import ActionType
+    from orders.services import OrderAdjustmentService
+
+    # Only handle tax exempt approvals
+    if instance.action_type != ActionType.TAX_EXEMPT:
+        return
+
+    # Only handle approved requests
+    if outcome != 'approved':
+        logger.info(
+            f"Tax exempt approval request {instance.id} was {outcome}. "
+            f"Not applying tax exemption."
+        )
+        return
+
+    # Extract context
+    order = instance.order
+
+    if not order:
+        logger.error(
+            f"Tax exempt approval request {instance.id} missing order. "
+            f"Cannot apply tax exemption."
+        )
+        return
+
+    # Extract from payload
+    try:
+        payload = instance.payload
+        reason = payload.get('reason', 'Manager approved tax exemption')
+
+        # Apply tax exemption with bypass_approval_check=True
+        result = OrderAdjustmentService.apply_tax_exempt(
+            order=order,
+            reason=reason,
+            applied_by=instance.initiator,
+            approved_by=instance.approver,
+            bypass_approval_check=True  # Skip approval check this time
+        )
+
+        # Log success
+        approver_username = instance.approver.username if instance.approver else 'Unknown'
+        logger.info(
+            f"Applied tax exemption on order {order.order_number}: "
+            f"tax amount: {result['amount']} "
+            f"after manager approval by {approver_username}. "
+            f"Approval request: {instance.id}"
+        )
+
+        # Broadcast order update to WebSocket for real-time cart sync
+        broadcast_order_update(order)
+
+    except KeyError as ke:
+        logger.error(
+            f"Missing required field in payload for tax exempt approval {instance.id}: {ke}",
+            exc_info=True
+        )
+
+    except ValueError as ve:
+        logger.error(
+            f"Validation error applying tax exemption after approval {instance.id}: {ve}",
+            exc_info=True
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to apply tax exemption after approval {instance.id}: {e}",
+            exc_info=True,
+            extra={
+                'approval_request_id': str(instance.id),
+                'order_id': str(order.id) if order else None,
+            }
+        )
+
+
+@receiver(approval_request_resolved)
+def handle_fee_exempt_approval(sender, instance, outcome, **kwargs):
+    """
+    Apply fee exemption when approval request is resolved.
+
+    Listens to approval_request_resolved signal and applies fee exemption
+    if the request was approved and action_type is FEE_EXEMPT.
+
+    Args:
+        sender: Signal sender (usually ManagerApprovalService)
+        instance: ManagerApprovalRequest instance
+        outcome: 'approved' or 'denied'
+        **kwargs: Additional signal arguments
+    """
+    # Import here to avoid circular dependencies
+    from approvals.models import ActionType
+    from orders.services import OrderAdjustmentService
+
+    # Only handle fee exempt approvals
+    if instance.action_type != ActionType.FEE_EXEMPT:
+        return
+
+    # Only handle approved requests
+    if outcome != 'approved':
+        logger.info(
+            f"Fee exempt approval request {instance.id} was {outcome}. "
+            f"Not applying fee exemption."
+        )
+        return
+
+    # Extract context
+    order = instance.order
+
+    if not order:
+        logger.error(
+            f"Fee exempt approval request {instance.id} missing order. "
+            f"Cannot apply fee exemption."
+        )
+        return
+
+    # Extract from payload
+    try:
+        payload = instance.payload
+        reason = payload.get('reason', 'Manager approved fee exemption')
+
+        # Apply fee exemption with bypass_approval_check=True
+        result = OrderAdjustmentService.apply_fee_exempt(
+            order=order,
+            reason=reason,
+            applied_by=instance.initiator,
+            approved_by=instance.approver,
+            bypass_approval_check=True  # Skip approval check this time
+        )
+
+        # Log success
+        approver_username = instance.approver.username if instance.approver else 'Unknown'
+        logger.info(
+            f"Applied fee exemption on order {order.order_number}: "
+            f"fee amount: {result['amount']} "
+            f"after manager approval by {approver_username}. "
+            f"Approval request: {instance.id}"
+        )
+
+        # Broadcast order update to WebSocket for real-time cart sync
+        broadcast_order_update(order)
+
+    except KeyError as ke:
+        logger.error(
+            f"Missing required field in payload for fee exempt approval {instance.id}: {ke}",
+            exc_info=True
+        )
+
+    except ValueError as ve:
+        logger.error(
+            f"Validation error applying fee exemption after approval {instance.id}: {ve}",
+            exc_info=True
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to apply fee exemption after approval {instance.id}: {e}",
+            exc_info=True,
+            extra={
+                'approval_request_id': str(instance.id),
+                'order_id': str(order.id) if order else None,
+            }
+        )

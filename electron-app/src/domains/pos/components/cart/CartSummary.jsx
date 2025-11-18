@@ -21,7 +21,7 @@ const safeFormatCurrency = (value) => {
 	return `${isNegative ? "-" : ""}$${absoluteValue.toFixed(2)}`;
 };
 
-const SummaryRow = ({ label, amount, className = "", onRemove }) => (
+const SummaryRow = ({ label, amount, className = "", onRemove, hideAmount = false }) => (
 	<div className={`flex justify-between items-center py-1 ${className}`}>
 		<div className="flex items-center">
 			<span className="text-sm text-muted-foreground">
@@ -38,9 +38,11 @@ const SummaryRow = ({ label, amount, className = "", onRemove }) => (
 				</Button>
 			)}
 		</div>
-		<span className="text-sm font-semibold text-foreground">
-			{safeFormatCurrency(amount)}
-		</span>
+		{!hideAmount && (
+			<span className="text-sm font-semibold text-foreground">
+				{safeFormatCurrency(amount)}
+			</span>
+		)}
 	</div>
 );
 
@@ -53,6 +55,7 @@ const CartSummary = () => {
 		forceCancelAndStartPayment,
 		subtotal,
 		taxAmount,
+		surchargesAmount,
 		appliedDiscounts,
 		adjustments,
 		setIsDiscountDialogOpen,
@@ -66,6 +69,7 @@ const CartSummary = () => {
 			forceCancelAndStartPayment: state.forceCancelAndStartPayment,
 			subtotal: state.subtotal,
 			taxAmount: state.taxAmount,
+			surchargesAmount: state.surchargesAmount,
 			appliedDiscounts: state.appliedDiscounts,
 			adjustments: state.adjustments,
 			setIsDiscountDialogOpen: state.setIsDiscountDialogOpen,
@@ -265,6 +269,10 @@ const CartSummary = () => {
 	const hasAdjustments = adjustments && adjustments.length > 0;
 	const hasKitchenZones = kitchenZones && kitchenZones.length > 0;
 
+	// Check for exemptions
+	const taxExemption = adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT");
+	const feeExemption = adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+
 	// Calculate effective subtotal (including item-level discounts in the item prices)
 	const effectiveSubtotal = items.reduce((sum, item) => {
 		// Find item-level one-off discounts for this item
@@ -360,10 +368,32 @@ const CartSummary = () => {
 							)}
 						</>
 					)}
-					<SummaryRow
-						label="Taxes"
-						amount={taxAmount}
-					/>
+					{/* Show either Taxes OR Tax Exemption (not both) */}
+					{taxExemption ? (
+						<SummaryRow
+							label="Tax Exemption"
+							amount={taxExemption.amount}
+							className="text-orange-600 dark:text-orange-400"
+							onRemove={() => handleRemoveAdjustment(taxExemption.id)}
+							hideAmount={true}
+						/>
+					) : (
+						<SummaryRow
+							label="Taxes"
+							amount={taxAmount}
+						/>
+					)}
+
+					{/* Show Fee Exemption if applied (service fees are added during payment, not here) */}
+					{feeExemption && (
+						<SummaryRow
+							label="Fee Exemption"
+							amount={feeExemption.amount}
+							className="text-blue-600 dark:text-blue-400"
+							onRemove={() => handleRemoveAdjustment(feeExemption.id)}
+							hideAmount={true}
+						/>
+					)}
 				</div>
 
 				{/* Total */}

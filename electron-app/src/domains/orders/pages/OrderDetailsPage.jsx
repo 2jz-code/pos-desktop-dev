@@ -140,6 +140,10 @@ const OrderSummary = ({ order }) => {
     (adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item
   );
 
+  // Check for exemptions
+  const taxExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "TAX_EXEMPT");
+  const feeExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+
   return (
     <Card className="p-5 border border-border/60 bg-card/80">
       <div className="space-y-4">
@@ -215,15 +219,86 @@ const OrderSummary = ({ order }) => {
             </>
           )}
 
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Tax</span>
-            <span className="text-foreground font-medium">{formatCurrency(order.tax_total)}</span>
-          </div>
+          {/* Show either Tax OR Tax Exemption */}
+          {taxExemption ? (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Tax Exemption</span>
+                {taxExemption.reason && (
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-help"
+                      >
+                        Info
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{taxExemption.reason}</p>
+                        </div>
+                        {taxExemption.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {taxExemption.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                )}
+              </div>
+              <span className="text-orange-600 dark:text-orange-400 font-medium">Applied</span>
+            </div>
+          ) : (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Tax</span>
+              <span className="text-foreground font-medium">{formatCurrency(order.tax_total)}</span>
+            </div>
+          )}
 
+          {/* Show surcharges if any */}
           {order.total_surcharges > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Surcharges</span>
               <span className="text-foreground font-medium">{formatCurrency(order.total_surcharges)}</span>
+            </div>
+          )}
+
+          {/* Show fee exemption if applied */}
+          {feeExemption && (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Fee Exemption</span>
+                {feeExemption.reason && (
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 cursor-help"
+                      >
+                        Info
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{feeExemption.reason}</p>
+                        </div>
+                        {feeExemption.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {feeExemption.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                )}
+              </div>
+              <span className="text-blue-600 dark:text-blue-400 font-medium">Applied</span>
             </div>
           )}
 

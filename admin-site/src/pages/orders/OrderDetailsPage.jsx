@@ -693,10 +693,50 @@ const OrderDetailsPage = () => {
 											) : null}
 										</div>
 									)}
-									<div className="flex justify-between text-sm">
-										<span className="text-muted-foreground">Tax</span>
-										<span className="font-medium text-foreground">{formatCurrency(tax_total)}</span>
-									</div>
+									{/* Show either Tax OR Tax Exemption */}
+									{(() => {
+										const taxExemption = order.adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT");
+										return taxExemption ? (
+											<div className="flex justify-between items-center text-sm">
+												<div className="flex items-center gap-2">
+													<span className="text-orange-600 dark:text-orange-400 font-medium">Tax Exemption</span>
+													{taxExemption.reason && (
+														<HoverCard>
+															<HoverCardTrigger asChild>
+																<Badge
+																	variant="outline"
+																	className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-help"
+																>
+																	Info
+																</Badge>
+															</HoverCardTrigger>
+															<HoverCardContent className="w-80" side="top">
+																<div className="space-y-2">
+																	<div className="text-sm">
+																		<span className="font-semibold">Reason:</span>
+																		<p className="text-muted-foreground mt-1">{taxExemption.reason}</p>
+																	</div>
+																	{taxExemption.approved_by_name && (
+																		<div className="text-xs text-muted-foreground border-t pt-2">
+																			Approved by {taxExemption.approved_by_name}
+																		</div>
+																	)}
+																</div>
+															</HoverCardContent>
+														</HoverCard>
+													)}
+												</div>
+												<span className="text-orange-600 dark:text-orange-400 font-medium">Applied</span>
+											</div>
+										) : (
+											<div className="flex justify-between text-sm">
+												<span className="text-muted-foreground">Tax</span>
+												<span className="font-medium text-foreground">{formatCurrency(tax_total)}</span>
+											</div>
+										);
+									})()}
+
+									{/* Show surcharges if any */}
 									{order.total_surcharges > 0 && (
 										<div className="flex justify-between text-sm">
 											<span className="text-muted-foreground">Surcharges</span>
@@ -705,6 +745,44 @@ const OrderDetailsPage = () => {
 											</span>
 										</div>
 									)}
+
+									{/* Show fee exemption if applied */}
+									{(() => {
+										const feeExemption = order.adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT");
+										return feeExemption ? (
+											<div className="flex justify-between items-center text-sm">
+												<div className="flex items-center gap-2">
+													<span className="text-blue-600 dark:text-blue-400 font-medium">Fee Exemption</span>
+													{feeExemption.reason && (
+														<HoverCard>
+															<HoverCardTrigger asChild>
+																<Badge
+																	variant="outline"
+																	className="text-xs px-1.5 py-0 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 cursor-help"
+																>
+																	Info
+																</Badge>
+															</HoverCardTrigger>
+															<HoverCardContent className="w-80" side="top">
+																<div className="space-y-2">
+																	<div className="text-sm">
+																		<span className="font-semibold">Reason:</span>
+																		<p className="text-muted-foreground mt-1">{feeExemption.reason}</p>
+																	</div>
+																	{feeExemption.approved_by_name && (
+																		<div className="text-xs text-muted-foreground border-t pt-2">
+																			Approved by {feeExemption.approved_by_name}
+																		</div>
+																	)}
+																</div>
+															</HoverCardContent>
+														</HoverCard>
+													)}
+												</div>
+												<span className="text-blue-600 dark:text-blue-400 font-medium">Applied</span>
+											</div>
+										) : null;
+									})()}
 									{order.total_tips > 0 && (
 										<div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
 											<span>Tip</span>

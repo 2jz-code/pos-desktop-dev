@@ -409,12 +409,14 @@ class SurchargeCalculationSerializer(serializers.Serializer):
     """
     Serializer for calculating the surcharge on a given amount.
     Takes an amount and returns the calculated surcharge.
+    Optionally accepts order_id to check for fee exemptions.
     """
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     amounts = serializers.ListField(
         child=serializers.DecimalField(max_digits=10, decimal_places=2),
         required=False
     )
+    order_id = serializers.UUIDField(required=False)
     surcharge = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     surcharges = serializers.ListField(
         child=serializers.DecimalField(max_digits=10, decimal_places=2),

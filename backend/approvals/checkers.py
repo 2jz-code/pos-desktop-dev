@@ -658,3 +658,180 @@ class PriceOverrideApprovalChecker:
                 exc_info=True
             )
             raise
+
+class TaxExemptApprovalChecker:
+    """
+    Checker for tax exemption approvals.
+    Tax exemptions ALWAYS require manager approval due to compliance requirements.
+    """
+
+    @staticmethod
+    def needs_approval(order, store_location):
+        """
+        Check if tax exemption needs approval.
+        Always returns True - tax exemptions always require manager approval.
+
+        Args:
+            order: Order instance
+            store_location: StoreLocation instance
+
+        Returns:
+            bool: Always True (tax exemptions always need approval)
+        """
+        # Check if approvals are enabled for this location
+        if not store_location.manager_approvals_enabled:
+            return False
+        
+        # Tax exemptions ALWAYS require approval for compliance
+        return True
+
+    @staticmethod
+    def request_approval(order, store_location, initiator, reason=''):
+        """
+        Create approval request for tax exemption.
+
+        Args:
+            order: Order instance
+            store_location: StoreLocation instance
+            initiator: User requesting the approval
+            reason: Reason for tax exemption (required for audit)
+
+        Returns:
+            ManagerApprovalRequest instance
+
+        Raises:
+            ValueError: If initiator is None or reason is empty
+        """
+        if not initiator:
+            raise ValueError("Initiator user is required for approval requests")
+        
+        if not reason or not reason.strip():
+            raise ValueError("Reason is required for tax exemptions (compliance)")
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+
+        # Calculate tax amount being exempted
+        tax_amount = order.tax_total or Decimal('0.00')
+
+        # Create payload with exemption details
+        payload = {
+            'tax_amount': str(tax_amount),
+            'reason': reason,
+        }
+
+        try:
+            approval_request = ManagerApprovalService.request_approval(
+                action_type=ActionType.TAX_EXEMPT,
+                initiator=initiator,
+                store_location=store_location,
+                context={
+                    'order': order,
+                    'payload': payload,
+                    'reason': reason,
+                    'threshold_value': float(tax_amount),
+                }
+            )
+
+            logger.info(
+                f"Created approval request {approval_request.id} for tax exemption "
+                f"on order {order.order_number} (tax amount: ${tax_amount})"
+            )
+
+            return approval_request
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create approval request for tax exemption on order {order.id}: {e}",
+                exc_info=True
+            )
+            raise
+
+
+class FeeExemptApprovalChecker:
+    """
+    Checker for fee exemption approvals.
+    Fee exemptions ALWAYS require manager approval.
+    """
+
+    @staticmethod
+    def needs_approval(order, store_location):
+        """
+        Check if fee exemption needs approval.
+        Always returns True - fee exemptions always require manager approval.
+
+        Args:
+            order: Order instance
+            store_location: StoreLocation instance
+
+        Returns:
+            bool: Always True (fee exemptions always need approval)
+        """
+        # Check if approvals are enabled for this location
+        if not store_location.manager_approvals_enabled:
+            return False
+        
+        # Fee exemptions ALWAYS require approval
+        return True
+
+    @staticmethod
+    def request_approval(order, store_location, initiator, reason=''):
+        """
+        Create approval request for fee exemption.
+
+        Args:
+            order: Order instance
+            store_location: StoreLocation instance
+            initiator: User requesting the approval
+            reason: Reason for fee exemption
+
+        Returns:
+            ManagerApprovalRequest instance
+
+        Raises:
+            ValueError: If initiator is None
+        """
+        if not initiator:
+            raise ValueError("Initiator user is required for approval requests")
+
+        # Import here to avoid circular dependencies
+        from approvals.models import ActionType
+        from approvals.services import ManagerApprovalService
+
+        # Calculate fee amount being exempted (usually $0 since surcharges are added during payment)
+        # This is mainly for audit/display purposes
+        fee_amount = order.surcharges_total or Decimal('0.00')
+
+        # Create payload with exemption details
+        payload = {
+            'fee_amount': str(fee_amount),
+            'reason': reason,
+        }
+
+        try:
+            approval_request = ManagerApprovalService.request_approval(
+                action_type=ActionType.FEE_EXEMPT,
+                initiator=initiator,
+                store_location=store_location,
+                context={
+                    'order': order,
+                    'payload': payload,
+                    'reason': reason,
+                    'threshold_value': float(fee_amount),
+                }
+            )
+
+            logger.info(
+                f"Created approval request {approval_request.id} for fee exemption "
+                f"on order {order.order_number} (fee amount: ${fee_amount})"
+            )
+
+            return approval_request
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create approval request for fee exemption on order {order.id}: {e}",
+                exc_info=True
+            )
+            raise

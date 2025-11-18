@@ -15,6 +15,8 @@ class ActionType(models.TextChoices):
     REFUND = 'REFUND', _('Refund')
     PRICE_OVERRIDE = 'PRICE_OVERRIDE', _('Price Override')
     CUSTOM_ADJUSTMENT = 'CUSTOM_ADJUSTMENT', _('Custom Adjustment')
+    TAX_EXEMPT = 'TAX_EXEMPT', _('Tax Exemption')
+    FEE_EXEMPT = 'FEE_EXEMPT', _('Fee Exemption')
 
 
 class ApprovalStatus(models.TextChoices):

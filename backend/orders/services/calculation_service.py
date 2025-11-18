@@ -225,20 +225,37 @@ class OrderCalculationService:
         all_adjustments_total = OrderAdjustmentService.get_total_adjustments_amount(order)
         order.total_adjustments_amount = all_adjustments_total
 
-        # Only apply one-off discounts to the calculation (price overrides already in price_at_sale)
+        # Only apply one-off discounts to the calculation
+        # Exclude:
+        # - PRICE_OVERRIDE: already included in price_at_sale
+        # - TAX_EXEMPT: handled separately by setting tax_total to 0
+        # - FEE_EXEMPT: handled separately by setting surcharges_total to 0
         total_adjustments_amount = OrderAdjustmentService.get_total_adjustments_amount(
             order,
-            exclude_types=[OrderAdjustment.AdjustmentType.PRICE_OVERRIDE]
+            exclude_types=[
+                OrderAdjustment.AdjustmentType.PRICE_OVERRIDE,
+                OrderAdjustment.AdjustmentType.TAX_EXEMPT,
+                OrderAdjustment.AdjustmentType.FEE_EXEMPT,
+            ]
         )
 
         # 4. Calculate post-discount-and-adjustment subtotal
         post_discount_subtotal = order.subtotal - order.total_discounts_amount + total_adjustments_amount
 
         # 4. Surcharges are NOT calculated here - only during payment processing
+        # Fee exemptions are checked during payment, not here
         order.surcharges_total = Decimal("0.00")
 
         # 5. Calculate tax (delegated to calculator with discount-aware logic)
-        order.tax_total = calculator.calculate_item_level_tax(post_discount_subtotal)
+        # Check if there's a tax exemption - if so, tax should be $0
+        has_tax_exemption = order.adjustments.filter(
+            adjustment_type=OrderAdjustment.AdjustmentType.TAX_EXEMPT
+        ).exists()
+
+        if has_tax_exemption:
+            order.tax_total = Decimal("0.00")
+        else:
+            order.tax_total = calculator.calculate_item_level_tax(post_discount_subtotal)
 
         # 6. Calculate grand total (delegated to calculator)
         # Note: Calculator already applies discounts internally

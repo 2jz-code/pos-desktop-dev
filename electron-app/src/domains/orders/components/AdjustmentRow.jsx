@@ -1,7 +1,7 @@
 import { Badge } from "@/shared/components/ui/badge";
 import { formatCurrency } from "@ajeen/ui";
 import { format } from "date-fns";
-import { Percent, DollarSign, Tag, User, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Percent, DollarSign, Tag, User, CheckCircle, Clock, XCircle, ShieldOff, Ban } from "lucide-react";
 
 /**
  * AdjustmentRow - Displays a single order adjustment (one-off discount or price override)
@@ -13,6 +13,8 @@ export const AdjustmentRow = ({ adjustment, compact = false }) => {
   // Determine adjustment type and styling
   const isDiscount = adjustment.adjustment_type === "ONE_OFF_DISCOUNT";
   const isPriceOverride = adjustment.adjustment_type === "PRICE_OVERRIDE";
+  const isTaxExempt = adjustment.adjustment_type === "TAX_EXEMPT";
+  const isFeeExempt = adjustment.adjustment_type === "FEE_EXEMPT";
 
   // Get approval status
   const approvalStatus = adjustment.approval_status || "approved"; // Default to approved for backward compatibility
@@ -36,6 +38,22 @@ export const AdjustmentRow = ({ adjustment, compact = false }) => {
         variant: "default",
         className: "bg-blue-500/10 text-blue-700 border-blue-500/20",
         icon: Tag,
+      };
+    }
+    if (isTaxExempt) {
+      return {
+        label: "Tax Exemption",
+        variant: "default",
+        className: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+        icon: ShieldOff,
+      };
+    }
+    if (isFeeExempt) {
+      return {
+        label: "Fee Exemption",
+        variant: "default",
+        className: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+        icon: Ban,
       };
     }
     return {
@@ -90,16 +108,32 @@ export const AdjustmentRow = ({ adjustment, compact = false }) => {
     if (isPriceOverride && adjustment.new_price !== null) {
       return `New price: ${formatCurrency(adjustment.new_price)}`;
     }
+    if (isTaxExempt) {
+      return `Tax exempted: ${formatCurrency(Math.abs(parseFloat(adjustment.amount || 0)))}`;
+    }
+    if (isFeeExempt) {
+      return `Fee exempted: ${formatCurrency(Math.abs(parseFloat(adjustment.amount || 0)))}`;
+    }
     return "N/A";
   };
 
-  // Calculate the effective amount (negative for discounts)
+  // Calculate the effective amount (negative for discounts and exemptions)
   const getAmountDisplay = () => {
     const amount = parseFloat(adjustment.amount || 0);
-    const isNegative = isDiscount;
+    const isNegative = isDiscount || isTaxExempt || isFeeExempt;
+
+    // Color based on type
+    let colorClass = "text-foreground font-semibold";
+    if (isDiscount) {
+      colorClass = "text-emerald-600 font-semibold";
+    } else if (isTaxExempt) {
+      colorClass = "text-orange-600 font-semibold";
+    } else if (isFeeExempt) {
+      colorClass = "text-blue-600 font-semibold";
+    }
 
     return (
-      <span className={isNegative ? "text-emerald-600 font-semibold" : "text-foreground font-semibold"}>
+      <span className={colorClass}>
         {isNegative ? "-" : ""}{formatCurrency(Math.abs(amount))}
       </span>
     );

@@ -138,24 +138,50 @@ class PaymentFilter(BaseFilterSet):
 class SurchargeCalculationView(APIView):
     """
     Calculates the surcharge for a given amount or a list of amounts.
+    Optionally checks for fee exemptions if order_id is provided.
     """
 
     permission_classes = [AllowAny]
     serializer_class = SurchargeCalculationSerializer
 
     def post(self, request, *args, **kwargs):
+        from decimal import Decimal
+        from orders.models import Order, OrderAdjustment
+
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Check if order has fee exemption
+        order_id = serializer.validated_data.get("order_id")
+        has_fee_exemption = False
+
+        if order_id:
+            try:
+                order = Order.objects.get(id=order_id)
+                has_fee_exemption = order.adjustments.filter(
+                    adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT
+                ).exists()
+            except Order.DoesNotExist:
+                pass
+
         amounts = serializer.validated_data.get("amounts")
 
         if amounts:
-            surcharges = [
-                PaymentService.calculate_surcharge(amount) for amount in amounts
-            ]
+            # If fee exemption exists, return all surcharges as $0
+            if has_fee_exemption:
+                surcharges = [Decimal("0.00") for _ in amounts]
+            else:
+                surcharges = [
+                    PaymentService.calculate_surcharge(amount) for amount in amounts
+                ]
             return Response({"surcharges": surcharges}, status=status.HTTP_200_OK)
         else:
             amount = serializer.validated_data["amount"]
-            surcharge = PaymentService.calculate_surcharge(amount)
+            # If fee exemption exists, return surcharge as $0
+            if has_fee_exemption:
+                surcharge = Decimal("0.00")
+            else:
+                surcharge = PaymentService.calculate_surcharge(amount)
             return Response({"surcharge": surcharge}, status=status.HTTP_200_OK)
 
 

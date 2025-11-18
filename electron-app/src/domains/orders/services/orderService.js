@@ -78,3 +78,13 @@ export const removeAdjustment = async (orderId, adjustmentId) => {
 	const response = await apiClient.delete(`/orders/${orderId}/adjustments/${adjustmentId}/`);
 	return response.data;
 };
+
+export const applyTaxExempt = async (orderId, reason) => {
+	const response = await apiClient.post(`/orders/${orderId}/apply-tax-exempt/`, { reason });
+	return response.data;
+};
+
+export const applyFeeExempt = async (orderId, reason) => {
+	const response = await apiClient.post(`/orders/${orderId}/apply-fee-exempt/`, { reason });
+	return response.data;
+};

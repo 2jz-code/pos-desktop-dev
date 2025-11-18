@@ -525,11 +525,19 @@ class PaymentService:
 
         currency_code = (getattr(order, "currency", None) or "USD").upper()
         surcharge = Decimal("0.00")
+
+        # Check if there's a fee exemption on the order
+        from orders.models import OrderAdjustment
+        has_fee_exemption = order.adjustments.filter(
+            adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT
+        ).exists()
+
         if method in [
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             PaymentTransaction.PaymentMethod.CARD_ONLINE,
-        ]:
+        ] and not has_fee_exemption:
             # Use centralized surcharge calculation with banker's rounding
+            # Only apply surcharge if there's no fee exemption
             surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # Extract tip from kwargs if provided
@@ -620,14 +628,26 @@ class PaymentService:
         """
         Creates a payment intent for a terminal transaction.
         The surcharge is now calculated on the backend to prevent double-counting.
+        Checks for fee exemptions before applying surcharges.
         """
+        from orders.models import OrderAdjustment
+
         active_strategy = PaymentService._get_active_terminal_strategy()
 
         payment = PaymentService.initiate_payment_attempt(order=order)
 
         currency_code = (getattr(order, "currency", None) or "USD").upper()
-        # Calculate surcharge on the backend based on the base amount of the transaction.
-        surcharge = PaymentService.calculate_surcharge(amount, currency_code)
+
+        # Check if there's a fee exemption on the order
+        has_fee_exemption = order.adjustments.filter(
+            adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT
+        ).exists()
+
+        # Calculate surcharge only if there's no fee exemption
+        if has_fee_exemption:
+            surcharge = Decimal("0.00")
+        else:
+            surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # The strategy is responsible for creating the transaction and handling the tip
         return active_strategy.create_payment_intent(

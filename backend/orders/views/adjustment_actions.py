@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from rest_framework import viewsets, status, generics
 from core_backend.base import BaseViewSet
 from rest_framework.exceptions import NotFound
@@ -209,3 +210,108 @@ class AdjustmentActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=True, methods=["post"], url_path="apply-tax-exempt")
+    def apply_tax_exempt(self, request: Request, pk=None):
+        """
+        Apply tax exemption to an order.
+
+        ALWAYS requires manager approval for compliance.
+
+        Expected POST data:
+        - reason: Reason for tax exemption (required for audit trail)
+
+        Returns:
+        - 200: Order with tax exemption applied (if self-approved or no approval needed)
+        - 202: Approval request created (waiting for manager approval)
+        - 400: Validation error
+        """
+        order = self.get_object()
+
+        # Validate reason is provided
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response(
+                {"error": "Reason is required for tax exemptions (compliance requirement)"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            from orders.services import OrderAdjustmentService
+
+            result = OrderAdjustmentService.apply_tax_exempt_with_approval_check(
+                order=order,
+                reason=reason,
+                applied_by=request.user,
+            )
+
+            # Check if approval is pending
+            if isinstance(result, dict) and result.get('status') == 'pending_approval':
+                return Response(result, status=status.HTTP_202_ACCEPTED)
+
+            # Exemption applied successfully
+            response_serializer = UnifiedOrderSerializer(
+                result['order'], context={"request": request, "view_mode": "detail"}
+            )
+            return Response(response_serializer.data)
+
+        except ValidationError as ve:
+            return Response(
+                {"error": str(ve)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error applying tax exemption to order {pk}: {e}", exc_info=True)
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=["post"], url_path="apply-fee-exempt")
+    def apply_fee_exempt(self, request: Request, pk=None):
+        """
+        Apply fee exemption to an order.
+
+        ALWAYS requires manager approval.
+
+        Expected POST data:
+        - reason: Reason for fee exemption (optional)
+
+        Returns:
+        - 200: Order with fee exemption applied (if self-approved or no approval needed)
+        - 202: Approval request created (waiting for manager approval)
+        - 400: Validation error
+        """
+        order = self.get_object()
+
+        reason = request.data.get('reason', '').strip() or 'Fee exemption requested'
+
+        try:
+            from orders.services import OrderAdjustmentService
+
+            result = OrderAdjustmentService.apply_fee_exempt_with_approval_check(
+                order=order,
+                reason=reason,
+                applied_by=request.user,
+            )
+
+            # Check if approval is pending
+            if isinstance(result, dict) and result.get('status') == 'pending_approval':
+                return Response(result, status=status.HTTP_202_ACCEPTED)
+
+            # Exemption applied successfully
+            response_serializer = UnifiedOrderSerializer(
+                result['order'], context={"request": request, "view_mode": "detail"}
+            )
+            return Response(response_serializer.data)
+
+        except ValidationError as ve:
+            return Response(
+                {"error": str(ve)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error applying fee exemption to order {pk}: {e}", exc_info=True)
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
