@@ -229,27 +229,13 @@ class ApprovalPolicyUpdateSerializer(
             'max_price_override_amount',
             'max_void_order_amount',
             'always_require_approval_for',
-            'approval_expiry_minutes',
             'allow_self_approval',
-            'purge_after_days',
         ]
 
     def validate_max_discount_percent(self, value):
         """Ensure discount percentage is between 0 and 100"""
         if value < 0 or value > 100:
             raise serializers.ValidationError("Discount percentage must be between 0 and 100")
-        return value
-
-    def validate_approval_expiry_minutes(self, value):
-        """Ensure expiry is between 1 minute and 24 hours"""
-        if value < 1 or value > 1440:
-            raise serializers.ValidationError("Expiry must be between 1 and 1440 minutes (24 hours)")
-        return value
-
-    def validate_purge_after_days(self, value):
-        """Ensure purge period is reasonable"""
-        if value < 1 or value > 730:
-            raise serializers.ValidationError("Purge period must be between 1 and 730 days (2 years)")
         return value
 
     def validate_always_require_approval_for(self, value):

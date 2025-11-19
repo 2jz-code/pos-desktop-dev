@@ -47,38 +47,3 @@ def expire_pending_approvals():
         error_msg = f"Error expiring pending approval requests: {e}"
         logger.error(error_msg, exc_info=True)
         raise
-
-
-@shared_task
-def cleanup_old_approvals():
-    """
-    Hard-delete resolved approval requests older than policy purge_after_days.
-
-    This task runs daily via Celery Beat (typically at 3 AM).
-    Removes APPROVED, DENIED, and EXPIRED requests that are older than
-    the configured purge period (default: 90 days).
-
-    Returns:
-        str: Status message with count of purged requests
-    """
-    from .services import ManagerApprovalService
-
-    try:
-        # Use default of 90 days
-        # In the future, this could be made configurable per tenant
-        days = 90
-
-        count = ManagerApprovalService.cleanup_old_requests(days=days)
-
-        if count == 0:
-            logger.info("No old approval requests to purge")
-            return "No old approval requests to purge"
-
-        message = f"Purged {count} approval requests older than {days} days"
-        logger.info(message)
-        return message
-
-    except Exception as e:
-        error_msg = f"Error purging old approval requests: {e}"
-        logger.error(error_msg, exc_info=True)
-        raise

@@ -180,12 +180,6 @@ class ApprovalPolicyAdmin(TenantAdminMixin, admin.ModelAdmin):
                 "max_void_order_amount",
             )
         }),
-        ("Expiry & Purge Settings", {
-            "fields": (
-                "approval_expiry_minutes",
-                "purge_after_days",
-            )
-        }),
         ("Security Settings", {
             "fields": ("allow_self_approval",),
             "description": "Self-approval allows a manager to approve their own requests (not recommended)."

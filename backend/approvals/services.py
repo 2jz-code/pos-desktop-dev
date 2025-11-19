@@ -332,37 +332,6 @@ class ManagerApprovalService:
         return count
 
     @staticmethod
-    @transaction.atomic
-    def cleanup_old_requests(days: int = 90) -> int:
-        """
-        Hard-delete resolved approval requests older than specified days.
-
-        Called by Celery task for periodic cleanup.
-
-        Args:
-            days: Number of days to keep resolved requests (default: 90)
-
-        Returns:
-            Number of requests deleted
-        """
-        cutoff_date = timezone.now() - timezone.timedelta(days=days)
-
-        # Delete resolved requests (APPROVED, DENIED, EXPIRED) older than cutoff
-        # Use all_objects to cleanup across all tenants (called from Celery task without tenant context)
-        count, _ = ManagerApprovalRequest.all_objects.filter(
-            status__in=[ApprovalStatus.APPROVED, ApprovalStatus.DENIED, ApprovalStatus.EXPIRED],
-            updated_at__lt=cutoff_date
-        ).delete()
-
-        if count > 0:
-            logger.info(
-                f"Purged {count} resolved approval requests older than {days} days "
-                f"(cutoff: {cutoff_date})"
-            )
-
-        return count
-
-    @staticmethod
     def get_pending_for_location(store_location, limit: Optional[int] = None):
         """
         Get all pending (non-expired) approval requests for a store location.

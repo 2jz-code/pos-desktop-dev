@@ -59,9 +59,8 @@ class Command(BaseCommand):
                             max_refund_amount=Decimal('50.00'),
                             max_price_override_amount=Decimal('50.00'),
                             max_void_order_amount=Decimal('100.00'),
-                            approval_expiry_minutes=30,
+                            approval_expiry_minutes=5,
                             allow_self_approval=False,
-                            purge_after_days=90,
                         )
                         self.stdout.write(
                             self.style.SUCCESS(

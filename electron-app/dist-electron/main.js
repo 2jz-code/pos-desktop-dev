@@ -1,622 +1,954 @@
-import { app as C, ipcMain as g, screen as N, session as ee, BrowserWindow as j } from "electron";
-import h from "node:path";
-import T from "node:process";
-import { fileURLToPath as Y } from "node:url";
-import { createRequire as Z } from "node:module";
-import te from "node-machine-id";
-import q from "usb";
-import ne from "child_process";
-import oe from "util";
-const re = Z(import.meta.url), se = re("node-thermal-printer"), { printer: V, types: z } = se, ie = Y(import.meta.url);
-h.dirname(ie);
-function P(n, r, t) {
-  n.leftRight(r, t);
+import { app, ipcMain, screen, session, BrowserWindow } from "electron";
+import path from "node:path";
+import process$1 from "node:process";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import nodeMachineId from "node-machine-id";
+import usb from "usb";
+import require$$0 from "child_process";
+import require$$1 from "util";
+const require$1 = createRequire(import.meta.url);
+const thermalPrinter = require$1("node-thermal-printer");
+const { printer: ThermalPrinter, types: PrinterTypes } = thermalPrinter;
+const __filename$1 = fileURLToPath(import.meta.url);
+path.dirname(__filename$1);
+function printLine(printer, left, right) {
+  printer.leftRight(left, right);
 }
-async function ae(n, r = null, t = !1) {
-  var _, m, d;
-  let e = new V({
-    type: z.EPSON,
+async function formatReceipt(order, storeSettings = null, isTransaction = false) {
+  var _a, _b, _c;
+  let printer = new ThermalPrinter({
+    type: PrinterTypes.EPSON,
     characterSet: "PC437_USA",
     interface: "tcp://dummy"
   });
-  e.alignCenter();
+  printer.alignCenter();
   try {
-    const i = h.join(process.env.PUBLIC, "logo-receipt.png");
-    await e.printImage(i), e.println("");
-  } catch (i) {
-    console.error("Could not print logo. Using text fallback."), console.error("Full logo printing error:", i), r != null && r.receipt_header && (e.println(r.receipt_header), e.println(""));
+    const logoPath = path.join(process.env.PUBLIC, "logo-receipt.png");
+    await printer.printImage(logoPath);
+    printer.println("");
+  } catch (error) {
+    console.error("Could not print logo. Using text fallback.");
+    console.error("Full logo printing error:", error);
+    if (storeSettings == null ? void 0 : storeSettings.receipt_header) {
+      printer.println(storeSettings.receipt_header);
+      printer.println("");
+    }
   }
-  const o = (r == null ? void 0 : r.store_address) || `2105 Cliff Rd #300
-Eagan, MN 55122`, s = (r == null ? void 0 : r.store_phone) || "(651) 412-5336";
-  if (o.includes("\\n"))
-    o.split("\\n").forEach((l) => {
-      l.trim() && e.println(l.trim());
-    });
-  else {
-    const i = o.split(",");
-    if (i.length > 1) {
-      const l = i.shift().trim(), p = i.join(",").trim();
-      l && e.println(l), p && e.println(p);
-    } else
-      e.println(o);
-  }
-  e.println(`Tel: ${s}`), e.println(""), e.alignLeft();
-  const c = n.order_number || n.id || "N/A", E = new Date(n.created_at).toLocaleString("en-US", {
-    timeZone: "America/Chicago"
-  }), u = n.customer_display_name || n.guest_first_name || ((_ = n.payment_details) == null ? void 0 : _.customer_name) || ((m = n.customer) == null ? void 0 : m.full_name);
-  u && e.println(`Customer: ${u}`), e.println(`Order #: ${c}`), e.println(`Date: ${E}`);
-  const f = (n.dining_preference || "TAKE_OUT") === "DINE_IN" ? "Dine In" : "Take Out";
-  if (e.println(`Service: ${f}`), n.order_type) {
-    const l = {
-      POS: "In-Store",
-      WEB: "Website",
-      APP: "App",
-      DOORDASH: "DoorDash",
-      UBER_EATS: "Uber Eats"
-    }[n.order_type] || n.order_type;
-    e.println(`Source: ${l}`);
-  }
-  t && (e.alignCenter(), e.bold(!0), e.println("--- TRANSACTION RECEIPT ---"), e.bold(!1), e.alignLeft(), n.status && e.println(`Order Status: ${n.status}`), e.println("** Payment Not Yet Processed **")), e.println(""), e.alignCenter(), e.bold(!0), e.println("ITEMS"), e.bold(!1), e.drawLine(), e.alignLeft();
-  for (const i of n.items) {
-    const l = parseFloat(i.price_at_sale) * i.quantity, p = i.product ? i.product.name : i.custom_name || "Custom Item", b = `${i.quantity}x ${p}`;
-    if (P(e, b, `$${l.toFixed(2)}`), i.selected_modifiers_snapshot && i.selected_modifiers_snapshot.length > 0)
-      for (const y of i.selected_modifiers_snapshot) {
-        const v = parseFloat(y.price_at_sale) * y.quantity * i.quantity;
-        let I = `   - ${y.option_name}`;
-        y.quantity > 1 && (I += ` (${y.quantity}x)`), parseFloat(y.price_at_sale) !== 0 ? P(e, I, `$${v.toFixed(2)}`) : e.println(I);
+  const storeAddress = (storeSettings == null ? void 0 : storeSettings.store_address) || "2105 Cliff Rd #300\nEagan, MN 55122";
+  const storePhone = (storeSettings == null ? void 0 : storeSettings.store_phone) || "(651) 412-5336";
+  {
+    if (storeAddress.includes("\\n")) {
+      const addressLines = storeAddress.split("\\n");
+      addressLines.forEach((line) => {
+        if (line.trim()) printer.println(line.trim());
+      });
+    } else {
+      const parts = storeAddress.split(",");
+      if (parts.length > 1) {
+        const street = parts.shift().trim();
+        const cityStateZip = parts.join(",").trim();
+        if (street) printer.println(street);
+        if (cityStateZip) printer.println(cityStateZip);
+      } else {
+        printer.println(storeAddress);
       }
+    }
   }
-  if (e.drawLine(), P(e, "Subtotal:", `$${parseFloat(n.subtotal).toFixed(2)}`), parseFloat(n.total_discounts_amount) > 0 && P(
-    e,
-    "Discount:",
-    `-$${parseFloat(n.total_discounts_amount).toFixed(2)}`
-  ), parseFloat(n.total_surcharges || 0) > 0 && P(
-    e,
-    "Service Fee:",
-    `$${parseFloat(n.total_surcharges).toFixed(2)}`
-  ), P(e, "Tax:", `$${parseFloat(n.tax_total).toFixed(2)}`), parseFloat(n.total_tips || 0) > 0 && P(e, "Tip:", `$${parseFloat(n.total_tips).toFixed(2)}`), e.bold(!0), P(
-    e,
-    "TOTAL:",
-    `$${parseFloat(n.total_collected || n.grand_total || 0).toFixed(2)}`
-  ), e.bold(!1), e.println(""), t)
-    e.bold(!0), e.println("Payment Information:"), e.bold(!1), e.println("This is a transaction receipt."), e.println("Payment will be processed separately.");
-  else {
-    let i = ((d = n.payment_details) == null ? void 0 : d.transactions) || [];
-    if (n.order_type === "WEB" && (i = i.filter((l) => l.status === "SUCCESSFUL")), i.length > 0) {
-      e.bold(!0), e.println("Payment Details:"), e.bold(!1);
-      for (const [l, p] of i.entries()) {
-        const b = (p.method || "N/A").toUpperCase(), y = parseFloat(p.amount || 0), v = parseFloat(p.surcharge || 0), I = parseFloat(p.tip || 0), k = (y + v + I).toFixed(2);
-        if (b === "CARD_ONLINE" || b === "CARD_TERMINAL") {
-          const R = p.card_brand || "", L = p.card_last4 || "";
-          if (R && L) {
-            const X = `${R.toUpperCase()} ******${L}`;
-            P(e, ` ${X}`, `$${k}`);
-          } else
-            P(e, ` ${b} (${l + 1})`, `$${k}`);
-        } else
-          P(e, ` ${b} (${l + 1})`, `$${k}`);
-        if (b === "CASH") {
-          const R = parseFloat(p.cashTendered || 0).toFixed(2), L = parseFloat(p.change || 0).toFixed(2);
-          parseFloat(R) > 0 && (P(e, "   Tendered:", `$${R}`), P(e, "   Change:", `$${L}`));
+  {
+    printer.println(`Tel: ${storePhone}`);
+  }
+  printer.println("");
+  printer.alignLeft();
+  const orderId = order.order_number || order.id || "N/A";
+  const orderDate = new Date(order.created_at).toLocaleString("en-US", {
+    timeZone: "America/Chicago"
+  });
+  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
+  if (customerName) {
+    printer.println(`Customer: ${customerName}`);
+  }
+  printer.println(`Order #: ${orderId}`);
+  printer.println(`Date: ${orderDate}`);
+  const diningPreference = order.dining_preference || "TAKE_OUT";
+  const diningLabel = diningPreference === "DINE_IN" ? "Dine In" : "Take Out";
+  printer.println(`Service: ${diningLabel}`);
+  if (order.order_type) {
+    const orderTypeLabels = {
+      "POS": "In-Store",
+      "WEB": "Website",
+      "APP": "App",
+      "DOORDASH": "DoorDash",
+      "UBER_EATS": "Uber Eats"
+    };
+    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
+    printer.println(`Source: ${sourceLabel}`);
+  }
+  if (isTransaction) {
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println("--- TRANSACTION RECEIPT ---");
+    printer.bold(false);
+    printer.alignLeft();
+    if (order.status) {
+      printer.println(`Order Status: ${order.status}`);
+    }
+    printer.println("** Payment Not Yet Processed **");
+  }
+  printer.println("");
+  printer.alignCenter();
+  printer.bold(true);
+  printer.println("ITEMS");
+  printer.bold(false);
+  printer.drawLine();
+  printer.alignLeft();
+  for (const item of order.items) {
+    const price = parseFloat(item.price_at_sale) * item.quantity;
+    const itemName = item.product ? item.product.name : item.custom_name || "Custom Item";
+    const itemText = `${item.quantity}x ${itemName}`;
+    printLine(printer, itemText, `$${price.toFixed(2)}`);
+    if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
+      for (const modifier of item.selected_modifiers_snapshot) {
+        const modPrice = parseFloat(modifier.price_at_sale) * modifier.quantity * item.quantity;
+        let modText = `   - ${modifier.option_name}`;
+        if (modifier.quantity > 1) {
+          modText += ` (${modifier.quantity}x)`;
+        }
+        if (parseFloat(modifier.price_at_sale) !== 0) {
+          printLine(printer, modText, `$${modPrice.toFixed(2)}`);
+        } else {
+          printer.println(modText);
         }
       }
     }
   }
-  return e.println(""), e.alignCenter(), ((r == null ? void 0 : r.receipt_footer) || "Thank you for your business!").split(`
-`).forEach((l) => {
-    l.trim() && e.println(l.trim());
-  }), r != null && r.receipt_footer || e.println("Visit us at bakeajeen.com"), e.println(""), e.println(""), e.cut(), e.getBuffer();
+  printer.drawLine();
+  printLine(printer, "Subtotal:", `$${parseFloat(order.subtotal).toFixed(2)}`);
+  if (parseFloat(order.total_discounts_amount) > 0) {
+    printLine(
+      printer,
+      "Discount:",
+      `-$${parseFloat(order.total_discounts_amount).toFixed(2)}`
+    );
+  }
+  if (parseFloat(order.total_surcharges || 0) > 0) {
+    printLine(
+      printer,
+      "Service Fee:",
+      `$${parseFloat(order.total_surcharges).toFixed(2)}`
+    );
+  }
+  printLine(printer, "Tax:", `$${parseFloat(order.tax_total).toFixed(2)}`);
+  if (parseFloat(order.total_tips || 0) > 0) {
+    printLine(printer, "Tip:", `$${parseFloat(order.total_tips).toFixed(2)}`);
+  }
+  printer.bold(true);
+  printLine(
+    printer,
+    "TOTAL:",
+    `$${parseFloat(order.total_collected || order.grand_total || 0).toFixed(2)}`
+  );
+  printer.bold(false);
+  printer.println("");
+  if (!isTransaction) {
+    let transactions = ((_c = order.payment_details) == null ? void 0 : _c.transactions) || [];
+    if (order.order_type === "WEB") {
+      transactions = transactions.filter((txn) => txn.status === "SUCCESSFUL");
+    }
+    if (transactions.length > 0) {
+      printer.bold(true);
+      printer.println("Payment Details:");
+      printer.bold(false);
+      for (const [index, txn] of transactions.entries()) {
+        const method = (txn.method || "N/A").toUpperCase();
+        const baseAmount = parseFloat(txn.amount || 0);
+        const surcharge = parseFloat(txn.surcharge || 0);
+        const tip = parseFloat(txn.tip || 0);
+        const totalAmount = (baseAmount + surcharge + tip).toFixed(2);
+        if (method === "CARD_ONLINE" || method === "CARD_TERMINAL") {
+          const cardBrand = txn.card_brand || "";
+          const cardLast4 = txn.card_last4 || "";
+          if (cardBrand && cardLast4) {
+            const displayName = `${cardBrand.toUpperCase()} ******${cardLast4}`;
+            printLine(printer, ` ${displayName}`, `$${totalAmount}`);
+          } else {
+            printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+          }
+        } else {
+          printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+        }
+        if (method === "CASH") {
+          const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
+          const change = parseFloat(txn.change || 0).toFixed(2);
+          if (parseFloat(tendered) > 0) {
+            printLine(printer, "   Tendered:", `$${tendered}`);
+            printLine(printer, "   Change:", `$${change}`);
+          }
+        }
+      }
+    }
+  } else {
+    printer.bold(true);
+    printer.println("Payment Information:");
+    printer.bold(false);
+    printer.println("This is a transaction receipt.");
+    printer.println("Payment will be processed separately.");
+  }
+  printer.println("");
+  printer.alignCenter();
+  const receiptFooter = (storeSettings == null ? void 0 : storeSettings.receipt_footer) || "Thank you for your business!";
+  {
+    const footerLines = receiptFooter.split("\n");
+    footerLines.forEach((line) => {
+      if (line.trim()) printer.println(line.trim());
+    });
+  }
+  if (!(storeSettings == null ? void 0 : storeSettings.receipt_footer)) {
+    printer.println("Visit us at bakeajeen.com");
+  }
+  printer.println("");
+  printer.println("");
+  printer.cut();
+  return printer.getBuffer();
 }
-function ce() {
-  let n = new V({
-    type: z.EPSON,
+function formatOpenCashDrawer() {
+  let printerInstance = new ThermalPrinter({
+    type: PrinterTypes.EPSON,
     interface: "tcp://dummy"
   });
-  return n.openCashDrawer(), n.getBuffer();
+  printerInstance.openCashDrawer();
+  return printerInstance.getBuffer();
 }
-function le(n, r = "KITCHEN", t = null) {
-  var f, M;
-  let e = n.items || [];
-  if (t && (e = e.filter((_) => {
-    var d, i;
-    const m = _.product;
-    return m ? !(t.productTypes && t.productTypes.length > 0 && !t.productTypes.includes("ALL") && !t.productTypes.includes(
-      (d = m.product_type) == null ? void 0 : d.id
-    ) || t.categories && t.categories.length > 0 && !t.categories.includes("ALL") && !t.categories.includes(
-      (i = m.category) == null ? void 0 : i.id
-    )) : !0;
-  })), e.length === 0)
-    return console.log(
-      `[formatKitchenTicket] No items match filter for zone "${r}" - skipping ticket`
-    ), null;
-  let o = new V({
-    type: z.EPSON,
+function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
+  var _a, _b;
+  let itemsToPrint = order.items || [];
+  if (filterConfig) {
+    itemsToPrint = itemsToPrint.filter((item) => {
+      var _a2, _b2;
+      const product = item.product;
+      if (!product) {
+        return true;
+      }
+      if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
+        if (!filterConfig.productTypes.includes("ALL")) {
+          const productTypeMatch = filterConfig.productTypes.includes(
+            (_a2 = product.product_type) == null ? void 0 : _a2.id
+          );
+          if (!productTypeMatch) return false;
+        }
+      }
+      if (filterConfig.categories && filterConfig.categories.length > 0) {
+        if (!filterConfig.categories.includes("ALL")) {
+          const categoryMatch = filterConfig.categories.includes(
+            (_b2 = product.category) == null ? void 0 : _b2.id
+          );
+          if (!categoryMatch) return false;
+        }
+      }
+      return true;
+    });
+  }
+  if (itemsToPrint.length === 0) {
+    console.log(
+      `[formatKitchenTicket] No items match filter for zone "${zoneName}" - skipping ticket`
+    );
+    return null;
+  }
+  let printer = new ThermalPrinter({
+    type: PrinterTypes.EPSON,
     characterSet: "PC437_USA",
     interface: "tcp://dummy"
   });
-  o.println(""), o.println(""), o.println(""), o.println(""), o.alignCenter(), o.bold(!0), o.setTextSize(1, 1), o.println(`${r.toUpperCase()} TICKET`), o.setTextNormal(), o.bold(!1), o.alignLeft(), o.println(""), o.setTextSize(2, 2), o.bold(!0), o.println(`${n.order_number || n.id}`), o.bold(!1), o.setTextNormal();
-  const s = n.customer_display_name || n.guest_first_name || ((f = n.payment_details) == null ? void 0 : f.customer_name) || ((M = n.customer) == null ? void 0 : M.full_name);
-  s && o.println(`Customer: ${s}`);
-  const c = new Date(n.created_at).toLocaleTimeString("en-US", {
+  printer.println("");
+  printer.println("");
+  printer.println("");
+  printer.println("");
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`${zoneName.toUpperCase()} TICKET`);
+  printer.setTextNormal();
+  printer.bold(false);
+  printer.alignLeft();
+  printer.println("");
+  printer.setTextSize(2, 2);
+  printer.bold(true);
+  printer.println(`${order.order_number || order.id}`);
+  printer.bold(false);
+  printer.setTextNormal();
+  const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
+  if (customerName) {
+    printer.println(`Customer: ${customerName}`);
+  }
+  const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: !0,
+    hour12: true,
     timeZone: "America/Chicago"
   });
-  o.println(`Time: ${c}`);
-  const u = (n.dining_preference || "TAKE_OUT") === "DINE_IN" ? "DINE IN" : "TAKE OUT";
-  if (o.bold(!0), o.println(`SERVICE: ${u}`), n.order_type) {
-    const m = {
-      POS: "IN-STORE",
-      WEB: "WEBSITE",
-      APP: "APP",
-      DOORDASH: "DOORDASH",
-      UBER_EATS: "UBER EATS"
-    }[n.order_type] || n.order_type;
-    o.println(`SOURCE: ${m}`);
+  printer.println(`Time: ${orderDate}`);
+  const diningPreference = order.dining_preference || "TAKE_OUT";
+  const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
+  printer.bold(true);
+  printer.println(`SERVICE: ${diningLabel}`);
+  if (order.order_type) {
+    const orderTypeLabels = {
+      "POS": "IN-STORE",
+      "WEB": "WEBSITE",
+      "APP": "APP",
+      "DOORDASH": "DOORDASH",
+      "UBER_EATS": "UBER EATS"
+    };
+    const sourceLabel = orderTypeLabels[order.order_type] || order.order_type;
+    printer.println(`SOURCE: ${sourceLabel}`);
   }
-  o.bold(!1), o.drawLine();
-  const $ = e.reduce((_, m) => {
-    var i;
-    const d = m.product ? ((i = m.product.category) == null ? void 0 : i.name) || "Miscellaneous" : "Custom Items";
-    return _[d] || (_[d] = []), _[d].push(m), _;
+  printer.bold(false);
+  printer.drawLine();
+  const groupedItems = itemsToPrint.reduce((acc, item) => {
+    var _a2;
+    const categoryName = item.product ? ((_a2 = item.product.category) == null ? void 0 : _a2.name) || "Miscellaneous" : "Custom Items";
+    if (!acc[categoryName]) {
+      acc[categoryName] = [];
+    }
+    acc[categoryName].push(item);
+    return acc;
   }, {});
-  for (const _ in $) {
-    o.bold(!0), o.underline(!0), o.println(`${_.toUpperCase()}:`), o.underline(!1), o.bold(!1);
-    const m = $[_];
-    for (const d of m) {
-      o.bold(!0), o.setTextSize(1, 1);
-      const i = d.product ? d.product.name : d.custom_name || "Custom Item";
-      if (o.println(`${d.quantity}x ${i}`), o.setTextNormal(), o.bold(!1), d.selected_modifiers_snapshot && d.selected_modifiers_snapshot.length > 0) {
-        const l = d.selected_modifiers_snapshot.reduce((p, b) => {
-          const y = b.modifier_set_name || "Other";
-          return p[y] || (p[y] = []), p[y].push(b), p;
+  for (const categoryName in groupedItems) {
+    printer.bold(true);
+    printer.underline(true);
+    printer.println(`${categoryName.toUpperCase()}:`);
+    printer.underline(false);
+    printer.bold(false);
+    const itemsInCategory = groupedItems[categoryName];
+    for (const item of itemsInCategory) {
+      printer.bold(true);
+      printer.setTextSize(1, 1);
+      const itemName = item.product ? item.product.name : item.custom_name || "Custom Item";
+      printer.println(`${item.quantity}x ${itemName}`);
+      printer.setTextNormal();
+      printer.bold(false);
+      if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
+        const modifiersBySet = item.selected_modifiers_snapshot.reduce((acc, modifier) => {
+          const setName = modifier.modifier_set_name || "Other";
+          if (!acc[setName]) acc[setName] = [];
+          acc[setName].push(modifier);
+          return acc;
         }, {});
-        for (const [p, b] of Object.entries(l)) {
-          const y = b.map((v) => {
-            let I = v.option_name;
-            return v.quantity > 1 && (I += ` (${v.quantity}x)`), I;
+        for (const [setName, modifiers] of Object.entries(modifiersBySet)) {
+          const optionsList = modifiers.map((modifier) => {
+            let optionText = modifier.option_name;
+            if (modifier.quantity > 1) {
+              optionText += ` (${modifier.quantity}x)`;
+            }
+            return optionText;
           }).join(", ");
-          o.println(`   ${p} - ${y}`);
+          printer.println(`   ${setName} - ${optionsList}`);
         }
       }
-      d.notes && d.notes.trim() && o.println(`   NOTES: ${d.notes.trim()}`);
+      if (item.notes && item.notes.trim()) {
+        printer.println(`   NOTES: ${item.notes.trim()}`);
+      }
     }
-    o.println("");
+    printer.println("");
   }
-  return o.cut(), o.getBuffer();
+  printer.cut();
+  return printer.getBuffer();
 }
-function de(n) {
-  return n && n.__esModule && Object.prototype.hasOwnProperty.call(n, "default") ? n.default : n;
+function getDefaultExportFromCjs(x) {
+  return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
 }
-var H, G;
-function pe() {
-  return G || (G = 1, H = function(n) {
+var main;
+var hasRequiredMain;
+function requireMain() {
+  if (hasRequiredMain) return main;
+  hasRequiredMain = 1;
+  main = function(e) {
     var r = {};
-    function t(e) {
-      if (r[e]) return r[e].exports;
-      var o = r[e] = { i: e, l: !1, exports: {} };
-      return n[e].call(o.exports, o, o.exports, t), o.l = !0, o.exports;
+    function t(n) {
+      if (r[n]) return r[n].exports;
+      var o = r[n] = { i: n, l: false, exports: {} };
+      return e[n].call(o.exports, o, o.exports, t), o.l = true, o.exports;
     }
-    return t.m = n, t.c = r, t.d = function(e, o, s) {
-      t.o(e, o) || Object.defineProperty(e, o, { enumerable: !0, get: s });
-    }, t.r = function(e) {
-      typeof Symbol < "u" && Symbol.toStringTag && Object.defineProperty(e, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e, "__esModule", { value: !0 });
-    }, t.t = function(e, o) {
-      if (1 & o && (e = t(e)), 8 & o || 4 & o && typeof e == "object" && e && e.__esModule) return e;
-      var s = /* @__PURE__ */ Object.create(null);
-      if (t.r(s), Object.defineProperty(s, "default", { enumerable: !0, value: e }), 2 & o && typeof e != "string") for (var c in e) t.d(s, c, (function(E) {
-        return e[E];
-      }).bind(null, c));
-      return s;
-    }, t.n = function(e) {
-      var o = e && e.__esModule ? function() {
-        return e.default;
+    return t.m = e, t.c = r, t.d = function(e2, r2, n) {
+      t.o(e2, r2) || Object.defineProperty(e2, r2, { enumerable: true, get: n });
+    }, t.r = function(e2) {
+      "undefined" != typeof Symbol && Symbol.toStringTag && Object.defineProperty(e2, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e2, "__esModule", { value: true });
+    }, t.t = function(e2, r2) {
+      if (1 & r2 && (e2 = t(e2)), 8 & r2) return e2;
+      if (4 & r2 && "object" == typeof e2 && e2 && e2.__esModule) return e2;
+      var n = /* @__PURE__ */ Object.create(null);
+      if (t.r(n), Object.defineProperty(n, "default", { enumerable: true, value: e2 }), 2 & r2 && "string" != typeof e2) for (var o in e2) t.d(n, o, (function(r3) {
+        return e2[r3];
+      }).bind(null, o));
+      return n;
+    }, t.n = function(e2) {
+      var r2 = e2 && e2.__esModule ? function() {
+        return e2.default;
       } : function() {
-        return e;
+        return e2;
       };
-      return t.d(o, "a", o), o;
-    }, t.o = function(e, o) {
-      return Object.prototype.hasOwnProperty.call(e, o);
+      return t.d(r2, "a", r2), r2;
+    }, t.o = function(e2, r2) {
+      return Object.prototype.hasOwnProperty.call(e2, r2);
     }, t.p = "", t(t.s = 0);
-  }([function(n, r, t) {
-    const { exec: e } = t(1), o = t(2).promisify(e);
-    n.exports = { play: async (s, c = 0.5) => {
-      const E = process.platform === "darwin" ? Math.min(2, 2 * c) : c, u = process.platform === "darwin" ? (($, f) => `afplay "${$}" -v ${f}`)(s, E) : (($, f) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((M) => `$player.open('${M}');`)($)} $player.Volume = ${f}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(s, E);
+  }([function(e, r, t) {
+    const { exec: n } = t(1), o = t(2).promisify(n);
+    e.exports = { play: async (e2, r2 = 0.5) => {
+      const t2 = "darwin" === process.platform ? Math.min(2, 2 * r2) : r2, n2 = "darwin" === process.platform ? ((e3, r3) => `afplay "${e3}" -v ${r3}`)(e2, t2) : ((e3, r3) => `powershell -c Add-Type -AssemblyName presentationCore; $player = New-Object system.windows.media.mediaplayer; ${((e4) => `$player.open('${e4}');`)(e3)} $player.Volume = ${r3}; $player.Play(); Start-Sleep 1; Start-Sleep -s $player.NaturalDuration.TimeSpan.TotalSeconds;Exit;`)(e2, t2);
       try {
-        await o(u);
-      } catch ($) {
-        throw $;
+        await o(n2);
+      } catch (e3) {
+        throw e3;
       }
     } };
-  }, function(n, r) {
-    n.exports = ne;
-  }, function(n, r) {
-    n.exports = oe;
-  }])), H;
+  }, function(e, r) {
+    e.exports = require$$0;
+  }, function(e, r) {
+    e.exports = require$$1;
+  }]);
+  return main;
 }
-var ue = pe();
-const fe = /* @__PURE__ */ de(ue), { machineIdSync: me } = te, W = Z(import.meta.url), ye = Y(import.meta.url), F = h.dirname(ye), he = T.env.NODE_ENV === "development";
+var mainExports = requireMain();
+const sound = /* @__PURE__ */ getDefaultExportFromCjs(mainExports);
+const { machineIdSync } = nodeMachineId;
+const require2 = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const isDev = process$1.env.NODE_ENV === "development";
 console.log(
   "[Main Process] Configuring hardware acceleration and display settings..."
 );
-C.commandLine.appendSwitch("--enable-gpu-rasterization");
-C.commandLine.appendSwitch("--enable-zero-copy");
-C.commandLine.appendSwitch("--disable-software-rasterizer");
-he ? (C.commandLine.appendSwitch("--ignore-certificate-errors"), C.commandLine.appendSwitch("--allow-running-insecure-content"), console.log("[Main Process] Development mode - debugging switches enabled")) : (C.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor"), C.commandLine.appendSwitch("--force-color-profile", "srgb"), console.log(
-  "[Main Process] Production mode - stable display features enabled"
-));
-T.env.DIST = h.join(F, "../dist");
-T.env.PUBLIC = C.isPackaged ? T.env.DIST : h.join(T.env.DIST, "../public");
-let w, a, B = null;
-const U = T.env.VITE_DEV_SERVER_URL, ge = 1e4, _e = 5e3;
-let A = null, x = Date.now(), O = !1, S = 0;
-function Pe() {
-  const n = N.getPrimaryDisplay(), r = ee.defaultSession;
-  w = new j({
-    icon: h.join(T.env.PUBLIC, "logo.png"),
-    x: n.bounds.x,
-    y: n.bounds.y,
-    fullscreen: !0,
+app.commandLine.appendSwitch("--enable-gpu-rasterization");
+app.commandLine.appendSwitch("--enable-zero-copy");
+app.commandLine.appendSwitch("--disable-software-rasterizer");
+if (!isDev) {
+  app.commandLine.appendSwitch("--enable-features", "VizDisplayCompositor");
+  app.commandLine.appendSwitch("--force-color-profile", "srgb");
+  console.log(
+    "[Main Process] Production mode - stable display features enabled"
+  );
+} else {
+  app.commandLine.appendSwitch("--ignore-certificate-errors");
+  app.commandLine.appendSwitch("--allow-running-insecure-content");
+  console.log("[Main Process] Development mode - debugging switches enabled");
+}
+process$1.env.DIST = path.join(__dirname, "../dist");
+process$1.env.PUBLIC = app.isPackaged ? process$1.env.DIST : path.join(process$1.env.DIST, "../public");
+let mainWindow;
+let customerWindow;
+let lastKnownState = null;
+const VITE_DEV_SERVER_URL = process$1.env["VITE_DEV_SERVER_URL"];
+const HEALTH_CHECK_INTERVAL_MS = 1e4;
+const HEALTH_CHECK_TIMEOUT_MS = 5e3;
+let healthCheckInterval = null;
+let lastPongTimestamp = Date.now();
+let waitingForPong = false;
+let consecutiveFailures = 0;
+function createMainWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const persistentSession = session.defaultSession;
+  mainWindow = new BrowserWindow({
+    icon: path.join(process$1.env.PUBLIC, "logo.png"),
+    x: primaryDisplay.bounds.x,
+    y: primaryDisplay.bounds.y,
+    fullscreen: true,
     webPreferences: {
-      session: r,
-      preload: h.join(F, "../dist-electron/preload.js"),
-      nodeIntegration: !1,
-      contextIsolation: !0,
-      enableRemoteModule: !1,
+      session: persistentSession,
+      preload: path.join(__dirname, "../dist-electron/preload.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
       // Production security settings
-      allowRunningInsecureContent: !1,
-      webSecurity: !0,
-      experimentalFeatures: !1
+      allowRunningInsecureContent: false,
+      webSecurity: true,
+      experimentalFeatures: false
     }
-  }), w.webContents.on("did-finish-load", () => {
-    w == null || w.webContents.send(
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow == null ? void 0 : mainWindow.webContents.send(
       "main-process-message",
       (/* @__PURE__ */ new Date()).toLocaleString()
     );
-  }), U ? w.loadURL(U) : w.loadFile(h.join(T.env.DIST, "index.html")), w.on("closed", () => {
-    w = null, a && a.close();
+  });
+  if (VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(process$1.env.DIST, "index.html"));
+  }
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    if (customerWindow) {
+      customerWindow.close();
+    }
   });
 }
-function J() {
-  const r = N.getAllDisplays().find(
-    (t) => t.id !== N.getPrimaryDisplay().id
+function createCustomerWindow() {
+  const displays = screen.getAllDisplays();
+  const secondaryDisplay = displays.find(
+    (display) => display.id !== screen.getPrimaryDisplay().id
   );
-  if (r)
-    a = new j({
-      icon: h.join(T.env.PUBLIC, "logo.png"),
-      x: r.bounds.x,
-      y: r.bounds.y,
-      fullscreen: !0,
+  if (!secondaryDisplay) {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+    customerWindow = new BrowserWindow({
+      icon: path.join(process$1.env.PUBLIC, "logo.png"),
+      x: Math.floor(width * 0.25),
+      // Centered-ish
+      y: Math.floor(height * 0.1),
+      width: Math.floor(width * 0.5),
+      // Half the screen width
+      height: Math.floor(height * 0.8),
+      // 80% of screen height
+      fullscreen: false,
+      title: "Customer Display (Testing)",
       webPreferences: {
-        preload: h.join(F, "../dist-electron/preload.js"),
-        nodeIntegration: !1,
-        contextIsolation: !0,
-        enableRemoteModule: !1
+        preload: path.join(__dirname, "../dist-electron/preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        enableRemoteModule: false
+      }
+    });
+  } else {
+    customerWindow = new BrowserWindow({
+      icon: path.join(process$1.env.PUBLIC, "logo.png"),
+      x: secondaryDisplay.bounds.x,
+      y: secondaryDisplay.bounds.y,
+      fullscreen: true,
+      webPreferences: {
+        preload: path.join(__dirname, "../dist-electron/preload.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        enableRemoteModule: false
         // Remove hardwareAcceleration override - let app-level settings handle it
       }
     });
-  else {
-    const t = N.getPrimaryDisplay(), { width: e, height: o } = t.workAreaSize;
-    a = new j({
-      icon: h.join(T.env.PUBLIC, "logo.png"),
-      x: Math.floor(e * 0.25),
-      // Centered-ish
-      y: Math.floor(o * 0.1),
-      width: Math.floor(e * 0.5),
-      // Half the screen width
-      height: Math.floor(o * 0.8),
-      // 80% of screen height
-      fullscreen: !1,
-      title: "Customer Display (Testing)",
-      webPreferences: {
-        preload: h.join(F, "../dist-electron/preload.js"),
-        nodeIntegration: !1,
-        contextIsolation: !0,
-        enableRemoteModule: !1
-      }
-    });
   }
-  U ? a.loadURL(`${U}customer.html`) : a.loadFile(h.join(T.env.DIST, "customer.html")), a.webContents.on("did-finish-load", () => {
+  if (VITE_DEV_SERVER_URL) {
+    customerWindow.loadURL(`${VITE_DEV_SERVER_URL}customer.html`);
+  } else {
+    customerWindow.loadFile(path.join(process$1.env.DIST, "customer.html"));
+  }
+  customerWindow.webContents.on("did-finish-load", () => {
     setTimeout(() => {
-      we();
+      startHealthCheck();
     }, 2e3);
-  }), a.on("closed", () => {
-    D(), a = null;
-  }), a.on("unresponsive", () => {
-    if (console.error(
+  });
+  customerWindow.on("closed", () => {
+    stopHealthCheck();
+    customerWindow = null;
+  });
+  customerWindow.on("unresponsive", () => {
+    console.error(
       "[Main Process] Customer display renderer is unresponsive. Attempting to reload..."
-    ), a && !a.isDestroyed())
+    );
+    if (customerWindow && !customerWindow.isDestroyed()) {
       try {
-        a.webContents.reload();
-      } catch (t) {
+        customerWindow.webContents.reload();
+      } catch (error) {
         console.error(
           "[Main Process] Failed to reload unresponsive customer display:",
-          t
-        ), K();
+          error
+        );
+        recreateCustomerWindow();
       }
-  }), a.webContents.on("render-process-gone", (t, e) => {
+    }
+  });
+  customerWindow.webContents.on("render-process-gone", (event, details) => {
     console.error(
       "[Main Process] Customer display renderer crashed:",
-      e.reason,
+      details.reason,
       "Exit code:",
-      e.exitCode
-    ), D(), setTimeout(() => {
-      K();
+      details.exitCode
+    );
+    stopHealthCheck();
+    setTimeout(() => {
+      recreateCustomerWindow();
     }, 1e3);
   });
 }
-function K() {
-  if (D(), a && !a.isDestroyed())
+function recreateCustomerWindow() {
+  stopHealthCheck();
+  if (customerWindow && !customerWindow.isDestroyed()) {
     try {
-      a.close();
-    } catch (n) {
+      customerWindow.close();
+    } catch (error) {
       console.error(
         "[Main Process] Error closing existing customer window:",
-        n
+        error
       );
     }
-  a = null, setTimeout(() => {
-    J();
+  }
+  customerWindow = null;
+  setTimeout(() => {
+    createCustomerWindow();
   }, 500);
 }
-function we() {
-  D(), x = Date.now(), O = !1, S = 0, A = setInterval(() => {
-    if (!a || a.isDestroyed()) {
-      D();
+function startHealthCheck() {
+  stopHealthCheck();
+  lastPongTimestamp = Date.now();
+  waitingForPong = false;
+  consecutiveFailures = 0;
+  healthCheckInterval = setInterval(() => {
+    if (!customerWindow || customerWindow.isDestroyed()) {
+      stopHealthCheck();
       return;
     }
-    const n = Date.now(), r = n - x;
-    if (O && r > _e) {
-      if (S++, console.error(
-        `[Main Process] Customer display health check FAILED - no pong for ${Math.round(r / 1e3)}s (failure ${S})`
-      ), S === 1)
+    const now = Date.now();
+    const timeSinceLastPong = now - lastPongTimestamp;
+    if (waitingForPong && timeSinceLastPong > HEALTH_CHECK_TIMEOUT_MS) {
+      consecutiveFailures++;
+      console.error(
+        `[Main Process] Customer display health check FAILED - no pong for ${Math.round(timeSinceLastPong / 1e3)}s (failure ${consecutiveFailures})`
+      );
+      if (consecutiveFailures === 1) {
         try {
-          a.webContents.reload(), O = !1, x = n;
-        } catch (t) {
+          customerWindow.webContents.reload();
+          waitingForPong = false;
+          lastPongTimestamp = now;
+        } catch (error) {
           console.error(
             "[Main Process] Graceful reload failed:",
-            t
-          ), S = 2;
+            error
+          );
+          consecutiveFailures = 2;
         }
-      if (S >= 2) {
+      }
+      if (consecutiveFailures >= 2) {
         console.error(
           "[Main Process] Graceful reload failed. Forcing crash & recreate..."
-        ), D();
+        );
+        stopHealthCheck();
         try {
-          a.webContents.forcefullyCrashRenderer();
-        } catch (t) {
+          customerWindow.webContents.forcefullyCrashRenderer();
+        } catch (error) {
           console.error(
             "[Main Process] Failed to crash renderer:",
-            t
-          ), K();
+            error
+          );
+          recreateCustomerWindow();
         }
-        S = 0;
+        consecutiveFailures = 0;
       }
       return;
     }
-    a.webContents.send("CUSTOMER_HEALTH_CHECK_PING"), O = !0;
-  }, ge);
+    customerWindow.webContents.send("CUSTOMER_HEALTH_CHECK_PING");
+    waitingForPong = true;
+  }, HEALTH_CHECK_INTERVAL_MS);
 }
-function D() {
-  A && (clearInterval(A), A = null);
+function stopHealthCheck() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
+  }
 }
-g.on("CUSTOMER_HEALTH_CHECK_PONG", () => {
-  x = Date.now(), O = !1, S = 0;
+ipcMain.on("CUSTOMER_HEALTH_CHECK_PONG", () => {
+  lastPongTimestamp = Date.now();
+  waitingForPong = false;
+  consecutiveFailures = 0;
 });
-g.on("to-customer-display", (n, { channel: r, data: t }) => {
-  r === "POS_TO_CUSTOMER_STATE" && (B = t), a && a.webContents.send(r, t);
-});
-g.on("from-customer-display", (n, { channel: r, data: t }) => {
-  w && w.webContents.send(r, t);
-});
-g.on("CUSTOMER_REQUESTS_STATE", (n) => {
-  B && n.sender.send("POS_TO_CUSTOMER_STATE", B);
-});
-g.handle("play-notification-sound", async (n, r) => {
-  try {
-    const t = r || "notification.wav", e = h.join(T.env.PUBLIC, "sounds", t);
-    return console.log(`[IPC] Attempting to play sound: ${e}`), await fe.play(e), { success: !0 };
-  } catch (t) {
-    return console.error("[IPC] Error playing sound:", t), { success: !1, error: t.message };
+ipcMain.on("to-customer-display", (event, { channel, data }) => {
+  if (channel === "POS_TO_CUSTOMER_STATE") {
+    lastKnownState = data;
+  }
+  if (customerWindow) {
+    customerWindow.webContents.send(channel, data);
   }
 });
-g.on("CUSTOMER_TO_POS_TIP", (n, r) => {
-  w && w.webContents.send("CUSTOMER_TO_POS_TIP", r);
+ipcMain.on("from-customer-display", (event, { channel, data }) => {
+  if (mainWindow) {
+    mainWindow.webContents.send(channel, data);
+  }
 });
-g.handle("discover-printers", async () => {
+ipcMain.on("CUSTOMER_REQUESTS_STATE", (event) => {
+  if (lastKnownState) {
+    event.sender.send("POS_TO_CUSTOMER_STATE", lastKnownState);
+  }
+});
+ipcMain.handle("play-notification-sound", async (event, soundFile) => {
+  try {
+    const soundName = soundFile || "notification.wav";
+    const soundPath = path.join(process$1.env.PUBLIC, "sounds", soundName);
+    console.log(`[IPC] Attempting to play sound: ${soundPath}`);
+    await sound.play(soundPath);
+    return { success: true };
+  } catch (error) {
+    console.error("[IPC] Error playing sound:", error);
+    return { success: false, error: error.message };
+  }
+});
+ipcMain.on("CUSTOMER_TO_POS_TIP", (event, amount) => {
+  if (mainWindow) {
+    mainWindow.webContents.send("CUSTOMER_TO_POS_TIP", amount);
+  }
+});
+ipcMain.handle("discover-printers", async () => {
   console.log(
     "[Main Process] Discovering printers using node-usb (robust method)..."
   );
   try {
-    const r = q.getDeviceList().map((t) => {
+    const devices = usb.getDeviceList();
+    const printers = devices.map((device) => {
       try {
-        return t.configDescriptor && t.configDescriptor.interfaces && t.configDescriptor.interfaces.some(
-          (o) => o.some(
-            (s) => s.bInterfaceClass === 7
-            // 7 is the printer class
-          )
-        ) ? {
-          name: t.product || `USB Device ${t.deviceDescriptor.idVendor}:${t.deviceDescriptor.idProduct}`,
-          vendorId: t.deviceDescriptor.idVendor,
-          productId: t.deviceDescriptor.idProduct
-        } : null;
+        if (device.configDescriptor && device.configDescriptor.interfaces) {
+          const isPrinter = device.configDescriptor.interfaces.some(
+            (iface) => {
+              return iface.some(
+                (alt) => alt.bInterfaceClass === 7
+                // 7 is the printer class
+              );
+            }
+          );
+          if (isPrinter) {
+            return {
+              name: device.product || `USB Device ${device.deviceDescriptor.idVendor}:${device.deviceDescriptor.idProduct}`,
+              vendorId: device.deviceDescriptor.idVendor,
+              productId: device.deviceDescriptor.idProduct
+            };
+          }
+        }
+        return null;
       } catch (e) {
-        return console.warn(`Could not inspect device: ${e.message}`), null;
+        console.warn(`Could not inspect device: ${e.message}`);
+        return null;
       }
-    }).filter((t) => t !== null);
-    return console.log(
+    }).filter((p) => p !== null);
+    console.log(
       "[Main Process] Found printers:",
-      JSON.stringify(r, null, 2)
-    ), r;
-  } catch (n) {
-    return console.error("[Main Process] Failed to discover printers:", n), [];
+      JSON.stringify(printers, null, 2)
+    );
+    return printers;
+  } catch (error) {
+    console.error("[Main Process] Failed to discover printers:", error);
+    return [];
   }
 });
-async function Q(n, r) {
-  let t = null;
+async function sendBufferToPrinter(printer, buffer) {
+  let device = null;
   try {
-    const e = parseInt(n.vendorId || n.vendor_id, 10), o = parseInt(n.productId || n.product_id, 10);
-    if (!e || !o)
+    const vendorId = parseInt(printer.vendorId || printer.vendor_id, 10);
+    const productId = parseInt(printer.productId || printer.product_id, 10);
+    if (!vendorId || !productId) {
       throw new Error(
         `Invalid printer object provided. Missing or invalid vendor/product ID. Got: ${JSON.stringify(
-          n
+          printer
         )}`
       );
-    if (t = q.getDeviceList().find(
-      (u) => u.deviceDescriptor.idVendor === e && u.deviceDescriptor.idProduct === o
-    ), !t)
+    }
+    const devices = usb.getDeviceList();
+    device = devices.find(
+      (d) => d.deviceDescriptor.idVendor === vendorId && d.deviceDescriptor.idProduct === productId
+    );
+    if (!device) {
       throw new Error("USB Printer not found. It may be disconnected.");
-    t.open();
-    const c = t.interfaces[0];
-    c.claim();
-    const E = c.endpoints.find((u) => u.direction === "out");
-    if (!E)
+    }
+    device.open();
+    const an_interface = device.interfaces[0];
+    an_interface.claim();
+    const endpoint = an_interface.endpoints.find((e) => e.direction === "out");
+    if (!endpoint) {
       throw new Error("Could not find an OUT endpoint on the printer.");
-    await new Promise((u, $) => {
-      E.transfer(r, (f) => {
-        if (f) return $(f);
-        u();
+    }
+    await new Promise((resolve, reject) => {
+      endpoint.transfer(buffer, (err) => {
+        if (err) return reject(err);
+        resolve();
       });
     });
   } finally {
-    if (t)
+    if (device) {
       try {
-        t.interfaces[0] && t.interfaces[0].isClaimed && await new Promise((e) => {
-          t.interfaces[0].release(!0, () => e());
-        }), t.close();
-      } catch (e) {
-        console.error("Error cleaning up USB device:", e);
+        if (device.interfaces[0] && device.interfaces[0].isClaimed) {
+          await new Promise((resolve) => {
+            device.interfaces[0].release(true, () => resolve());
+          });
+        }
+        device.close();
+      } catch (cleanupError) {
+        console.error("Error cleaning up USB device:", cleanupError);
       }
+    }
   }
 }
-g.handle(
+ipcMain.handle(
   "print-receipt",
-  async (n, { printer: r, data: t, storeSettings: e, isTransaction: o = !1 }) => {
-    console.log(`
---- [Main Process] Using HYBRID print method ---`), console.log(
+  async (event, { printer, data, storeSettings, isTransaction = false }) => {
+    console.log("\n--- [Main Process] Using HYBRID print method ---");
+    console.log(
       "[Main Process] Store settings:",
-      e ? "provided" : "not provided",
+      storeSettings ? "provided" : "not provided",
       "isTransaction:",
-      o
+      isTransaction
     );
     try {
-      const s = await ae(t, e, o);
-      return console.log(
-        `[Main Process] Receipt buffer created (size: ${s.length}). Sending...`
-      ), await Q(r, s), console.log("[Main Process] Hybrid print command sent successfully."), { success: !0 };
-    } catch (s) {
-      return console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", s), { success: !1, error: s.message };
+      const buffer = await formatReceipt(data, storeSettings, isTransaction);
+      console.log(
+        `[Main Process] Receipt buffer created (size: ${buffer.length}). Sending...`
+      );
+      await sendBufferToPrinter(printer, buffer);
+      console.log("[Main Process] Hybrid print command sent successfully.");
+      return { success: true };
+    } catch (error) {
+      console.error("[Main Process] ERROR IN HYBRID PRINT HANDLER:", error);
+      return { success: false, error: error.message };
     }
   }
 );
-g.handle(
+ipcMain.handle(
   "print-kitchen-ticket",
-  async (n, { printer: r, order: t, zoneName: e, filterConfig: o }) => {
+  async (event, { printer, order, zoneName, filterConfig }) => {
     console.log(
       `
---- [Main Process] KITCHEN TICKET HANDLER for zone: "${e}" ---`
-    ), console.log("Filter config:", o);
+--- [Main Process] KITCHEN TICKET HANDLER for zone: "${zoneName}" ---`
+    );
+    console.log(`Filter config:`, filterConfig);
     try {
-      if ((r == null ? void 0 : r.connection_type) !== "network" || !r.ip_address)
+      if ((printer == null ? void 0 : printer.connection_type) !== "network" || !printer.ip_address) {
         throw new Error("Invalid network printer configuration provided.");
-      const s = W("node-thermal-printer"), { printer: c, types: E } = s;
-      let u = new c({
-        type: E.EPSON,
-        interface: `tcp://${r.ip_address}`,
+      }
+      const thermalPrinter2 = require2("node-thermal-printer");
+      const { printer: ThermalPrinter2, types: PrinterTypes2 } = thermalPrinter2;
+      let printerInstance = new ThermalPrinter2({
+        type: PrinterTypes2.EPSON,
+        interface: `tcp://${printer.ip_address}`,
         timeout: 5e3
       });
-      if (!await u.isPrinterConnected())
+      const isConnected = await printerInstance.isPrinterConnected();
+      if (!isConnected) {
         throw new Error(
-          `Could not connect to kitchen printer at ${r.ip_address}`
+          `Could not connect to kitchen printer at ${printer.ip_address}`
         );
+      }
       console.log(
-        `Successfully connected to kitchen printer at ${r.ip_address}`
+        `Successfully connected to kitchen printer at ${printer.ip_address}`
       );
-      const f = le(t, e, o);
-      return f ? (console.log(`Sending kitchen ticket buffer (size: ${f.length})`), await u.raw(f), console.log("Kitchen ticket sent successfully."), { success: !0 }) : (console.log(`No items to print for zone "${e}" - skipping`), {
-        success: !0,
-        message: "No items matched filter - ticket skipped"
-      });
-    } catch (s) {
-      return console.error(`
---- [Main Process] ERROR IN KITCHEN TICKET HANDLER ---`), console.error(s), { success: !1, error: s.message };
+      const buffer = formatKitchenTicket(order, zoneName, filterConfig);
+      if (!buffer) {
+        console.log(`No items to print for zone "${zoneName}" - skipping`);
+        return {
+          success: true,
+          message: "No items matched filter - ticket skipped"
+        };
+      }
+      console.log(`Sending kitchen ticket buffer (size: ${buffer.length})`);
+      await printerInstance.raw(buffer);
+      console.log("Kitchen ticket sent successfully.");
+      return { success: true };
+    } catch (error) {
+      console.error("\n--- [Main Process] ERROR IN KITCHEN TICKET HANDLER ---");
+      console.error(error);
+      return { success: false, error: error.message };
     }
   }
 );
-g.handle("test-network-printer", async (n, { ip_address: r }) => {
+ipcMain.handle("test-network-printer", async (event, { ip_address }) => {
   console.log(
     `
---- [Main Process] TESTING NETWORK PRINTER at: ${r} ---`
+--- [Main Process] TESTING NETWORK PRINTER at: ${ip_address} ---`
   );
   try {
-    if (!r)
+    if (!ip_address) {
       throw new Error("No IP address provided for testing.");
-    const t = W("node-thermal-printer"), { printer: e, types: o } = t;
-    let s = new e({
-      type: o.EPSON,
-      interface: `tcp://${r}`,
+    }
+    const thermalPrinter2 = require2("node-thermal-printer");
+    const { printer: ThermalPrinter2, types: PrinterTypes2 } = thermalPrinter2;
+    let printerInstance = new ThermalPrinter2({
+      type: PrinterTypes2.EPSON,
+      interface: `tcp://${ip_address}`,
       timeout: 3e3
       // Shorter timeout for a quick test
     });
-    if (await s.isPrinterConnected())
-      return console.log(`SUCCESS: Connection to ${r} is OK.`), s.println("Connection Test OK"), s.cut(), await s.execute(), {
-        success: !0,
-        message: `Successfully connected to ${r}. A test slip may have been printed.`
+    const isConnected = await printerInstance.isPrinterConnected();
+    if (isConnected) {
+      console.log(`SUCCESS: Connection to ${ip_address} is OK.`);
+      printerInstance.println("Connection Test OK");
+      printerInstance.cut();
+      await printerInstance.execute();
+      return {
+        success: true,
+        message: `Successfully connected to ${ip_address}. A test slip may have been printed.`
       };
-    throw new Error("Connection failed. The printer did not respond.");
-  } catch (t) {
-    console.error(`ERROR: Could not connect to printer at ${r}.`), console.error(t);
-    let e = t.message;
-    return t.message.includes("timed out") ? e = "Connection timed out. Check the IP address and ensure the printer is on the same network." : t.message.includes("ECONNREFUSED") && (e = "Connection refused. The printer is reachable but is not accepting connections on this port."), { success: !1, error: e };
+    } else {
+      throw new Error("Connection failed. The printer did not respond.");
+    }
+  } catch (error) {
+    console.error(`ERROR: Could not connect to printer at ${ip_address}.`);
+    console.error(error);
+    let errorMessage = error.message;
+    if (error.message.includes("timed out")) {
+      errorMessage = "Connection timed out. Check the IP address and ensure the printer is on the same network.";
+    } else if (error.message.includes("ECONNREFUSED")) {
+      errorMessage = "Connection refused. The printer is reachable but is not accepting connections on this port.";
+    }
+    return { success: false, error: errorMessage };
   }
 });
-g.handle("open-cash-drawer", async (n, { printerName: r }) => {
-  console.log(`
---- [Main Process] Using HYBRID open-drawer method ---`);
+ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
+  console.log("\n--- [Main Process] Using HYBRID open-drawer method ---");
   try {
-    const e = q.getDeviceList().find(
-      (c) => (c.product || `USB Device ${c.deviceDescriptor.idVendor}:${c.deviceDescriptor.idProduct}`) === r
+    const devices = usb.getDeviceList();
+    const foundDevice = devices.find(
+      (d) => (d.product || `USB Device ${d.deviceDescriptor.idVendor}:${d.deviceDescriptor.idProduct}`) === printerName
     );
-    if (!e)
-      throw new Error(`Printer with name "${r}" not found.`);
-    const o = {
-      vendorId: e.deviceDescriptor.idVendor,
-      productId: e.deviceDescriptor.idProduct
-    }, s = ce();
-    return console.log(
-      `[Main Process] Open-drawer buffer created (size: ${s.length}). Sending...`
-    ), await Q(o, s), console.log("[Main Process] Hybrid open-drawer command sent successfully."), { success: !0 };
-  } catch (t) {
-    return console.error("[Main Process] ERROR IN HYBRID CASH DRAWER HANDLER:", t), { success: !1, error: t.message };
+    if (!foundDevice) {
+      throw new Error(`Printer with name "${printerName}" not found.`);
+    }
+    const printer = {
+      vendorId: foundDevice.deviceDescriptor.idVendor,
+      productId: foundDevice.deviceDescriptor.idProduct
+    };
+    const buffer = formatOpenCashDrawer();
+    console.log(
+      `[Main Process] Open-drawer buffer created (size: ${buffer.length}). Sending...`
+    );
+    await sendBufferToPrinter(printer, buffer);
+    console.log("[Main Process] Hybrid open-drawer command sent successfully.");
+    return { success: true };
+  } catch (error) {
+    console.error("[Main Process] ERROR IN HYBRID CASH DRAWER HANDLER:", error);
+    return { success: false, error: error.message };
   }
 });
-g.handle("get-session-cookies", async (n, r) => {
+ipcMain.handle("get-session-cookies", async (event, url) => {
   try {
-    const { session: t } = W("electron"), e = await t.defaultSession.cookies.get({ url: r });
-    console.log(`[Main Process] Found ${e.length} cookies for ${r}`), e.forEach((s, c) => {
+    const { session: session2 } = require2("electron");
+    const cookies = await session2.defaultSession.cookies.get({ url });
+    console.log(`[Main Process] Found ${cookies.length} cookies for ${url}`);
+    cookies.forEach((cookie, index) => {
       console.log(
-        `[Main Process] Cookie ${c + 1}: ${s.name} (${s.httpOnly ? "HttpOnly" : "Regular"})`
+        `[Main Process] Cookie ${index + 1}: ${cookie.name} (${cookie.httpOnly ? "HttpOnly" : "Regular"})`
       );
     });
-    const o = e.map((s) => `${s.name}=${s.value}`).join("; ");
-    return console.log(
-      o ? `[Main Process] Cookie string created (length: ${o.length})` : "[Main Process] No cookies found - returning empty string"
-    ), o;
-  } catch (t) {
-    throw console.error("[Main Process] Error getting session cookies:", t), t;
+    const cookieString = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    if (cookieString) {
+      console.log(
+        `[Main Process] Cookie string created (length: ${cookieString.length})`
+      );
+    } else {
+      console.log("[Main Process] No cookies found - returning empty string");
+    }
+    return cookieString;
+  } catch (error) {
+    console.error("[Main Process] Error getting session cookies:", error);
+    throw error;
   }
 });
-g.handle("get-machine-id", () => me({ original: !0 }));
-g.on("shutdown-app", () => {
-  C.quit();
+ipcMain.handle("get-machine-id", () => {
+  return machineIdSync({ original: true });
 });
-C.whenReady().then(async () => {
-  console.log("[Main Process] Starting Electron app - online-only mode"), console.log(
+ipcMain.on("shutdown-app", () => {
+  app.quit();
+});
+app.whenReady().then(async () => {
+  console.log("[Main Process] Starting Electron app - online-only mode");
+  console.log(
     "[Main Process] Hardware acceleration and display settings applied at startup"
-  ), Pe(), J();
+  );
+  createMainWindow();
+  createCustomerWindow();
 });
-C.on("window-all-closed", () => {
-  T.platform !== "darwin" && C.quit();
+app.on("window-all-closed", () => {
+  if (process$1.platform !== "darwin") {
+    app.quit();
+  }
 });

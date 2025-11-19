@@ -47,9 +47,7 @@ export const getApprovalPolicyByLocation = async (locationId) => {
  * @param {number} policyData.max_refund_amount - Max refund amount without approval
  * @param {number} policyData.max_price_override_amount - Max price override without approval
  * @param {number} policyData.max_void_order_amount - Max order void amount without approval
- * @param {number} policyData.approval_expiry_minutes - Minutes until approval expires
  * @param {boolean} policyData.allow_self_approval - Allow manager self-approval
- * @param {number} policyData.purge_after_days - Days to keep resolved approvals
  * @returns {Promise} Updated approval policy object
  */
 export const updateApprovalPolicy = async (policyId, policyData) => {

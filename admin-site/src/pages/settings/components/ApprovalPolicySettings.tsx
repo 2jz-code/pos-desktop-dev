@@ -51,9 +51,7 @@ export default function ApprovalPolicySettings({
 		max_price_override_amount: 50,
 		max_void_order_amount: 100,
 		always_require_approval_for: [] as string[],
-		approval_expiry_minutes: 30,
 		allow_self_approval: false,
-		purge_after_days: 90,
 	});
 
 	// Track which field was last saved
@@ -70,9 +68,7 @@ export default function ApprovalPolicySettings({
 					Number(policy.max_price_override_amount) || 50,
 				max_void_order_amount: Number(policy.max_void_order_amount) || 100,
 				always_require_approval_for: policy.always_require_approval_for || [],
-				approval_expiry_minutes: policy.approval_expiry_minutes || 30,
 				allow_self_approval: policy.allow_self_approval || false,
-				purge_after_days: policy.purge_after_days || 90,
 			});
 		}
 	}, [policy]);
@@ -466,75 +462,6 @@ export default function ApprovalPolicySettings({
 							{isAlwaysRequired("ORDER_VOID")
 								? "All order voids will require manager approval regardless of amount."
 								: "Voiding orders exceeding this amount will require manager approval."}
-						</p>
-					</div>
-				</div>
-
-				<div className="space-y-4 pt-4 border-t">
-					<h3 className="text-sm font-semibold text-foreground">
-						Expiry & Retention Settings
-					</h3>
-
-					{/* Approval Expiry Time */}
-					<div className="space-y-2">
-						<Label htmlFor="approval_expiry_minutes">
-							Approval Expiry Time
-							{lastSavedField === "approval_expiry_minutes" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<Input
-								id="approval_expiry_minutes"
-								type="number"
-								step="1"
-								min="1"
-								max="1440"
-								value={formValues.approval_expiry_minutes}
-								onChange={(e) =>
-									handleFieldChange(
-										"approval_expiry_minutes",
-										Number(e.target.value)
-									)
-								}
-								onBlur={() => handleFieldBlur("approval_expiry_minutes")}
-							/>
-							<span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								minutes
-							</span>
-						</div>
-						<p className="text-sm text-muted-foreground">
-							Pending approval requests will expire after this duration.
-						</p>
-					</div>
-
-					{/* Purge After Days */}
-					<div className="space-y-2">
-						<Label htmlFor="purge_after_days">
-							Approval History Retention
-							{lastSavedField === "purge_after_days" && (
-								<Check className="inline h-3 w-3 ml-2 text-green-600" />
-							)}
-						</Label>
-						<div className="relative">
-							<Input
-								id="purge_after_days"
-								type="number"
-								step="1"
-								min="1"
-								max="365"
-								value={formValues.purge_after_days}
-								onChange={(e) =>
-									handleFieldChange("purge_after_days", Number(e.target.value))
-								}
-								onBlur={() => handleFieldBlur("purge_after_days")}
-							/>
-							<span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-								days
-							</span>
-						</div>
-						<p className="text-sm text-muted-foreground">
-							Resolved approval requests will be purged after this many days.
 						</p>
 					</div>
 				</div>

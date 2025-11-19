@@ -103,22 +103,15 @@ class ApprovalPolicy(SoftDeleteMixin):
 
     # Expiry settings
     approval_expiry_minutes = models.PositiveIntegerField(
-        default=30,
+        default=5,
         validators=[MinValueValidator(1), MaxValueValidator(1440)],  # Max 24 hours
-        help_text=_("Minutes until pending approval request expires")
+        help_text=_("Minutes until pending approval request expires (hardcoded to 5 minutes)")
     )
 
     # Security settings
     allow_self_approval = models.BooleanField(
         default=False,
         help_text=_("Allow manager to approve their own requests (not recommended)")
-    )
-
-    # Record keeping
-    purge_after_days = models.PositiveIntegerField(
-        default=90,
-        validators=[MinValueValidator(1), MaxValueValidator(730)],  # Max 2 years
-        help_text=_("Days to keep resolved approval records before purging")
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -174,9 +167,8 @@ class ApprovalPolicy(SoftDeleteMixin):
                 'max_price_override_amount': Decimal('50.00'),
                 'max_void_order_amount': Decimal('100.00'),
                 'always_require_approval_for': [],
-                'approval_expiry_minutes': 30,
+                'approval_expiry_minutes': 5,
                 'allow_self_approval': False,
-                'purge_after_days': 90,
             }
         )
         return policy
