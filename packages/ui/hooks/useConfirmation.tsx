@@ -97,22 +97,22 @@ function ConfirmationDialog({
       case "destructive":
         return {
           iconColor: "text-red-600",
-          confirmButtonClass: "bg-red-600 hover:bg-red-700 focus:ring-red-600",
+          confirmButtonClass: "!bg-red-600 !text-white hover:!bg-red-700 focus-visible:ring-red-600/20",
         };
       case "warning":
         return {
           iconColor: "text-yellow-600",
-          confirmButtonClass: "bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-600",
+          confirmButtonClass: "!bg-yellow-600 !text-white hover:!bg-yellow-700 focus-visible:ring-yellow-600/20",
         };
       case "success":
         return {
           iconColor: "text-green-600",
-          confirmButtonClass: "bg-green-600 hover:bg-green-700 focus:ring-green-600",
+          confirmButtonClass: "!bg-green-600 !text-white hover:!bg-green-700 focus-visible:ring-green-600/20",
         };
       default:
         return {
           iconColor: "text-blue-600",
-          confirmButtonClass: "bg-blue-600 hover:bg-blue-700 focus:ring-blue-600",
+          confirmButtonClass: "!bg-primary !text-primary-foreground hover:!bg-primary/90",
         };
     }
   };

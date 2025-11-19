@@ -75,7 +75,7 @@ function AlertDialogFooter({ className, ...props }) {
 		<div
 			data-slot="alert-dialog-footer"
 			className={cn(
-				"flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+				"flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:space-x-2",
 				className
 			)}
 			{...props}
@@ -106,7 +106,7 @@ function AlertDialogDescription({ className, ...props }) {
 function AlertDialogAction({ className, ...props }) {
 	return (
 		<AlertDialogPrimitive.Action
-			className={cn(buttonVariants(), className)}
+			className={cn(buttonVariants(), "min-w-[80px]", className)}
 			{...props}
 		/>
 	);
