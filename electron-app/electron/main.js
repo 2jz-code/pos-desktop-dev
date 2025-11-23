@@ -13,7 +13,69 @@ import {
 	formatKitchenTicket,
 } from "./receipt-formatter.js";
 import sound from "sound-play";
-// Offline services removed - moving to online-only architecture
+// Phase 2: Offline database and network monitoring
+import {
+	initializeDatabase,
+	getDatabase,
+	closeDatabase,
+	createBackup,
+	vacuumDatabase,
+	getDatabaseStats,
+	// Dataset operations
+	updateDatasetVersion,
+	getDatasetVersion,
+	upsertProducts,
+	upsertCategories,
+	upsertModifierSets,
+	upsertDiscounts,
+	upsertTaxes,
+	upsertProductTypes,
+	upsertInventoryStocks,
+	upsertInventoryLocations,
+	upsertSettings,
+	upsertUsers,
+	deleteRecords,
+	getProducts,
+	getProductById,
+	getProductByBarcode,
+	getCategories,
+	getDiscounts,
+	getModifierSets,
+	getTaxes,
+	getProductTypes,
+	getInventoryStocks,
+	getInventoryByProductId,
+	getSettings,
+	getUsers,
+	getUserById,
+	// Queue operations
+	queueOperation,
+	listPendingOperations,
+	getOperationById,
+	markOperationSynced,
+	markOperationFailed,
+	recordOfflineOrder,
+	getOfflineOrder,
+	updateOfflineOrderStatus,
+	listOfflineOrders,
+	recordOfflinePayment,
+	getOfflinePayments,
+	recordOfflineApproval,
+	getUnsyncedApprovals,
+	getQueueStats,
+	// Metadata operations
+	getOfflineExposure,
+	getNetworkStatus as getDBNetworkStatus,
+	getSyncStatus,
+	checkLimitExceeded,
+	getCompleteStats,
+	// Terminal pairing operations
+	storePairingInfo,
+	getPairingInfo,
+	clearPairingInfo,
+	isPaired,
+} from "./offline-db/index.js";
+import { getNetworkMonitor } from "./network-monitor.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -648,9 +710,559 @@ ipcMain.handle("open-cash-drawer", async (event, { printerName }) => {
 	}
 });
 
-// Database IPC handlers removed - moving to online-only architecture
+// === Phase 2: Offline Database IPC Handlers ===
 
-// Sync service IPC handlers removed - moving to online-only architecture
+// Helper to check if database is available
+function checkDatabaseAvailable() {
+	try {
+		getDatabase();
+		return { available: true };
+	} catch (error) {
+		return {
+			available: false,
+			error: "Offline database is not available. The terminal may need to restart."
+		};
+	}
+}
+
+// Dataset caching handler
+ipcMain.handle("offline:cache-dataset", async (event, datasetName, rows, version) => {
+	try {
+		// Guard: Ensure version is provided (NOT NULL constraint on datasets.version)
+		if (!version) {
+			console.error(`[Offline] Cannot cache dataset '${datasetName}' - version is missing`);
+			return { success: false, error: 'Dataset version is required' };
+		}
+
+		// Check database availability
+		const dbCheck = checkDatabaseAvailable();
+		if (!dbCheck.available) {
+			return { success: false, error: dbCheck.error };
+		}
+
+		const db = getDatabase();
+
+		// Get terminal's pairing info to inject tenant_id and location_id
+		const pairingInfo = getPairingInfo(db);
+
+		// Handle settings dataset specially (it's an object, not an array)
+		if (datasetName === "settings") {
+			upsertSettings(db, rows);
+			// For settings, we always count it as 1 record
+			updateDatasetVersion(db, datasetName, version, 1, 0);
+			return { success: true };
+		}
+
+		// Validate rows is an array
+		if (!Array.isArray(rows)) {
+			throw new Error(`Dataset ${datasetName} must be an array, got ${typeof rows}`);
+		}
+
+		// Inject tenant_id and location_id from pairing info into each row
+		// This ensures all cached records have proper tenant/location context
+		let processedRows = rows;
+		if (pairingInfo) {
+			processedRows = rows.map(row => ({
+				...row,
+				tenant_id: row.tenant_id || pairingInfo.tenant_id,
+				store_location_id: row.store_location_id || pairingInfo.location_id
+			}));
+		}
+
+		// Process the dataset
+		const recordCount = processedRows.length;
+
+		switch (datasetName) {
+			case "products":
+				upsertProducts(db, processedRows);
+				break;
+			case "categories":
+				upsertCategories(db, processedRows);
+				break;
+			case "modifier_sets":
+				upsertModifierSets(db, processedRows);
+				break;
+			case "discounts":
+				upsertDiscounts(db, processedRows);
+				break;
+			case "taxes":
+				upsertTaxes(db, processedRows);
+				break;
+			case "product_types":
+				upsertProductTypes(db, processedRows);
+				break;
+			case "inventory_stocks":
+				upsertInventoryStocks(db, processedRows);
+				break;
+			case "inventory_locations":
+				upsertInventoryLocations(db, processedRows);
+				break;
+			case "users":
+				upsertUsers(db, processedRows);
+				break;
+			default:
+				throw new Error(`Unknown dataset: ${datasetName}`);
+		}
+
+		// Update dataset version
+		updateDatasetVersion(db, datasetName, version, recordCount, 0);
+
+		return { success: true };
+	} catch (error) {
+		console.error(`[Offline DB] Error caching dataset ${datasetName}:`, error);
+		return { success: false, error: error.message };
+	}
+});
+
+// Delete records handler (for soft-delete sync)
+ipcMain.handle("offline:delete-records", async (event, tableName, deletedIds) => {
+	try {
+		if (!deletedIds || deletedIds.length === 0) {
+			return { success: true };
+		}
+
+		const dbCheck = checkDatabaseAvailable();
+		if (!dbCheck.available) {
+			return { success: false, error: dbCheck.error };
+		}
+
+		const db = getDatabase();
+		deleteRecords(db, tableName, deletedIds);
+
+		console.log(`[Offline DB] Deleted ${deletedIds.length} records from ${tableName}`);
+		return { success: true };
+	} catch (error) {
+		console.error(`[Offline DB] Error deleting records from ${tableName}:`, error);
+		return { success: false, error: error.message };
+	}
+});
+
+// Get cached data handlers
+ipcMain.handle("offline:get-cached-products", async () => {
+	try {
+		const db = getDatabase();
+		return getProducts(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached products:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-categories", async () => {
+	try {
+		const db = getDatabase();
+		return getCategories(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached categories:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-discounts", async () => {
+	try {
+		const db = getDatabase();
+		return getDiscounts(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached discounts:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-modifier-sets", async () => {
+	try {
+		const db = getDatabase();
+		return getModifierSets(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached modifier sets:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-taxes", async () => {
+	try {
+		const db = getDatabase();
+		return getTaxes(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached taxes:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-product-types", async () => {
+	try {
+		const db = getDatabase();
+		return getProductTypes(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached product types:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-inventory", async () => {
+	try {
+		const db = getDatabase();
+		return getInventoryStocks(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached inventory:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-settings", async () => {
+	try {
+		const db = getDatabase();
+		return getSettings(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached settings:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-cached-users", async () => {
+	try {
+		const db = getDatabase();
+		return getUsers(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached users:", error);
+		throw error;
+	}
+});
+
+// Get specific records
+ipcMain.handle("offline:get-product-by-id", async (event, productId) => {
+	try {
+		const db = getDatabase();
+		return getProductById(db, productId);
+	} catch (error) {
+		console.error("[Offline DB] Error getting product by ID:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-product-by-barcode", async (event, barcode) => {
+	try {
+		const db = getDatabase();
+		return getProductByBarcode(db, barcode);
+	} catch (error) {
+		console.error("[Offline DB] Error getting product by barcode:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-user-by-id", async (event, userId) => {
+	try {
+		const db = getDatabase();
+		return getUserById(db, userId);
+	} catch (error) {
+		console.error("[Offline DB] Error getting user by ID:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-inventory-by-product", async (event, productId) => {
+	try {
+		const db = getDatabase();
+		return getInventoryByProductId(db, productId);
+	} catch (error) {
+		console.error("[Offline DB] Error getting inventory by product:", error);
+		throw error;
+	}
+});
+
+// Dataset version handler
+ipcMain.handle("offline:get-dataset-version", async (event, datasetName) => {
+	try {
+		const db = getDatabase();
+		return getDatasetVersion(db, datasetName);
+	} catch (error) {
+		console.error("[Offline DB] Error getting dataset version:", error);
+		throw error;
+	}
+});
+
+// Get all dataset versions (for loading on startup)
+ipcMain.handle("offline:get-all-dataset-versions", async () => {
+	try {
+		const db = getDatabase();
+		const stmt = db.prepare('SELECT key, version, synced_at FROM datasets');
+		return stmt.all();
+	} catch (error) {
+		console.error("[Offline DB] Error getting all dataset versions:", error);
+		return [];
+	}
+});
+
+// Queue operations
+ipcMain.handle("offline:queue-operation", async (event, operation) => {
+	try {
+		const db = getDatabase();
+		return queueOperation(db, operation);
+	} catch (error) {
+		console.error("[Offline DB] Error queueing operation:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:list-pending", async (event, filters) => {
+	try {
+		const db = getDatabase();
+		return listPendingOperations(db, filters);
+	} catch (error) {
+		console.error("[Offline DB] Error listing pending operations:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:mark-synced", async (event, operationId, serverResponse) => {
+	try {
+		const db = getDatabase();
+		return markOperationSynced(db, operationId, serverResponse);
+	} catch (error) {
+		console.error("[Offline DB] Error marking operation as synced:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:mark-failed", async (event, operationId, errorMessage) => {
+	try {
+		const db = getDatabase();
+		return markOperationFailed(db, operationId, errorMessage);
+	} catch (error) {
+		console.error("[Offline DB] Error marking operation as failed:", error);
+		throw error;
+	}
+});
+
+// Offline orders
+ipcMain.handle("offline:record-order", async (event, orderPayload) => {
+	try {
+		const db = getDatabase();
+		return recordOfflineOrder(db, orderPayload);
+	} catch (error) {
+		console.error("[Offline DB] Error recording offline order:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-order", async (event, localOrderId) => {
+	try {
+		const db = getDatabase();
+		return getOfflineOrder(db, localOrderId);
+	} catch (error) {
+		console.error("[Offline DB] Error getting offline order:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:list-orders", async (event, status) => {
+	try {
+		const db = getDatabase();
+		return listOfflineOrders(db, status);
+	} catch (error) {
+		console.error("[Offline DB] Error listing offline orders:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:update-order-status", async (event, localOrderId, status, serverData) => {
+	try {
+		const db = getDatabase();
+		return updateOfflineOrderStatus(db, localOrderId, status, serverData);
+	} catch (error) {
+		console.error("[Offline DB] Error updating order status:", error);
+		throw error;
+	}
+});
+
+// Offline payments
+ipcMain.handle("offline:record-payment", async (event, paymentData) => {
+	try {
+		const db = getDatabase();
+		return recordOfflinePayment(db, paymentData);
+	} catch (error) {
+		console.error("[Offline DB] Error recording offline payment:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-payments", async (event, localOrderId) => {
+	try {
+		const db = getDatabase();
+		return getOfflinePayments(db, localOrderId);
+	} catch (error) {
+		console.error("[Offline DB] Error getting offline payments:", error);
+		throw error;
+	}
+});
+
+// Offline approvals
+ipcMain.handle("offline:record-approval", async (event, approvalData) => {
+	try {
+		const db = getDatabase();
+		return recordOfflineApproval(db, approvalData);
+	} catch (error) {
+		console.error("[Offline DB] Error recording offline approval:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-unsynced-approvals", async () => {
+	try {
+		const db = getDatabase();
+		return getUnsyncedApprovals(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting unsynced approvals:", error);
+		throw error;
+	}
+});
+
+// Metadata & stats
+ipcMain.handle("offline:get-queue-stats", async () => {
+	try {
+		const db = getDatabase();
+		return getQueueStats(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting queue stats:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-exposure", async () => {
+	try {
+		const db = getDatabase();
+		return getOfflineExposure(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting offline exposure:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-network-status", async () => {
+	try {
+		const db = getDatabase();
+		return getDBNetworkStatus(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting network status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-sync-status", async () => {
+	try {
+		const db = getDatabase();
+		return getSyncStatus(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting sync status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:get-complete-stats", async () => {
+	try {
+		const db = getDatabase();
+		return getCompleteStats(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting complete stats:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:check-limit", async (event, type, amount) => {
+	try {
+		const db = getDatabase();
+		// Get limits from settings (you may need to adjust this based on your settings structure)
+		const settings = getSettings(db);
+		const limits = settings.length > 0 ? settings[0] : null;
+
+		return checkLimitExceeded(db, limits, type, amount);
+	} catch (error) {
+		console.error("[Offline DB] Error checking limit:", error);
+		throw error;
+	}
+});
+
+// Database operations
+ipcMain.handle("offline:get-db-stats", async () => {
+	try {
+		return getDatabaseStats();
+	} catch (error) {
+		console.error("[Offline DB] Error getting database stats:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:create-backup", async () => {
+	try {
+		return createBackup();
+	} catch (error) {
+		console.error("[Offline DB] Error creating backup:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:vacuum-db", async () => {
+	try {
+		vacuumDatabase();
+		return { success: true };
+	} catch (error) {
+		console.error("[Offline DB] Error vacuuming database:", error);
+		return { success: false, error: error.message };
+	}
+});
+
+// === Terminal Pairing Handlers ===
+
+// Store terminal pairing info (called after successful registration)
+ipcMain.handle("offline:store-pairing", async (event, pairingInfo) => {
+	try {
+		const db = getDatabase();
+		storePairingInfo(db, pairingInfo);
+		console.log("[Offline DB] Terminal pairing info stored:", {
+			terminal_id: pairingInfo.terminal_id,
+			tenant_id: pairingInfo.tenant_id,
+			location_id: pairingInfo.location_id
+		});
+		return { success: true };
+	} catch (error) {
+		console.error("[Offline DB] Error storing pairing info:", error);
+		return { success: false, error: error.message };
+	}
+});
+
+// Get terminal pairing info
+ipcMain.handle("offline:get-pairing", async () => {
+	try {
+		const db = getDatabase();
+		return getPairingInfo(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting pairing info:", error);
+		throw error;
+	}
+});
+
+// Check if terminal is paired
+ipcMain.handle("offline:is-paired", async () => {
+	try {
+		const db = getDatabase();
+		return isPaired(db);
+	} catch (error) {
+		console.error("[Offline DB] Error checking pairing status:", error);
+		return false;
+	}
+});
+
+// Clear terminal pairing (unpair/reset)
+ipcMain.handle("offline:clear-pairing", async () => {
+	try {
+		const db = getDatabase();
+		clearPairingInfo(db);
+		console.log("[Offline DB] Terminal pairing info cleared");
+		return { success: true };
+	} catch (error) {
+		console.error("[Offline DB] Error clearing pairing info:", error);
+		return { success: false, error: error.message };
+	}
+});
 
 ipcMain.handle("get-session-cookies", async (event, url) => {
 	try {
@@ -693,15 +1305,73 @@ ipcMain.handle("get-machine-id", () => {
 	return machineIdSync({ original: true });
 });
 
+// IPC handler for getting device fingerprint (hardware-based terminal identity)
+ipcMain.handle("get-device-fingerprint", () => {
+	// Use machine ID as device fingerprint for terminal registration
+	return machineIdSync({ original: true });
+});
+
 ipcMain.on("shutdown-app", () => {
 	app.quit();
 });
 
 app.whenReady().then(async () => {
-	console.log("[Main Process] Starting Electron app - online-only mode");
+	console.log("[Main Process] Starting Electron app with Phase 2 offline support");
 	console.log(
 		"[Main Process] Hardware acceleration and display settings applied at startup"
 	);
+
+	// Initialize offline database
+	try {
+		initializeDatabase({ verbose: false });
+		console.log("[Main Process] Offline database initialized successfully");
+
+		// Check if terminal is paired
+		const db = getDatabase();
+		if (isPaired(db)) {
+			const pairingInfo = getPairingInfo(db);
+			console.log("[Main Process] Terminal is paired:", {
+				terminal_id: pairingInfo.terminal_id,
+				tenant_id: pairingInfo.tenant_id,
+				location_id: pairingInfo.location_id
+			});
+		} else {
+			console.log("[Main Process] Terminal is not paired - awaiting registration");
+		}
+	} catch (error) {
+		console.error("[Main Process] CRITICAL: Failed to initialize offline database");
+		console.error("[Main Process] Error details:", error.message);
+		console.error("[Main Process] Stack trace:", error.stack);
+		console.error("[Main Process] Offline features will be unavailable");
+
+		// You might want to show a dialog to the user here
+		// dialog.showErrorBox('Database Error', 'Failed to initialize offline database. Offline features will be unavailable.');
+	}
+
+	// Start network monitor
+	try {
+		// Note: VITE_API_BASE_URL is not available in main process, use hardcoded dev URL
+		const backendUrl = process.env.VITE_API_BASE_URL || "https://localhost:8001/api";
+		const networkMonitor = getNetworkMonitor();
+		networkMonitor.start(backendUrl);
+		console.log(`[Main Process] Network monitor started (checking ${backendUrl})`);
+
+		// Listen for network status changes and broadcast to all windows
+		networkMonitor.on("status-changed", (status) => {
+			console.log(
+				`[Main Process] Network status changed: ${
+					status.is_online ? "ONLINE" : "OFFLINE"
+				}`
+			);
+
+			// Emit to all renderer windows
+			BrowserWindow.getAllWindows().forEach((win) => {
+				win.webContents.send("offline:network-status-changed", status);
+			});
+		});
+	} catch (error) {
+		console.error("[Main Process] Failed to start network monitor:", error);
+	}
 
 	createMainWindow();
 	createCustomerWindow();
@@ -710,5 +1380,27 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {
 		app.quit();
+	}
+});
+
+// Cleanup on app quit
+app.on("before-quit", () => {
+	console.log("[Main Process] Application shutting down...");
+
+	// Stop network monitor
+	try {
+		const networkMonitor = getNetworkMonitor();
+		networkMonitor.stop();
+		console.log("[Main Process] Network monitor stopped");
+	} catch (error) {
+		console.error("[Main Process] Error stopping network monitor:", error);
+	}
+
+	// Close database
+	try {
+		closeDatabase();
+		console.log("[Main Process] Offline database closed");
+	} catch (error) {
+		console.error("[Main Process] Error closing database:", error);
 	}
 });

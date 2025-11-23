@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "integrations",
     "notifications",
     "reports",
+    "sync",
     "core_backend.apps.CoreBackendConfig",
 ]
 
@@ -380,6 +381,9 @@ CORS_ALLOW_HEADERS = [
     "x-client-version",
     "x-store-location",  # Store location header from admin site
     "x-tenant",  # Tenant slug header from customer site
+    "x-device-id",  # Device signature authentication (offline sync)
+    "x-device-nonce",  # Device signature authentication (offline sync)
+    "x-device-signature",  # Device signature authentication (offline sync)
 ]
 
 # CSRF Trusted Origins - dynamically load from environment

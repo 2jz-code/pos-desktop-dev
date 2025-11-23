@@ -99,10 +99,19 @@ class TerminalPairingService:
 
             return ('approved', {
                 'device_id': terminal.device_id,
+                'device_fingerprint': terminal.device_fingerprint,
+                'signing_secret': terminal.signing_secret,
                 'tenant_id': str(terminal.tenant.id),
                 'tenant_slug': terminal.tenant.slug,
                 'location_id': terminal.store_location.id if terminal.store_location else None,
                 'location_name': terminal.store_location.name if terminal.store_location else None,
+                'offline_enabled': terminal.offline_enabled,
+                'offline_limits': {
+                    'transaction_limit': str(terminal.offline_transaction_limit),
+                    'daily_limit': str(terminal.offline_daily_limit),
+                    'transaction_count_limit': terminal.offline_transaction_count_limit,
+                    'capture_window_hours': terminal.offline_capture_window_hours,
+                }
             })
 
         return ('pending', None)
@@ -110,12 +119,14 @@ class TerminalPairingService:
     @staticmethod
     def _get_or_create_terminal(pairing):
         """Create or update terminal registration"""
+        from sync.services import SignatureService
+
         existing = TerminalRegistration.all_objects.filter(
             device_fingerprint=pairing.device_fingerprint
         ).first()
 
         if existing:
-            # Re-pairing: update location/tenant
+            # Re-pairing: update location/tenant and generate new signing secret
             existing.store_location = pairing.location
             existing.tenant = pairing.tenant
             existing.pairing_code = pairing
@@ -123,13 +134,18 @@ class TerminalPairingService:
             existing.last_authenticated_at = timezone.now()
             existing.is_active = True
             existing.is_locked = False
+
+            # Generate new signing secret on re-pairing
+            if not existing.signing_secret:
+                existing.signing_secret = SignatureService.generate_signing_secret()
+
             existing.save(update_fields=[
                 'store_location', 'tenant', 'pairing_code', 'nickname',
-                'last_authenticated_at', 'is_active', 'is_locked'
+                'last_authenticated_at', 'is_active', 'is_locked', 'signing_secret'
             ])
             return existing
         else:
-            # New terminal
+            # New terminal: generate signing secret
             device_id = f"TERMINAL-{timezone.now().strftime('%Y%m%d%H%M%S')}"
             return TerminalRegistration.objects.create(
                 device_id=device_id,
@@ -139,7 +155,8 @@ class TerminalPairingService:
                 device_fingerprint=pairing.device_fingerprint,
                 pairing_code=pairing,
                 is_active=True,
-                last_authenticated_at=timezone.now()
+                last_authenticated_at=timezone.now(),
+                signing_secret=SignatureService.generate_signing_secret()
             )
 
     @staticmethod

@@ -42,21 +42,47 @@ class TerminalRegistrationService {
 	 * Config contains: device_id, tenant_id, tenant_slug, location_id, location_name
 	 * NOTE: Does NOT contain JWT tokens - those are only for user login
 	 */
-	saveTerminalConfig(config) {
+	async saveTerminalConfig(config) {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 		console.log("Terminal configuration saved:", {
 			device_id: config.device_id,
 			tenant_slug: config.tenant_slug,
 			location: config.location_name,
 		});
+
+		// Store pairing info in offline database for auto-injection into cached datasets
+		if (window.offlineAPI?.storePairingInfo) {
+			try {
+				await window.offlineAPI.storePairingInfo({
+					terminal_id: config.device_id,
+					tenant_id: config.tenant_id,
+					tenant_slug: config.tenant_slug,
+					location_id: config.location_id,
+					signing_secret: config.signing_secret // For device signature authentication
+				});
+				console.log("✅ Pairing info stored in offline database");
+			} catch (error) {
+				console.error("⚠️ Failed to store pairing info in offline DB:", error);
+			}
+		}
 	}
 
 	/**
 	 * Clear terminal configuration (factory reset)
 	 */
-	clearTerminalConfig() {
+	async clearTerminalConfig() {
 		localStorage.removeItem(STORAGE_KEY);
 		console.log("Terminal configuration cleared");
+
+		// Clear pairing info from offline database
+		if (window.offlineAPI?.clearPairingInfo) {
+			try {
+				await window.offlineAPI.clearPairingInfo();
+				console.log("✅ Pairing info cleared from offline database");
+			} catch (error) {
+				console.error("⚠️ Failed to clear pairing info from offline DB:", error);
+			}
+		}
 	}
 
 	/**
@@ -132,7 +158,7 @@ class TerminalRegistrationService {
 		);
 
 		// Step 3: Save configuration
-		this.saveTerminalConfig(tokens);
+		await this.saveTerminalConfig(tokens);
 		this._terminalConfig = tokens;
 
 		// Set location ID for axios interceptor
@@ -228,7 +254,7 @@ class TerminalRegistrationService {
 				console.log('✅ Terminal config restored from server');
 				console.log('📍 Location:', config.location_name);
 				this._terminalConfig = config;
-				this.saveTerminalConfig(config); // Update cache
+				await this.saveTerminalConfig(config); // Update cache
 
 				// Set location ID for axios interceptor
 				if (config.location_id) {
@@ -278,12 +304,16 @@ class TerminalRegistrationService {
 
 		return {
 			device_id: response.data.device_id,
+			device_fingerprint: response.data.device_fingerprint,
 			tenant_id: response.data.tenant_id,
 			tenant_slug: response.data.tenant_slug,
 			location_id: response.data.store_location?.id,
 			location_name: response.data.store_location?.name,
 			nickname: response.data.nickname,
-			reader_id: response.data.reader_id
+			reader_id: response.data.reader_id,
+			signing_secret: response.data.signing_secret,
+			offline_enabled: response.data.offline_enabled,
+			offline_limits: response.data.offline_limits
 		};
 	}
 

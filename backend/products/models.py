@@ -61,6 +61,9 @@ class Category(MPTTModel):
         help_text="User who archived this record."
     )
 
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
+
     # Use custom manager that combines MPTT with tenant filtering and archiving
     from .managers import CategoryManager
     objects = CategoryManager()
@@ -168,6 +171,9 @@ class Tax(models.Model):
         help_text=_("Tax rate in percentage, e.g., 8.25 for 8.25%."),
     )
 
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
+
     # Managers
     objects = TenantManager()
     all_objects = models.Manager()
@@ -273,6 +279,9 @@ class ProductType(SoftDeleteMixin):
         default=False,
         help_text=_("Prevent discounts from being applied to this product type."),
     )
+
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
 
     # Managers - use combined manager for tenant + soft delete
     objects = TenantSoftDeleteManager()
@@ -488,6 +497,9 @@ class ModifierSet(models.Model):
             "If set, this group will only appear when the selected option is chosen."
         ),
     )
+
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
 
     # Managers
     objects = TenantManager()

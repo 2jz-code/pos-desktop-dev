@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone as dj_timezone
 from decimal import Decimal
 from core_backend.utils.archiving import SoftDeleteMixin
 from tenant.managers import TenantManager, TenantSoftDeleteManager
@@ -222,6 +223,10 @@ class StoreLocation(SoftDeleteMixin):
         blank=True,
         help_text="Longitude coordinate for distance calculation and map display",
     )
+
+    # === TIMESTAMPS ===
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     objects = TenantSoftDeleteManager()
     all_objects = models.Manager()
@@ -462,6 +467,10 @@ class GlobalSettings(models.Model):
         default="Thank you for your business!",
         help_text="Default receipt footer template for all locations. Locations can override.",
     )
+
+    # === TIMESTAMPS ===
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     # === WEB ORDER NOTIFICATION DEFAULTS (Tenant-wide defaults) ===
     default_enable_web_notifications = models.BooleanField(

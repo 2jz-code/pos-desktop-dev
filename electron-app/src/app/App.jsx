@@ -36,6 +36,7 @@ import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
 
 // Services
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
+import offlineSyncService from "@/services/OfflineSyncService";
 
 /**
  * This is the root component that sets up all the providers
@@ -51,20 +52,34 @@ function App() {
 	useEffect(() => {
 		console.log("App mounted. Running initialization logic...");
 
-		// Initialize terminal registration (must be first - sets location context)
-		terminalRegistrationService.initialize();
+		// Initialize terminal registration and start sync service
+		const initializeApp = async () => {
+			// Initialize terminal registration (must be first - sets location context)
+			const terminalConfig = await terminalRegistrationService.initialize();
 
-		// Call these once when the app mounts
-		useSettingsStore.getState().fetchSettings();
-		useSettingsStore.getState().discoverAndSetPrinters();
-		useSettingsStore.getState().ensurePosDeviceId();
+			// Start offline sync service if terminal is registered
+			if (terminalConfig) {
+				console.log("🔄 Starting offline sync service...");
+				offlineSyncService.start(30000); // Sync every 30 seconds
+			} else {
+				console.log("⏸️ Terminal not registered - sync service will start after pairing");
+			}
 
-		// Initialize the global notification service
-		globalNotificationService.initialize();
+			// Call these once when the app mounts
+			useSettingsStore.getState().fetchSettings();
+			useSettingsStore.getState().discoverAndSetPrinters();
+			useSettingsStore.getState().ensurePosDeviceId();
+
+			// Initialize the global notification service
+			globalNotificationService.initialize();
+		};
+
+		initializeApp();
 
 		// Cleanup on app unmount
 		return () => {
-			console.log("App unmounting. Disconnecting notification service.");
+			console.log("App unmounting. Stopping offline sync and notification service.");
+			offlineSyncService.stop();
 			globalNotificationService.disconnect();
 		};
 	}, []);

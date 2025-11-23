@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createDeviceAuth } from "./deviceAuth";
 
 // Cache location ID to avoid circular dependency and repeated lookups
 let cachedLocationId = null;
@@ -100,6 +101,46 @@ apiClient.interceptors.request.use(
 			}
 		}
 
+		// Add device authentication for sync endpoints
+		// These endpoints require HMAC signature to prove terminal identity
+		// IMPORTANT: Do NOT apply to JWT refresh endpoint
+		const requiresDeviceAuth =
+			(config.url?.includes('/sync/') || config.url?.includes('/datasets/')) &&
+			!config.url?.includes('/users/token/refresh/');
+
+		if (requiresDeviceAuth) {
+			console.log(`🔐 [API] Generating device auth for ${config.url}`);
+			try {
+				// Get current request body (if any)
+				const requestBody = config.data || {};
+
+				// Generate device authentication
+				const deviceAuth = await createDeviceAuth(requestBody);
+
+				if (deviceAuth) {
+					// Add headers
+					Object.assign(config.headers, deviceAuth.headers);
+
+					// Inject auth fields into request body
+					// This is required - backend reads device_id, nonce, created_at from request.data
+					// Auth fields MUST override any user-supplied values (security)
+					config.data = {
+						...requestBody,
+						...deviceAuth.authFields
+					};
+
+					console.log(`✅ [API] Added device auth to ${config.url}`);
+				} else {
+					console.warn(`⚠️ [API] No pairing info - skipping device auth for ${config.url}`);
+				}
+			} catch (error) {
+				console.error('⚠️ [API] Failed to generate device auth:', error);
+				// Proceed without device auth - backend will reject with 401
+			}
+		} else {
+			console.log(`⏭️ [API] Skipping device auth for ${config.url}`);
+		}
+
 		return config;
 	},
 	(error) => {
@@ -115,6 +156,17 @@ apiClient.interceptors.response.use(
 	},
 	async (error) => {
 		const originalRequest = error.config;
+
+		// Debug: Log device auth errors
+		if (error.response?.status === 401 && error.response?.data?.detail?.includes('timestamp')) {
+			console.error('❌ [API] Device auth timestamp error:', {
+				url: originalRequest?.url,
+				requestTimestamp: originalRequest?.data?.created_at,
+				serverTime: error.response?.headers?.date,
+				errorDetail: error.response?.data?.detail,
+				clientTime: new Date().toISOString()
+			});
+		}
 
 		// CSRF 403 auto-refresh + one-time retry for unsafe methods
 		const method = (originalRequest?.method || 'get').toLowerCase();
@@ -134,6 +186,17 @@ apiClient.interceptors.response.use(
 					originalRequest.headers = originalRequest.headers || {};
 					originalRequest.headers['X-CSRF-Token'] = fresh;
 				}
+
+				// Clear device auth fields so fresh ones are generated on retry
+				if (originalRequest.data) {
+					delete originalRequest.data.device_id;
+					delete originalRequest.data.nonce;
+					delete originalRequest.data.created_at;
+					delete originalRequest.headers['X-Device-ID'];
+					delete originalRequest.headers['X-Device-Nonce'];
+					delete originalRequest.headers['X-Device-Signature'];
+				}
+
 				return apiClient(originalRequest);
 			} catch (_) {
 				// fall through to normal error handling
@@ -155,6 +218,17 @@ apiClient.interceptors.response.use(
 
 			try {
 				await apiClient.post("/users/token/refresh/");
+
+				// Clear device auth fields so fresh ones are generated on retry
+				if (originalRequest.data) {
+					delete originalRequest.data.device_id;
+					delete originalRequest.data.nonce;
+					delete originalRequest.data.created_at;
+					delete originalRequest.headers['X-Device-ID'];
+					delete originalRequest.headers['X-Device-Nonce'];
+					delete originalRequest.headers['X-Device-Signature'];
+				}
+
 				return apiClient(originalRequest);
 			} catch (refreshError) {
 				// If refresh fails, just reject.

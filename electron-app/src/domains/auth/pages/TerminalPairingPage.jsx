@@ -11,6 +11,7 @@ import {
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Monitor, Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
+import offlineSyncService from "@/services/OfflineSyncService";
 
 export function TerminalPairingPage() {
 	const navigate = useNavigate();
@@ -60,6 +61,9 @@ export function TerminalPairingPage() {
 					}
 				} else if (update.status === "approved") {
 					setStatus("approved");
+					// Start offline sync service
+					console.log("🔄 Starting offline sync service after successful pairing...");
+					offlineSyncService.start(30000);
 					// Navigate to login after short delay
 					setTimeout(() => {
 						navigate("/login");

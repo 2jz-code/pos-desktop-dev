@@ -181,6 +181,39 @@ class TerminalRegistration(models.Model):
     authentication_failures = models.IntegerField(default=0)
     is_locked = models.BooleanField(default=False)
 
+    # Offline mode configuration (Phase 1 - Foundation)
+    offline_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable offline card payments for this terminal"
+    )
+    offline_transaction_limit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=50.00,
+        help_text="Maximum amount per offline transaction"
+    )
+    offline_daily_limit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=500.00,
+        help_text="Maximum total offline transactions per day"
+    )
+    offline_transaction_count_limit = models.PositiveIntegerField(
+        default=20,
+        help_text="Maximum number of offline transactions per day"
+    )
+    offline_capture_window_hours = models.PositiveIntegerField(
+        default=24,
+        help_text="Hours before offline transactions must be captured"
+    )
+
+    # Device signing secret (for offline payload authentication)
+    signing_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="HMAC secret for verifying offline payloads (TODO: Encrypt at rest in Phase 2)"
+    )
+
     objects = TenantManager()
     all_objects = models.Manager()
 

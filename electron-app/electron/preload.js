@@ -165,6 +165,114 @@ contextBridge.exposeInMainWorld("hardwareApi", {
 	},
 });
 
-// Database API removed - moving to online-only architecture
+// --- Offline Mode API (Phase 2) ---
+contextBridge.exposeInMainWorld("offlineAPI", {
+	// Dataset caching
+	cacheDataset: (datasetName, rows, version) =>
+		ipcRenderer.invoke("offline:cache-dataset", datasetName, rows, version),
+	deleteRecords: (tableName, deletedIds) =>
+		ipcRenderer.invoke("offline:delete-records", tableName, deletedIds),
 
-// Sync API removed - moving to online-only architecture
+	// Get cached data
+	getCachedProducts: () => ipcRenderer.invoke("offline:get-cached-products"),
+	getCachedCategories: () =>
+		ipcRenderer.invoke("offline:get-cached-categories"),
+	getCachedDiscounts: () => ipcRenderer.invoke("offline:get-cached-discounts"),
+	getCachedModifierSets: () =>
+		ipcRenderer.invoke("offline:get-cached-modifier-sets"),
+	getCachedTaxes: () => ipcRenderer.invoke("offline:get-cached-taxes"),
+	getCachedProductTypes: () =>
+		ipcRenderer.invoke("offline:get-cached-product-types"),
+	getCachedInventory: () => ipcRenderer.invoke("offline:get-cached-inventory"),
+	getCachedSettings: () => ipcRenderer.invoke("offline:get-cached-settings"),
+	getCachedUsers: () => ipcRenderer.invoke("offline:get-cached-users"),
+
+	// Get specific records
+	getProductById: (productId) =>
+		ipcRenderer.invoke("offline:get-product-by-id", productId),
+	getProductByBarcode: (barcode) =>
+		ipcRenderer.invoke("offline:get-product-by-barcode", barcode),
+	getUserById: (userId) =>
+		ipcRenderer.invoke("offline:get-user-by-id", userId),
+	getInventoryByProductId: (productId) =>
+		ipcRenderer.invoke("offline:get-inventory-by-product", productId),
+
+	// Dataset versions
+	getDatasetVersion: (datasetName) =>
+		ipcRenderer.invoke("offline:get-dataset-version", datasetName),
+	getAllDatasetVersions: () =>
+		ipcRenderer.invoke("offline:get-all-dataset-versions"),
+
+	// Queue operations
+	queueOperation: (operation) =>
+		ipcRenderer.invoke("offline:queue-operation", operation),
+	listPendingOperations: (filters) =>
+		ipcRenderer.invoke("offline:list-pending", filters),
+	markOperationSynced: (operationId, serverResponse) =>
+		ipcRenderer.invoke(
+			"offline:mark-synced",
+			operationId,
+			serverResponse
+		),
+	markOperationFailed: (operationId, errorMessage) =>
+		ipcRenderer.invoke("offline:mark-failed", operationId, errorMessage),
+
+	// Offline orders
+	recordOfflineOrder: (orderPayload) =>
+		ipcRenderer.invoke("offline:record-order", orderPayload),
+	getOfflineOrder: (localOrderId) =>
+		ipcRenderer.invoke("offline:get-order", localOrderId),
+	listOfflineOrders: (status) =>
+		ipcRenderer.invoke("offline:list-orders", status),
+	updateOfflineOrderStatus: (localOrderId, status, serverData) =>
+		ipcRenderer.invoke(
+			"offline:update-order-status",
+			localOrderId,
+			status,
+			serverData
+		),
+
+	// Offline payments
+	recordOfflinePayment: (paymentData) =>
+		ipcRenderer.invoke("offline:record-payment", paymentData),
+	getOfflinePayments: (localOrderId) =>
+		ipcRenderer.invoke("offline:get-payments", localOrderId),
+
+	// Offline approvals
+	recordOfflineApproval: (approvalData) =>
+		ipcRenderer.invoke("offline:record-approval", approvalData),
+	getUnsyncedApprovals: () =>
+		ipcRenderer.invoke("offline:get-unsynced-approvals"),
+
+	// Metadata & stats
+	getQueueStats: () => ipcRenderer.invoke("offline:get-queue-stats"),
+	getOfflineExposure: () => ipcRenderer.invoke("offline:get-exposure"),
+	getNetworkStatus: () => ipcRenderer.invoke("offline:get-network-status"),
+	getSyncStatus: () => ipcRenderer.invoke("offline:get-sync-status"),
+	getCompleteStats: () => ipcRenderer.invoke("offline:get-complete-stats"),
+	checkLimitExceeded: (type, amount) =>
+		ipcRenderer.invoke("offline:check-limit", type, amount),
+
+	// Network events
+	onNetworkStatusChanged: (callback) => {
+		const handler = (_event, status) => callback(status);
+		ipcRenderer.on("offline:network-status-changed", handler);
+		return () =>
+			ipcRenderer.removeListener(
+				"offline:network-status-changed",
+				handler
+			);
+	},
+
+	// Database operations
+	getDatabaseStats: () => ipcRenderer.invoke("offline:get-db-stats"),
+	createBackup: () => ipcRenderer.invoke("offline:create-backup"),
+	vacuumDatabase: () => ipcRenderer.invoke("offline:vacuum-db"),
+
+	// Terminal pairing operations
+	storePairingInfo: (pairingInfo) =>
+		ipcRenderer.invoke("offline:store-pairing", pairingInfo),
+	getPairingInfo: () => ipcRenderer.invoke("offline:get-pairing"),
+	isPaired: () => ipcRenderer.invoke("offline:is-paired"),
+	clearPairingInfo: () => ipcRenderer.invoke("offline:clear-pairing"),
+});

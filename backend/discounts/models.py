@@ -74,6 +74,9 @@ class Discount(SoftDeleteMixin):
         null=True, blank=True, help_text="The date and time when the discount expires."
     )
 
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
+
     def is_currently_active(self):
         """Checks if the discount is active (not archived) and within its date range."""
         if not self.is_active:  # This comes from SoftDeleteMixin

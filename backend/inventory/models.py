@@ -47,6 +47,9 @@ class Location(SoftDeleteMixin):
         help_text=_("Default number of days before expiration to warn about expiring stock for this location. If not set, uses global default."),
     )
 
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
+
     objects = TenantSoftDeleteManager()
     all_objects = models.Manager()
 
@@ -153,6 +156,9 @@ class InventoryStock(SoftDeleteMixin):
         default=False,
         help_text=_("Whether a low stock notification has been sent for this item."),
     )
+
+    # Timestamps
+    updated_at = models.DateTimeField(auto_now=True)
 
     @property
     def effective_low_stock_threshold(self):

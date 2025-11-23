@@ -31,7 +31,7 @@ class SoftDeleteQuerySet(models.QuerySet):
     def archive(self, archived_by=None):
         """
         Archive (soft delete) all records in this queryset.
-        
+
         Args:
             archived_by: User instance who performed the archiving
         """
@@ -41,18 +41,28 @@ class SoftDeleteQuerySet(models.QuerySet):
         }
         if archived_by:
             update_fields['archived_by'] = archived_by
-        
+
+        # Update updated_at if the model has this field (for sync detection)
+        if hasattr(self.model, 'updated_at'):
+            update_fields['updated_at'] = timezone.now()
+
         return self.update(**update_fields)
     
     def unarchive(self):
         """
         Unarchive (restore) all records in this queryset.
         """
-        return self.update(
-            is_active=True,
-            archived_at=None,
-            archived_by=None
-        )
+        update_fields = {
+            'is_active': True,
+            'archived_at': None,
+            'archived_by': None
+        }
+
+        # Update updated_at if the model has this field (for sync detection)
+        if hasattr(self.model, 'updated_at'):
+            update_fields['updated_at'] = timezone.now()
+
+        return self.update(**update_fields)
 
 
 class SoftDeleteManager(models.Manager):
@@ -116,7 +126,7 @@ class SoftDeleteMixin(models.Model):
     def archive(self, archived_by=None):
         """
         Archive (soft delete) this record.
-        
+
         Args:
             archived_by: User instance who performed the archiving
         """
@@ -124,7 +134,14 @@ class SoftDeleteMixin(models.Model):
         self.archived_at = timezone.now()
         if archived_by:
             self.archived_by = archived_by
-        self.save(update_fields=['is_active', 'archived_at', 'archived_by'])
+
+        # Update updated_at if the model has this field (for sync detection)
+        update_fields = ['is_active', 'archived_at', 'archived_by']
+        if hasattr(self, 'updated_at'):
+            self.updated_at = timezone.now()
+            update_fields.append('updated_at')
+
+        self.save(update_fields=update_fields)
     
     def unarchive(self):
         """
@@ -133,7 +150,14 @@ class SoftDeleteMixin(models.Model):
         self.is_active = True
         self.archived_at = None
         self.archived_by = None
-        self.save(update_fields=['is_active', 'archived_at', 'archived_by'])
+
+        # Update updated_at if the model has this field (for sync detection)
+        update_fields = ['is_active', 'archived_at', 'archived_by']
+        if hasattr(self, 'updated_at'):
+            self.updated_at = timezone.now()
+            update_fields.append('updated_at')
+
+        self.save(update_fields=update_fields)
     
     @property
     def is_archived(self):

@@ -63,6 +63,7 @@ urlpatterns = [
     path("api/approvals/", include("approvals.urls")),
     path("api/settings/", include("settings.urls")),
     path("api/terminals/", include("terminals.urls")),
+    path("api/sync/", include("sync.urls")),  # Offline sync endpoints
     path("api/integrations/", include("integrations.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/reports/", include("reports.urls")),

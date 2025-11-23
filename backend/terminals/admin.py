@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 from .models import TerminalPairingCode, TerminalRegistration
 from core_backend.admin.mixins import TenantAdminMixin
 
@@ -38,11 +39,12 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
     Admin view for managing TerminalRegistration, the new standard for POS devices.
     """
 
-    list_display = ("device_id", "nickname", "store_location", "is_active", "last_seen", "is_locked")
+    list_display = ("device_id", "nickname", "store_location", "is_active", "last_seen", "is_locked", "authentication_failures")
     list_filter = ("store_location", "is_active", "is_locked")
     search_fields = ("device_id", "nickname", "reader_id", "device_fingerprint")
     readonly_fields = ("last_seen", "last_authenticated_at", "device_fingerprint")
     autocomplete_fields = ["store_location", "pairing_code"]
+    actions = ['unlock_terminals']
 
     fieldsets = (
         ('Device Information', {
@@ -73,3 +75,21 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
             # Use all_objects to show locations across all tenants in admin
             kwargs["queryset"] = StoreLocation.all_objects.all()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @admin.action(description='Unlock selected terminals')
+    def unlock_terminals(self, request, queryset):
+        """
+        Unlock selected terminals and reset their authentication failure counters.
+
+        This action is used to manually unlock terminals that have been locked
+        due to repeated authentication failures.
+        """
+        updated = queryset.update(
+            is_locked=False,
+            authentication_failures=0,
+            last_authenticated_at=timezone.now()
+        )
+        self.message_user(
+            request,
+            f'{updated} terminal(s) successfully unlocked and reset.'
+        )
