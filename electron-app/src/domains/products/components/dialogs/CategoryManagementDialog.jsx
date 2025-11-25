@@ -14,6 +14,8 @@ import {
 	reassignProducts,
 } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { useOfflineGuard, useOfflineCategories } from "@/shared/hooks";
 import {
 	Dialog,
 	DialogContent,
@@ -39,13 +41,13 @@ import { ArchiveDependencyDialog } from "@/shared/components/ui/ArchiveDependenc
 import { Edit, Archive, ArchiveRestore } from "lucide-react";
 
 // Inline Order Editor Component
-function InlineOrderEditor({ category, onOrderChange }) {
+function InlineOrderEditor({ category, onOrderChange, guardSubmit }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [orderValue, setOrderValue] = useState(category.order);
 	const [isSaving, setIsSaving] = useState(false);
 	const { toast } = useToast();
 
-	const handleSave = async () => {
+	const handleSave = guardSubmit(async () => {
 		if (orderValue === category.order) {
 			setIsEditing(false);
 			return;
@@ -79,7 +81,7 @@ function InlineOrderEditor({ category, onOrderChange }) {
 		} finally {
 			setIsSaving(false);
 		}
-	};
+	});
 
 	const handleKeyPress = (e) => {
 		if (e.key === "Enter") {
@@ -122,7 +124,6 @@ function InlineOrderEditor({ category, onOrderChange }) {
 }
 
 export function CategoryManagementDialog({ open, onOpenChange }) {
-	const [categories, setCategories] = useState([]);
 	const [showArchivedCategories, setShowArchivedCategories] = useState(false);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState(null);
@@ -134,60 +135,54 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		is_public: true,
 	});
 	const [dataChanged, setDataChanged] = useState(false);
-	
+
 	// Archive dialog state
 	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 	const [categoryToArchive, setCategoryToArchive] = useState(null);
-	
+
 	const { toast } = useToast();
 
-	useEffect(() => {
-		fetchCategories();
-	}, [showArchivedCategories]);
+	// Online guard for mutations
+	const { guardSubmit } = useOfflineGuard({
+		blockMessage: "Editing categories requires internet connection"
+	});
 
-	const fetchCategories = async () => {
-		try {
-			const params = {};
-			if (showArchivedCategories) {
-				params.include_archived = "only";
-			} else {
-				// When showing active categories, don't send any parameter to get only active records
-				// The backend defaults to showing only active records when no include_archived parameter is provided
-			}
+	// Load categories from offline cache (or API fallback)
+	const { data: allCategories = [], loading, refetch } = useOfflineCategories({
+		enabled: open, // Only fetch when dialog is open
+	});
 
-			console.log("Fetching categories with params:", params);
-			const response = await getCategories(params);
-			console.log("Categories response:", response);
-			const data = response.data?.results || response.data || [];
-			console.log("Processed categories data:", data);
-			// Sort categories by order field for management interface
-			const sortedData = [...data].sort(
-				(a, b) => (a.order || 0) - (b.order || 0)
-			);
-			setCategories(sortedData);
-		} catch (error) {
-			console.error("Failed to fetch categories:", error);
-			toast({
-				title: "Error",
-				description: "Failed to fetch categories.",
-				variant: "destructive",
-			});
-		}
-	};
+	// Filter categories based on archived state and sort hierarchically
+	const filteredCategories = (allCategories || [])
+		.filter(cat => showArchivedCategories ? !cat.is_active : cat.is_active);
 
-	const handleOrderChange = (categoryId, newOrder) => {
-		setCategories((prevCategories) => {
-			const updated = prevCategories.map((cat) =>
-				cat.id === categoryId ? { ...cat, order: newOrder } : cat
-			);
-			// Sort updated categories by order field for management interface
-			return updated.sort((a, b) => (a.order || 0) - (b.order || 0));
+	// DEBUG: Log order values to check if they're hierarchical
+	console.log('📊 Category order values:', filteredCategories.map(c => ({
+		name: c.name,
+		order: c.order,
+		parent: c.parent?.name || 'ROOT'
+	})));
+
+	// Sort hierarchically: parents by order, then children by order within each parent
+	const categories = (() => {
+		const parents = filteredCategories
+			.filter(cat => !cat.parent)
+			.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+		const result = [];
+		parents.forEach(parent => {
+			result.push(parent);
+			const children = filteredCategories
+				.filter(cat => cat.parent?.id === parent.id)
+				.sort((a, b) => (a.order || 0) - (b.order || 0));
+			result.push(...children);
 		});
-		// Mark that data has changed
-		setDataChanged(true);
-	};
 
-	const handleReorder = async (
+		return result;
+	})();
+
+
+	const handleReorder = guardSubmit(async (
 		reorderedHierarchicalList,
 		sourceIndex,
 		destinationIndex
@@ -313,9 +308,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				description: "Failed to update category order.",
 				variant: "destructive",
 			});
-			fetchCategories();
+			refetch({ forceApi: true });
 		}
-	};
+	});
 
 	const handleFormChange = (e) => {
 		const { name, value } = e.target;
@@ -365,7 +360,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 		}
 	};
 
-	const handleFormSubmit = async (e) => {
+	const handleFormSubmit = guardSubmit(async (e) => {
 		e.preventDefault();
 		try {
 			if (editingCategory) {
@@ -376,7 +371,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				toast({ title: "Success", description: "Category created." });
 			}
 			setDataChanged(true);
-			fetchCategories();
+			refetch({ forceApi: true });
 			closeFormDialog();
 		} catch (error) {
 			console.error("Failed to save category:", error);
@@ -386,9 +381,9 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				variant: "destructive",
 			});
 		}
-	};
+	});
 
-	const handleArchiveToggle = async (category) => {
+	const handleArchiveToggle = guardSubmit(async (category) => {
 		try {
 			if (category.is_active) {
 				// Use dependency-aware archiving for active categories
@@ -403,7 +398,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 					description: "Category restored successfully.",
 				});
 				setDataChanged(true);
-				fetchCategories();
+				refetch({ forceApi: true });
 			}
 		} catch (error) {
 			console.error("Archive/restore error:", error);
@@ -426,7 +421,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 				variant: "destructive",
 			});
 		}
-	};
+	});
 
 	// Archive dialog handlers
 	const handleArchiveDialogOpenChange = (open) => {
@@ -439,7 +434,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const archiveWithCallback = async (id, options) => {
 		const result = await archiveCategoryWithDependencies(id, options);
 		setDataChanged(true);
-		fetchCategories();
+		refetch({ forceApi: true });
 		return result;
 	};
 
@@ -508,7 +503,12 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 							)}
 							{showArchivedCategories ? "Show Active" : "Show Archived"}
 						</Button>
-						<Button onClick={() => openFormDialog()}>Add Category</Button>
+						<OnlineOnlyButton
+						onClick={() => openFormDialog()}
+						disabledMessage="Creating categories requires internet connection"
+					>
+						Add Category
+					</OnlineOnlyButton>
 					</div>
 					<DraggableList
 						items={buildHierarchicalList()}
@@ -520,7 +520,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 							{ label: "Name", className: "flex-1" },
 							{ label: "Description", className: "w-[150px]" },
 							{ label: "Parent", className: "w-[100px]" },
-							{ label: "Order", className: "w-[80px] text-center" },
 							{ label: "Public", className: "w-[80px] text-center" },
 							{ label: "Actions", className: "w-[100px] text-center" },
 						]}
@@ -593,12 +592,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 									)}
 								</div>
 
-								{/* Order */}
-								<div className="w-[80px] text-center">
-									<span className="text-sm font-medium">
-										{category.order || 0}
-									</span>
-								</div>
 
 								{/* Public */}
 								<div className="w-[80px] text-center">
@@ -707,22 +700,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 								</Select>
 							</div>
 
-							<div className="space-y-2">
-								<Label htmlFor="order">Display Order</Label>
-								<Input
-									id="order"
-									name="order"
-									type="number"
-									value={formData.order}
-									onChange={handleFormChange}
-									placeholder="0"
-									min="0"
-								/>
-								<p className="text-sm text-slate-500 dark:text-slate-400">
-									Lower numbers appear first
-								</p>
-							</div>
-
 							<div className="flex items-center justify-between">
 								<div className="space-y-1">
 									<Label htmlFor="is_public">Public Visibility</Label>
@@ -750,7 +727,12 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 							>
 								Cancel
 							</Button>
-							<Button type="submit">Save</Button>
+							<OnlineOnlyButton
+							type="submit"
+							disabledMessage="Saving categories requires internet connection"
+						>
+							Save
+						</OnlineOnlyButton>
 						</DialogFooter>
 					</form>
 				</DialogContent>

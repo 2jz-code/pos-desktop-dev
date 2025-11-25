@@ -143,7 +143,7 @@ contextBridge.exposeInMainWorld("offlineAPI", {
   cacheDataset: (datasetName, rows, version) => ipcRenderer.invoke("offline:cache-dataset", datasetName, rows, version),
   deleteRecords: (tableName, deletedIds) => ipcRenderer.invoke("offline:delete-records", tableName, deletedIds),
   // Get cached data
-  getCachedProducts: () => ipcRenderer.invoke("offline:get-cached-products"),
+  getCachedProducts: (filters) => ipcRenderer.invoke("offline:get-cached-products", filters),
   getCachedCategories: () => ipcRenderer.invoke("offline:get-cached-categories"),
   getCachedDiscounts: () => ipcRenderer.invoke("offline:get-cached-discounts"),
   getCachedModifierSets: () => ipcRenderer.invoke("offline:get-cached-modifier-sets"),
@@ -152,6 +152,8 @@ contextBridge.exposeInMainWorld("offlineAPI", {
   getCachedInventory: () => ipcRenderer.invoke("offline:get-cached-inventory"),
   getCachedSettings: () => ipcRenderer.invoke("offline:get-cached-settings"),
   getCachedUsers: () => ipcRenderer.invoke("offline:get-cached-users"),
+  // Developer tools
+  clearCache: () => ipcRenderer.invoke("offline:clear-cache"),
   // Get specific records
   getProductById: (productId) => ipcRenderer.invoke("offline:get-product-by-id", productId),
   getProductByBarcode: (barcode) => ipcRenderer.invoke("offline:get-product-by-barcode", barcode),

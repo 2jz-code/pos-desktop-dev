@@ -37,6 +37,7 @@ import { RoleProtectedRoute } from "../components/RoleProtectedRoute";
 // Services
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import offlineSyncService from "@/services/OfflineSyncService";
+import { initializeOfflineMode } from "@/shared/lib/offlineInitialization";
 
 /**
  * This is the root component that sets up all the providers
@@ -54,6 +55,9 @@ function App() {
 
 		// Initialize terminal registration and start sync service
 		const initializeApp = async () => {
+			// Initialize offline mode (preload relation caches)
+			await initializeOfflineMode();
+
 			// Initialize terminal registration (must be first - sets location context)
 			const terminalConfig = await terminalRegistrationService.initialize();
 
@@ -65,13 +69,27 @@ function App() {
 				console.log("⏸️ Terminal not registered - sync service will start after pairing");
 			}
 
-			// Call these once when the app mounts
-			useSettingsStore.getState().fetchSettings();
-			useSettingsStore.getState().discoverAndSetPrinters();
+			// NON-BLOCKING: Run these in background (don't await)
+			// They will update the store when ready, but won't block app rendering
+			console.log("🚀 [App] Starting non-blocking initialization tasks...");
+
+			// Fetch settings in background (cached by useOfflineSettings hook)
+			useSettingsStore.getState().fetchSettings().catch(err => {
+				console.warn("⚠️ [App] Settings fetch failed (will use cache):", err);
+			});
+
+			// Discover printers in background
+			useSettingsStore.getState().discoverAndSetPrinters().catch(err => {
+				console.warn("⚠️ [App] Printer discovery failed:", err);
+			});
+
+			// Ensure POS device ID (synchronous, no blocking)
 			useSettingsStore.getState().ensurePosDeviceId();
 
-			// Initialize the global notification service
+			// Initialize the global notification service (non-blocking)
 			globalNotificationService.initialize();
+
+			console.log("✅ [App] Non-blocking tasks started, app ready to render");
 		};
 
 		initializeApp();

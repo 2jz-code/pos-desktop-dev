@@ -1,4 +1,5 @@
 import apiClient from "@/shared/lib/apiClient";
+import { handleSyncComplete } from "@/shared/lib/offlineInitialization";
 
 /**
  * OfflineSyncService
@@ -17,6 +18,7 @@ class OfflineSyncService {
 		this.isSyncing = false;
 		this.datasetVersions = {}; // Track last synced version for each dataset
 		this.versionsLoaded = false; // Flag to track if versions have been loaded from DB
+		this.updatedDatasets = []; // Track which datasets were updated in current sync
 	}
 
 	/**
@@ -87,6 +89,7 @@ class OfflineSyncService {
 		}
 
 		this.isSyncing = true;
+		this.updatedDatasets = []; // Reset tracking
 
 		try {
 			console.log("🔄 Starting full dataset sync...");
@@ -113,6 +116,11 @@ class OfflineSyncService {
 			await this.flushQueue();
 
 			console.log("✅ Full sync completed successfully");
+
+			// Notify relation cache to invalidate if needed
+			if (this.updatedDatasets.length > 0) {
+				handleSyncComplete(this.updatedDatasets);
+			}
 		} catch (error) {
 			console.error("❌ Sync failed:", error);
 		} finally {
@@ -172,6 +180,12 @@ class OfflineSyncService {
 
 			if (deleted_ids && deleted_ids.length > 0) {
 				await window.offlineAPI.deleteRecords("categories", deleted_ids);
+			}
+
+			// Track if this dataset was updated
+			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
+			if (hasUpdates) {
+				this.updatedDatasets.push('categories');
 			}
 
 			this.datasetVersions.categories = next_version;
@@ -264,6 +278,12 @@ class OfflineSyncService {
 				await window.offlineAPI.deleteRecords("taxes", deleted_ids);
 			}
 
+			// Track if this dataset was updated
+			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
+			if (hasUpdates) {
+				this.updatedDatasets.push('taxes');
+			}
+
 			this.datasetVersions.taxes = next_version;
 
 			console.log(`✅ Taxes cached (version: ${next_version})`);
@@ -292,6 +312,12 @@ class OfflineSyncService {
 
 			if (deleted_ids && deleted_ids.length > 0) {
 				await window.offlineAPI.deleteRecords("product_types", deleted_ids);
+			}
+
+			// Track if this dataset was updated
+			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
+			if (hasUpdates) {
+				this.updatedDatasets.push('product_types');
 			}
 
 			this.datasetVersions.product_types = next_version;

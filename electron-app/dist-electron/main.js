@@ -434,19 +434,20 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      product_type_id TEXT,
+      product_type_id INTEGER,
       name TEXT NOT NULL,
       description TEXT,
       price REAL NOT NULL,
-      category_id TEXT,
+      category_id INTEGER,
       image TEXT,
       track_inventory INTEGER NOT NULL DEFAULT 0,
       barcode TEXT,
       has_modifiers INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       is_public INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       tax_ids TEXT, -- JSON array of tax IDs
       modifier_sets TEXT -- JSON array of modifier set configurations
@@ -457,11 +458,11 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS categories (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       description TEXT,
-      parent_id TEXT,
+      parent_id INTEGER,
       lft INTEGER,
       rght INTEGER,
       tree_id INTEGER,
@@ -476,21 +477,21 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS modifier_sets (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       internal_name TEXT NOT NULL,
       selection_type TEXT NOT NULL,
       min_selections INTEGER DEFAULT 0,
       max_selections INTEGER,
-      triggered_by_option_id TEXT,
+      triggered_by_option_id INTEGER,
       updated_at TEXT NOT NULL,
       options TEXT NOT NULL -- JSON array of modifier options
     );
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS discounts (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       code TEXT,
@@ -512,7 +513,7 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS taxes (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       rate REAL NOT NULL,
@@ -521,7 +522,7 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS product_types (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       description TEXT,
@@ -538,9 +539,9 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS inventory_locations (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      store_location_id TEXT NOT NULL,
+      store_location_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
       low_stock_threshold REAL,
@@ -550,11 +551,11 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS inventory_stocks (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      store_location_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      location_id TEXT NOT NULL,
+      store_location_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      location_id INTEGER NOT NULL,
       quantity REAL NOT NULL DEFAULT 0,
       expiration_date TEXT,
       low_stock_threshold REAL,
@@ -573,7 +574,7 @@ function initializeSchema(db2) {
   `);
   db2.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       email TEXT NOT NULL,
       username TEXT,
@@ -638,7 +639,7 @@ function initializeSchema(db2) {
   db2.exec(`
     CREATE TABLE IF NOT EXISTS offline_approvals (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
       pin TEXT NOT NULL, -- Hashed PIN
       action TEXT NOT NULL, -- 'DISCOUNT', 'VOID', 'REFUND', 'PRICE_OVERRIDE'
       reference TEXT,
@@ -713,8 +714,8 @@ function upsertProducts$1(db2, products) {
     INSERT INTO products (
       id, tenant_id, product_type_id, name, description, price, category_id,
       image, track_inventory, barcode, has_modifiers, is_active, is_public,
-      updated_at, tax_ids, modifier_sets
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, tax_ids, modifier_sets
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       tenant_id = excluded.tenant_id,
       product_type_id = excluded.product_type_id,
@@ -728,6 +729,7 @@ function upsertProducts$1(db2, products) {
       has_modifiers = excluded.has_modifiers,
       is_active = excluded.is_active,
       is_public = excluded.is_public,
+      created_at = excluded.created_at,
       updated_at = excluded.updated_at,
       tax_ids = excluded.tax_ids,
       modifier_sets = excluded.modifier_sets
@@ -748,6 +750,7 @@ function upsertProducts$1(db2, products) {
         product.has_modifiers ? 1 : 0,
         product.is_active ? 1 : 0,
         product.is_public ? 1 : 0,
+        product.created_at,
         product.updated_at,
         JSON.stringify(product.tax_ids || []),
         JSON.stringify(product.modifier_sets || [])
@@ -778,6 +781,7 @@ function upsertCategories$1(db2, categories) {
   `);
   const insertMany = db2.transaction((categories2) => {
     for (const cat of categories2) {
+      const displayOrder = cat.display_order != null ? cat.display_order : cat.order != null ? cat.order : 0;
       stmt.run(
         cat.id,
         cat.tenant_id,
@@ -788,7 +792,7 @@ function upsertCategories$1(db2, categories) {
         cat.rght,
         cat.tree_id,
         cat.level,
-        cat.display_order || 0,
+        displayOrder,
         cat.is_active ? 1 : 0,
         cat.is_public ? 1 : 0,
         cat.updated_at
@@ -1063,9 +1067,24 @@ function deleteRecords$1(db2, tableName, deletedIds) {
   const stmt = db2.prepare(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`);
   stmt.run(...deletedIds);
 }
-function getProducts$1(db2) {
-  const stmt = db2.prepare("SELECT * FROM products WHERE is_active = 1 AND is_public = 1");
-  const products = stmt.all();
+function getProducts$1(db2, filters = {}) {
+  let query = "SELECT * FROM products WHERE 1=1";
+  const params = [];
+  if (!filters.includeArchived) {
+    query += " AND is_active = 1";
+  } else if (filters.includeArchived === "only") {
+    query += " AND is_active = 0";
+  }
+  if (filters.search) {
+    query += " AND (name LIKE ? OR barcode LIKE ?)";
+    params.push(`%${filters.search}%`, `%${filters.search}%`);
+  }
+  if (filters.category) {
+    query += " AND category_id = ?";
+    params.push(filters.category);
+  }
+  const stmt = db2.prepare(query);
+  const products = stmt.all(...params);
   return products.map((p) => ({
     ...p,
     track_inventory: p.track_inventory === 1,
@@ -1107,11 +1126,30 @@ function getProductByBarcode$1(db2, barcode) {
 function getCategories$1(db2) {
   const stmt = db2.prepare("SELECT * FROM categories WHERE is_active = 1 ORDER BY display_order, name");
   const categories = stmt.all();
-  return categories.map((c) => ({
+  const categoryMap = /* @__PURE__ */ new Map();
+  const normalized = categories.map((c) => ({
     ...c,
+    order: c.display_order,
+    // Normalize: SQLite uses display_order, API uses order
     is_active: c.is_active === 1,
     is_public: c.is_public === 1
   }));
+  normalized.forEach((cat) => categoryMap.set(cat.id, cat));
+  return normalized.map((cat) => {
+    if (cat.parent_id) {
+      const parent = categoryMap.get(cat.parent_id);
+      if (parent) {
+        return {
+          ...cat,
+          parent: {
+            id: parent.id,
+            name: parent.name
+          }
+        };
+      }
+    }
+    return cat;
+  });
 }
 function getDiscounts$1(db2) {
   const stmt = db2.prepare("SELECT * FROM discounts WHERE is_active = 1");
@@ -2709,10 +2747,10 @@ ipcMain.handle("offline:delete-records", async (event, tableName, deletedIds) =>
     return { success: false, error: error.message };
   }
 });
-ipcMain.handle("offline:get-cached-products", async () => {
+ipcMain.handle("offline:get-cached-products", async (event, filters = {}) => {
   try {
     const db2 = getDatabase();
-    return getProducts(db2);
+    return getProducts(db2, filters);
   } catch (error) {
     console.error("[Offline DB] Error getting cached products:", error);
     throw error;
@@ -2787,6 +2825,30 @@ ipcMain.handle("offline:get-cached-users", async () => {
     return getUsers(db2);
   } catch (error) {
     console.error("[Offline DB] Error getting cached users:", error);
+    throw error;
+  }
+});
+ipcMain.handle("offline:clear-cache", async () => {
+  try {
+    const db2 = getDatabase();
+    console.log("[Offline DB] Clearing all cache tables...");
+    db2.exec(`
+			DELETE FROM products;
+			DELETE FROM categories;
+			DELETE FROM modifier_sets;
+			DELETE FROM discounts;
+			DELETE FROM taxes;
+			DELETE FROM product_types;
+			DELETE FROM inventory_stocks;
+			DELETE FROM inventory_locations;
+			DELETE FROM settings;
+			DELETE FROM users;
+			DELETE FROM datasets;
+		`);
+    console.log("[Offline DB] ✅ Cache cleared successfully");
+    return { success: true, message: "Cache cleared successfully" };
+  } catch (error) {
+    console.error("[Offline DB] ❌ Error clearing cache:", error);
     throw error;
   }
 });

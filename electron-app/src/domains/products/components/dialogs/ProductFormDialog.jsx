@@ -4,10 +4,9 @@ import {
 	updateProduct,
 	getProductById,
 } from "@/domains/products/services/productService";
-import { getCategories } from "@/domains/products/services/categoryService";
-import { getProductTypes } from "@/domains/products/services/productTypeService";
-import { getTaxes, createTax } from "@/domains/products/services/taxService";
+import { createTax } from "@/domains/products/services/taxService";
 import inventoryService from "@/domains/inventory/services/inventoryService";
+import { useOfflineCategories, useOfflineProductTypes, useOfflineTaxes } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import {
 	Dialog,
@@ -41,6 +40,11 @@ export function ProductFormDialog({
 	productId,
 	onSuccess,
 }) {
+	// Use offline hooks for cached data
+	const { categories: cachedCategories, loading: categoriesLoading } = useOfflineCategories();
+	const { productTypes: cachedProductTypes, loading: productTypesLoading } = useOfflineProductTypes();
+	const { taxes: cachedTaxes, loading: taxesLoading } = useOfflineTaxes();
+
 	const [loading, setLoading] = useState(false);
 	const [categories, setCategories] = useState([]);
 	const [productTypes, setProductTypes] = useState([]);
@@ -66,6 +70,28 @@ export function ProductFormDialog({
 	// Show stock related inputs whenever the user chooses to track inventory
 	const showStockFields = formData.track_inventory;
 
+	// Sync cached data to local state
+	useEffect(() => {
+		if (cachedCategories && cachedCategories.length >= 0) {
+			console.log('📦 [ProductFormDialog] Using cached categories:', cachedCategories.length);
+			setCategories(cachedCategories);
+		}
+	}, [cachedCategories]);
+
+	useEffect(() => {
+		if (cachedProductTypes && cachedProductTypes.length >= 0) {
+			console.log('📦 [ProductFormDialog] Using cached product types:', cachedProductTypes.length);
+			setProductTypes(cachedProductTypes);
+		}
+	}, [cachedProductTypes]);
+
+	useEffect(() => {
+		if (cachedTaxes && cachedTaxes.length >= 0) {
+			console.log('📦 [ProductFormDialog] Using cached taxes:', cachedTaxes.length);
+			setTaxOptions(Array.isArray(cachedTaxes) ? cachedTaxes : []);
+		}
+	}, [cachedTaxes]);
+
 	useEffect(() => {
 		if (open) {
 			fetchInitialData();
@@ -80,23 +106,12 @@ export function ProductFormDialog({
 	const fetchInitialData = async () => {
 		setLoading(true);
 		try {
-			const [categoriesRes, typesRes, locationsRaw, taxesRes] = await Promise.all([
-				getCategories(),
-				getProductTypes(),
-				inventoryService.getLocations(),
-				getTaxes({ limit: 1000 }),
-			]);
-
-			// Axios responses vs direct data handling - handle paginated responses
-			const categoriesData = categoriesRes.data?.results || categoriesRes.data || categoriesRes;
-			const typesData = typesRes.data?.results || typesRes.data || typesRes;
+			// Only fetch locations (categories, product types, and taxes come from cache via hooks)
+			const locationsRaw = await inventoryService.getLocations();
 			const locationsData = locationsRaw?.results || locationsRaw?.data?.results || locationsRaw?.data || locationsRaw || [];
 
-			setCategories(categoriesData);
-			setProductTypes(typesData);
 			setLocations(locationsData);
-			const taxesData = taxesRes.data?.results || taxesRes.data || [];
-			setTaxOptions(Array.isArray(taxesData) ? taxesData : []);
+			console.log('📦 [ProductFormDialog] Loaded locations from API:', locationsData.length);
 
 			if (locationsData.length > 0) {
 				setFormData((prev) => ({

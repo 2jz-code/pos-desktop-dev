@@ -91,7 +91,8 @@ class SyncProductSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    # Version token
+    # Timestamp fields
+    created_at = serializers.DateTimeField(format='iso-8601')
     updated_at = serializers.DateTimeField(format='iso-8601')
 
     class Meta:
@@ -111,6 +112,7 @@ class SyncProductSerializer(serializers.ModelSerializer):
             'is_public',
             'tax_ids',
             'modifier_sets',
+            'created_at',
             'updated_at',
         ]
 

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getProductById, archiveProduct, unarchiveProduct } from "@/domains/products/services/productService";
-import { getProductTypes } from "@/domains/products/services/productTypeService";
+import { archiveProduct, unarchiveProduct } from "@/domains/products/services/productService";
+import { useOfflineProductById } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
@@ -51,34 +51,20 @@ const ProductDetailsPage = () => {
 	const { productId } = useParams();
 	const navigate = useNavigate();
 
-	const [product, setProduct] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
 	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 	const [imageLoaded, setImageLoaded] = useState(false);
 
 	// Role-based permissions
 	const { canEditProducts, canDeleteProducts } = useRolePermissions();
 
-	const fetchProduct = async () => {
-		if (!productId) return;
-
-		try {
-			setLoading(true);
-			const response = await getProductById(productId);
-			setProduct(response.data);
-			setError(null);
-		} catch (err) {
-			setError("Failed to fetch product details.");
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	useEffect(() => {
-		fetchProduct();
-	}, [productId]);
+	// Fetch product with offline support
+	const {
+		data: product,
+		loading,
+		error,
+		isFromCache,
+		refetch,
+	} = useOfflineProductById(productId, { useCache: true });
 
 	const handleBack = () => {
 		navigate("/products");
@@ -105,7 +91,7 @@ const ProductDetailsPage = () => {
 					description: "Product restored successfully.",
 				});
 			}
-			fetchProduct(); // Refresh product data
+			refetch({ forceApi: true }); // Refresh product data
 		} catch (err) {
 			toast({
 				title: "Error",
@@ -117,7 +103,7 @@ const ProductDetailsPage = () => {
 	};
 
 	const handleEditSuccess = () => {
-		fetchProduct(); // Refresh product data after edit
+		refetch({ forceApi: true }); // Refresh product data after edit
 	};
 
 	const handleCopyBarcode = () => {
@@ -156,7 +142,7 @@ const ProductDetailsPage = () => {
 									<ArrowLeft className="mr-2 h-4 w-4" />
 									Back to Products
 								</Button>
-								<Button onClick={fetchProduct} variant="default">
+								<Button onClick={() => refetch({ forceApi: true })} variant="default">
 									Try Again
 								</Button>
 							</div>
@@ -222,7 +208,7 @@ const ProductDetailsPage = () => {
 										<Copy className="h-3 w-3" />
 									</Button>
 									<span>•</span>
-									<span>{format(new Date(product.created_at), "MMM d, yyyy")}</span>
+									<span>{product.created_at ? format(new Date(product.created_at), "MMM d, yyyy") : 'N/A'}</span>
 								</div>
 							</div>
 						</div>
@@ -371,14 +357,14 @@ const ProductDetailsPage = () => {
 											className="rounded-full border-border/60 bg-transparent px-3 py-1"
 										>
 											<Tags className="mr-1 h-3 w-3" />
-											{product.category_display_name || "Uncategorized"}
+											{product.category?.name || "Uncategorized"}
 										</Badge>
 										<Badge
 											variant="secondary"
 											className="rounded-full px-3 py-1"
 										>
 											<Tag className="mr-1 h-3 w-3" />
-											{product.product_type_display_name || "No Type"}
+											{product.product_type?.name || "No Type"}
 										</Badge>
 										{product.track_inventory && (
 											<Badge
@@ -450,14 +436,14 @@ const ProductDetailsPage = () => {
 								{/* Category */}
 								<InfoCard icon={Tags} title="Category">
 									<span className="text-foreground font-medium">
-										{product.category_display_name || "Uncategorized"}
+										{product.category?.name || "Uncategorized"}
 									</span>
 								</InfoCard>
 
 								{/* Product Type */}
 								<InfoCard icon={Tag} title="Product Type">
 									<span className="text-foreground font-medium">
-										{product.product_type_display_name || "No Type"}
+										{product.product_type?.name || "No Type"}
 									</span>
 								</InfoCard>
 
@@ -484,10 +470,10 @@ const ProductDetailsPage = () => {
 								<InfoCard icon={Calendar} title="Created">
 									<div>
 										<p className="text-foreground font-medium">
-											{format(new Date(product.created_at), "PPPP")}
+											{product.created_at ? format(new Date(product.created_at), "PPPP") : 'N/A'}
 										</p>
 										<p className="text-sm text-muted-foreground">
-											{format(new Date(product.created_at), "p")}
+											{product.created_at ? format(new Date(product.created_at), "p") : ''}
 										</p>
 									</div>
 								</InfoCard>

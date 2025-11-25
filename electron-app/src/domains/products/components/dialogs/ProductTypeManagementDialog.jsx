@@ -11,6 +11,8 @@ import {
 } from "@/domains/products/services/productTypeService";
 import { reassignProducts } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { useOfflineGuard, useOfflineProductTypes } from "@/shared/hooks";
 import {
 	Table,
 	TableBody,
@@ -47,7 +49,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/shared/components/ui/command";
 
 export function ProductTypeManagementDialog({ open, onOpenChange }) {
-	const [productTypes, setProductTypes] = useState([]);
 	const [showArchivedProductTypes, setShowArchivedProductTypes] = useState(false);
 	const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
 	const [editingType, setEditingType] = useState(null);
@@ -75,37 +76,30 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 	// Archive dialog state
 	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 	const [productTypeToArchive, setProductTypeToArchive] = useState(null);
-	
+
 	const { toast } = useToast();
 
-useEffect(() => {
-    fetchProductTypes();
-    fetchTaxes();
-}, [showArchivedProductTypes]);
+	// Online guard for mutations
+	const { guardSubmit } = useOfflineGuard({
+		blockMessage: "Editing product types requires internet connection"
+	});
 
-const fetchProductTypes = async () => {
-		try {
-			const params = {};
-			if (showArchivedProductTypes) {
-				params.include_archived = 'only';
-			}
-			
-			console.log('Fetching product types with params:', params);
-			const response = await getProductTypes(params);
-			console.log('Product types response:', response);
-			
-			const data = response.data?.results || response.data || [];
-			console.log('Processed data:', data);
-			setProductTypes(Array.isArray(data) ? data : []);
-		} catch (error) {
-			console.error("Failed to fetch product types:", error);
-			toast({
-				title: "Error",
-				description: "Failed to fetch product types.",
-				variant: "destructive",
-			});
-		}
-};
+	// Load product types from offline cache (or API fallback)
+	const { data: allProductTypes = [], loading, refetch } = useOfflineProductTypes({
+		enabled: open, // Only fetch when dialog is open
+	});
+
+	// Filter product types based on archived state
+	const productTypes = (allProductTypes || [])
+		.filter(type => showArchivedProductTypes ? !type.is_active : type.is_active);
+
+useEffect(() => {
+    // Only fetch taxes when dialog is actually open
+    if (open) {
+        console.log('🏷️ [ProductTypeManagementDialog] Dialog opened, fetching taxes');
+        fetchTaxes();
+    }
+}, [open]);
 
 const fetchTaxes = async () => {
     try {
@@ -175,7 +169,7 @@ const openFormDialog = (type = null) => {
 	};
 
 
-	const handleArchiveToggle = async (productType) => {
+	const handleArchiveToggle = guardSubmit(async (productType) => {
 		try {
 			console.log('Archive toggle called for product type:', productType);
 			if (productType.is_active) {
@@ -192,7 +186,7 @@ const openFormDialog = (type = null) => {
 					description: "Product type restored successfully.",
 				});
 				setDataChanged(true);
-				fetchProductTypes();
+				refetch({ forceApi: true });
 			}
 		} catch (error) {
 			console.error("Archive/restore error:", error);
@@ -215,7 +209,7 @@ const openFormDialog = (type = null) => {
 				variant: "destructive",
 			});
 		}
-	};
+	});
 
 	// Archive dialog handlers
 	const handleArchiveDialogOpenChange = (open) => {
@@ -228,11 +222,11 @@ const openFormDialog = (type = null) => {
 	const archiveWithCallback = async (id, options) => {
 		const result = await archiveProductTypeWithDependencies(id, options);
 		setDataChanged(true);
-		fetchProductTypes();
+		refetch({ forceApi: true });
 		return result;
 	};
 
-const handleFormSubmit = async (e) => {
+const handleFormSubmit = guardSubmit(async (e) => {
     e.preventDefault();
     try {
         const payload = {
@@ -263,7 +257,7 @@ const handleFormSubmit = async (e) => {
             toast({ title: "Success", description: "Product type created." });
         }
         setDataChanged(true);
-        fetchProductTypes();
+        refetch({ forceApi: true });
         closeFormDialog();
     } catch (error) {
         console.error("Failed to save product type:", error);
@@ -273,7 +267,7 @@ const handleFormSubmit = async (e) => {
             variant: "destructive",
         });
     }
-};
+});
 
 
 	return (
@@ -301,7 +295,12 @@ const handleFormSubmit = async (e) => {
 							)}
 							{showArchivedProductTypes ? "Show Active" : "Show Archived"}
 						</Button>
-						<Button onClick={() => openFormDialog()}>Add Product Type</Button>
+						<OnlineOnlyButton
+						onClick={() => openFormDialog()}
+						disabledMessage="Creating product types requires internet connection"
+					>
+						Add Product Type
+					</OnlineOnlyButton>
 					</div>
 					<div className="border rounded-lg overflow-hidden">
 						<div className="max-h-[60vh] overflow-y-auto">
@@ -566,10 +565,16 @@ const handleFormSubmit = async (e) => {
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <Label>Default Taxes Applied</Label>
-                                        <Button type="button" size="sm" variant="outline" onClick={() => setIsTaxDialogOpen(true)}>
+                                        <OnlineOnlyButton
+											type="button"
+											size="sm"
+											variant="outline"
+											onClick={() => setIsTaxDialogOpen(true)}
+											disabledMessage="Creating taxes requires internet connection"
+										>
                                             <Plus className="h-4 w-4 mr-1" />
                                             Add Tax
-                                        </Button>
+                                        </OnlineOnlyButton>
                                     </div>
 
                                     <Popover open={taxPickerOpen} onOpenChange={setTaxPickerOpen}>
@@ -724,7 +729,12 @@ const handleFormSubmit = async (e) => {
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit">Save</Button>
+                            <OnlineOnlyButton
+								type="submit"
+								disabledMessage="Saving product types requires internet connection"
+							>
+								Save
+							</OnlineOnlyButton>
                         </DialogFooter>
                     </form>
 				</DialogContent>
@@ -741,7 +751,7 @@ const handleFormSubmit = async (e) => {
                     <DialogDescription>Create a new tax rate to use as a default for product types.</DialogDescription>
                 </DialogHeader>
                 <form
-                    onSubmit={async (e) => {
+                    onSubmit={guardSubmit(async (e) => {
                         e.preventDefault();
                         try {
                             setIsSavingTax(true);
@@ -768,7 +778,7 @@ const handleFormSubmit = async (e) => {
                         } finally {
                             setIsSavingTax(false);
                         }
-                    }}
+                    })}
                     className="space-y-4"
                 >
                     <div className="space-y-4">
@@ -799,9 +809,13 @@ const handleFormSubmit = async (e) => {
                         <Button type="button" variant="outline" onClick={() => setIsTaxDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={isSavingTax}>
+                        <OnlineOnlyButton
+							type="submit"
+							disabled={isSavingTax}
+							disabledMessage="Saving taxes requires internet connection"
+						>
                             {isSavingTax ? "Saving..." : "Save Tax"}
-                        </Button>
+                        </OnlineOnlyButton>
                     </DialogFooter>
                 </form>
             </DialogContent>

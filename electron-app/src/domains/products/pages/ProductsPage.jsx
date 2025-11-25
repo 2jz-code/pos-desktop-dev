@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-	getProducts,
-	getAllProducts,
 	archiveProduct,
 	unarchiveProduct,
 } from "@/domains/products/services/productService";
-import { getCategories } from "@/domains/products/services/categoryService";
-import apiClient from "@/shared/lib/apiClient";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -19,7 +15,6 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { PaginationControls } from "@/shared/components/ui/PaginationControls";
 import {
 	Select,
 	SelectContent,
@@ -46,7 +41,6 @@ import {
 	FolderOpen,
 	Package,
 	Search,
-	Filter,
 	X,
 	LayoutGrid,
 	List,
@@ -56,7 +50,7 @@ import {
 import { toast } from "@/shared/components/ui/use-toast";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@ajeen/ui";
-import { useProductBarcode } from "@/shared/hooks";
+import { useProductBarcode, useOfflineProducts, useOfflineCategories } from "@/shared/hooks";
 import { useScrollToScannedItem } from "@ajeen/ui";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
@@ -68,21 +62,15 @@ import { ProductsTableView } from "@/domains/products/components/ProductsTableVi
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 
 const ProductsPage = () => {
-	const [products, setProducts] = useState([]);
-	const [allProducts, setAllProducts] = useState([]);
+	// REMOVED: products, allProducts, loading, error - now come from hook
 	const [parentCategories, setParentCategories] = useState([]);
 	const [childCategories, setChildCategories] = useState([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
 	const [showArchivedProducts, setShowArchivedProducts] = useState(false);
 	const [viewMode, setViewMode] = useState(() => {
 		return localStorage.getItem("productsViewMode") || "grid";
 	});
 
-	// Pagination state (from backend)
-	const [nextUrl, setNextUrl] = useState(null);
-	const [prevUrl, setPrevUrl] = useState(null);
-	const [totalCount, setTotalCount] = useState(0);
+	// Pagination state (client-side for cached data)
 	const [currentPage, setCurrentPage] = useState(1);
 	const pageSize = 25;
 
@@ -117,6 +105,156 @@ const ProductsPage = () => {
 	// Scroll to scanned item functionality
 	const { scrollToItem } = useScrollToScannedItem();
 
+	// Load categories with offline support
+	const {
+		data: allCategories,
+		loading: categoriesLoading,
+		isFromCache: categoriesFromCache,
+	} = useOfflineCategories();
+
+	const sortCategories = React.useCallback((categories = []) => {
+		return [...categories]
+			.map((cat) => ({
+				...cat,
+				_order: (() => {
+					const raw = cat?.display_order ?? cat?.order;
+					return typeof raw === "number" ? raw : Number(raw) || 0;
+				})(),
+			}))
+			.sort((a, b) => {
+				if (a._order !== b._order) return a._order - b._order;
+				return (a?.name || "").localeCompare(b?.name || "");
+			});
+	}, []);
+
+	// Helper: compute descendant category IDs for the selected parent (used for client-side filtering)
+	const descendantCategoryIds = React.useMemo(() => {
+		if (!allCategories || selectedParentCategory === "all") return new Set();
+
+		const sorted = sortCategories(allCategories);
+		const ids = new Set([selectedParentCategory]);
+		const queue = [selectedParentCategory];
+
+		// Traverse children depth-first using parent_id
+		while (queue.length > 0) {
+			const current = queue.shift();
+			const children = sorted.filter((cat) => cat.parent_id && cat.parent_id.toString() === current);
+			for (const child of children) {
+				if (!ids.has(child.id.toString())) {
+					ids.add(child.id.toString());
+					queue.push(child.id.toString());
+				}
+			}
+		}
+
+		return ids;
+	}, [allCategories, selectedParentCategory]);
+
+	// Offline products hook - cache-first with automatic fallback
+	const offlineFilters = {
+		search: filters.search,
+		// Avoid passing parent category when "all subcategories" is selected because the cache filter is exact-match
+		// and would exclude descendants. We filter client-side instead.
+		category:
+			selectedChildCategory !== "all" && selectedChildCategory !== "parent-only"
+				? selectedChildCategory
+				: selectedChildCategory === "parent-only" && selectedParentCategory !== "all"
+				? selectedParentCategory
+				: undefined,
+		include_archived: showArchivedProducts ? "only" : false,
+		modifier_groups: modifierContext?.id,
+	};
+
+	let {
+		data: allProducts,
+		loading,
+		error,
+		isFromCache,
+		source,
+		isStale,
+		refetch,
+	} = useOfflineProducts(offlineFilters, { useCache: true });
+
+	// Ensure we always work with an array for downstream logic
+	let productList = Array.isArray(allProducts) ? allProducts : [];
+
+	// Apply client-side filtering for "parent-only" selection (API includes descendants)
+	if (selectedChildCategory === "parent-only" && selectedParentCategory !== "all") {
+		productList = productList.filter(
+			(product) => product?.category?.id?.toString() === selectedParentCategory
+		);
+	} else if (selectedParentCategory !== "all" && selectedChildCategory === "all") {
+		// Include parent + all descendants when "All Subcategories" is selected
+		productList = productList.filter((product) =>
+			product?.category?.id && descendantCategoryIds.has(product.category.id.toString())
+		);
+	}
+
+	// Sort products by category display_order, then by product name
+	productList = [...productList].sort((a, b) => {
+		// Extract category display_order (fallback to order field, then 0)
+		const aOrder = (() => {
+			const raw = a?.category?.display_order ?? a?.category?.order;
+			return typeof raw === "number" ? raw : Number(raw) || 0;
+		})();
+		const bOrder = (() => {
+			const raw = b?.category?.display_order ?? b?.category?.order;
+			return typeof raw === "number" ? raw : Number(raw) || 0;
+		})();
+
+		// Sort by category order first
+		if (aOrder !== bOrder) return aOrder - bOrder;
+
+		// Then sort by product name
+		return (a?.name || "").localeCompare(b?.name || "");
+	});
+
+	// Derived values for client-side pagination (must be after hook)
+	const totalCount = productList.length;
+	const paginatedProducts = productList.slice(
+		(currentPage - 1) * pageSize,
+		currentPage * pageSize
+	) || [];
+
+		// Filter categories into parent and child
+	useEffect(() => {
+		if (allCategories && allCategories.length > 0) {
+			// Filter parent categories (no parent_id or parent_id is null) and respect order
+			const parents = sortCategories(allCategories.filter(cat => !cat.parent_id));
+			setParentCategories(parents);
+
+			// Debug: log category ordering data to verify backend fields
+			console.table(
+				sortCategories(allCategories).map((cat) => ({
+					id: cat.id,
+					name: cat.name,
+					order: cat.order,
+					display_order: cat.display_order,
+					parent: cat.parent_id,
+				}))
+			);
+			console.log(`📦 [ProductsPage] Loaded ${parents.length} parent categories (from cache: ${categoriesFromCache})`);
+		}
+	}, [allCategories, categoriesFromCache, sortCategories]);
+
+		// Reset child category selection when parent changes
+		useEffect(() => {
+			setSelectedChildCategory("all");
+		}, [selectedParentCategory]);
+
+		// Filter child categories when parent selection changes
+		useEffect(() => {
+			setChildCategories([]);
+
+		if (selectedParentCategory && selectedParentCategory !== "all" && allCategories) {
+			const children = sortCategories(allCategories.filter(
+				cat => cat.parent_id && cat.parent_id.toString() === selectedParentCategory
+			));
+			setChildCategories(children);
+			console.log(`📦 [ProductsPage] Found ${children.length} child categories for parent ${selectedParentCategory}`);
+		}
+	}, [selectedParentCategory, allCategories, sortCategories]);
+
 	// Smart barcode scanning
 	const { scanBarcode, isScanning } = useProductBarcode((product) => {
 		setFilters({ search: "", category: "", subcategory: "" });
@@ -128,7 +266,7 @@ const ProductsPage = () => {
 		setTimeout(() => setHighlightedProductId(null), 3000);
 
 		setTimeout(() => {
-			fetchProducts(!product.is_active);
+			refetch({ forceApi: false });
 			scrollToItem(product.id, {
 				dataAttribute: "data-product-id",
 				delay: 200,
@@ -136,119 +274,7 @@ const ProductsPage = () => {
 		}, 100);
 	});
 
-	const fetchProducts = async (showArchivedOnly = false, url = null) => {
-		try {
-			setLoading(true);
-			let response;
 
-			if (url) {
-				// Navigate to specific URL (for pagination)
-				const urlObj = new URL(url);
-				const path = urlObj.pathname.replace('/api', '') + urlObj.search;
-				response = await apiClient.get(path);
-			} else {
-				// Build params for initial load with backend filters
-				const params = {};
-
-				if (showArchivedOnly) {
-					params.include_archived = "only";
-				}
-
-				if (modifierContext) {
-					params.include_all_modifiers = true;
-				}
-
-				// Add search filter
-				if (filters.search) {
-					params.search = filters.search;
-				}
-
-				// Add category filter (backend will include descendants)
-				// For "parent-only", we'll filter client-side after
-				if (selectedChildCategory !== "all" && selectedChildCategory !== "parent-only") {
-					params.category = selectedChildCategory;
-				} else if (selectedParentCategory !== "all") {
-					params.category = selectedParentCategory;
-				}
-
-				// Add modifier filter if present
-				if (modifierContext?.id) {
-					params.modifier_groups = modifierContext.id;
-				}
-
-				response = await getProducts(params);
-			}
-
-			// Handle paginated response
-			const data = response.data;
-			let fetchedProducts = data?.results || data || [];
-
-			// Store pagination metadata
-			setNextUrl(data.next || null);
-			setPrevUrl(data.previous || null);
-			setTotalCount(data.count || fetchedProducts.length);
-
-			// Calculate current page from URL or default to 1
-			if (url) {
-				const urlObj = new URL(url);
-				const pageParam = urlObj.searchParams.get('page');
-				setCurrentPage(pageParam ? parseInt(pageParam) : 1);
-			} else {
-				setCurrentPage(1);
-			}
-
-			// Client-side filtering for "parent-only" case
-			// Backend returns parent + descendants, so we filter to only show parent category items
-			if (selectedChildCategory === "parent-only" && selectedParentCategory !== "all") {
-				const parentId = parseInt(selectedParentCategory);
-				fetchedProducts = fetchedProducts.filter((product) => {
-					return product.category && product.category.id === parentId;
-				});
-				// Update count to reflect filtered results
-				setTotalCount(fetchedProducts.length);
-				// Note: pagination won't work correctly for parent-only since backend has more items
-				// This is acceptable as parent-only typically returns fewer items
-				setNextUrl(null);
-				setPrevUrl(null);
-			}
-
-			setAllProducts(fetchedProducts);
-			setProducts(fetchedProducts);
-			setError(null);
-		} catch (err) {
-			setError("Failed to fetch products.");
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const handleNavigate = (url) => {
-		if (url) {
-			fetchProducts(showArchivedProducts, url);
-		}
-	};
-
-	const fetchParentCategories = async () => {
-		try {
-			const response = await getCategories({ parent: "null" });
-			const data = response.data?.results || response.data || [];
-			setParentCategories(Array.isArray(data) ? data : []);
-		} catch (err) {
-			console.error("Failed to fetch parent categories:", err);
-		}
-	};
-
-	const fetchChildCategories = async (parentId) => {
-		try {
-			const response = await getCategories({ parent: parentId });
-			const data = response.data?.results || response.data || [];
-			setChildCategories(Array.isArray(data) ? data : []);
-		} catch (err) {
-			console.error("Failed to fetch child categories:", err);
-			setChildCategories([]);
-		}
-	};
 
 	// Handle URL parameters for modifier filtering
 	useEffect(() => {
@@ -266,35 +292,10 @@ const ProductsPage = () => {
 		}
 	}, [searchParams]);
 
+	// Reset pagination when filters change
 	useEffect(() => {
-		fetchParentCategories();
-	}, []);
-
-	useEffect(() => {
-		fetchProducts(showArchivedProducts);
-	}, [modifierContext, showArchivedProducts]);
-
-	useEffect(() => {
-		setChildCategories([]);
-		setSelectedChildCategory("all");
-
-		if (selectedParentCategory && selectedParentCategory !== "all") {
-			fetchChildCategories(selectedParentCategory);
-		}
-	}, [selectedParentCategory]);
-
-	// Refetch when category filters change
-	useEffect(() => {
-		fetchProducts(showArchivedProducts);
-	}, [selectedParentCategory, selectedChildCategory]);
-
-	// Refetch when search changes (with debounce)
-	useEffect(() => {
-		const timeoutId = setTimeout(() => {
-			fetchProducts(showArchivedProducts);
-		}, 300);
-		return () => clearTimeout(timeoutId);
-	}, [filters.search]);
+		setCurrentPage(1);
+	}, [filters.search, selectedParentCategory, selectedChildCategory, showArchivedProducts]);
 
 	// Global barcode listener
 	useEffect(() => {
@@ -372,7 +373,7 @@ const ProductsPage = () => {
 					description: "Product restored successfully.",
 				});
 			}
-			fetchProducts(showArchivedProducts);
+			refetch({ forceApi: true });
 		} catch (err) {
 			toast({
 				title: "Error",
@@ -394,8 +395,8 @@ const ProductsPage = () => {
 	};
 
 	const handleProductFormSuccess = () => {
-		fetchProducts(showArchivedProducts);
-		fetchParentCategories();
+		refetch({ forceApi: true });
+		// Note: Categories will refresh automatically from cache/API via useOfflineCategories hook
 	};
 
 	const handleManageTypes = () => {
@@ -409,15 +410,15 @@ const ProductsPage = () => {
 	const handleCategoryDialogClose = (dataChanged = false) => {
 		setIsCategoryDialogOpen(false);
 		if (dataChanged) {
-			fetchParentCategories();
-			fetchProducts(showArchivedProducts);
+			// Note: Categories will refresh automatically from cache/API via useOfflineCategories hook
+			refetch({ forceApi: true });
 		}
 	};
 
 	const handleProductTypeDialogClose = (dataChanged = false) => {
 		setIsProductTypeDialogOpen(false);
 		if (dataChanged) {
-			fetchProducts(showArchivedProducts);
+			refetch({ forceApi: true });
 		}
 	};
 
@@ -753,12 +754,12 @@ const ProductsPage = () => {
 		if (viewMode === "list") {
 			return (
 				<ProductsTableView
-					products={products}
+					products={paginatedProducts}
 					loading={loading}
 					error={error}
 					hasActiveFilters={hasActiveFilters}
 					clearAllFilters={clearAllFilters}
-					fetchProducts={fetchProducts}
+					refetch={refetch}
 					showArchivedProducts={showArchivedProducts}
 					onCardClick={(product) => navigate(`/products/${product.id}`)}
 					onEditProduct={handleEditProduct}
@@ -809,7 +810,7 @@ const ProductsPage = () => {
 								</h3>
 								<p className="text-sm text-muted-foreground mb-4">{error}</p>
 								<Button
-									onClick={() => fetchProducts(showArchivedProducts)}
+									onClick={() => refetch({ forceApi: true })}
 									variant="outline"
 								>
 									<Package className="mr-2 h-4 w-4" />
@@ -822,7 +823,7 @@ const ProductsPage = () => {
 			);
 		}
 
-		if (products.length === 0) {
+		if (paginatedProducts.length === 0) {
 			return (
 				<Card className="border border-border/60 bg-card/80">
 					<CardContent className="flex items-center justify-center p-12">
@@ -868,7 +869,7 @@ const ProductsPage = () => {
 
 		return (
 			<div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-				{products.map((product) => (
+				{paginatedProducts.map((product) => (
 					<ProductGridCard
 						key={product.id}
 						product={product}
@@ -975,9 +976,18 @@ const ProductsPage = () => {
 						: "Product Catalog"
 				}
 				description={
-					modifierContext
-						? `${totalCount} products using this modifier`
-						: `${totalCount} total products`
+					<div className="flex items-center gap-2">
+						<span>
+							{modifierContext
+								? `${totalCount} products using this modifier`
+								: `${totalCount} total products`}
+						</span>
+						{isFromCache && process.env.NODE_ENV === 'development' && (
+							<Badge variant="secondary" className="text-xs">
+								📦 From Cache
+							</Badge>
+						)}
+					</div>
 				}
 				actions={headerActions}
 				className="shrink-0"
@@ -1105,15 +1115,28 @@ const ProductsPage = () => {
 					<div className="pb-6">
 						<ProductsView />
 
-						{/* Pagination Controls */}
-						<PaginationControls
-							prevUrl={prevUrl}
-							nextUrl={nextUrl}
-							onNavigate={handleNavigate}
-							count={totalCount}
-							currentPage={currentPage}
-							pageSize={25}
-						/>
+						{/* Client-side Pagination Controls */}
+						{totalCount > pageSize && (
+							<div className="flex justify-center gap-2 mt-6">
+								<Button
+									variant="outline"
+									onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+									disabled={currentPage === 1}
+								>
+									Previous
+								</Button>
+								<span className="flex items-center px-4 text-sm text-muted-foreground">
+									Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+								</span>
+								<Button
+									variant="outline"
+									onClick={() => setCurrentPage((p) => Math.min(Math.ceil(totalCount / pageSize), p + 1))}
+									disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+								>
+									Next
+								</Button>
+							</div>
+						)}
 					</div>
 				</ScrollArea>
 			</div>

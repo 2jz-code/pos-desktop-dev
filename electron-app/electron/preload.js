@@ -174,7 +174,7 @@ contextBridge.exposeInMainWorld("offlineAPI", {
 		ipcRenderer.invoke("offline:delete-records", tableName, deletedIds),
 
 	// Get cached data
-	getCachedProducts: () => ipcRenderer.invoke("offline:get-cached-products"),
+	getCachedProducts: (filters) => ipcRenderer.invoke("offline:get-cached-products", filters),
 	getCachedCategories: () =>
 		ipcRenderer.invoke("offline:get-cached-categories"),
 	getCachedDiscounts: () => ipcRenderer.invoke("offline:get-cached-discounts"),
@@ -186,6 +186,9 @@ contextBridge.exposeInMainWorld("offlineAPI", {
 	getCachedInventory: () => ipcRenderer.invoke("offline:get-cached-inventory"),
 	getCachedSettings: () => ipcRenderer.invoke("offline:get-cached-settings"),
 	getCachedUsers: () => ipcRenderer.invoke("offline:get-cached-users"),
+
+	// Developer tools
+	clearCache: () => ipcRenderer.invoke("offline:clear-cache"),
 
 	// Get specific records
 	getProductById: (productId) =>

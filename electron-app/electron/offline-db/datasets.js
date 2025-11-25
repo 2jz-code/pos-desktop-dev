@@ -51,8 +51,8 @@ export function upsertProducts(db, products) {
     INSERT INTO products (
       id, tenant_id, product_type_id, name, description, price, category_id,
       image, track_inventory, barcode, has_modifiers, is_active, is_public,
-      updated_at, tax_ids, modifier_sets
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, tax_ids, modifier_sets
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       tenant_id = excluded.tenant_id,
       product_type_id = excluded.product_type_id,
@@ -66,6 +66,7 @@ export function upsertProducts(db, products) {
       has_modifiers = excluded.has_modifiers,
       is_active = excluded.is_active,
       is_public = excluded.is_public,
+      created_at = excluded.created_at,
       updated_at = excluded.updated_at,
       tax_ids = excluded.tax_ids,
       modifier_sets = excluded.modifier_sets
@@ -87,6 +88,7 @@ export function upsertProducts(db, products) {
         product.has_modifiers ? 1 : 0,
         product.is_active ? 1 : 0,
         product.is_public ? 1 : 0,
+        product.created_at,
         product.updated_at,
         JSON.stringify(product.tax_ids || []),
         JSON.stringify(product.modifier_sets || [])
@@ -123,6 +125,10 @@ export function upsertCategories(db, categories) {
 
   const insertMany = db.transaction((categories) => {
     for (const cat of categories) {
+      const displayOrder =
+        cat.display_order != null ? cat.display_order
+        : cat.order != null ? cat.order
+        : 0;
       stmt.run(
         cat.id,
         cat.tenant_id,
@@ -133,7 +139,7 @@ export function upsertCategories(db, categories) {
         cat.rght,
         cat.tree_id,
         cat.level,
-        cat.display_order || 0,
+        displayOrder,
         cat.is_active ? 1 : 0,
         cat.is_public ? 1 : 0,
         cat.updated_at
@@ -469,11 +475,38 @@ export function deleteRecords(db, tableName, deletedIds) {
 }
 
 /**
- * Get all products
+ * Get all products with optional filters
+ * @param {object} db - Database instance
+ * @param {object} filters - Optional filters
+ * @param {string} filters.search - Search term (matches name or barcode)
+ * @param {string} filters.category - Category ID to filter by
+ * @param {boolean} filters.includeArchived - Include archived products
  */
-export function getProducts(db) {
-  const stmt = db.prepare('SELECT * FROM products WHERE is_active = 1 AND is_public = 1');
-  const products = stmt.all();
+export function getProducts(db, filters = {}) {
+  let query = 'SELECT * FROM products WHERE 1=1';
+  const params = [];
+
+  // Filter by active status
+  if (!filters.includeArchived) {
+    query += ' AND is_active = 1';
+  } else if (filters.includeArchived === 'only') {
+    query += ' AND is_active = 0';
+  }
+
+  // Search filter (name or barcode)
+  if (filters.search) {
+    query += ' AND (name LIKE ? OR barcode LIKE ?)';
+    params.push(`%${filters.search}%`, `%${filters.search}%`);
+  }
+
+  // Category filter
+  if (filters.category) {
+    query += ' AND category_id = ?';
+    params.push(filters.category);
+  }
+
+  const stmt = db.prepare(query);
+  const products = stmt.all(...params);
 
   // Parse JSON fields
   return products.map(p => ({
@@ -534,11 +567,33 @@ export function getCategories(db) {
   const stmt = db.prepare('SELECT * FROM categories WHERE is_active = 1 ORDER BY display_order, name');
   const categories = stmt.all();
 
-  return categories.map(c => ({
+  // Build a map of categories by ID for parent lookup
+  const categoryMap = new Map();
+  const normalized = categories.map(c => ({
     ...c,
+    order: c.display_order, // Normalize: SQLite uses display_order, API uses order
     is_active: c.is_active === 1,
     is_public: c.is_public === 1
   }));
+
+  normalized.forEach(cat => categoryMap.set(cat.id, cat));
+
+  // Hydrate parent relationships
+  return normalized.map(cat => {
+    if (cat.parent_id) {
+      const parent = categoryMap.get(cat.parent_id);
+      if (parent) {
+        return {
+          ...cat,
+          parent: {
+            id: parent.id,
+            name: parent.name,
+          }
+        };
+      }
+    }
+    return cat;
+  });
 }
 
 /**

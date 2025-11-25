@@ -35,7 +35,7 @@ export const ProductsTableView = ({
 	error,
 	hasActiveFilters,
 	clearAllFilters,
-	fetchProducts,
+	refetch,
 	showArchivedProducts,
 	onCardClick,
 	onEditProduct,
@@ -90,7 +90,7 @@ export const ProductsTableView = ({
 					<div>
 						<h3 className="font-medium text-foreground mb-2">Error Loading Products</h3>
 						<p className="text-sm text-muted-foreground mb-4">{error}</p>
-						<Button onClick={() => fetchProducts(showArchivedProducts)} variant="outline">
+						<Button onClick={() => refetch?.({ forceApi: true })} variant="outline">
 							<Package className="mr-2 h-4 w-4" />
 							Try Again
 						</Button>

@@ -4,27 +4,47 @@ import {
 	checkAuthStatus,
 	logout as apiLogout, // Aliased import to avoid name collision
 } from "@/domains/auth/services/authService";
-import apiClient from "@/shared/lib/apiClient";
+import { refreshAuthToken } from "@/shared/lib/apiClient";
+import { clearRelationCache } from "@/shared/lib/offlineInitialization";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-	const [user, setUser] = useState(null);
+	// Load cached user from localStorage immediately (cache-first)
+	const [user, setUser] = useState(() => {
+		try {
+			const cachedUser = localStorage.getItem('auth_user');
+			if (cachedUser) {
+				console.log('✅ [Auth] Loading user from cache');
+				return JSON.parse(cachedUser);
+			}
+		} catch (error) {
+			console.warn('⚠️ [Auth] Failed to load cached user:', error);
+		}
+		return null;
+	});
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		const verifyAuth = async () => {
 			try {
+				// Verify auth in background (don't block rendering)
+				console.log('🔄 [Auth] Verifying auth status in background...');
 				const response = await checkAuthStatus();
 				// Extract user object from response (backend returns { user, tenant })
 				const userData = response.data.user || response.data;
+
+				// Update user and cache
 				setUser(userData);
+				localStorage.setItem('auth_user', JSON.stringify(userData));
+				console.log('✅ [Auth] Auth verified and cached');
 				// eslint-disable-next-line no-unused-vars
 			} catch (error) {
-				// This is expected if the user is not logged in
-				// console.error("Auth check failed:", error); // Optional: log for debugging
+				// Auth failed - clear cache
+				console.warn('⚠️ [Auth] Auth verification failed, clearing cache');
 				await apiLogout();
 				setUser(null);
+				localStorage.removeItem('auth_user');
 			} finally {
 				setLoading(false);
 			}
@@ -41,9 +61,7 @@ export const AuthProvider = ({ children }) => {
 
 		const refreshTokenProactively = async () => {
 			try {
-				console.log("[Auth] Proactively refreshing token...");
-				await apiClient.post("/users/token/refresh/");
-				console.log("[Auth] Token refreshed successfully");
+				await refreshAuthToken(); // Use shared refresh function with cooldown
 			} catch (error) {
 				console.warn(
 					"[Auth] Token refresh failed, user may need to re-login",
@@ -53,8 +71,9 @@ export const AuthProvider = ({ children }) => {
 			}
 		};
 
-		// Refresh immediately on login (to reset timer)
-		refreshTokenProactively();
+		// Don't refresh immediately on login - it conflicts with 401 interceptor
+		// The 401 interceptor will handle the first refresh if needed
+		// Just set up the interval for periodic refresh
 
 		// Set up interval for periodic refresh
 		const intervalId = setInterval(
@@ -74,6 +93,9 @@ export const AuthProvider = ({ children }) => {
 			// Backend now returns { user, tenant } for POS login
 			const userData = response.data.user || response.data;
 			setUser(userData);
+			// Cache user in localStorage for instant load on next app start
+			localStorage.setItem('auth_user', JSON.stringify(userData));
+			console.log('✅ [Auth] User logged in and cached');
 			return userData;
 		} catch (error) {
 			// Extract error message from backend response for ALL errors
@@ -96,6 +118,11 @@ export const AuthProvider = ({ children }) => {
 			// For cookie-based auth, we just need to clear the state.
 			// The actual cookie clearing is done by the backend on the /logout endpoint.
 			setUser(null);
+			// Clear cached user from localStorage
+			localStorage.removeItem('auth_user');
+			// Clear relation caches (categories, product types, taxes)
+			clearRelationCache();
+			console.log('✅ [Auth] User logged out and cache cleared');
 		}
 	};
 

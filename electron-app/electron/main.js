@@ -838,10 +838,10 @@ ipcMain.handle("offline:delete-records", async (event, tableName, deletedIds) =>
 });
 
 // Get cached data handlers
-ipcMain.handle("offline:get-cached-products", async () => {
+ipcMain.handle("offline:get-cached-products", async (event, filters = {}) => {
 	try {
 		const db = getDatabase();
-		return getProducts(db);
+		return getProducts(db, filters);
 	} catch (error) {
 		console.error("[Offline DB] Error getting cached products:", error);
 		throw error;
@@ -924,6 +924,37 @@ ipcMain.handle("offline:get-cached-users", async () => {
 		return getUsers(db);
 	} catch (error) {
 		console.error("[Offline DB] Error getting cached users:", error);
+		throw error;
+	}
+});
+
+// Developer tool: Clear offline cache tables
+ipcMain.handle("offline:clear-cache", async () => {
+	try {
+		const db = getDatabase();
+
+		console.log("[Offline DB] Clearing all cache tables...");
+
+		// Clear all dataset tables
+		db.exec(`
+			DELETE FROM products;
+			DELETE FROM categories;
+			DELETE FROM modifier_sets;
+			DELETE FROM discounts;
+			DELETE FROM taxes;
+			DELETE FROM product_types;
+			DELETE FROM inventory_stocks;
+			DELETE FROM inventory_locations;
+			DELETE FROM settings;
+			DELETE FROM users;
+			DELETE FROM datasets;
+		`);
+
+		console.log("[Offline DB] ✅ Cache cleared successfully");
+
+		return { success: true, message: "Cache cleared successfully" };
+	} catch (error) {
+		console.error("[Offline DB] ❌ Error clearing cache:", error);
 		throw error;
 	}
 });

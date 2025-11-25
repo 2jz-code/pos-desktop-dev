@@ -36,19 +36,20 @@ export function initializeSchema(db) {
   // Products table
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      product_type_id TEXT,
+      product_type_id INTEGER,
       name TEXT NOT NULL,
       description TEXT,
       price REAL NOT NULL,
-      category_id TEXT,
+      category_id INTEGER,
       image TEXT,
       track_inventory INTEGER NOT NULL DEFAULT 0,
       barcode TEXT,
       has_modifiers INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       is_public INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       tax_ids TEXT, -- JSON array of tax IDs
       modifier_sets TEXT -- JSON array of modifier set configurations
@@ -61,11 +62,11 @@ export function initializeSchema(db) {
   // Categories table
   db.exec(`
     CREATE TABLE IF NOT EXISTS categories (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       description TEXT,
-      parent_id TEXT,
+      parent_id INTEGER,
       lft INTEGER,
       rght INTEGER,
       tree_id INTEGER,
@@ -82,14 +83,14 @@ export function initializeSchema(db) {
   // Modifier sets table
   db.exec(`
     CREATE TABLE IF NOT EXISTS modifier_sets (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       internal_name TEXT NOT NULL,
       selection_type TEXT NOT NULL,
       min_selections INTEGER DEFAULT 0,
       max_selections INTEGER,
-      triggered_by_option_id TEXT,
+      triggered_by_option_id INTEGER,
       updated_at TEXT NOT NULL,
       options TEXT NOT NULL -- JSON array of modifier options
     );
@@ -98,7 +99,7 @@ export function initializeSchema(db) {
   // Discounts table
   db.exec(`
     CREATE TABLE IF NOT EXISTS discounts (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       code TEXT,
@@ -122,7 +123,7 @@ export function initializeSchema(db) {
   // Taxes table
   db.exec(`
     CREATE TABLE IF NOT EXISTS taxes (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       rate REAL NOT NULL,
@@ -133,7 +134,7 @@ export function initializeSchema(db) {
   // Product types table
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_types (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       name TEXT NOT NULL,
       description TEXT,
@@ -152,9 +153,9 @@ export function initializeSchema(db) {
   // Inventory locations table
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_locations (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      store_location_id TEXT NOT NULL,
+      store_location_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
       low_stock_threshold REAL,
@@ -166,11 +167,11 @@ export function initializeSchema(db) {
   // Inventory stocks table
   db.exec(`
     CREATE TABLE IF NOT EXISTS inventory_stocks (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
-      store_location_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      location_id TEXT NOT NULL,
+      store_location_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      location_id INTEGER NOT NULL,
       quantity REAL NOT NULL DEFAULT 0,
       expiration_date TEXT,
       low_stock_threshold REAL,
@@ -193,7 +194,7 @@ export function initializeSchema(db) {
   // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       tenant_id TEXT,
       email TEXT NOT NULL,
       username TEXT,
@@ -266,7 +267,7 @@ export function initializeSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS offline_approvals (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
       pin TEXT NOT NULL, -- Hashed PIN
       action TEXT NOT NULL, -- 'DISCOUNT', 'VOID', 'REFUND', 'PRICE_OVERRIDE'
       reference TEXT,

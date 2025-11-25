@@ -29,6 +29,9 @@ const baseClient = axios.create({
 
 let csrfToken = null;
 let csrfPromise = null;
+let refreshPromise = null;
+let lastRefreshTime = 0;
+const REFRESH_COOLDOWN_MS = 5000; // 5 second cooldown between refreshes
 
 async function ensureCsrfToken() {
   if (csrfToken) return csrfToken;
@@ -41,6 +44,45 @@ async function ensureCsrfToken() {
     });
   }
   return csrfPromise;
+}
+
+/**
+ * Shared token refresh function used by both interceptor and AuthContext
+ * Ensures only one refresh happens at a time via serialized promise
+ * @param {boolean} skipCooldown - Skip cooldown check (for forced refresh)
+ * @returns {Promise<void>}
+ */
+export async function refreshAuthToken(skipCooldown = false) {
+  // Check cooldown to prevent rapid successive refreshes
+  const now = Date.now();
+  if (!skipCooldown && (now - lastRefreshTime) < REFRESH_COOLDOWN_MS) {
+    console.log(`⏭️ [Auth] Skipping refresh - last refresh was ${Math.round((now - lastRefreshTime) / 1000)}s ago`);
+    return;
+  }
+
+  // Serialize refresh to avoid rotating the same token concurrently
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        console.log('🔄 [Auth] Refreshing token...');
+        const headers = { "X-Requested-With": "XMLHttpRequest" };
+        const token = await ensureCsrfToken().catch(() => null);
+        if (token) headers["X-CSRF-Token"] = token;
+
+        await baseClient.post("/users/token/refresh/", null, { headers });
+
+        lastRefreshTime = Date.now();
+        console.log('✅ [Auth] Token refreshed successfully');
+      } catch (error) {
+        console.error('❌ [Auth] Token refresh failed:', error.response?.data || error.message);
+        throw error;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+
+  return refreshPromise;
 }
 
 // Request Interceptor - Add any additional headers or processing
@@ -217,7 +259,8 @@ apiClient.interceptors.response.use(
 			originalRequest._retry = true; // Mark the request to prevent infinite loops
 
 			try {
-				await apiClient.post("/users/token/refresh/");
+				// Use shared refresh function to ensure only one refresh at a time
+				await refreshAuthToken(true); // Skip cooldown for 401 errors
 
 				// Clear device auth fields so fresh ones are generated on retry
 				if (originalRequest.data) {
