@@ -12,7 +12,7 @@ import {
 import { reassignProducts } from "@/domains/products/services/categoryService";
 import { Button } from "@/shared/components/ui/button";
 import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
-import { useOfflineGuard, useOfflineProductTypes } from "@/shared/hooks";
+import { useOfflineGuard, useOfflineProductTypes, useOfflineTaxes } from "@/shared/hooks";
 import {
 	Table,
 	TableBody,
@@ -35,8 +35,8 @@ import { Label } from "@/shared/components/ui/label";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/components/ui/use-toast";
 import { ArchiveDependencyDialog } from "@/shared/components/ui/ArchiveDependencyDialog";
-import { Edit, Archive, ArchiveRestore, Package, DollarSign, Globe, ChevronDown, Check, X, Plus, ShieldCheck, Clock } from "lucide-react";
-import { getTaxes, createTax } from "@/domains/products/services/taxService";
+import { Edit, Archive, ArchiveRestore, Package, DollarSign, ChevronDown, Check, X, Plus, ShieldCheck } from "lucide-react";
+import { createTax } from "@/domains/products/services/taxService";
 import {
     Select,
     SelectTrigger,
@@ -66,13 +66,12 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
         max_quantity_per_item: "",
         exclude_from_discounts: false,
     });
-    const [taxOptions, setTaxOptions] = useState([]);
     const [isTaxDialogOpen, setIsTaxDialogOpen] = useState(false);
     const [taxForm, setTaxForm] = useState({ name: "", rate: "" });
     const [isSavingTax, setIsSavingTax] = useState(false);
     const [taxPickerOpen, setTaxPickerOpen] = useState(false);
 	const [dataChanged, setDataChanged] = useState(false);
-	
+
 	// Archive dialog state
 	const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 	const [productTypeToArchive, setProductTypeToArchive] = useState(null);
@@ -89,27 +88,14 @@ export function ProductTypeManagementDialog({ open, onOpenChange }) {
 		enabled: open, // Only fetch when dialog is open
 	});
 
+	// Load taxes from offline cache (or API fallback)
+	const { data: taxOptions = [], refetch: refetchTaxes } = useOfflineTaxes({
+		enabled: open, // Only fetch when dialog is open
+	});
+
 	// Filter product types based on archived state
 	const productTypes = (allProductTypes || [])
 		.filter(type => showArchivedProductTypes ? !type.is_active : type.is_active);
-
-useEffect(() => {
-    // Only fetch taxes when dialog is actually open
-    if (open) {
-        console.log('🏷️ [ProductTypeManagementDialog] Dialog opened, fetching taxes');
-        fetchTaxes();
-    }
-}, [open]);
-
-const fetchTaxes = async () => {
-    try {
-        const res = await getTaxes({ limit: 1000 });
-        const data = res.data?.results || res.data || [];
-        setTaxOptions(Array.isArray(data) ? data : []);
-    } catch (e) {
-        console.error("Failed to fetch taxes", e);
-    }
-};
 
 	const handleFormChange = (e) => {
 		const { name, value } = e.target;
@@ -352,24 +338,26 @@ const handleFormSubmit = guardSubmit(async (e) => {
 											</TableCell>
 											<TableCell>
 												<div className="flex items-center justify-center gap-1">
-													<Button
+													<OnlineOnlyButton
 														variant="ghost"
 														size="sm"
 														onClick={() => openFormDialog(type)}
 														className="h-8 w-8 p-0"
+														disabledMessage="Editing product types requires internet connection"
 													>
 														<Edit className="h-4 w-4" />
 														<span className="sr-only">Edit product type</span>
-													</Button>
-													<Button
+													</OnlineOnlyButton>
+													<OnlineOnlyButton
 														variant="ghost"
 														size="sm"
 														onClick={() => handleArchiveToggle(type)}
 														className={`h-8 w-8 p-0 ${
-															type.is_active 
+															type.is_active
 																? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
 																: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
 														}`}
+														disabledMessage={type.is_active ? "Archiving requires internet" : "Restoring requires internet"}
 													>
 														{type.is_active ? (
 															<Archive className="h-4 w-4" />
@@ -379,7 +367,7 @@ const handleFormSubmit = guardSubmit(async (e) => {
 														<span className="sr-only">
 															{type.is_active ? "Archive product type" : "Restore product type"}
 														</span>
-													</Button>
+													</OnlineOnlyButton>
 												</div>
 											</TableCell>
 										</TableRow>
@@ -590,7 +578,7 @@ const handleFormSubmit = guardSubmit(async (e) => {
                                                     {formData.default_taxes_ids?.length > 0 ? (
                                                         <>
                                                             {formData.default_taxes_ids.slice(0, 3).map((taxId) => {
-                                                                const tax = taxOptions.find(t => t.id === taxId);
+                                                                const tax = (taxOptions || []).find(t => t.id === taxId);
                                                                 return tax ? (
                                                                     <Badge key={taxId} variant="secondary" className="text-xs">
                                                                         {tax.name} ({tax.rate}%)
@@ -624,7 +612,7 @@ const handleFormSubmit = guardSubmit(async (e) => {
                                                 <CommandEmpty>No taxes found.</CommandEmpty>
                                                 <CommandList>
                                                     <CommandGroup>
-                                                        {taxOptions.map((tax) => {
+                                                        {(taxOptions || []).map((tax) => {
                                                             const isSelected = (formData.default_taxes_ids || []).includes(tax.id);
                                                             return (
                                                                 <CommandItem
@@ -763,7 +751,8 @@ const handleFormSubmit = guardSubmit(async (e) => {
                             if (Number.isNaN(payload.rate)) throw new Error("Rate must be a number (e.g., 8.25)");
                             const res = await createTax(payload);
                             const created = res?.data;
-                            setTaxOptions((prev) => (Array.isArray(prev) ? [...prev, created] : [created]));
+                            // Refetch taxes from cache/API to include newly created tax
+                            refetchTaxes();
                             setFormData((prev) => ({
                                 ...prev,
                                 default_taxes_ids: [...new Set([...(prev.default_taxes_ids || []), created.id])],

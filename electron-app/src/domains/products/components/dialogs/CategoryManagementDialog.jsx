@@ -156,13 +156,6 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 	const filteredCategories = (allCategories || [])
 		.filter(cat => showArchivedCategories ? !cat.is_active : cat.is_active);
 
-	// DEBUG: Log order values to check if they're hierarchical
-	console.log('📊 Category order values:', filteredCategories.map(c => ({
-		name: c.name,
-		order: c.order,
-		parent: c.parent?.name || 'ROOT'
-	})));
-
 	// Sort hierarchically: parents by order, then children by order within each parent
 	const categories = (() => {
 		const parents = filteredCategories
@@ -609,16 +602,17 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 
 								{/* Actions */}
 								<div className="w-[100px] flex items-center justify-center gap-1">
-									<Button
+									<OnlineOnlyButton
 										variant="ghost"
 										size="sm"
 										onClick={() => openFormDialog(category)}
 										className="h-8 w-8 p-0"
+										disabledMessage="Editing categories requires internet connection"
 									>
 										<Edit className="h-4 w-4" />
 										<span className="sr-only">Edit category</span>
-									</Button>
-									<Button
+									</OnlineOnlyButton>
+									<OnlineOnlyButton
 										variant="ghost"
 										size="sm"
 										onClick={() => handleArchiveToggle(category)}
@@ -627,6 +621,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												? "text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
 												: "text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
 										}`}
+										disabledMessage={category.is_active ? "Archiving requires internet" : "Restoring requires internet"}
 									>
 										{category.is_active ? (
 											<Archive className="h-4 w-4" />
@@ -638,7 +633,7 @@ export function CategoryManagementDialog({ open, onOpenChange }) {
 												? "Archive category"
 												: "Restore category"}
 										</span>
-									</Button>
+									</OnlineOnlyButton>
 								</div>
 							</div>
 						)}

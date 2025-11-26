@@ -73,21 +73,18 @@ export function ProductFormDialog({
 	// Sync cached data to local state
 	useEffect(() => {
 		if (cachedCategories && cachedCategories.length >= 0) {
-			console.log('📦 [ProductFormDialog] Using cached categories:', cachedCategories.length);
 			setCategories(cachedCategories);
 		}
 	}, [cachedCategories]);
 
 	useEffect(() => {
 		if (cachedProductTypes && cachedProductTypes.length >= 0) {
-			console.log('📦 [ProductFormDialog] Using cached product types:', cachedProductTypes.length);
 			setProductTypes(cachedProductTypes);
 		}
 	}, [cachedProductTypes]);
 
 	useEffect(() => {
 		if (cachedTaxes && cachedTaxes.length >= 0) {
-			console.log('📦 [ProductFormDialog] Using cached taxes:', cachedTaxes.length);
 			setTaxOptions(Array.isArray(cachedTaxes) ? cachedTaxes : []);
 		}
 	}, [cachedTaxes]);
@@ -111,7 +108,6 @@ export function ProductFormDialog({
 			const locationsData = locationsRaw?.results || locationsRaw?.data?.results || locationsRaw?.data || locationsRaw || [];
 
 			setLocations(locationsData);
-			console.log('📦 [ProductFormDialog] Loaded locations from API:', locationsData.length);
 
 			if (locationsData.length > 0) {
 				setFormData((prev) => ({

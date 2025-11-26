@@ -17,18 +17,22 @@ export function OnlineOnlyButton({
   onClick,
   disabledMessage = "This action requires internet connection",
   showTooltip = true,
+  isOnlineOverride,
   ...props
 }) {
-  const isOnline = useOnlineStatus();
+  const hookOnline = useOnlineStatus();
+  const isOnline = typeof isOnlineOverride === "boolean" ? isOnlineOverride : hookOnline;
+  const isDisabled = !isOnline || !!props.disabled;
 
   const handleClick = (e) => {
-    if (!isOnline) {
+    if (isDisabled) {
       toast({
         title: "Offline",
         description: disabledMessage,
         variant: "destructive",
       });
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
     onClick?.(e);
@@ -38,7 +42,9 @@ export function OnlineOnlyButton({
     <Button
       {...props}
       onClick={handleClick}
-      disabled={!isOnline || props.disabled}
+      disabled={isDisabled}
+      aria-disabled={isDisabled}
+      tabIndex={isDisabled ? -1 : props.tabIndex}
     >
       {children}
     </Button>

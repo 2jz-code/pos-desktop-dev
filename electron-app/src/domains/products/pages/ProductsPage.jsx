@@ -233,7 +233,6 @@ const ProductsPage = () => {
 					parent: cat.parent_id,
 				}))
 			);
-			console.log(`📦 [ProductsPage] Loaded ${parents.length} parent categories (from cache: ${categoriesFromCache})`);
 		}
 	}, [allCategories, categoriesFromCache, sortCategories]);
 
@@ -251,7 +250,6 @@ const ProductsPage = () => {
 				cat => cat.parent_id && cat.parent_id.toString() === selectedParentCategory
 			));
 			setChildCategories(children);
-			console.log(`📦 [ProductsPage] Found ${children.length} child categories for parent ${selectedParentCategory}`);
 		}
 	}, [selectedParentCategory, allCategories, sortCategories]);
 
