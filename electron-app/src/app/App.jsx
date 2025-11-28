@@ -73,10 +73,8 @@ function App() {
 			// They will update the store when ready, but won't block app rendering
 			console.log("🚀 [App] Starting non-blocking initialization tasks...");
 
-			// Fetch settings in background (cached by useOfflineSettings hook)
-			useSettingsStore.getState().fetchSettings().catch(err => {
-				console.warn("⚠️ [App] Settings fetch failed (will use cache):", err);
-			});
+			// NOTE: Settings are loaded via useOfflineSettings hook in components
+			// The sync service populates the cache, no need for separate API call here
 
 			// Discover printers in background
 			useSettingsStore.getState().discoverAndSetPrinters().catch(err => {

@@ -254,6 +254,7 @@ export const {
   getProductTypes,
   getInventoryStocks,
   getInventoryByProductId,
+  getInventoryLocations,
   getSettings,
   getUsers,
   getUserById

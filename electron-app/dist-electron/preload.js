@@ -145,13 +145,14 @@ contextBridge.exposeInMainWorld("offlineAPI", {
   // Get cached data
   getCachedProducts: (filters) => ipcRenderer.invoke("offline:get-cached-products", filters),
   getCachedCategories: () => ipcRenderer.invoke("offline:get-cached-categories"),
-  getCachedDiscounts: () => ipcRenderer.invoke("offline:get-cached-discounts"),
+  getCachedDiscounts: (options) => ipcRenderer.invoke("offline:get-cached-discounts", options),
   getCachedModifierSets: () => ipcRenderer.invoke("offline:get-cached-modifier-sets"),
   getCachedTaxes: () => ipcRenderer.invoke("offline:get-cached-taxes"),
   getCachedProductTypes: () => ipcRenderer.invoke("offline:get-cached-product-types"),
   getCachedInventory: () => ipcRenderer.invoke("offline:get-cached-inventory"),
+  getCachedInventoryLocations: () => ipcRenderer.invoke("offline:get-cached-inventory-locations"),
   getCachedSettings: () => ipcRenderer.invoke("offline:get-cached-settings"),
-  getCachedUsers: () => ipcRenderer.invoke("offline:get-cached-users"),
+  getCachedUsers: (options) => ipcRenderer.invoke("offline:get-cached-users", options),
   // Developer tools
   clearCache: () => ipcRenderer.invoke("offline:clear-cache"),
   // Get specific records

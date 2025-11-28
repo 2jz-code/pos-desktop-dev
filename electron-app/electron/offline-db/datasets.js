@@ -598,9 +598,20 @@ export function getCategories(db) {
 
 /**
  * Get all discounts
+ * @param {Object} options
+ * @param {string} options.includeArchived - 'only' for archived only, true for all, false for active only (default)
  */
-export function getDiscounts(db) {
-  const stmt = db.prepare('SELECT * FROM discounts WHERE is_active = 1');
+export function getDiscounts(db, options = {}) {
+  const { includeArchived = false } = options;
+
+  let query = 'SELECT * FROM discounts';
+  if (includeArchived === 'only') {
+    query += ' WHERE is_active = 0';
+  } else if (!includeArchived) {
+    query += ' WHERE is_active = 1';
+  }
+
+  const stmt = db.prepare(query);
   const discounts = stmt.all();
 
   return discounts.map(d => ({
@@ -649,16 +660,40 @@ export function getProductTypes(db) {
 }
 
 /**
- * Get inventory stock
+ * Get inventory stock with hydrated product and location data
  */
 export function getInventoryStocks(db) {
   const stmt = db.prepare('SELECT * FROM inventory_stocks WHERE is_active = 1');
   const stocks = stmt.all();
 
-  return stocks.map(s => ({
-    ...s,
-    is_active: s.is_active === 1
-  }));
+  // Get products and locations for hydration
+  const products = getProducts(db);
+  const productMap = new Map(products.map(p => [p.id, p]));
+
+  const locations = getInventoryLocations(db);
+  const locationMap = new Map(locations.map(l => [l.id, l]));
+
+  return stocks.map(s => {
+    const product = productMap.get(s.product_id);
+    const location = locationMap.get(s.location_id);
+
+    return {
+      ...s,
+      is_active: s.is_active === 1,
+      // Hydrate with nested product object (matching API structure)
+      product: product ? {
+        id: product.id,
+        name: product.name,
+        barcode: product.barcode,
+        price: product.price,
+      } : { id: s.product_id, name: 'Unknown Product' },
+      // Hydrate with nested location object
+      location: location ? {
+        id: location.id,
+        name: location.name,
+      } : { id: s.location_id, name: 'Unknown Location' },
+    };
+  });
 }
 
 /**
@@ -674,6 +709,19 @@ export function getInventoryByProductId(db, productId) {
     ...stock,
     is_active: stock.is_active === 1
   };
+}
+
+/**
+ * Get inventory locations
+ */
+export function getInventoryLocations(db) {
+  const stmt = db.prepare('SELECT * FROM inventory_locations WHERE is_active = 1 ORDER BY name');
+  const locations = stmt.all();
+
+  return locations.map(loc => ({
+    ...loc,
+    is_active: loc.is_active === 1
+  }));
 }
 
 /**
@@ -697,9 +745,24 @@ export function getSettings(db) {
 
 /**
  * Get all users (POS staff)
+ * @param {import('better-sqlite3').Database} db
+ * @param {Object} options
+ * @param {boolean|string} options.includeArchived - false (active only), 'only' (archived only), true (all)
  */
-export function getUsers(db) {
-  const stmt = db.prepare('SELECT * FROM users WHERE is_pos_staff = 1 AND is_active = 1');
+export function getUsers(db, options = {}) {
+  const { includeArchived = false } = options;
+
+  let query = 'SELECT * FROM users WHERE is_pos_staff = 1';
+
+  // Filter by active status based on includeArchived
+  if (includeArchived === 'only') {
+    query += ' AND is_active = 0';
+  } else if (!includeArchived) {
+    query += ' AND is_active = 1';
+  }
+  // If includeArchived === true, show all (no additional filter)
+
+  const stmt = db.prepare(query);
   const users = stmt.all();
 
   return users.map(u => ({

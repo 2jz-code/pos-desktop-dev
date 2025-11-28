@@ -50,6 +50,7 @@ import inventoryService from "../services/inventoryService";
 import { useDebounce } from "@ajeen/ui";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
+import { OfflineOverlay } from "@/shared/components/ui/OfflineOverlay";
 import { ReasonBadge } from "../components/ReasonBadge";
 
 const OPERATION_TYPES = {
@@ -246,6 +247,10 @@ const StockHistoryPage = () => {
 	);
 
 	return (
+		<OfflineOverlay
+			message="Stock history requires an internet connection to load historical data."
+			title="Stock History Unavailable Offline"
+		>
 		<div className="flex flex-col h-full">
 			<PageHeader
 				icon={History}
@@ -519,6 +524,7 @@ const StockHistoryPage = () => {
 				</ScrollArea>
 			</div>
 		</div>
+		</OfflineOverlay>
 	);
 };
 

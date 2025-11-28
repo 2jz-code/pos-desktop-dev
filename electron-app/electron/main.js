@@ -45,6 +45,7 @@ import {
 	getProductTypes,
 	getInventoryStocks,
 	getInventoryByProductId,
+	getInventoryLocations,
 	getSettings,
 	getUsers,
 	getUserById,
@@ -858,10 +859,10 @@ ipcMain.handle("offline:get-cached-categories", async () => {
 	}
 });
 
-ipcMain.handle("offline:get-cached-discounts", async () => {
+ipcMain.handle("offline:get-cached-discounts", async (event, options = {}) => {
 	try {
 		const db = getDatabase();
-		return getDiscounts(db);
+		return getDiscounts(db, options);
 	} catch (error) {
 		console.error("[Offline DB] Error getting cached discounts:", error);
 		throw error;
@@ -908,6 +909,16 @@ ipcMain.handle("offline:get-cached-inventory", async () => {
 	}
 });
 
+ipcMain.handle("offline:get-cached-inventory-locations", async () => {
+	try {
+		const db = getDatabase();
+		return getInventoryLocations(db);
+	} catch (error) {
+		console.error("[Offline DB] Error getting cached inventory locations:", error);
+		throw error;
+	}
+});
+
 ipcMain.handle("offline:get-cached-settings", async () => {
 	try {
 		const db = getDatabase();
@@ -918,10 +929,10 @@ ipcMain.handle("offline:get-cached-settings", async () => {
 	}
 });
 
-ipcMain.handle("offline:get-cached-users", async () => {
+ipcMain.handle("offline:get-cached-users", async (event, options = {}) => {
 	try {
 		const db = getDatabase();
-		return getUsers(db);
+		return getUsers(db, options);
 	} catch (error) {
 		console.error("[Offline DB] Error getting cached users:", error);
 		throw error;

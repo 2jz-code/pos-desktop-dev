@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
-import { usePosStore } from "@/domains/pos/store/posStore";
+import { useState, useMemo } from "react";
 import { TableCell } from "@/shared/components/ui/table";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
 import { Input } from "@/shared/components/ui/input";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
 import {
 	MoreHorizontal,
 	Plus,
-	Trash2,
 	Edit,
 	Percent,
 	AlertTriangle,
@@ -28,57 +27,40 @@ import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { StandardTable } from "@/shared/components/layout";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
-import { shallow } from "zustand/shallow";
+import { useOfflineDiscounts, useOnlineStatus, useOfflineGuard } from "@/shared/hooks";
+import {
+	createDiscount,
+	updateDiscount,
+	archiveDiscount,
+	unarchiveDiscount,
+} from "@/domains/discounts/services/discountService";
 
 export default function DiscountsPage() {
-	const {
-		discounts,
-		isLoading,
-		error,
-		fetchDiscounts,
-		updateDiscount,
-		createDiscount,
-		archiveDiscount,
-		unarchiveDiscount,
-	} = usePosStore(
-		(state) => ({
-			discounts: state.discounts,
-			isLoading: state.isLoading,
-			error: state.error,
-			fetchDiscounts: state.fetchDiscounts,
-			updateDiscount: state.updateDiscount,
-			createDiscount: state.createDiscount,
-			deleteDiscount: state.deleteDiscount,
-			archiveDiscount: state.archiveDiscount,
-			unarchiveDiscount: state.unarchiveDiscount,
-		}),
-		shallow
-	);
 	const { toast } = useToast();
 	const confirmation = useConfirmation();
+	const isOnline = useOnlineStatus();
+	const { guardSubmit } = useOfflineGuard();
+
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [selectedDiscount, setSelectedDiscount] = useState(null);
-	const [filteredDiscounts, setFilteredDiscounts] = useState([]);
 	const [showArchivedDiscounts, setShowArchivedDiscounts] = useState(false);
 	const [filters, setFilters] = useState({
 		search: "",
 	});
 
-	useEffect(() => {
-		// Fetch discounts with include_archived parameter based on toggle state
-		const params = showArchivedDiscounts ? { include_archived: "only" } : {};
-		fetchDiscounts(params);
-	}, [fetchDiscounts, showArchivedDiscounts]);
+	// Fetch discounts with offline cache support
+	const {
+		data: discounts,
+		loading: isLoading,
+		error,
+		refetch,
+	} = useOfflineDiscounts({
+		includeArchived: showArchivedDiscounts ? "only" : false,
+	});
 
-	useEffect(() => {
-		applyFilters();
-	}, [discounts, filters.search]);
-
-	const applyFilters = () => {
+	// Client-side filtering
+	const filteredDiscounts = useMemo(() => {
 		let filtered = [...(discounts || [])];
-
-		// No need to filter by archived status - backend already handles this
-		// via the include_archived parameter
 
 		if (filters.search) {
 			const searchLower = filters.search.toLowerCase();
@@ -91,8 +73,8 @@ export default function DiscountsPage() {
 			);
 		}
 
-		setFilteredDiscounts(filtered);
-	};
+		return filtered;
+	}, [discounts, filters.search]);
 
 	const handleSearchChange = (e) => {
 		const value = e.target.value;
@@ -116,6 +98,7 @@ export default function DiscountsPage() {
 			}
 			setIsDialogOpen(false);
 			setSelectedDiscount(null);
+			refetch({ forceApi: true });
 		} catch (err) {
 			console.error("Failed to save discount:", err);
 			toast({
@@ -127,37 +110,43 @@ export default function DiscountsPage() {
 	};
 
 	const handleArchive = async (discountId) => {
-		try {
-			await archiveDiscount(discountId);
-			toast({
-				title: "Success",
-				description: "Discount archived successfully.",
-			});
-		} catch (err) {
-			console.error("Failed to archive discount:", err);
-			toast({
-				title: "Error",
-				description: "Failed to archive discount.",
-				variant: "destructive",
-			});
-		}
+		guardSubmit(async () => {
+			try {
+				await archiveDiscount(discountId);
+				toast({
+					title: "Success",
+					description: "Discount archived successfully.",
+				});
+				refetch({ forceApi: true });
+			} catch (err) {
+				console.error("Failed to archive discount:", err);
+				toast({
+					title: "Error",
+					description: "Failed to archive discount.",
+					variant: "destructive",
+				});
+			}
+		});
 	};
 
 	const handleUnarchive = async (discountId) => {
-		try {
-			await unarchiveDiscount(discountId);
-			toast({
-				title: "Success",
-				description: "Discount unarchived successfully.",
-			});
-		} catch (err) {
-			console.error("Failed to unarchive discount:", err);
-			toast({
-				title: "Error",
-				description: "Failed to unarchive discount.",
-				variant: "destructive",
-			});
-		}
+		guardSubmit(async () => {
+			try {
+				await unarchiveDiscount(discountId);
+				toast({
+					title: "Success",
+					description: "Discount unarchived successfully.",
+				});
+				refetch({ forceApi: true });
+			} catch (err) {
+				console.error("Failed to unarchive discount:", err);
+				toast({
+					title: "Error",
+					description: "Failed to unarchive discount.",
+					variant: "destructive",
+				});
+			}
+		});
 	};
 
 	const openAddDialog = () => {
@@ -272,7 +261,10 @@ export default function DiscountsPage() {
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end">
-						<DropdownMenuItem onClick={() => openEditDialog(discount)}>
+						<DropdownMenuItem
+							onClick={() => openEditDialog(discount)}
+							disabled={!isOnline}
+						>
 							<Edit className="mr-2 h-4 w-4" />
 							Edit
 						</DropdownMenuItem>
@@ -280,6 +272,7 @@ export default function DiscountsPage() {
 							<DropdownMenuItem
 								onClick={() => handleUnarchive(discount.id)}
 								className="text-green-600"
+								disabled={!isOnline}
 							>
 								<ArchiveRestore className="mr-2 h-4 w-4" />
 								Unarchive
@@ -288,6 +281,7 @@ export default function DiscountsPage() {
 							<DropdownMenuItem
 								onClick={() => handleArchive(discount.id)}
 								className="text-orange-600"
+								disabled={!isOnline}
 							>
 								<Archive className="mr-2 h-4 w-4" />
 								Archive
@@ -318,14 +312,14 @@ export default function DiscountsPage() {
 					</>
 				)}
 			</Button>
-			<Button onClick={openAddDialog}>
+			<OnlineOnlyButton onClick={openAddDialog}>
 				<Plus className="mr-2 h-4 w-4" />
 				Add Discount
-			</Button>
+			</OnlineOnlyButton>
 		</div>
 	);
 
-	if (error) {
+	if (error && !discounts?.length) {
 		return (
 			<div className="flex flex-col h-full">
 				<PageHeader
@@ -340,8 +334,8 @@ export default function DiscountsPage() {
 							<AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
 							<div>
 								<h3 className="font-semibold text-foreground mb-2">Failed to load discounts</h3>
-								<p className="text-sm text-muted-foreground mb-4">{error}</p>
-								<Button onClick={fetchDiscounts} variant="outline">
+								<p className="text-sm text-muted-foreground mb-4">{error?.message || String(error)}</p>
+								<Button onClick={() => refetch({ forceApi: true })} variant="outline">
 									Try Again
 								</Button>
 							</div>

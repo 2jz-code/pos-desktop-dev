@@ -1,13 +1,12 @@
 import { useState, useMemo } from "react";
 import {
-	getUsers,
 	archiveUser,
 	unarchiveUser,
 	createUser,
 	updateUser,
 	setPin,
 } from "@/domains/users/services/userService";
-import { Button } from "@/shared/components/ui/button";
+import { Button, OnlineOnlyButton } from "@/shared/components/ui";
 import { TableCell } from "@/shared/components/ui/table";
 import {
 	Dialog,
@@ -51,7 +50,7 @@ import { StandardTable } from "@/shared/components/layout";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useOfflineUsers, useOfflineGuard, useOnlineStatus } from "@/shared/hooks";
 
 const ROLES = {
 	OWNER: "Owner",
@@ -76,9 +75,10 @@ const EDITABLE_ROLES = {
 
 export function UsersPage() {
 	const { user, isOwner, isManager, isCashier } = useAuth();
-	const queryClient = useQueryClient();
 	const { toast } = useToast();
 	const confirmation = useConfirmation();
+	const { guardSubmit } = useOfflineGuard();
+	const isOnline = useOnlineStatus();
 
 	// State for dialogs and forms
 	const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
@@ -132,17 +132,14 @@ export function UsersPage() {
 		return [];
 	};
 
-	// Fetch users
+	// Fetch users from offline cache (or API fallback)
 	const {
 		data: users = [],
-		isLoading,
+		loading,
 		error,
-	} = useQuery({
-		queryKey: ["users", showArchivedUsers],
-		queryFn: () => {
-			const params = showArchivedUsers ? { include_archived: 'only' } : {};
-			return getUsers(params).then((res) => res.data?.results || res.data || []);
-		},
+		refetch,
+	} = useOfflineUsers({
+		includeArchived: showArchivedUsers ? 'only' : false,
 	});
 
 	// Filter users based on search
@@ -166,18 +163,23 @@ export function UsersPage() {
 		});
 	}, [users, filters.search]);
 
-	// Mutations
-	const createUserMutation = useMutation({
-		mutationFn: createUser,
-		onSuccess: () => {
+	// Mutation loading states
+	const [isCreating, setIsCreating] = useState(false);
+	const [isUpdating, setIsUpdating] = useState(false);
+	const [isSettingPin, setIsSettingPin] = useState(false);
+
+	// Mutation handlers
+	const handleCreateUser = async (userData) => {
+		setIsCreating(true);
+		try {
+			await createUser(userData);
 			toast({
 				title: "Success",
 				description: "User created successfully.",
 			});
-			queryClient.invalidateQueries({ queryKey: ["users"] });
+			await refetch({ forceApi: true });
 			closeUserDialog();
-		},
-		onError: (error) => {
+		} catch (error) {
 			console.error("Failed to create user:", error);
 			const errorMessage = error?.response?.data?.email?.[0] ||
 							   error?.response?.data?.username?.[0] ||
@@ -188,20 +190,22 @@ export function UsersPage() {
 				description: errorMessage,
 				variant: "destructive",
 			});
-		},
-	});
+		} finally {
+			setIsCreating(false);
+		}
+	};
 
-	const updateUserMutation = useMutation({
-		mutationFn: ({ id, userData }) => updateUser(id, userData),
-		onSuccess: () => {
+	const handleUpdateUser = async (id, userData) => {
+		setIsUpdating(true);
+		try {
+			await updateUser(id, userData);
 			toast({
 				title: "Success",
 				description: "User updated successfully.",
 			});
-			queryClient.invalidateQueries({ queryKey: ["users"] });
+			await refetch({ forceApi: true });
 			closeUserDialog();
-		},
-		onError: (error) => {
+		} catch (error) {
 			console.error("Failed to update user:", error);
 			const errorMessage = error?.response?.data?.email?.[0] ||
 							   error?.response?.data?.username?.[0] ||
@@ -212,68 +216,70 @@ export function UsersPage() {
 				description: errorMessage,
 				variant: "destructive",
 			});
-		},
-	});
+		} finally {
+			setIsUpdating(false);
+		}
+	};
 
-	const archiveUserMutation = useMutation({
-		mutationFn: archiveUser,
-		onSuccess: () => {
+	const handleArchive = async (userId) => {
+		try {
+			await archiveUser(userId);
 			toast({
 				title: "Success",
 				description: "User archived successfully.",
 			});
-			queryClient.invalidateQueries({ queryKey: ["users"] });
-		},
-		onError: (error) => {
+			await refetch({ forceApi: true });
+		} catch (error) {
 			console.error("Failed to archive user:", error);
 			toast({
 				title: "Error",
 				description: "Failed to archive user.",
 				variant: "destructive",
 			});
-		},
-	});
+		}
+	};
 
-	const unarchiveUserMutation = useMutation({
-		mutationFn: unarchiveUser,
-		onSuccess: () => {
+	const handleUnarchive = async (userId) => {
+		try {
+			await unarchiveUser(userId);
 			toast({
 				title: "Success",
 				description: "User restored successfully.",
 			});
-			queryClient.invalidateQueries({ queryKey: ["users"] });
-		},
-		onError: (error) => {
+			await refetch({ forceApi: true });
+		} catch (error) {
 			console.error("Failed to restore user:", error);
 			toast({
 				title: "Error",
 				description: "Failed to restore user.",
 				variant: "destructive",
 			});
-		},
-	});
+		}
+	};
 
-	const setPinMutation = useMutation({
-		mutationFn: ({ userId, pinData }) => setPin(userId, pinData.pin),
-		onSuccess: () => {
+	const handleSetPin = async (userId, pin) => {
+		setIsSettingPin(true);
+		try {
+			await setPin(userId, pin);
 			toast({
 				title: "Success",
 				description: "PIN set successfully.",
 			});
 			closePinDialog();
-		},
-		onError: (error) => {
+		} catch (error) {
 			console.error("Failed to set PIN:", error);
 			toast({
 				title: "Error",
 				description: "Failed to set PIN.",
 				variant: "destructive",
 			});
-		},
-	});
+		} finally {
+			setIsSettingPin(false);
+		}
+	};
 
 	// Event handlers
-	const handleArchiveUser = async (userId, userToArchive) => {
+	const handleArchiveUser = (userId, userToArchive) => {
 		if (showArchivedUsers) {
 			// Unarchive/restore user
 			confirmation.show({
@@ -281,9 +287,7 @@ export function UsersPage() {
 				description: `Are you sure you want to restore "${userToArchive.first_name} ${userToArchive.last_name}"?`,
 				variant: "default",
 				confirmText: "Restore",
-				onConfirm: () => {
-					unarchiveUserMutation.mutate(userId);
-				}
+				onConfirm: guardSubmit(() => handleUnarchive(userId)),
 			});
 		} else {
 			// Archive user
@@ -292,9 +296,7 @@ export function UsersPage() {
 				description: `Are you sure you want to archive "${userToArchive.first_name} ${userToArchive.last_name}"? They will no longer be able to access the system.`,
 				variant: "destructive",
 				confirmText: "Archive",
-				onConfirm: () => {
-					archiveUserMutation.mutate(userId);
-				}
+				onConfirm: guardSubmit(() => handleArchive(userId)),
 			});
 		}
 	};
@@ -344,16 +346,16 @@ export function UsersPage() {
 				updateData.role = formData.role;
 			}
 
-			updateUserMutation.mutate({ id: editingUser.id, userData: updateData });
+			await handleUpdateUser(editingUser.id, updateData);
 		} else {
-			createUserMutation.mutate(formData);
+			await handleCreateUser(formData);
 		}
 	};
 
 	const handlePinFormSubmit = async (e) => {
 		e.preventDefault();
 		if (selectedUserForPin) {
-			setPinMutation.mutate({ userId: selectedUserForPin.id, pinData });
+			await handleSetPin(selectedUserForPin.id, pinData.pin);
 		}
 	};
 
@@ -444,13 +446,19 @@ export function UsersPage() {
 					<DropdownMenuContent align="end">
 						<DropdownMenuLabel>Actions</DropdownMenuLabel>
 						{canEditUser(targetUser) && (
-							<DropdownMenuItem onClick={() => openEditDialog(targetUser)}>
+							<DropdownMenuItem
+								onClick={() => openEditDialog(targetUser)}
+								disabled={!isOnline}
+							>
 								<Edit className="mr-2 h-4 w-4" />
 								Edit
 							</DropdownMenuItem>
 						)}
 						{canSetPin(targetUser) && (
-							<DropdownMenuItem onClick={() => openPinDialog(targetUser)}>
+							<DropdownMenuItem
+								onClick={() => openPinDialog(targetUser)}
+								disabled={!isOnline}
+							>
 								<KeyRound className="mr-2 h-4 w-4" />
 								Set PIN
 							</DropdownMenuItem>
@@ -459,6 +467,7 @@ export function UsersPage() {
 							<DropdownMenuItem
 								onClick={() => handleArchiveUser(targetUser.id, targetUser)}
 								className={showArchivedUsers ? "text-green-600" : "text-destructive"}
+								disabled={!isOnline}
 							>
 								{showArchivedUsers ? (
 									<>
@@ -495,10 +504,10 @@ export function UsersPage() {
 				)}
 			</Button>
 			{canCreateUsers && (
-				<Button onClick={openCreateDialog}>
+				<OnlineOnlyButton onClick={openCreateDialog}>
 					<UserPlus className="mr-2 h-4 w-4" />
 					Create User
-				</Button>
+				</OnlineOnlyButton>
 			)}
 		</div>
 	);
@@ -542,7 +551,7 @@ export function UsersPage() {
 							<StandardTable
 								headers={headers}
 								data={Array.isArray(filteredUsers) ? filteredUsers : []}
-								loading={isLoading}
+								loading={loading}
 								emptyMessage="No users found for the selected filters."
 								renderRow={renderUserRow}
 							/>
@@ -740,15 +749,15 @@ export function UsersPage() {
 								type="button"
 								variant="outline"
 								onClick={closeUserDialog}
-								disabled={createUserMutation.isPending || updateUserMutation.isPending}
+								disabled={isCreating || isUpdating}
 							>
 								Cancel
 							</Button>
-							<Button
+							<OnlineOnlyButton
 								type="submit"
-								disabled={createUserMutation.isPending || updateUserMutation.isPending}
+								disabled={isCreating || isUpdating}
 							>
-								{createUserMutation.isPending || updateUserMutation.isPending ? (
+								{isCreating || isUpdating ? (
 									<>
 										<div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
 										{editingUser ? "Updating..." : "Creating..."}
@@ -758,7 +767,7 @@ export function UsersPage() {
 										{editingUser ? "Update User" : "Create User"}
 									</>
 								)}
-							</Button>
+							</OnlineOnlyButton>
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -809,9 +818,9 @@ export function UsersPage() {
 							>
 								Cancel
 							</Button>
-							<Button type="submit">
-								{setPinMutation.isPending ? "Setting..." : "Set PIN"}
-							</Button>
+							<OnlineOnlyButton type="submit" disabled={isSettingPin}>
+								{isSettingPin ? "Setting..." : "Set PIN"}
+							</OnlineOnlyButton>
 						</DialogFooter>
 					</form>
 				</DialogContent>

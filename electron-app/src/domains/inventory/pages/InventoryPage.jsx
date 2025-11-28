@@ -47,7 +47,7 @@ import {
 	History,
 } from "lucide-react";
 import { StandardTable } from "@/shared/components/layout/StandardTable";
-import { useInventoryBarcode } from "@/shared/hooks";
+import { useInventoryBarcode, useOnlineStatus, useOfflineInventory, useOfflineInventoryLocations } from "@/shared/hooks";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { useDebounce, useScrollToScannedItem } from "@ajeen/ui";
 import { formatCurrency } from "@ajeen/ui";
@@ -63,7 +63,6 @@ import { StockMetadataEditDialog } from "@/domains/inventory/components/dialogs/
 import {
 	getDashboardData,
 	getAllStock,
-	getLocations,
 	deleteLocation,
 } from "@/domains/inventory/services/inventoryService";
 import { useToast } from "@/shared/components/ui/use-toast";
@@ -82,6 +81,7 @@ const InventoryPage = () => {
 	const { toast } = useToast();
 	const confirmation = useConfirmation();
 	const navigate = useNavigate();
+	const isOnline = useOnlineStatus();
 	const [highlightedProductId, setHighlightedProductId] = useState(null);
 	const [scannedProductId, setScannedProductId] = useState(null);
 	const [currentEditingProduct, setCurrentEditingProduct] = useState(null);
@@ -205,10 +205,17 @@ const InventoryPage = () => {
 		}
 	}, [activeTab, scannedProductId, scrollToItem]);
 
-	// Data fetching
+	// Data fetching - stock from offline cache, dashboard only when online
+	const {
+		data: cachedStock,
+		loading: cachedStockLoading,
+		refetch: refetchStock,
+	} = useOfflineInventory();
+
 	const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
 		queryKey: ["inventory-dashboard"],
 		queryFn: getDashboardData,
+		enabled: isOnline,
 	});
 
 	const stockQueryFilters = useMemo(
@@ -222,15 +229,74 @@ const InventoryPage = () => {
 		[selectedLocation, debouncedSearchQuery, stockFilter, stockPage]
 	);
 
-	const { data: stockResponse, isLoading: stockLoading } = useQuery({
+	// Use API for filtered/paginated stock when online
+	const { data: stockResponse, isLoading: apiStockLoading } = useQuery({
 		queryKey: ["inventory-stock", stockQueryFilters],
 		queryFn: () => getAllStock(stockQueryFilters, null),
+		enabled: isOnline,
 	});
 
-	const stockData = stockResponse?.results || [];
-	const stockNextUrl = stockResponse?.next || null;
-	const stockPrevUrl = stockResponse?.previous || null;
-	const stockCount = stockResponse?.count || 0;
+	// When online use API response, when offline use cached data
+	const stockData = isOnline ? (stockResponse?.results || []) : (cachedStock || []);
+	const stockLoading = isOnline ? apiStockLoading : cachedStockLoading;
+	const stockNextUrl = isOnline ? (stockResponse?.next || null) : null;
+	const stockPrevUrl = isOnline ? (stockResponse?.previous || null) : null;
+	const stockCount = isOnline ? (stockResponse?.count || 0) : (cachedStock?.length || 0);
+
+	// Compute offline dashboard data from cached stock
+	const offlineDashboardData = useMemo(() => {
+		if (isOnline || !cachedStock || cachedStock.length === 0) return null;
+
+		const now = new Date();
+		const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+		// Get unique products
+		const uniqueProductIds = new Set(cachedStock.map(s => s.product?.id));
+
+		// Calculate stats
+		const outOfStockItems = cachedStock.filter(s => Number(s.quantity) <= 0);
+		const lowStockItems = cachedStock.filter(s => {
+			const qty = Number(s.quantity);
+			const threshold = s.low_stock_threshold || 10;
+			return qty > 0 && qty <= threshold;
+		});
+		const expiringItems = cachedStock.filter(s => {
+			if (!s.expiration_date) return false;
+			const expDate = new Date(s.expiration_date);
+			return expDate > now && expDate <= sevenDaysFromNow;
+		});
+
+		// Calculate total value
+		const totalValue = cachedStock.reduce((sum, s) => {
+			const qty = Number(s.quantity) || 0;
+			const price = Number(s.product?.price) || 0;
+			return sum + (qty * price);
+		}, 0);
+
+		return {
+			summary: {
+				total_products: uniqueProductIds.size,
+				low_stock_count: lowStockItems.length,
+				expiring_soon_count: expiringItems.length,
+				out_of_stock_count: outOfStockItems.length,
+				total_value: totalValue,
+			},
+			low_stock_items: lowStockItems.slice(0, 10).map(s => ({
+				product_id: s.product?.id,
+				product_name: s.product?.name || 'Unknown',
+				quantity: s.quantity,
+			})),
+			expiring_soon_items: expiringItems.slice(0, 10).map(s => ({
+				product_id: s.product?.id,
+				product_name: s.product?.name || 'Unknown',
+				quantity: s.quantity,
+				expiration_date: s.expiration_date,
+			})),
+		};
+	}, [isOnline, cachedStock]);
+
+	// Use API dashboard when online, computed data when offline
+	const effectiveDashboardData = isOnline ? dashboardData : offlineDashboardData;
 
 	// Reset page to 1 when filters change
 	React.useEffect(() => {
@@ -249,17 +315,18 @@ const InventoryPage = () => {
 		}
 	};
 
-	const { data: locations, isLoading: locationsLoading } = useQuery({
-		queryKey: ["inventory-locations"],
-		queryFn: getLocations,
-		select: (data) => data.results,
-	});
+	// Load locations from offline cache (or API fallback)
+	const {
+		data: locations,
+		loading: locationsLoading,
+		refetch: refetchLocations,
+	} = useOfflineInventoryLocations();
 
 	// Delete location mutation
 	const deleteLocationMutation = useMutation({
 		mutationFn: (locationId) => deleteLocation(locationId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+			refetchLocations({ forceApi: true });
 			queryClient.invalidateQueries({ queryKey: ["inventory-dashboard"] });
 			queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
 			toast({
@@ -316,13 +383,15 @@ const InventoryPage = () => {
 	const handleDialogSuccess = () => {
 		queryClient.invalidateQueries({ queryKey: ["inventory-dashboard"] });
 		queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
-		queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+		refetchStock({ forceApi: true });
+		refetchLocations({ forceApi: true });
 	};
 
 	const refreshData = () => {
 		queryClient.invalidateQueries({ queryKey: ["inventory-dashboard"] });
 		queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
-		queryClient.invalidateQueries({ queryKey: ["inventory-locations"] });
+		refetchStock({ forceApi: true });
+		refetchLocations({ forceApi: true });
 	};
 
 	const renderStockRow = (item) => {
@@ -398,15 +467,24 @@ const InventoryPage = () => {
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
-							<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true, item.product)}>
+							<DropdownMenuItem
+								onClick={() => handleStockAdjustmentDialog(true, item.product)}
+								disabled={!isOnline}
+							>
 								<Edit className="mr-2 h-4 w-4" />
 								Adjust Stock
 							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => handleStockTransferDialog(true, item.product)}>
+							<DropdownMenuItem
+								onClick={() => handleStockTransferDialog(true, item.product)}
+								disabled={!isOnline}
+							>
 								<ArrowUpDown className="mr-2 h-4 w-4" />
 								Transfer
 							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true, item)}>
+							<DropdownMenuItem
+								onClick={() => handleStockMetadataEditDialog(true, item)}
+								disabled={!isOnline}
+							>
 								<Settings className="mr-2 h-4 w-4" />
 								Edit Stock Record
 							</DropdownMenuItem>
@@ -451,20 +529,32 @@ const InventoryPage = () => {
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
 					<DropdownMenuLabel>Inventory Actions</DropdownMenuLabel>
-					<DropdownMenuItem onClick={() => handleStockAdjustmentDialog(true)}>
+					<DropdownMenuItem
+						onClick={() => handleStockAdjustmentDialog(true)}
+						disabled={!isOnline}
+					>
 						<Plus className="mr-2 h-4 w-4" />
 						New Adjustment
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => handleStockTransferDialog(true)}>
+					<DropdownMenuItem
+						onClick={() => handleStockTransferDialog(true)}
+						disabled={!isOnline}
+					>
 						<ArrowUpDown className="mr-2 h-4 w-4" />
 						Transfer Stock
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => handleStockMetadataEditDialog(true)}>
+					<DropdownMenuItem
+						onClick={() => handleStockMetadataEditDialog(true)}
+						disabled={!isOnline}
+					>
 						<Edit className="mr-2 h-4 w-4" />
 						Edit Stock Record
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => navigate('/inventory/history')}>
+					<DropdownMenuItem
+						onClick={() => navigate('/inventory/history')}
+						disabled={!isOnline}
+					>
 						<History className="mr-2 h-4 w-4" />
 						Stock History
 					</DropdownMenuItem>
@@ -501,7 +591,7 @@ const InventoryPage = () => {
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold">
-							{dashboardData?.summary?.total_products || 0}
+							{effectiveDashboardData?.summary?.total_products || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -514,7 +604,7 @@ const InventoryPage = () => {
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold text-amber-600">
-							{dashboardData?.summary?.low_stock_count || 0}
+							{effectiveDashboardData?.summary?.low_stock_count || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -527,7 +617,7 @@ const InventoryPage = () => {
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold text-orange-600">
-							{dashboardData?.summary?.expiring_soon_count || 0}
+							{effectiveDashboardData?.summary?.expiring_soon_count || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -538,7 +628,7 @@ const InventoryPage = () => {
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold text-destructive">
-							{dashboardData?.summary?.out_of_stock_count || 0}
+							{effectiveDashboardData?.summary?.out_of_stock_count || 0}
 						</div>
 					</CardContent>
 				</Card>
@@ -551,7 +641,7 @@ const InventoryPage = () => {
 					</CardHeader>
 					<CardContent>
 						<div className="text-2xl font-bold">
-							{formatCurrency(dashboardData?.summary?.total_value || 0)}
+							{formatCurrency(effectiveDashboardData?.summary?.total_value || 0)}
 						</div>
 					</CardContent>
 				</Card>
@@ -580,8 +670,8 @@ const InventoryPage = () => {
 						<p className="text-muted-foreground">
 							This section provides an overview of your inventory status.
 						</p>
-						{dashboardData?.low_stock_items &&
-							dashboardData.low_stock_items.length > 0 && (
+						{effectiveDashboardData?.low_stock_items &&
+							effectiveDashboardData.low_stock_items.length > 0 && (
 								<Card className="mt-4 border-amber-200 bg-amber-50 dark:bg-amber-900/20">
 									<CardHeader>
 										<CardTitle className="text-amber-800 dark:text-amber-200 flex items-center gap-2">
@@ -593,7 +683,7 @@ const InventoryPage = () => {
 										</CardDescription>
 									</CardHeader>
 									<CardContent className="space-y-3">
-										{dashboardData.low_stock_items
+										{effectiveDashboardData.low_stock_items
 											.slice(0, 5)
 											.map((item) => (
 												<div
@@ -629,6 +719,7 @@ const InventoryPage = () => {
 																	price: 0,
 																})
 															}
+															disabled={!isOnline}
 														>
 															<Plus className="h-3 w-3 mr-1" />
 															Restock
@@ -640,8 +731,8 @@ const InventoryPage = () => {
 								</Card>
 							)}
 
-						{dashboardData?.expiring_soon_items &&
-							dashboardData.expiring_soon_items.length > 0 && (
+						{effectiveDashboardData?.expiring_soon_items &&
+							effectiveDashboardData.expiring_soon_items.length > 0 && (
 								<Card className="mt-4 border-orange-200 bg-orange-50 dark:bg-orange-900/20">
 									<CardHeader>
 										<CardTitle className="text-orange-800 dark:text-orange-200 flex items-center gap-2">
@@ -653,7 +744,7 @@ const InventoryPage = () => {
 										</CardDescription>
 									</CardHeader>
 									<CardContent className="space-y-3">
-										{dashboardData.expiring_soon_items
+										{effectiveDashboardData.expiring_soon_items
 											.slice(0, 5)
 											.map((item) => (
 												<div
@@ -689,6 +780,7 @@ const InventoryPage = () => {
 																	price: 0,
 																})
 															}
+															disabled={!isOnline}
 														>
 															<Edit className="h-3 w-3 mr-1" />
 															Update
@@ -809,6 +901,7 @@ const InventoryPage = () => {
 									onClick={() =>
 										handleLocationDialog(true, undefined, "create")
 									}
+									disabled={!isOnline}
 								>
 									<Plus className="mr-2 h-4 w-4" /> Add Location
 								</Button>
@@ -853,6 +946,7 @@ const InventoryPage = () => {
 														onClick={() =>
 															handleLocationDialog(true, loc, "edit")
 														}
+														disabled={!isOnline}
 													>
 														<Edit className="mr-2 h-4 w-4" />
 														Edit
@@ -860,7 +954,7 @@ const InventoryPage = () => {
 													<DropdownMenuItem
 														onClick={() => handleDeleteLocation(loc)}
 														className="text-red-600"
-														disabled={deleteLocationMutation.isPending}
+														disabled={!isOnline || deleteLocationMutation.isPending}
 													>
 														<Trash2 className="mr-2 h-4 w-4" />
 														Delete

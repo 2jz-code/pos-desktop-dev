@@ -1151,8 +1151,15 @@ function getCategories$1(db2) {
     return cat;
   });
 }
-function getDiscounts$1(db2) {
-  const stmt = db2.prepare("SELECT * FROM discounts WHERE is_active = 1");
+function getDiscounts$1(db2, options = {}) {
+  const { includeArchived = false } = options;
+  let query = "SELECT * FROM discounts";
+  if (includeArchived === "only") {
+    query += " WHERE is_active = 0";
+  } else if (!includeArchived) {
+    query += " WHERE is_active = 1";
+  }
+  const stmt = db2.prepare(query);
   const discounts = stmt.all();
   return discounts.map((d) => ({
     ...d,
@@ -1187,10 +1194,30 @@ function getProductTypes$1(db2) {
 function getInventoryStocks$1(db2) {
   const stmt = db2.prepare("SELECT * FROM inventory_stocks WHERE is_active = 1");
   const stocks = stmt.all();
-  return stocks.map((s) => ({
-    ...s,
-    is_active: s.is_active === 1
-  }));
+  const products = getProducts$1(db2);
+  const productMap = new Map(products.map((p) => [p.id, p]));
+  const locations = getInventoryLocations$1(db2);
+  const locationMap = new Map(locations.map((l) => [l.id, l]));
+  return stocks.map((s) => {
+    const product = productMap.get(s.product_id);
+    const location = locationMap.get(s.location_id);
+    return {
+      ...s,
+      is_active: s.is_active === 1,
+      // Hydrate with nested product object (matching API structure)
+      product: product ? {
+        id: product.id,
+        name: product.name,
+        barcode: product.barcode,
+        price: product.price
+      } : { id: s.product_id, name: "Unknown Product" },
+      // Hydrate with nested location object
+      location: location ? {
+        id: location.id,
+        name: location.name
+      } : { id: s.location_id, name: "Unknown Location" }
+    };
+  });
 }
 function getInventoryByProductId$1(db2, productId) {
   const stmt = db2.prepare("SELECT * FROM inventory_stocks WHERE product_id = ? AND is_active = 1");
@@ -1200,6 +1227,14 @@ function getInventoryByProductId$1(db2, productId) {
     ...stock,
     is_active: stock.is_active === 1
   };
+}
+function getInventoryLocations$1(db2) {
+  const stmt = db2.prepare("SELECT * FROM inventory_locations WHERE is_active = 1 ORDER BY name");
+  const locations = stmt.all();
+  return locations.map((loc) => ({
+    ...loc,
+    is_active: loc.is_active === 1
+  }));
 }
 function getSettings$1(db2) {
   const stmt = db2.prepare("SELECT * FROM settings");
@@ -1214,8 +1249,15 @@ function getSettings$1(db2) {
   }
   return settings;
 }
-function getUsers$1(db2) {
-  const stmt = db2.prepare("SELECT * FROM users WHERE is_pos_staff = 1 AND is_active = 1");
+function getUsers$1(db2, options = {}) {
+  const { includeArchived = false } = options;
+  let query = "SELECT * FROM users WHERE is_pos_staff = 1";
+  if (includeArchived === "only") {
+    query += " AND is_active = 0";
+  } else if (!includeArchived) {
+    query += " AND is_active = 1";
+  }
+  const stmt = db2.prepare(query);
   const users = stmt.all();
   return users.map((u) => ({
     ...u,
@@ -1240,6 +1282,7 @@ const datasets = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProp
   getDatasetVersion: getDatasetVersion$1,
   getDiscounts: getDiscounts$1,
   getInventoryByProductId: getInventoryByProductId$1,
+  getInventoryLocations: getInventoryLocations$1,
   getInventoryStocks: getInventoryStocks$1,
   getModifierSets: getModifierSets$1,
   getProductByBarcode: getProductByBarcode$1,
@@ -1949,6 +1992,7 @@ const {
   getProductTypes,
   getInventoryStocks,
   getInventoryByProductId,
+  getInventoryLocations,
   getSettings,
   getUsers,
   getUserById
@@ -2765,10 +2809,10 @@ ipcMain.handle("offline:get-cached-categories", async () => {
     throw error;
   }
 });
-ipcMain.handle("offline:get-cached-discounts", async () => {
+ipcMain.handle("offline:get-cached-discounts", async (event, options = {}) => {
   try {
     const db2 = getDatabase();
-    return getDiscounts(db2);
+    return getDiscounts(db2, options);
   } catch (error) {
     console.error("[Offline DB] Error getting cached discounts:", error);
     throw error;
@@ -2810,6 +2854,15 @@ ipcMain.handle("offline:get-cached-inventory", async () => {
     throw error;
   }
 });
+ipcMain.handle("offline:get-cached-inventory-locations", async () => {
+  try {
+    const db2 = getDatabase();
+    return getInventoryLocations(db2);
+  } catch (error) {
+    console.error("[Offline DB] Error getting cached inventory locations:", error);
+    throw error;
+  }
+});
 ipcMain.handle("offline:get-cached-settings", async () => {
   try {
     const db2 = getDatabase();
@@ -2819,10 +2872,10 @@ ipcMain.handle("offline:get-cached-settings", async () => {
     throw error;
   }
 });
-ipcMain.handle("offline:get-cached-users", async () => {
+ipcMain.handle("offline:get-cached-users", async (event, options = {}) => {
   try {
     const db2 = getDatabase();
-    return getUsers(db2);
+    return getUsers(db2, options);
   } catch (error) {
     console.error("[Offline DB] Error getting cached users:", error);
     throw error;
