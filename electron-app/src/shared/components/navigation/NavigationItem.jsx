@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -10,18 +10,22 @@ import {
 import { cn } from "@/shared/lib/utils";
 import PropTypes from "prop-types";
 
-const baseItemClasses = "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-200";
-const defaultStateClasses = "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground";
-const activeStateClasses = "bg-sidebar-accent/80 text-sidebar-foreground shadow-xs";
+const baseItemClasses = "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200";
+const defaultStateClasses = "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground active:scale-[0.98]";
+const activeStateClasses = "bg-primary/10 text-primary font-medium";
 
 export function NavigationItem({ route, isCollapsed, isMobile = false, permissions }) {
 	const location = useLocation();
-	const [isExpanded, setIsExpanded] = useState(false);
 
 	const isMainActive =
 		location.pathname === route.path || (route.path === "/" && location.pathname === "/");
 	const isSubPageActive = route.subPages.some((subPage) => location.pathname === subPage.path);
 	const isActive = isMainActive || isSubPageActive;
+
+	// Keep expanded if we're anywhere in this route's section (main or subpage), or if manually expanded
+	const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
+	const hasSubPages = route.subPages.length > 0;
+	const isExpanded = (hasSubPages && isActive) || isManuallyExpanded;
 
 	const hasPermission = () => {
 		switch (route.path) {
@@ -57,53 +61,72 @@ export function NavigationItem({ route, isCollapsed, isMobile = false, permissio
 					isCollapsed && !isMobile && "justify-center px-2"
 				)}
 			>
-				<route.icon className="h-4 w-4 flex-shrink-0" />
+				<route.icon className={cn(
+					"h-4 w-4 flex-shrink-0 transition-transform duration-200",
+					isActive && "scale-110"
+				)} />
 				{(!isCollapsed || isMobile) && <span className="truncate">{route.title}</span>}
 			</Link>
 		);
 	}
 
 	if (!isCollapsed && !isMobile) {
+		const toggleExpanded = () => {
+			if (isActive && hasSubPages) {
+				// If we're on this section, toggle allows collapsing
+				setIsManuallyExpanded(!isExpanded);
+			} else {
+				setIsManuallyExpanded(!isManuallyExpanded);
+			}
+		};
+
 		return (
 			<div className="space-y-1">
 				<button
-					onClick={() => setIsExpanded(!isExpanded)}
+					onClick={toggleExpanded}
 					className={cn(baseItemClasses, defaultStateClasses, isActive && activeStateClasses, "w-full text-left")}
 				>
-					<route.icon className="h-4 w-4 flex-shrink-0" />
+					<route.icon className={cn(
+						"h-4 w-4 flex-shrink-0 transition-transform duration-200",
+						isActive && "scale-110"
+					)} />
 					<span className="flex-1 truncate text-left">{route.title}</span>
-					{isExpanded ? (
-						<ChevronDown className="h-3 w-3 flex-shrink-0" />
-					) : (
-						<ChevronRight className="h-3 w-3 flex-shrink-0" />
-					)}
+					<ChevronDown className={cn(
+						"h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200",
+						!isExpanded && "-rotate-90"
+					)} />
 				</button>
 
-				{isExpanded && (
-					<div className="ml-7 space-y-1">
+				<div className={cn(
+					"ml-4 space-y-0.5 overflow-hidden border-l-2 border-border/50 pl-3 transition-all duration-200",
+					isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+				)}>
+					<Link
+						to={route.path}
+						className={cn(
+							"block rounded-lg px-3 py-2 text-sm transition-all duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground active:scale-[0.98]",
+							isMainActive
+								? "text-primary font-medium bg-primary/5"
+								: "text-sidebar-foreground/60"
+						)}
+					>
+						{route.title}
+					</Link>
+					{route.subPages.map((subPage) => (
 						<Link
-							to={route.path}
+							key={subPage.path}
+							to={subPage.path}
 							className={cn(
-								"block rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-								isMainActive && activeStateClasses
+								"block rounded-lg px-3 py-2 text-sm transition-all duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground active:scale-[0.98]",
+								location.pathname === subPage.path
+									? "text-primary font-medium bg-primary/5"
+									: "text-sidebar-foreground/60"
 							)}
 						>
-							{route.title}
+							{subPage.title}
 						</Link>
-						{route.subPages.map((subPage) => (
-							<Link
-								key={subPage.path}
-								to={subPage.path}
-								className={cn(
-									"block rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-									location.pathname === subPage.path && activeStateClasses
-								)}
-							>
-								{subPage.title}
-							</Link>
-						))}
-					</div>
-				)}
+					))}
+				</div>
 			</div>
 		);
 	}
@@ -114,11 +137,16 @@ export function NavigationItem({ route, isCollapsed, isMobile = false, permissio
 				<DropdownMenuTrigger asChild>
 					<button
 						className={cn(
-							"flex items-center justify-center rounded-lg px-2 py-2.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-							isActive && activeStateClasses
+							"flex w-full items-center justify-center rounded-xl py-2.5 transition-all duration-200 active:scale-95",
+							isActive
+								? activeStateClasses
+								: "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
 						)}
 					>
-						<route.icon className="h-4 w-4 flex-shrink-0" />
+						<route.icon className={cn(
+							"h-4 w-4 flex-shrink-0 transition-transform duration-200",
+							isActive && "scale-110"
+						)} />
 					</button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent
@@ -155,46 +183,62 @@ export function NavigationItem({ route, isCollapsed, isMobile = false, permissio
 		);
 	}
 
+	// Mobile version
+	const toggleExpandedMobile = () => {
+		if (isActive && hasSubPages) {
+			setIsManuallyExpanded(!isExpanded);
+		} else {
+			setIsManuallyExpanded(!isManuallyExpanded);
+		}
+	};
+
 	return (
 		<div className="space-y-1">
 			<button
-				onClick={() => setIsExpanded(!isExpanded)}
+				onClick={toggleExpandedMobile}
 				className={cn(baseItemClasses, defaultStateClasses, isActive && activeStateClasses, "w-full text-left")}
 			>
-				<route.icon className="h-4 w-4 flex-shrink-0" />
+				<route.icon className={cn(
+					"h-4 w-4 flex-shrink-0 transition-transform duration-200",
+					isActive && "scale-110"
+				)} />
 				<span className="flex-1 truncate text-left">{route.title}</span>
-				{isExpanded ? (
-					<ChevronDown className="h-3 w-3 flex-shrink-0" />
-				) : (
-					<ChevronRight className="h-3 w-3 flex-shrink-0" />
-				)}
+				<ChevronDown className={cn(
+					"h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200",
+					!isExpanded && "-rotate-90"
+				)} />
 			</button>
 
-			{isExpanded && (
-				<div className="ml-7 space-y-1">
+			<div className={cn(
+				"ml-4 space-y-0.5 overflow-hidden border-l-2 border-border/50 pl-3 transition-all duration-200",
+				isExpanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+			)}>
+				<Link
+					to={route.path}
+					className={cn(
+						"block rounded-lg px-3 py-2 text-sm transition-all duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground active:scale-[0.98]",
+						isMainActive
+							? "text-primary font-medium bg-primary/5"
+							: "text-sidebar-foreground/60"
+					)}
+				>
+					{route.title}
+				</Link>
+				{route.subPages.map((subPage) => (
 					<Link
-						to={route.path}
+						key={subPage.path}
+						to={subPage.path}
 						className={cn(
-							"block rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-							isMainActive && activeStateClasses
+							"block rounded-lg px-3 py-2 text-sm transition-all duration-150 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground active:scale-[0.98]",
+							location.pathname === subPage.path
+								? "text-primary font-medium bg-primary/5"
+								: "text-sidebar-foreground/60"
 						)}
 					>
-						{route.title}
+						{subPage.title}
 					</Link>
-					{route.subPages.map((subPage) => (
-						<Link
-							key={subPage.path}
-							to={subPage.path}
-							className={cn(
-								"block rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-								location.pathname === subPage.path && activeStateClasses
-							)}
-						>
-							{subPage.title}
-						</Link>
-					))}
-				</div>
-			)}
+				))}
+			</div>
 		</div>
 	);
 }

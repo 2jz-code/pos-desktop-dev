@@ -28,19 +28,17 @@ export function OfflineOverlay({
 
 	// Render wrapper with overlay
 	return (
-		<div className={`relative h-full ${className}`}>
+		<div className={`relative ${className}`}>
 			{children}
-			<div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm">
-				<div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-					<div className="rounded-full bg-muted p-4">
-						<WifiOff className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<div className="space-y-2">
-						<h3 className="text-lg font-semibold">{title}</h3>
-						<p className="text-sm text-muted-foreground max-w-sm">
-							{message}
-						</p>
-					</div>
+			<div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-6 text-center">
+				<div className="rounded-full bg-muted p-4">
+					<WifiOff className="h-8 w-8 text-muted-foreground" />
+				</div>
+				<div className="space-y-2">
+					<h3 className="text-lg font-semibold">{title}</h3>
+					<p className="text-sm text-muted-foreground max-w-sm">
+						{message}
+					</p>
 				</div>
 			</div>
 		</div>

@@ -28,7 +28,7 @@ import {
 	CardDescription,
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
-import { Loader2, Bell, Volume2, Printer } from "lucide-react";
+import { Loader2, Bell, Printer } from "lucide-react";
 import { useNotificationManager } from "@/shared/hooks/useNotificationManager";
 import { Badge } from "@/shared/components/ui/badge";
 
@@ -173,29 +173,32 @@ export function WebOrderNotificationSettings() {
 		return <p className="text-red-500">Error loading settings.</p>;
 
 	return (
-		<OfflineOverlay message="Web order settings are not available offline">
-		<div className="space-y-6">
-			{/* Connection Status Card */}
+		<OfflineOverlay
+			title="Web Order Settings Unavailable"
+			message="Configuring web order notifications and auto-printing requires an internet connection."
+		>
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<Bell className="h-5 w-5" />
-						Notification System Status
+						Web Order Notifications
 					</CardTitle>
 					<CardDescription>
-						Real-time connection status of the web order notification system
+						Configure notifications and auto-printing for web orders
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2">
+				<CardContent className="space-y-6">
+					{/* Connection Status */}
+					<div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+						<div className="space-y-0.5">
+							<p className="text-sm font-medium">Notification System Status</p>
 							<div className="flex items-center gap-2">
 								<div
-									className={`w-3 h-3 rounded-full ${
+									className={`w-2.5 h-2.5 rounded-full ${
 										isConnected ? "bg-green-500" : "bg-red-500"
 									} ${!isConnected ? "animate-pulse" : ""}`}
 								/>
-								<span className={`font-medium ${getConnectionStatusColor()}`}>
+								<span className={`text-sm ${getConnectionStatusColor()}`}>
 									{getConnectionStatusText()}
 								</span>
 							</div>
@@ -204,28 +207,13 @@ export function WebOrderNotificationSettings() {
 							{connectionStatus}
 						</Badge>
 					</div>
-				</CardContent>
-			</Card>
 
-			{/* Notification Settings Form */}
-			<Form {...form}>
-				<form
-					onSubmit={form.handleSubmit(onSubmit)}
-					className="space-y-6"
-				>
-					{/* Notification Settings Card */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Volume2 className="h-5 w-5" />
-								Web Order Notifications
-							</CardTitle>
-							<CardDescription>
-								Configure how the POS system handles notifications for new web
-								orders
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-4">
+					{/* Notification Settings Form */}
+					<Form {...form}>
+						<form
+							onSubmit={form.handleSubmit(onSubmit)}
+							className="space-y-4"
+						>
 							<FormField
 								control={form.control}
 								name="accepts_web_orders"
@@ -366,23 +354,16 @@ export function WebOrderNotificationSettings() {
 									</FormItem>
 								)}
 							/>
-						</CardContent>
-					</Card>
-
-					{/* Auto-Print Terminals Card */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2">
-								<Printer className="h-5 w-5" />
-								Web Order Auto-Printing
-							</CardTitle>
-							<CardDescription>
-								Select which printers should automatically print receipts for
-								web orders. This requires &quot;Auto-Print Customer
-								Receipts&quot; to be enabled.
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
+							{/* Auto-Print Terminals Section */}
+							<div className="space-y-3 pt-2">
+								<div className="flex items-center gap-2">
+									<Printer className="h-4 w-4 text-muted-foreground" />
+									<p className="text-sm font-medium">Web Order Auto-Printing</p>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									Select which terminals should automatically print receipts for web orders.
+								</p>
+							</div>
 							<Controller
 								name="web_notification_terminals"
 								control={form.control}
@@ -434,20 +415,20 @@ export function WebOrderNotificationSettings() {
 									</div>
 								)}
 							/>
-						</CardContent>
-					</Card>
 
-					<OnlineOnlyButton
-						type="submit"
-						disabled={isUpdating}
-						disabledMessage="Saving notification settings requires internet connection"
-					>
-						{isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						Save Changes
-					</OnlineOnlyButton>
-				</form>
-			</Form>
-		</div>
+							<OnlineOnlyButton
+								type="submit"
+								disabled={isUpdating}
+								disabledMessage="Saving notification settings requires internet connection"
+								className="mt-4"
+							>
+								{isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+								Save Changes
+							</OnlineOnlyButton>
+						</form>
+					</Form>
+				</CardContent>
+			</Card>
 		</OfflineOverlay>
 	);
 }

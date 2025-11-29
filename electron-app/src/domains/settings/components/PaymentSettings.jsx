@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
 import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { OfflineOverlay } from "@/shared/components/ui/OfflineOverlay";
 import { useOnlineStatus } from "@/shared/hooks";
 import {
 	Card,
@@ -110,14 +111,18 @@ export function PaymentSettings() {
 	};
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Payment Provider Management</CardTitle>
-				<CardDescription>
-					Select your active payment provider and manage its settings.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-6">
+		<OfflineOverlay
+			title="Payment Settings Unavailable"
+			message="Managing payment providers and syncing terminal readers requires an internet connection."
+		>
+			<Card>
+				<CardHeader>
+					<CardTitle>Payment Provider Management</CardTitle>
+					<CardDescription>
+						Select your active payment provider and manage its settings.
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-6">
 				{!globalSettings ? (
 					<div className="flex items-center space-x-2">
 						<Loader2 className="w-5 h-5 animate-spin" />
@@ -232,6 +237,7 @@ export function PaymentSettings() {
 					</>
 				)}
 			</CardContent>
-		</Card>
+			</Card>
+		</OfflineOverlay>
 	);
 }
