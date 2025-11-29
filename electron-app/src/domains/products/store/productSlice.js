@@ -1,6 +1,45 @@
 // desktop-combined/electron-app/src/store/slices/productSlice.js
 import { getProducts, getAllProducts, getAllActiveProducts } from "@/domains/products/services/productService";
 import { getCategories } from "@/domains/products/services/categoryService";
+import { getCachedCategoryById, getCachedProductTypeById } from "@/shared/lib/offlineRelationHelpers";
+
+/**
+ * Check if device is online
+ * Uses navigator.onLine as a simple check (hooks handle reactive updates)
+ */
+const isOnline = () => typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+/**
+ * Hydrate product relations from cached data
+ * Populates category and product_type objects from their IDs
+ */
+const hydrateProductRelations = async (products) => {
+	if (!Array.isArray(products) || products.length === 0) return products;
+
+	return Promise.all(
+		products.map(async (product) => {
+			const hydrated = { ...product };
+
+			// Hydrate category
+			if (product.category_id && !product.category) {
+				const category = await getCachedCategoryById(product.category_id);
+				if (category) {
+					hydrated.category = category;
+				}
+			}
+
+			// Hydrate product_type
+			if (product.product_type_id && !product.product_type) {
+				const productType = await getCachedProductTypeById(product.product_type_id);
+				if (productType) {
+					hydrated.product_type = productType;
+				}
+			}
+
+			return hydrated;
+		})
+	);
+};
 
 // Helper function to sort products by category and name
 // Note: Products should now come pre-sorted from backend with hierarchical category ordering
@@ -88,104 +127,135 @@ export const createProductSlice = (set, get) => ({
 	isLoadingCategories: false,
 
 	fetchProducts: async () => {
-		console.log("🔄 [ProductSlice] fetchProducts function called! UPDATED VERSION");
-		console.log("🔄 [ProductSlice] Starting to fetch products...");
+		console.log("🔄 [ProductSlice] fetchProducts function called - OFFLINE-FIRST VERSION");
 		set({ isLoadingProducts: true });
-		try {
-			console.log("📡 [ProductSlice] Making API call to fetch active products (non-paginated, cached)");
-			const response = await getAllActiveProducts();
-			console.log("📦 [ProductSlice] Raw API response:", response);
-			console.log("📦 [ProductSlice] Response keys:", Object.keys(response));
-			console.log("📦 [ProductSlice] Response.data type:", typeof response.data);
-			console.log("📦 [ProductSlice] Response.data is array:", Array.isArray(response.data));
-			
-			// Extract products from response - getAllActiveProducts returns active products directly
-			const products = response.data;
-			console.log("📦 [ProductSlice] Products data sample:", products?.slice(0, 3));
-			console.log("📦 [ProductSlice] Is products an array?", Array.isArray(products));
-			console.log("📦 [ProductSlice] Products length:", products?.length);
-			
-			// Check if we have drinks and desserts
-			if (Array.isArray(products)) {
-				const desserts = products.filter(p => p.category?.name === 'Desserts');
-				const drinks = products.filter(p => p.category?.name === 'Drinks');
-				console.log("🍰 [ProductSlice] Found desserts:", desserts.length);
-				console.log("🥤 [ProductSlice] Found drinks:", drinks.length);
-				console.log("🍰 [ProductSlice] Dessert samples:", desserts.slice(0, 2).map(p => p.name));
-				console.log("🥤 [ProductSlice] Drink samples:", drinks.slice(0, 2).map(p => p.name));
+
+		let products = null;
+		let source = 'none';
+
+		// Step 1: Try offline cache first
+		if (window.offlineAPI?.getCachedProducts) {
+			try {
+				console.log("📦 [ProductSlice] Trying offline cache first...");
+				const cachedProducts = await window.offlineAPI.getCachedProducts({ includeArchived: false });
+
+				if (Array.isArray(cachedProducts) && cachedProducts.length > 0) {
+					console.log(`✅ [ProductSlice] Loaded ${cachedProducts.length} products from cache`);
+
+					// Hydrate relations (category, product_type)
+					products = await hydrateProductRelations(cachedProducts);
+					source = 'cache';
+					console.log(`🔗 [ProductSlice] Hydrated ${products.length} products with relations`);
+				} else {
+					console.log("⚠️ [ProductSlice] Cache empty, will try API if online");
+				}
+			} catch (cacheError) {
+				console.warn("⚠️ [ProductSlice] Cache failed, falling back to API:", cacheError);
 			}
-
-			if (!Array.isArray(products)) {
-				console.error("❌ [ProductSlice] Products is not an array:", typeof products, products);
-				set({ products: [], filteredProducts: [], isLoadingProducts: false });
-				return;
-			}
-
-			// Products are already active from the backend, no filtering needed
-			console.log("🔍 [ProductSlice] Active products sample:", products.slice(0, 5).map(p => ({
-				name: p.name,
-				category: p.category?.name,
-				is_active: p.is_active
-			})));
-			
-			// Sort products using the helper function
-			const sortedProducts = sortProductsByCategory(products);
-
-			// Filter out grocery items by default (since we start with "all" products)
-			const filteredProducts = filterOutGroceryItems(sortedProducts);
-			
-			// Debug: Show category breakdown
-			const categoryBreakdown = {};
-			filteredProducts.forEach(p => {
-				const cat = p.category?.name || 'No Category';
-				categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
-			});
-			console.log("📊 [ProductSlice] Category breakdown:", categoryBreakdown);
-
-			console.log(
-				`🎯 [ProductSlice] Loaded ${products.length} active products, showing ${filteredProducts.length} non-grocery products by default`
-			);
-
-			console.log("📦 [ProductSlice] Setting products in store:", {
-				productsCount: sortedProducts.length,
-				filteredProductsCount: filteredProducts.length,
-				isArray: Array.isArray(sortedProducts)
-			});
-			
-			set({
-				products: sortedProducts,
-				filteredProducts: filteredProducts,
-				isLoadingProducts: false,
-			});
-		} catch (error) {
-			console.error(
-				"❌ [ProductSlice] Failed to fetch products from API:",
-				error
-			);
-			console.error(
-				"❌ [ProductSlice] Error details:",
-				error.response?.status,
-				error.response?.data
-			);
-			// Set empty state on failure
-			set({ products: [], filteredProducts: [], isLoadingProducts: false });
 		}
+
+		// Step 2: Fall back to API if cache empty/failed AND we're online
+		if (!products && isOnline()) {
+			try {
+				console.log("🌐 [ProductSlice] Loading products from API...");
+				const response = await getAllActiveProducts();
+				const apiProducts = response.data;
+
+				if (Array.isArray(apiProducts)) {
+					products = apiProducts;
+					source = 'api';
+					console.log(`✅ [ProductSlice] Loaded ${products.length} products from API`);
+				}
+			} catch (apiError) {
+				console.error("❌ [ProductSlice] API request failed:", apiError);
+			}
+		}
+
+		// Step 3: Handle no data scenario
+		if (!products || !Array.isArray(products)) {
+			console.error("❌ [ProductSlice] No products available (cache empty, offline or API failed)");
+			set({ products: [], filteredProducts: [], isLoadingProducts: false });
+			return;
+		}
+
+		// Sort products using the helper function
+		const sortedProducts = sortProductsByCategory(products);
+
+		// Filter out grocery items by default (since we start with "all" products)
+		const filteredProducts = filterOutGroceryItems(sortedProducts);
+
+		// Debug: Show category breakdown
+		const categoryBreakdown = {};
+		filteredProducts.forEach(p => {
+			const cat = p.category?.name || 'No Category';
+			categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+		});
+		console.log(`📊 [ProductSlice] Category breakdown (source: ${source}):`, categoryBreakdown);
+
+		console.log(
+			`🎯 [ProductSlice] Loaded ${products.length} products from ${source}, showing ${filteredProducts.length} non-grocery products`
+		);
+
+		set({
+			products: sortedProducts,
+			filteredProducts: filteredProducts,
+			isLoadingProducts: false,
+		});
 	},
 
 	fetchParentCategories: async () => {
+		console.log("🔄 [ProductSlice] fetchParentCategories - OFFLINE-FIRST VERSION");
 		set({ isLoadingCategories: true });
-		try {
-			const response = await getCategories({ parent: "null", is_active: "true" });
-			// Handle paginated response - extract categories from results array
-			const categories = response.data.results || response.data;
-			set({ parentCategories: categories, isLoadingCategories: false });
-		} catch (error) {
-			console.error(
-				"❌ [ProductSlice] Failed to fetch parent categories from API:",
-				error.response?.data?.detail || error.message
-			);
-			set({ parentCategories: [], isLoadingCategories: false });
+
+		let categories = null;
+		let source = 'none';
+
+		// Step 1: Try offline cache first
+		if (window.offlineAPI?.getCachedCategories) {
+			try {
+				console.log("📦 [ProductSlice] Trying categories cache first...");
+				const cachedCategories = await window.offlineAPI.getCachedCategories();
+
+				if (Array.isArray(cachedCategories) && cachedCategories.length > 0) {
+					// Filter for parent categories (no parent_id)
+					const parentCategories = cachedCategories.filter(
+						(cat) => cat.is_active && !cat.parent_id
+					);
+					if (parentCategories.length > 0) {
+						categories = parentCategories;
+						source = 'cache';
+						console.log(`✅ [ProductSlice] Loaded ${categories.length} parent categories from cache`);
+					}
+				}
+			} catch (cacheError) {
+				console.warn("⚠️ [ProductSlice] Categories cache failed:", cacheError);
+			}
 		}
+
+		// Step 2: Fall back to API if cache empty/failed AND we're online
+		if (!categories && isOnline()) {
+			try {
+				console.log("🌐 [ProductSlice] Loading parent categories from API...");
+				const response = await getCategories({ parent: "null", is_active: "true" });
+				const apiCategories = response.data.results || response.data;
+
+				if (Array.isArray(apiCategories)) {
+					categories = apiCategories;
+					source = 'api';
+					console.log(`✅ [ProductSlice] Loaded ${categories.length} parent categories from API`);
+				}
+			} catch (apiError) {
+				console.error("❌ [ProductSlice] Categories API failed:", apiError);
+			}
+		}
+
+		if (!categories) {
+			console.warn("⚠️ [ProductSlice] No parent categories available");
+			categories = [];
+		}
+
+		console.log(`🎯 [ProductSlice] Parent categories loaded from ${source}: ${categories.length}`);
+		set({ parentCategories: categories, isLoadingCategories: false });
 	},
 
 	fetchChildCategories: async (parentId) => {
@@ -194,25 +264,64 @@ export const createProductSlice = (set, get) => ({
 			get().applyFilter({});
 			return;
 		}
-		try {
-			console.log(
-				`🔄 [ProductSlice] Fetching child categories for parent ${parentId} from API...`
-			);
-			const response = await getCategories({ parent: parentId, is_active: "true" });
-			// Handle paginated response - extract categories from results array
-			const categories = response.data.results || response.data;
-			set({ childCategories: categories, selectedChildCategory: "all" });
-			get().applyFilter({
-				categoryId: parentId,
-				subcategoryId: "all",
-			});
-		} catch (error) {
-			console.error(
-				`❌ [ProductSlice] Failed to fetch child categories for parent ${parentId} from API:`,
-				error.response?.data?.detail || error.message
-			);
-			set({ childCategories: [], selectedChildCategory: "all" });
+
+		console.log(`🔄 [ProductSlice] fetchChildCategories for parent ${parentId} - OFFLINE-FIRST`);
+
+		let categories = null;
+		let source = 'none';
+
+		// Step 1: Try offline cache first
+		if (window.offlineAPI?.getCachedCategories) {
+			try {
+				const cachedCategories = await window.offlineAPI.getCachedCategories();
+
+				if (Array.isArray(cachedCategories) && cachedCategories.length > 0) {
+					// Filter for children of this parent
+					const childCategories = cachedCategories.filter(
+						(cat) => cat.is_active && cat.parent_id == parentId
+					);
+					if (childCategories.length > 0) {
+						categories = childCategories;
+						source = 'cache';
+						console.log(`✅ [ProductSlice] Loaded ${categories.length} child categories from cache`);
+					} else {
+						// No children found in cache - this is valid (parent may have no children)
+						categories = [];
+						source = 'cache';
+						console.log("📦 [ProductSlice] No child categories found in cache for this parent");
+					}
+				}
+			} catch (cacheError) {
+				console.warn("⚠️ [ProductSlice] Child categories cache failed:", cacheError);
+			}
 		}
+
+		// Step 2: Fall back to API if cache failed (not just empty) AND we're online
+		if (categories === null && isOnline()) {
+			try {
+				console.log("🌐 [ProductSlice] Loading child categories from API...");
+				const response = await getCategories({ parent: parentId, is_active: "true" });
+				const apiCategories = response.data.results || response.data;
+
+				categories = Array.isArray(apiCategories) ? apiCategories : [];
+				source = 'api';
+				console.log(`✅ [ProductSlice] Loaded ${categories.length} child categories from API`);
+			} catch (apiError) {
+				console.error("❌ [ProductSlice] Child categories API failed:", apiError);
+				categories = [];
+			}
+		}
+
+		if (categories === null) {
+			categories = [];
+		}
+
+		console.log(`🎯 [ProductSlice] Child categories for ${parentId} from ${source}: ${categories.length}`);
+		set({ childCategories: categories, selectedChildCategory: "all" });
+		get().applyFilter({
+			categoryId: parentId,
+			subcategoryId: "all",
+		});
 	},
 
 	setSelectedParentCategory: (categoryId) => {

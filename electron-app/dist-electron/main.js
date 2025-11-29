@@ -1152,7 +1152,9 @@ function getCategories$1(db2) {
           ...cat,
           parent: {
             id: parent.id,
-            name: parent.name
+            name: parent.name,
+            order: parent.order
+            // Include order for sorting
           }
         };
       }

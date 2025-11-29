@@ -610,6 +610,7 @@ export function getCategories(db) {
           parent: {
             id: parent.id,
             name: parent.name,
+            order: parent.order, // Include order for sorting
           }
         };
       }

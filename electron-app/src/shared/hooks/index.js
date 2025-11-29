@@ -15,5 +15,6 @@ export { useOfflineUsers } from "./useOfflineUsers.js";
 export { useOfflineInventory } from "./useOfflineInventory.js";
 export { useOfflineInventoryLocations } from "./useOfflineInventoryLocations.js";
 export { useOfflineDiscounts } from "./useOfflineDiscounts.js";
+export { useOfflineModifiers } from "./useOfflineModifiers.js";
 export { useOnlineStatus } from "./useOnlineStatus.js";
 export { useOfflineGuard } from "./useOfflineGuard.js";

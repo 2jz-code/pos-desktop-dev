@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
 import { getAvailableDiscounts } from "@/domains/discounts/services/discountService";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { Loader2 } from "lucide-react";
+import { Loader2, WifiOff } from "lucide-react";
 import { shallow } from "zustand/shallow";
+
+/**
+ * Check if device is online
+ */
+const isOnline = () => typeof navigator !== 'undefined' ? navigator.onLine : true;
 import {
 	Dialog,
 	DialogContent,
@@ -42,22 +47,61 @@ const DiscountDialog = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState(null);
 	const [discountCodeInput, setDiscountCodeInput] = useState("");
+	const [isFromCache, setIsFromCache] = useState(false);
 
 	useEffect(() => {
 		if (isDiscountDialogOpen) {
 			const fetchDiscounts = async () => {
 				setIsLoading(true);
 				setError(null);
-				try {
-					const response = await getAvailableDiscounts();
-					const discounts = response.data?.results || response.data || [];
-					setPromotionalDiscounts(discounts.filter((d) => !d.code));
-				} catch (err) {
-					setError("Failed to fetch discounts. Please try again.");
-					console.error(err);
-				} finally {
-					setIsLoading(false);
+				setIsFromCache(false);
+
+				let discounts = null;
+
+				// Step 1: Try offline cache first
+				if (window.offlineAPI?.getCachedDiscounts) {
+					try {
+						console.log("📦 [DiscountDialog] Trying discounts cache first...");
+						const cachedDiscounts = await window.offlineAPI.getCachedDiscounts();
+
+						if (Array.isArray(cachedDiscounts) && cachedDiscounts.length > 0) {
+							// Filter for promotional discounts (no code, is_active)
+							discounts = cachedDiscounts.filter((d) => !d.code && d.is_active);
+							setIsFromCache(true);
+							console.log(`✅ [DiscountDialog] Loaded ${discounts.length} promotional discounts from cache`);
+						}
+					} catch (cacheError) {
+						console.warn("⚠️ [DiscountDialog] Cache failed:", cacheError);
+					}
 				}
+
+				// Step 2: Fall back to API if cache empty/failed AND we're online
+				if (!discounts && isOnline()) {
+					try {
+						console.log("🌐 [DiscountDialog] Loading discounts from API...");
+						const response = await getAvailableDiscounts();
+						const apiDiscounts = response.data?.results || response.data || [];
+						discounts = apiDiscounts.filter((d) => !d.code);
+						console.log(`✅ [DiscountDialog] Loaded ${discounts.length} promotional discounts from API`);
+					} catch (err) {
+						console.error("❌ [DiscountDialog] API request failed:", err);
+						if (!discounts) {
+							setError("Failed to fetch discounts. Please try again.");
+						}
+					}
+				}
+
+				// Step 3: Handle no data scenario
+				if (!discounts) {
+					console.warn("⚠️ [DiscountDialog] No discounts available");
+					discounts = [];
+					if (!isOnline()) {
+						setError("Offline - no cached discounts available");
+					}
+				}
+
+				setPromotionalDiscounts(discounts);
+				setIsLoading(false);
 			};
 			fetchDiscounts();
 		}
@@ -82,7 +126,15 @@ const DiscountDialog = () => {
 		>
 			<DialogContent className="sm:max-w-[425px]">
 				<DialogHeader>
-					<DialogTitle>Apply a Discount</DialogTitle>
+					<DialogTitle className="flex items-center gap-2">
+						Apply a Discount
+						{isFromCache && (
+							<span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+								<WifiOff className="h-3 w-3" />
+								offline
+							</span>
+						)}
+					</DialogTitle>
 					<DialogDescription>
 						Select a promotion or enter a code to apply a discount.
 					</DialogDescription>
