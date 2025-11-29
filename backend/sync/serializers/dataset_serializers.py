@@ -15,7 +15,8 @@ from products.models import (
 )
 from discounts.models import Discount
 from inventory.models import Location, InventoryStock
-from settings.models import GlobalSettings, StoreLocation
+from settings.models import GlobalSettings, StoreLocation, Printer, KitchenZone
+from terminals.models import TerminalRegistration
 from users.models import User
 
 
@@ -265,7 +266,7 @@ class SyncInventoryStockSerializer(serializers.ModelSerializer):
 
 
 class SyncGlobalSettingsSerializer(serializers.ModelSerializer):
-    """Global settings serializer for offline sync"""
+    """Global settings serializer for offline sync - extended for full operations"""
 
     updated_at = serializers.DateTimeField(format='iso-8601')
 
@@ -273,18 +274,31 @@ class SyncGlobalSettingsSerializer(serializers.ModelSerializer):
         model = GlobalSettings
         fields = [
             'brand_name',
+            'brand_logo',
+            'brand_primary_color',
+            'brand_secondary_color',
             'currency',
             'surcharge_percentage',
             'allow_discount_stacking',
             'active_terminal_provider',
+            # Receipt templates (brand defaults)
+            'brand_receipt_header',
+            'brand_receipt_footer',
+            # Web order notification defaults
+            'default_enable_web_notifications',
+            'default_play_web_notification_sound',
+            'default_auto_print_web_receipt',
+            'default_auto_print_web_kitchen',
             'updated_at',
         ]
 
 
 class SyncStoreLocationSerializer(serializers.ModelSerializer):
-    """Store location serializer for offline sync"""
+    """Store location serializer for offline sync - extended for full operations"""
 
     updated_at = serializers.DateTimeField(format='iso-8601')
+    # Include web order settings for display
+    web_order_settings = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreLocation
@@ -292,6 +306,7 @@ class SyncStoreLocationSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'address_line1',
+            'address_line2',
             'city',
             'state',
             'postal_code',
@@ -304,7 +319,104 @@ class SyncStoreLocationSerializer(serializers.ModelSerializer):
             'manager_approvals_enabled',
             'low_stock_threshold',
             'default_inventory_location_id',
+            # Receipt customization
+            'receipt_header',
+            'receipt_footer',
+            # Web order notification settings
+            'web_order_settings',
             'updated_at',
+        ]
+
+    def get_web_order_settings(self, obj):
+        """Return computed web order settings with tenant defaults applied"""
+        effective = obj.get_effective_web_order_settings()
+        return {
+            'enable_notifications': effective['enable_notifications'],
+            'play_notification_sound': effective['play_notification_sound'],
+            'auto_print_receipt': effective['auto_print_receipt'],
+            'auto_print_kitchen': effective['auto_print_kitchen'],
+            # Also include the raw overrides so client knows what's local vs inherited
+            'overrides': {
+                'enable_web_notifications': obj.enable_web_notifications,
+                'play_web_notification_sound': obj.play_web_notification_sound,
+                'auto_print_web_receipt': obj.auto_print_web_receipt,
+                'auto_print_web_kitchen': obj.auto_print_web_kitchen,
+            }
+        }
+
+
+class SyncPrinterSerializer(serializers.ModelSerializer):
+    """Printer serializer for offline sync"""
+
+    updated_at = serializers.DateTimeField(format='iso-8601')
+
+    class Meta:
+        model = Printer
+        fields = [
+            'id',
+            'name',
+            'printer_type',
+            'ip_address',
+            'port',
+            'is_active',
+            'location',  # FK field - returns ID, matches regular API
+            'updated_at',
+        ]
+
+
+class SyncKitchenZoneSerializer(serializers.ModelSerializer):
+    """Kitchen zone serializer for offline sync"""
+
+    updated_at = serializers.DateTimeField(format='iso-8601')
+    category_ids = serializers.SerializerMethodField()
+    printer_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KitchenZone
+        fields = [
+            'id',
+            'name',
+            'printer',  # FK field - returns ID, matches regular API
+            'printer_details',
+            'print_all_items',
+            'category_ids',
+            'is_active',
+            'location',  # FK field - returns ID, matches regular API
+            'updated_at',
+        ]
+
+    def get_category_ids(self, obj):
+        """Return list of category IDs for this zone"""
+        return [str(c.id) for c in obj.categories.all()]
+
+    def get_printer_details(self, obj):
+        """Return basic printer info for display"""
+        if obj.printer:
+            return {
+                'id': str(obj.printer.id),
+                'name': obj.printer.name,
+            }
+        return None
+
+
+class SyncTerminalRegistrationSerializer(serializers.ModelSerializer):
+    """Terminal registration serializer for offline sync"""
+
+    class Meta:
+        model = TerminalRegistration
+        fields = [
+            'id',
+            'device_id',
+            'nickname',
+            'store_location',  # FK field - returns ID, matches regular API
+            'reader_id',
+            'is_active',
+            # Offline mode settings
+            'offline_enabled',
+            'offline_transaction_limit',
+            'offline_daily_limit',
+            'offline_transaction_count_limit',
+            'offline_capture_window_hours',
         ]
 
 

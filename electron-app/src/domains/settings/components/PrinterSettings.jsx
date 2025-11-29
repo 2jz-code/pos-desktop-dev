@@ -12,6 +12,8 @@ import {
 } from "../services/printerSettingsService";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { useOnlineStatus } from "@/shared/hooks";
 import {
 	Card,
 	CardContent,
@@ -50,6 +52,7 @@ export function PrinterSettings() {
 
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const isOnline = useOnlineStatus();
 
 	// Local USB printer settings
 	const localPrinters = useSettingsStore((state) => state.printers);
@@ -62,6 +65,7 @@ export function PrinterSettings() {
 	);
 
 	// Fetch network printers (kitchen only from backend)
+	// When offline, use cache seeded by SettingsPage
 	const {
 		data: printers = [],
 		isLoading: printersLoading,
@@ -69,9 +73,11 @@ export function PrinterSettings() {
 	} = useQuery({
 		queryKey: ["printers"],
 		queryFn: getPrinters,
+		enabled: isOnline, // Only fetch when online, otherwise use seeded cache
 	});
 
 	// Fetch kitchen zones
+	// When offline, use cache seeded by SettingsPage
 	const {
 		data: kitchenZones = [],
 		isLoading: zonesLoading,
@@ -79,6 +85,7 @@ export function PrinterSettings() {
 	} = useQuery({
 		queryKey: ["kitchenZones"],
 		queryFn: getKitchenZones,
+		enabled: isOnline, // Only fetch when online, otherwise use seeded cache
 	});
 
 	// Filter kitchen printers only
@@ -426,16 +433,17 @@ export function PrinterSettings() {
 											tickets
 										</p>
 									</div>
-									<Button
+									<OnlineOnlyButton
 										size="sm"
 										onClick={() => {
 											setSelectedPrinter(null);
 											setIsPrinterDialogOpen(true);
 										}}
+										disabledMessage="Adding printers requires internet connection"
 									>
 										<PlusCircle className="mr-2 h-4 w-4" />
 										Add Kitchen Printer
-									</Button>
+									</OnlineOnlyButton>
 								</div>
 								<div className="space-y-3">
 									{printersLoading ? (
@@ -455,6 +463,7 @@ export function PrinterSettings() {
 												}}
 												onDelete={() => handleDeletePrinter(printer)}
 												onTest={handleTestPrinter}
+												isOnline={isOnline}
 											/>
 										))
 									)}
@@ -469,16 +478,17 @@ export function PrinterSettings() {
 									Kitchen zones route specific items to designated printers based
 									on categories
 								</p>
-								<Button
+								<OnlineOnlyButton
 									size="sm"
 									onClick={() => {
 										setSelectedZone(null);
 										setIsZoneDialogOpen(true);
 									}}
+									disabledMessage="Adding kitchen zones requires internet connection"
 								>
 									<PlusCircle className="mr-2 h-4 w-4" />
 									Add Kitchen Zone
-								</Button>
+								</OnlineOnlyButton>
 							</div>
 							<div className="space-y-3">
 								{zonesLoading ? (
@@ -497,6 +507,7 @@ export function PrinterSettings() {
 												setIsZoneDialogOpen(true);
 											}}
 											onDelete={() => handleDeleteZone(zone)}
+											isOnline={isOnline}
 										/>
 									))
 								)}
@@ -526,7 +537,7 @@ export function PrinterSettings() {
 }
 
 // Printer Card Component
-function PrinterCard({ printer, onEdit, onDelete, onTest }) {
+function PrinterCard({ printer, onEdit, onDelete, onTest, isOnline }) {
 	return (
 		<div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
 			<div className="flex items-center gap-4">
@@ -559,19 +570,31 @@ function PrinterCard({ printer, onEdit, onDelete, onTest }) {
 				<Button variant="secondary" size="sm" onClick={() => onTest(printer)}>
 					Test
 				</Button>
-				<Button variant="outline" size="sm" onClick={onEdit}>
+				<OnlineOnlyButton
+					variant="outline"
+					size="sm"
+					onClick={onEdit}
+					isOnlineOverride={isOnline}
+					disabledMessage="Editing printers requires internet connection"
+				>
 					<Edit className="h-4 w-4" />
-				</Button>
-				<Button variant="destructive" size="sm" onClick={onDelete}>
+				</OnlineOnlyButton>
+				<OnlineOnlyButton
+					variant="destructive"
+					size="sm"
+					onClick={onDelete}
+					isOnlineOverride={isOnline}
+					disabledMessage="Deleting printers requires internet connection"
+				>
 					<Trash2 className="h-4 w-4" />
-				</Button>
+				</OnlineOnlyButton>
 			</div>
 		</div>
 	);
 }
 
 // Kitchen Zone Card Component
-function KitchenZoneCard({ zone, onEdit, onDelete }) {
+function KitchenZoneCard({ zone, onEdit, onDelete, isOnline }) {
 	const categoryCount = zone.print_all_items
 		? "ALL"
 		: zone.category_ids?.length || 0;
@@ -601,12 +624,24 @@ function KitchenZoneCard({ zone, onEdit, onDelete }) {
 				</div>
 			</div>
 			<div className="flex items-center gap-2">
-				<Button variant="outline" size="sm" onClick={onEdit}>
+				<OnlineOnlyButton
+					variant="outline"
+					size="sm"
+					onClick={onEdit}
+					isOnlineOverride={isOnline}
+					disabledMessage="Editing kitchen zones requires internet connection"
+				>
 					<Edit className="h-4 w-4" />
-				</Button>
-				<Button variant="destructive" size="sm" onClick={onDelete}>
+				</OnlineOnlyButton>
+				<OnlineOnlyButton
+					variant="destructive"
+					size="sm"
+					onClick={onDelete}
+					isOnlineOverride={isOnline}
+					disabledMessage="Deleting kitchen zones requires internet connection"
+				>
 					<Trash2 className="h-4 w-4" />
-				</Button>
+				</OnlineOnlyButton>
 			</div>
 		</div>
 	);

@@ -7,8 +7,10 @@ import { toast } from "sonner";
 import apiClient from "@/shared/lib/apiClient";
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
 import { getStoreLocation, updateStoreLocation } from "../services/settingsService";
+import { useOnlineStatus } from "@/shared/hooks";
 
-import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { OfflineOverlay } from "@/shared/components/ui/OfflineOverlay";
 import {
 	Form,
 	FormControl,
@@ -42,9 +44,16 @@ const webOrderSettingsSchema = z.object({
 export function WebOrderNotificationSettings() {
 	const queryClient = useQueryClient();
 	const { connectionStatus, isConnected } = useNotificationManager();
+	const isOnline = useOnlineStatus();
 
 	// Get location ID from terminal config
 	const locationId = terminalRegistrationService.getLocationId();
+
+	// Get cached store location (seeded by SettingsPage from offline settings)
+	const { data: cachedStoreLocation } = useQuery({
+		queryKey: ["storeLocation", locationId],
+		enabled: false, // Don't fetch - just read from cache
+	});
 
 	const { data, isLoading, isError } = useQuery({
 		queryKey: ["webOrderSettings", locationId],
@@ -59,8 +68,12 @@ export function WebOrderNotificationSettings() {
 				location: locationRes,
 			};
 		},
-		enabled: !!locationId,
+		enabled: !!locationId && isOnline, // Only fetch when online
 	});
+
+	// Use cached data when offline, API data when online
+	const locationData = data?.location || cachedStoreLocation;
+	const terminalsData = data?.terminals || [];
 
 	const { mutate: updateSettings, isPending: isUpdating } = useMutation({
 		mutationFn: (formData) => {
@@ -95,11 +108,11 @@ export function WebOrderNotificationSettings() {
 	});
 
 	useEffect(() => {
-		if (data?.location) {
-			const overrides = data.location.web_order_settings?.overrides || {};
+		if (locationData) {
+			const overrides = locationData.web_order_settings?.overrides || {};
 
 			const formValues = {
-				accepts_web_orders: data.location.accepts_web_orders ?? true,
+				accepts_web_orders: locationData.accepts_web_orders ?? true,
 				enable_web_notifications: overrides.enable_web_notifications ?? null,
 				play_web_notification_sound: overrides.play_web_notification_sound ?? null,
 				auto_print_web_receipt: overrides.auto_print_web_receipt ?? null,
@@ -110,7 +123,7 @@ export function WebOrderNotificationSettings() {
 			form.reset(formValues);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [data]); // 'form' is a stable reference from useForm(), no need to include it
+	}, [locationData]); // 'form' is a stable reference from useForm(), no need to include it
 
 	const onSubmit = (formData) => {
 		// Find the selected terminal object for receipt printing
@@ -119,7 +132,7 @@ export function WebOrderNotificationSettings() {
 			formData.web_notification_terminals.length > 0
 		) {
 			const selectedDeviceId = formData.web_notification_terminals[0]; // Assuming one for now
-			const selectedTerminal = data.terminals.find(
+			const selectedTerminal = terminalsData.find(
 				(t) => t.device_id === selectedDeviceId
 			);
 
@@ -146,16 +159,21 @@ export function WebOrderNotificationSettings() {
 	const getConnectionStatusText = () =>
 		isConnected ? "Connected" : "Disconnected";
 
-	if (isLoading)
+	// Show loading only when online and actually fetching
+	if (isLoading && isOnline)
 		return (
 			<div className="flex items-center space-x-2">
 				<Loader2 className="w-5 h-5 animate-spin" />
 				<p>Loading settings...</p>
 			</div>
 		);
-	if (isError) return <p className="text-red-500">Error loading settings.</p>;
+
+	// Show error only when online and failed - offline uses cached data
+	if (isError && isOnline && !locationData)
+		return <p className="text-red-500">Error loading settings.</p>;
 
 	return (
+		<OfflineOverlay message="Web order settings are not available offline">
 		<div className="space-y-6">
 			{/* Connection Status Card */}
 			<Card>
@@ -240,9 +258,9 @@ export function WebOrderNotificationSettings() {
 												Enable Notifications
 											</FormLabel>
 											<FormDescription className="text-xs text-muted-foreground">
-												{field.value === null && data?.location?.web_order_settings ? (
+												{field.value === null && locationData?.web_order_settings ? (
 													<span className="italic">
-														Using tenant default: {data.location.web_order_settings.enable_notifications ? 'Enabled' : 'Disabled'}
+														Using tenant default: {locationData.web_order_settings.enable_notifications ? 'Enabled' : 'Disabled'}
 													</span>
 												) : field.value !== null ? (
 													<span className="font-medium text-primary">
@@ -253,7 +271,7 @@ export function WebOrderNotificationSettings() {
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value ?? data?.location?.web_order_settings?.enable_notifications ?? false}
+												checked={field.value ?? locationData?.web_order_settings?.enable_notifications ?? false}
 												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
@@ -268,9 +286,9 @@ export function WebOrderNotificationSettings() {
 										<div className="space-y-0.5">
 											<FormLabel className="text-base">Play Sound</FormLabel>
 											<FormDescription className="text-xs text-muted-foreground">
-												{field.value === null && data?.location?.web_order_settings ? (
+												{field.value === null && locationData?.web_order_settings ? (
 													<span className="italic">
-														Using tenant default: {data.location.web_order_settings.play_notification_sound ? 'Enabled' : 'Disabled'}
+														Using tenant default: {locationData.web_order_settings.play_notification_sound ? 'Enabled' : 'Disabled'}
 													</span>
 												) : field.value !== null ? (
 													<span className="font-medium text-primary">
@@ -281,7 +299,7 @@ export function WebOrderNotificationSettings() {
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value ?? data?.location?.web_order_settings?.play_notification_sound ?? false}
+												checked={field.value ?? locationData?.web_order_settings?.play_notification_sound ?? false}
 												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
@@ -298,9 +316,9 @@ export function WebOrderNotificationSettings() {
 												Auto-Print Customer Receipts
 											</FormLabel>
 											<FormDescription className="text-xs text-muted-foreground">
-												{field.value === null && data?.location?.web_order_settings ? (
+												{field.value === null && locationData?.web_order_settings ? (
 													<span className="italic">
-														Using tenant default: {data.location.web_order_settings.auto_print_receipt ? 'Enabled' : 'Disabled'}
+														Using tenant default: {locationData.web_order_settings.auto_print_receipt ? 'Enabled' : 'Disabled'}
 													</span>
 												) : field.value !== null ? (
 													<span className="font-medium text-primary">
@@ -311,7 +329,7 @@ export function WebOrderNotificationSettings() {
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value ?? data?.location?.web_order_settings?.auto_print_receipt ?? false}
+												checked={field.value ?? locationData?.web_order_settings?.auto_print_receipt ?? false}
 												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
@@ -328,9 +346,9 @@ export function WebOrderNotificationSettings() {
 												Auto-Print Kitchen Tickets
 											</FormLabel>
 											<FormDescription className="text-xs text-muted-foreground">
-												{field.value === null && data?.location?.web_order_settings ? (
+												{field.value === null && locationData?.web_order_settings ? (
 													<span className="italic">
-														Using tenant default: {data.location.web_order_settings.auto_print_kitchen ? 'Enabled' : 'Disabled'}
+														Using tenant default: {locationData.web_order_settings.auto_print_kitchen ? 'Enabled' : 'Disabled'}
 													</span>
 												) : field.value !== null ? (
 													<span className="font-medium text-primary">
@@ -341,7 +359,7 @@ export function WebOrderNotificationSettings() {
 										</div>
 										<FormControl>
 											<Switch
-												checked={field.value ?? data?.location?.web_order_settings?.auto_print_kitchen ?? false}
+												checked={field.value ?? locationData?.web_order_settings?.auto_print_kitchen ?? false}
 												onCheckedChange={(checked) => field.onChange(checked)}
 											/>
 										</FormControl>
@@ -377,7 +395,7 @@ export function WebOrderNotificationSettings() {
 											These are the printers connected to registered POS
 											terminals.
 										</FormDescription>
-										{data?.terminals?.map((terminal) => (
+										{terminalsData?.map((terminal) => (
 											<FormItem
 												key={terminal.device_id}
 												className="flex flex-row items-center justify-between rounded-lg border p-4"
@@ -408,7 +426,7 @@ export function WebOrderNotificationSettings() {
 												</FormControl>
 											</FormItem>
 										))}
-										{data?.terminals?.length === 0 && (
+										{terminalsData?.length === 0 && (
 											<p className="text-sm text-muted-foreground pt-2">
 												No registered POS terminals found.
 											</p>
@@ -419,15 +437,17 @@ export function WebOrderNotificationSettings() {
 						</CardContent>
 					</Card>
 
-					<Button
+					<OnlineOnlyButton
 						type="submit"
 						disabled={isUpdating}
+						disabledMessage="Saving notification settings requires internet connection"
 					>
 						{isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Save Changes
-					</Button>
+					</OnlineOnlyButton>
 				</form>
 			</Form>
 		</div>
+		</OfflineOverlay>
 	);
 }

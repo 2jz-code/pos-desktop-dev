@@ -36,13 +36,17 @@ from sync.serializers import (
     SyncInventoryLocationSerializer,
     SyncGlobalSettingsSerializer,
     SyncStoreLocationSerializer,
+    SyncPrinterSerializer,
+    SyncKitchenZoneSerializer,
+    SyncTerminalRegistrationSerializer,
     SyncUserSerializer,
 )
 
 from products.models import Product, Category, Tax, ProductType, ModifierSet
 from discounts.models import Discount
 from inventory.models import InventoryStock, Location
-from settings.models import GlobalSettings, StoreLocation
+from settings.models import GlobalSettings, StoreLocation, Printer, KitchenZone
+from terminals.models import TerminalRegistration
 from users.models import User
 
 
@@ -303,14 +307,19 @@ class InventorySyncView(BaseSyncView):
 
 class SettingsSyncView(APIView):
     """
-    Sync settings dataset (global + store location).
+    Sync settings dataset (global + store location + printers + kitchen zones + terminal).
 
     POST /api/sync/settings/
 
     Body params:
     - device_id, nonce, created_at (required for device auth)
 
-    Returns both global settings and store location settings.
+    Returns all operational settings needed for offline mode:
+    - global_settings: Tenant-wide settings (brand, currency, surcharge, etc.)
+    - store_location: This terminal's location-specific settings (address, tax rate, etc.)
+    - printers: Network printers configured for this location
+    - kitchen_zones: Kitchen zones with category routing for this location
+    - terminal: This terminal's registration settings (offline limits, reader, etc.)
     """
 
     authentication_classes = [DeviceSignatureAuthentication]
@@ -328,6 +337,9 @@ class SettingsSyncView(APIView):
             except (ValueError, TypeError):
                 since = None
 
+        # Collect all timestamps for next_version calculation
+        timestamps = []
+
         # Get global settings
         global_settings = None
         global_data = None
@@ -336,6 +348,7 @@ class SettingsSyncView(APIView):
             # Only include if updated since last sync
             if not since or global_settings.updated_at >= since:
                 global_data = SyncGlobalSettingsSerializer(global_settings).data
+            timestamps.append(global_settings.updated_at)
         except GlobalSettings.DoesNotExist:
             pass
 
@@ -346,14 +359,50 @@ class SettingsSyncView(APIView):
             # Only include if updated since last sync
             if not since or store_location.updated_at >= since:
                 location_data = SyncStoreLocationSerializer(store_location).data
-
-        # Calculate next_version from latest updated_at timestamp
-        timestamps = []
-        if global_settings and hasattr(global_settings, 'updated_at'):
-            timestamps.append(global_settings.updated_at)
-        if store_location and hasattr(store_location, 'updated_at'):
             timestamps.append(store_location.updated_at)
 
+        # Get printers for this location
+        printers_data = []
+        if store_location:
+            printers_qs = Printer.objects.filter(
+                tenant=terminal.tenant,
+                location=store_location,
+                is_active=True
+            )
+            if since:
+                printers_qs = printers_qs.filter(updated_at__gte=since)
+            printers_data = SyncPrinterSerializer(printers_qs, many=True).data
+
+            # Add printer timestamps
+            for printer in Printer.objects.filter(
+                tenant=terminal.tenant,
+                location=store_location
+            ):
+                timestamps.append(printer.updated_at)
+
+        # Get kitchen zones for this location
+        kitchen_zones_data = []
+        if store_location:
+            zones_qs = KitchenZone.objects.filter(
+                tenant=terminal.tenant,
+                location=store_location,
+                is_active=True
+            ).prefetch_related('categories', 'printer')
+            if since:
+                zones_qs = zones_qs.filter(updated_at__gte=since)
+            kitchen_zones_data = SyncKitchenZoneSerializer(zones_qs, many=True).data
+
+            # Add zone timestamps
+            for zone in KitchenZone.objects.filter(
+                tenant=terminal.tenant,
+                location=store_location
+            ):
+                timestamps.append(zone.updated_at)
+
+        # Get this terminal's registration
+        terminal_data = SyncTerminalRegistrationSerializer(terminal).data
+
+        # Calculate next_version from latest updated_at timestamp
         if timestamps:
             latest_update = max(timestamps)
             # Bump by 1 microsecond to avoid re-sending on next sync
@@ -365,6 +414,9 @@ class SettingsSyncView(APIView):
             'data': {
                 'global_settings': global_data,
                 'store_location': location_data,
+                'printers': printers_data,
+                'kitchen_zones': kitchen_zones_data,
+                'terminal': terminal_data,
             },
             'next_version': next_version,
             'deleted_ids': [],  # Settings cannot be deleted (singleton)

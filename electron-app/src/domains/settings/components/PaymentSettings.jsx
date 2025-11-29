@@ -2,6 +2,8 @@ import React, { useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
+import { useOnlineStatus } from "@/shared/hooks";
 import {
 	Card,
 	CardContent,
@@ -37,6 +39,7 @@ const TerminalProvider = {
 
 export function PaymentSettings() {
 	const queryClient = useQueryClient();
+	const isOnline = useOnlineStatus();
 
 	const { data: globalSettings } = useQuery({
 		queryKey: ["globalSettings"],
@@ -127,7 +130,7 @@ export function PaymentSettings() {
 							<Select
 								onValueChange={handleProviderChange}
 								value={globalSettings.active_terminal_provider}
-								disabled={isUpdatingSettings}
+								disabled={isUpdatingSettings || !isOnline}
 							>
 								<SelectTrigger id="payment-provider">
 									<SelectValue placeholder="Select a provider" />
@@ -157,15 +160,16 @@ export function PaymentSettings() {
 											available for assignment on the Device tab.
 										</p>
 									</div>
-									<Button
+									<OnlineOnlyButton
 										onClick={handleSync}
 										disabled={syncMutation.isPending}
+										disabledMessage="Syncing Stripe locations requires internet connection"
 									>
 										{syncMutation.isPending && (
 											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 										)}
 										{syncMutation.isPending ? "Syncing..." : "Sync Now"}
-									</Button>
+									</OnlineOnlyButton>
 								</div>
 
 								<div>

@@ -396,6 +396,13 @@ export function upsertInventoryLocations(db, locations) {
 
 /**
  * Upsert settings into cache
+ *
+ * Settings data can include:
+ * - global_settings: Tenant-wide settings (brand, currency, surcharge, etc.)
+ * - store_location: Location-specific settings (address, tax rate, receipts, etc.)
+ * - printers: Network printers configured for this location
+ * - kitchen_zones: Kitchen zones with category routing for this location
+ * - terminal: This terminal's registration settings (offline limits, reader, etc.)
  */
 export function upsertSettings(db, settingsData) {
   const stmt = db.prepare(`
@@ -414,6 +421,21 @@ export function upsertSettings(db, settingsData) {
   // Store store location settings
   if (settingsData.store_location) {
     stmt.run('store_location', JSON.stringify(settingsData.store_location));
+  }
+
+  // Store printers (only if array has items - avoid overwriting on incremental sync)
+  if (settingsData.printers && settingsData.printers.length > 0) {
+    stmt.run('printers', JSON.stringify(settingsData.printers));
+  }
+
+  // Store kitchen zones (only if array has items - avoid overwriting on incremental sync)
+  if (settingsData.kitchen_zones && settingsData.kitchen_zones.length > 0) {
+    stmt.run('kitchen_zones', JSON.stringify(settingsData.kitchen_zones));
+  }
+
+  // Store terminal registration
+  if (settingsData.terminal) {
+    stmt.run('terminal', JSON.stringify(settingsData.terminal));
   }
 }
 

@@ -10,6 +10,9 @@ from .dataset_serializers import (
     SyncInventoryStockSerializer,
     SyncGlobalSettingsSerializer,
     SyncStoreLocationSerializer,
+    SyncPrinterSerializer,
+    SyncKitchenZoneSerializer,
+    SyncTerminalRegistrationSerializer,
     SyncUserSerializer,
     SyncResponseSerializer,
 )
@@ -32,6 +35,9 @@ __all__ = [
     'SyncInventoryStockSerializer',
     'SyncGlobalSettingsSerializer',
     'SyncStoreLocationSerializer',
+    'SyncPrinterSerializer',
+    'SyncKitchenZoneSerializer',
+    'SyncTerminalRegistrationSerializer',
     'SyncUserSerializer',
     'SyncResponseSerializer',
     # Ingest serializers

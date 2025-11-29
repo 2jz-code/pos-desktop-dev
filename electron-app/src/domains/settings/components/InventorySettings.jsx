@@ -9,7 +9,7 @@ import {
 } from "../services/settingsService";
 import { getLocations } from "@/domains/inventory/services/inventoryService";
 
-import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
 import {
 	Form,
 	FormControl,
@@ -281,12 +281,13 @@ export function InventorySettings() {
 							</ul>
 						</div>
 
-						<Button
+						<OnlineOnlyButton
 							type="submit"
 							disabled={mutation.isPending || !form.formState.isDirty}
+							disabledMessage="Saving inventory settings requires internet connection"
 						>
 							{mutation.isPending ? "Saving..." : "Save Changes"}
-						</Button>
+						</OnlineOnlyButton>
 					</form>
 				</Form>
 			</CardContent>

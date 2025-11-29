@@ -8,7 +8,7 @@ import {
 	updateStoreLocation,
 } from "../services/settingsService";
 
-import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
 import {
 	Form,
 	FormControl,
@@ -148,12 +148,13 @@ export function ReceiptSettings() {
 						</FormItem>
 					)}
 				/>
-						<Button
+						<OnlineOnlyButton
 							type="submit"
 							disabled={mutation.isPending || !form.formState.isDirty}
+							disabledMessage="Saving receipt settings requires internet connection"
 						>
 							{mutation.isPending ? "Saving..." : "Save Changes"}
-						</Button>
+						</OnlineOnlyButton>
 					</form>
 				</Form>
 			</CardContent>

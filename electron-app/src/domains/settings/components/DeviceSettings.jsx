@@ -7,13 +7,12 @@ import apiClient from "@/shared/lib/apiClient";
 import {
 	getTerminalRegistration,
 	upsertTerminalRegistration,
-	getStoreLocations,
 	getTerminalLocations,
 } from "../services/settingsService";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
-import { Button } from "@/shared/components/ui/button";
+import { OnlineOnlyButton } from "@/shared/components/ui/OnlineOnlyButton";
 import {
 	Form,
 	FormControl,
@@ -45,9 +44,6 @@ import { Label } from "@/shared/components/ui/label";
 
 const terminalRegistrationSchema = z.object({
 	nickname: z.string().min(1, "Nickname is required."),
-	store_location: z.string({
-		required_error: "Please select a store location.",
-	}),
 });
 
 export function DeviceSettings() {
@@ -57,9 +53,11 @@ export function DeviceSettings() {
 	const [selectedLocation, setSelectedLocation] = useState("");
 	const [initialReaderId, setInitialReaderId] = useState(null);
 
-	const { data: storeLocations, isLoading: isLoadingLocations } = useQuery({
-		queryKey: ["storeLocations"],
-		queryFn: getStoreLocations,
+	// Get store location from cache (seeded by SettingsPage from offline settings)
+	const locationId = terminalRegistrationService.getLocationId();
+	const { data: storeLocation } = useQuery({
+		queryKey: ["storeLocation", locationId],
+		enabled: false, // Don't fetch - just read from cache seeded by SettingsPage
 	});
 
 	const { data: terminalLocations, isLoading: isLoadingTerminalLocations } =
@@ -124,39 +122,26 @@ export function DeviceSettings() {
 		disabled: !machineId || isLoadingRegistration,
 		defaultValues: {
 			nickname: "",
-			store_location: "",
 		},
 	});
 
 	useEffect(() => {
-		if (registration && storeLocations) {
-			// Handle both formats: store_location as ID (number) or nested object
-			let locationId = "";
-			if (typeof registration.store_location === 'object' && registration.store_location !== null) {
-				// Nested object format: { id: 1, name: "Location Name" }
-				locationId = registration.store_location.id?.toString() || "";
-			} else if (registration.store_location) {
-				// Plain ID format: 1
-				locationId = registration.store_location.toString();
-			}
-
+		if (registration) {
 			terminalForm.reset({
 				nickname: registration.nickname || "",
-				store_location: locationId,
 			});
 
-			// This part is for the Stripe Reader and should now work correctly
+			// Set up Stripe Reader selection
 			const readerId = registration.reader_id || null;
 			setSelectedReader(readerId);
 			setInitialReaderId(readerId);
-		} else if (!isLoadingRegistration && !isLoadingLocations) {
+		} else if (!isLoadingRegistration) {
 			terminalForm.reset({
 				nickname: "",
-				store_location: "",
 			});
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [registration, isLoadingRegistration, isLoadingLocations, storeLocations]); // terminalForm and setSelectedReader are stable references
+	}, [registration, isLoadingRegistration]); // terminalForm and setSelectedReader are stable references
 
 	const { mutate: upsertRegistration, isPending: isUpsertingTerminal } =
 		useMutation({
@@ -177,9 +162,10 @@ export function DeviceSettings() {
 	const onTerminalSubmit = (data) => {
 		// Include the device_id and selected reader ID in the payload sent to the backend
 		// Convert null reader_id to empty string (field has blank=True but not null=True)
+		// Note: store_location is read-only and managed through admin/pairing flow
 		upsertRegistration({
 			device_id: machineId,
-			...data,
+			nickname: data.nickname,
 			reader_id: selectedReader || ""
 		});
 	};
@@ -244,40 +230,21 @@ export function DeviceSettings() {
 										)}
 									/>
 
-									<FormField
-										control={terminalForm.control}
-										name="store_location"
-										render={({ field }) => (
-											<FormItem>
-												<FormLabel>Assigned Store Location</FormLabel>
-												<Select
-													onValueChange={field.onChange}
-													value={field.value ?? ""}
-												>
-													<FormControl>
-														<SelectTrigger disabled={isLoadingLocations}>
-															<SelectValue placeholder="Select a store location for this device" />
-														</SelectTrigger>
-													</FormControl>
-													<SelectContent>
-														{storeLocations?.map((loc) => (
-															<SelectItem
-																key={loc.id}
-																value={loc.id.toString()}
-															>
-																{loc.name}
-															</SelectItem>
-														))}
-													</SelectContent>
-												</Select>
-												<FormDescription>
-													The physical store location where this terminal is
-													located.
-												</FormDescription>
-												<FormMessage />
-											</FormItem>
-										)}
-									/>
+									<FormItem>
+										<FormLabel>Assigned Store Location</FormLabel>
+										<FormControl>
+											<Input
+												readOnly
+												disabled
+												value={storeLocation?.name || "Not assigned"}
+											/>
+										</FormControl>
+										<FormDescription>
+											The physical store location where this terminal is
+											located. This is set during terminal registration and
+											can only be changed through the admin portal.
+										</FormDescription>
+									</FormItem>
 								</div>
 
 								<Separator />
@@ -363,19 +330,20 @@ export function DeviceSettings() {
 									</div>
 								</div>
 
-								<Button
+								<OnlineOnlyButton
 									type="submit"
 									disabled={
 										isUpsertingTerminal ||
 										(!terminalForm.formState.isDirty &&
 											selectedReader === initialReaderId)
 									}
+									disabledMessage="Saving device settings requires internet connection"
 								>
 									{isUpsertingTerminal && (
 										<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 									)}
 									Save All Device Settings
-								</Button>
+								</OnlineOnlyButton>
 							</form>
 						</Form>
 					</>
