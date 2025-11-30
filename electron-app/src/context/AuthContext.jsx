@@ -38,13 +38,24 @@ export const AuthProvider = ({ children }) => {
 				setUser(userData);
 				localStorage.setItem('auth_user', JSON.stringify(userData));
 				console.log('✅ [Auth] Auth verified and cached');
-				// eslint-disable-next-line no-unused-vars
 			} catch (error) {
-				// Auth failed - clear cache
-				console.warn('⚠️ [Auth] Auth verification failed, clearing cache');
-				await apiLogout();
-				setUser(null);
-				localStorage.removeItem('auth_user');
+				// Check if this is a network error (offline) vs actual auth failure
+				const isNetworkError = !navigator.onLine ||
+					error.message === 'Network Error' ||
+					error.code === 'ERR_NETWORK' ||
+					error.code === 'ECONNABORTED';
+
+				if (isNetworkError) {
+					// Offline - keep cached user, don't clear auth
+					console.log('📴 [Auth] Offline - keeping cached user session');
+					// User state already loaded from cache in useState initializer
+				} else {
+					// Real auth failure (401, expired token, etc.) - clear cache
+					console.warn('⚠️ [Auth] Auth verification failed, clearing cache');
+					await apiLogout();
+					setUser(null);
+					localStorage.removeItem('auth_user');
+				}
 			} finally {
 				setLoading(false);
 			}

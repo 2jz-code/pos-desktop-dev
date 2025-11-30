@@ -939,6 +939,22 @@ ipcMain.handle("offline:get-cached-users", async (event, options = {}) => {
 	}
 });
 
+// Offline authentication - verify PIN against cached user credentials
+ipcMain.handle("offline:authenticate", async (event, { username, pin }) => {
+	try {
+		const db = getDatabase();
+		const { authenticateOffline } = await import("./offline-db/auth.js");
+		const { getUserByUsername } = await import("./offline-db/datasets.js");
+		return authenticateOffline(db, username, pin, getUserByUsername);
+	} catch (error) {
+		console.error("[Offline Auth] Authentication error:", error);
+		return {
+			success: false,
+			error: "Authentication system error"
+		};
+	}
+});
+
 // Developer tool: Clear offline cache tables
 ipcMain.handle("offline:clear-cache", async () => {
 	try {

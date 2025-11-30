@@ -45,6 +45,8 @@ import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
+import { useOfflineModifiers, useOnlineStatus } from "@/shared/hooks";
+import { OfflineOverlay } from "@/shared/components/ui/OfflineOverlay";
 import * as modifierService from "@/domains/products/services/modifierService";
 import ModifierQuickCreate from "@/domains/products/components/modifiers/ModifierQuickCreate";
 import UsageAnalytics from "@/domains/products/components/modifiers/UsageAnalytics";
@@ -53,8 +55,6 @@ import ModifierSetEditor from "@/domains/products/components/modifiers/ModifierS
 const ModifierManagementPage = () => {
 	const navigate = useNavigate();
 	const [activeTab, setActiveTab] = useState("library");
-	const [modifierSets, setModifierSets] = useState([]);
-	const [loading, setLoading] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [selectedType, setSelectedType] = useState("all");
 	const [selectedModifierSet, setSelectedModifierSet] = useState(null);
@@ -62,31 +62,19 @@ const ModifierManagementPage = () => {
 	const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
 	const { toast } = useToast();
 	const confirmation = useConfirmation();
+	const isOnline = useOnlineStatus();
 
-	useEffect(() => {
-		fetchModifierSets();
-	}, []);
+	// Use offline-first hook for modifier sets
+	const {
+		data: modifierSets,
+		loading,
+		error,
+		refetch,
+		isFromCache,
+	} = useOfflineModifiers();
 
-	const fetchModifierSets = async () => {
-		try {
-			setLoading(true);
-			const params = {};
-			if (searchTerm) params.search = searchTerm;
-			if (selectedType !== "all") params.selection_type = selectedType;
-
-			const response = await modifierService.getModifierSets(params);
-			const data = response.data?.results || response.data || [];
-			setModifierSets(Array.isArray(data) ? data : []);
-		} catch (error) {
-			console.error("Error fetching modifier sets:", error);
-			toast({
-				title: "Error",
-				description: "Failed to load modifier sets.",
-				variant: "destructive",
-			});
-		} finally {
-			setLoading(false);
-		}
+	const fetchModifierSets = () => {
+		refetch({ forceApi: isOnline });
 	};
 
 	const handleSearch = () => {
@@ -160,7 +148,8 @@ const ModifierManagementPage = () => {
 		}
 	};
 
-	const filteredModifierSets = (Array.isArray(modifierSets) ? modifierSets : []).filter((set) => {
+	const modifierSetsArray = Array.isArray(modifierSets) ? modifierSets : [];
+	const filteredModifierSets = modifierSetsArray.filter((set) => {
 		if (
 			searchTerm &&
 			!set.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -195,16 +184,18 @@ const ModifierManagementPage = () => {
 				Back to Products
 			</Button>
 			<Button
-				onClick={handleCreateNew}
+				onClick={() => isOnline && handleCreateNew()}
 				className="flex items-center gap-2"
+				disabled={!isOnline}
 			>
 				<Plus className="h-4 w-4" />
 				Create Modifier Set
 			</Button>
 			<Button
-				onClick={handleAdvancedCreate}
+				onClick={() => isOnline && handleAdvancedCreate()}
 				variant="outline"
 				className="flex items-center gap-2"
+				disabled={!isOnline}
 			>
 				<Settings className="h-4 w-4" />
 				Advanced Editor
@@ -329,7 +320,10 @@ const ModifierManagementPage = () => {
 										? "Try adjusting your search criteria"
 										: "Create your first modifier set to get started"}
 								</p>
-								<Button onClick={handleCreateNew}>
+								<Button
+									onClick={() => isOnline && handleCreateNew()}
+									disabled={!isOnline}
+								>
 									<Plus className="mr-2 h-4 w-4" />
 									Create First Modifier Set
 								</Button>
@@ -354,7 +348,9 @@ const ModifierManagementPage = () => {
 												<Button
 													variant="ghost"
 													size="sm"
-													onClick={() => handleEditModifierSet(modifierSet)}
+													onClick={() => isOnline && handleEditModifierSet(modifierSet)}
+													disabled={!isOnline}
+													className={!isOnline ? "opacity-50" : ""}
 												>
 													<Edit3 className="h-4 w-4" />
 												</Button>
@@ -362,8 +358,10 @@ const ModifierManagementPage = () => {
 													variant="ghost"
 													size="sm"
 													onClick={() =>
-														handleDuplicateModifierSet(modifierSet)
+														isOnline && handleDuplicateModifierSet(modifierSet)
 													}
+													disabled={!isOnline}
+													className={!isOnline ? "opacity-50" : ""}
 												>
 													<Copy className="h-4 w-4" />
 												</Button>
@@ -371,9 +369,10 @@ const ModifierManagementPage = () => {
 													variant="ghost"
 													size="sm"
 													onClick={() =>
-														handleDeleteModifierSet(modifierSet)
+														isOnline && handleDeleteModifierSet(modifierSet)
 													}
-													className="text-red-600 hover:text-red-700"
+													disabled={!isOnline}
+													className={!isOnline ? "opacity-50" : "text-red-600 hover:text-red-700"}
 												>
 													<Trash2 className="h-4 w-4" />
 												</Button>
@@ -455,7 +454,12 @@ const ModifierManagementPage = () => {
 				</TabsContent>
 
 				<TabsContent value="analytics">
-					<UsageAnalytics modifierSets={modifierSets} />
+					<OfflineOverlay
+						title="Analytics Unavailable"
+						message="Usage analytics requires an internet connection to fetch real-time data."
+					>
+						<UsageAnalytics modifierSets={modifierSetsArray} />
+					</OfflineOverlay>
 				</TabsContent>
 
 				<TabsContent value="templates">

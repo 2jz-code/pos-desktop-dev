@@ -42,6 +42,7 @@ export const ProductsTableView = ({
 	onArchiveToggle,
 	canEditProducts,
 	canDeleteProducts,
+	isOnline = true,
 }) => {
 	if (loading) {
 		return (
@@ -231,10 +232,12 @@ export const ProductsTableView = ({
 											<DropdownMenuLabel>Actions</DropdownMenuLabel>
 											{canEditProducts() && (
 												<DropdownMenuItem
+													disabled={!isOnline}
 													onClick={(e) => {
 														e.stopPropagation();
-														onEditProduct(product.id);
+														if (isOnline) onEditProduct(product.id);
 													}}
+													className={!isOnline ? "opacity-50" : ""}
 												>
 													<Edit className="mr-2 h-4 w-4" />
 													Edit Product
@@ -245,14 +248,17 @@ export const ProductsTableView = ({
 											)}
 											{canDeleteProducts() && (
 												<DropdownMenuItem
+													disabled={!isOnline}
 													onClick={(e) => {
 														e.stopPropagation();
-														onArchiveToggle(product.id, product.is_active);
+														if (isOnline) onArchiveToggle(product.id, product.is_active);
 													}}
 													className={
-														product.is_active
-															? "text-orange-600 focus:text-orange-600"
-															: "text-green-600 focus:text-green-600"
+														!isOnline
+															? "opacity-50"
+															: product.is_active
+																? "text-orange-600 focus:text-orange-600"
+																: "text-green-600 focus:text-green-600"
 													}
 												>
 													{product.is_active ? (

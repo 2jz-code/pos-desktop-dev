@@ -257,7 +257,8 @@ export const {
   getInventoryLocations,
   getSettings,
   getUsers,
-  getUserById
+  getUserById,
+  getUserByUsername
 } = datasets;
 
 export const {

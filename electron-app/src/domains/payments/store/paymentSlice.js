@@ -230,6 +230,18 @@ export const createPaymentSlice = (set, get) => ({
 					itemAdjustmentsMap[adj.order_item].push(adj);
 				});
 
+				// Get cashier_id from auth context cache in localStorage
+				let cashierId = null;
+				try {
+					const cachedUser = localStorage.getItem('auth_user');
+					if (cachedUser) {
+						const user = JSON.parse(cachedUser);
+						cashierId = user.id;
+					}
+				} catch (error) {
+					console.warn('[Offline Payment] Failed to get cashier from cache:', error);
+				}
+
 				// Build the complete order payload for offline queueing
 				const orderPayload = {
 					// Order metadata
@@ -237,7 +249,7 @@ export const createPaymentSlice = (set, get) => ({
 					order_type: "POS",
 					dining_preference: state.order.dining_preference || "TAKE_OUT",
 					store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
-					cashier_id: terminalRegistrationService.getTerminalConfig()?.user_id,
+					cashier_id: cashierId,
 
 					// Customer info
 					guest_first_name: state.order.guest_first_name || "",

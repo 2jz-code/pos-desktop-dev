@@ -57,7 +57,9 @@ export function DeviceSettings() {
 	const locationId = terminalRegistrationService.getLocationId();
 	const { data: storeLocation } = useQuery({
 		queryKey: ["storeLocation", locationId],
+		queryFn: () => Promise.resolve(null), // Never called - just reading from cache
 		enabled: false, // Don't fetch - just read from cache seeded by SettingsPage
+		staleTime: Infinity, // Cache never goes stale
 	});
 
 	const { data: terminalLocations, isLoading: isLoadingTerminalLocations } =

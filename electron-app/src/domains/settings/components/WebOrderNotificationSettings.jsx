@@ -52,7 +52,9 @@ export function WebOrderNotificationSettings() {
 	// Get cached store location (seeded by SettingsPage from offline settings)
 	const { data: cachedStoreLocation } = useQuery({
 		queryKey: ["storeLocation", locationId],
+		queryFn: () => Promise.resolve(null), // Never called - just reading from cache
 		enabled: false, // Don't fetch - just read from cache
+		staleTime: Infinity, // Cache never goes stale
 	});
 
 	const { data, isLoading, isError } = useQuery({

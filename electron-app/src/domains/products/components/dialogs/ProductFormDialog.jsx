@@ -6,7 +6,7 @@ import {
 } from "@/domains/products/services/productService";
 import { createTax } from "@/domains/products/services/taxService";
 import inventoryService from "@/domains/inventory/services/inventoryService";
-import { useOfflineCategories, useOfflineProductTypes, useOfflineTaxes } from "@/shared/hooks";
+import { useOfflineCategories, useOfflineProductTypes, useOfflineTaxes, useOfflineInventoryLocations } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import {
 	Dialog,
@@ -41,9 +41,10 @@ export function ProductFormDialog({
 	onSuccess,
 }) {
 	// Use offline hooks for cached data
-	const { categories: cachedCategories, loading: categoriesLoading } = useOfflineCategories();
-	const { productTypes: cachedProductTypes, loading: productTypesLoading } = useOfflineProductTypes();
-	const { taxes: cachedTaxes, loading: taxesLoading } = useOfflineTaxes();
+	const { data: cachedCategories, loading: categoriesLoading } = useOfflineCategories();
+	const { data: cachedProductTypes, loading: productTypesLoading } = useOfflineProductTypes();
+	const { data: cachedTaxes, loading: taxesLoading } = useOfflineTaxes();
+	const { data: cachedLocations, loading: locationsLoading } = useOfflineInventoryLocations();
 
 	const [loading, setLoading] = useState(false);
 	const [categories, setCategories] = useState([]);
@@ -90,6 +91,19 @@ export function ProductFormDialog({
 	}, [cachedTaxes]);
 
 	useEffect(() => {
+		if (cachedLocations && cachedLocations.length >= 0) {
+			setLocations(cachedLocations);
+			// Set default location if not already set
+			if (cachedLocations.length > 0 && !formData.location_id) {
+				setFormData((prev) => ({
+					...prev,
+					location_id: cachedLocations[0].id.toString(),
+				}));
+			}
+		}
+	}, [cachedLocations]);
+
+	useEffect(() => {
 		if (open) {
 			fetchInitialData();
 		}
@@ -103,42 +117,32 @@ export function ProductFormDialog({
 	const fetchInitialData = async () => {
 		setLoading(true);
 		try {
-			// Only fetch locations (categories, product types, and taxes come from cache via hooks)
-			const locationsRaw = await inventoryService.getLocations();
-			const locationsData = locationsRaw?.results || locationsRaw?.data?.results || locationsRaw?.data || locationsRaw || [];
-
-			setLocations(locationsData);
-
-			if (locationsData.length > 0) {
-				setFormData((prev) => ({
-					...prev,
-					location_id: locationsData[0].id.toString(),
-				}));
-			}
-
+			// Categories, product types, taxes, and locations all come from cache via hooks
+			// We only need to fetch product data when editing
 			if (isEditing) {
 				const productRes = await getProductById(productId);
 				const product = productRes.data;
 				setInitialProductState(product);
+
+				// Handle both API format (category.id) and cache format (category_id)
+				const categoryId = product.category?.id ?? product.category_id ?? "";
+				const productTypeId = product.product_type?.id ?? product.product_type_id ?? "";
+
 				setFormData({
 					name: product.name || "",
 					description: product.description || "",
 					price: product.price ? product.price.toString() : "",
-					category_id: product.category?.id
-						? product.category.id.toString()
-						: "",
-					product_type_id: product.product_type?.id
-						? product.product_type.id.toString()
-						: "",
+					category_id: categoryId ? categoryId.toString() : "",
+					product_type_id: productTypeId ? productTypeId.toString() : "",
 					track_inventory: product.track_inventory || false,
 					initial_quantity: "", // Not editable after creation
-					location_id: locationsData?.[0]?.id.toString() || "", // Default to first location
+					location_id: locations?.[0]?.id.toString() || "", // Default to first location from cache
 					barcode: product.barcode || "",
 					is_public: product.is_public,
 					tax_ids: Array.isArray(product.taxes) ? product.taxes.map(t => t.id) : [],
 				});
 			} else {
-				resetForm(locationsData);
+				resetForm(locations);
 				setInitialProductState(null);
 			}
 			setErrors({});
@@ -417,7 +421,11 @@ export function ProductFormDialog({
 
 	const renderCategoryOptions = (parentId = null, level = 0) => {
 		return categories
-			.filter((c) => (c.parent?.id || null) === parentId)
+			.filter((c) => {
+				// Handle both API format (parent.id) and cache format (parent_id)
+				const catParentId = c.parent?.id ?? c.parent_id ?? null;
+				return catParentId === parentId;
+			})
 			.flatMap((c) => [
 				<SelectItem
 					key={c.id}

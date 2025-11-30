@@ -974,3 +974,24 @@ export function getUserById(db, id) {
     is_active: user.is_active === 1
   };
 }
+
+/**
+ * Get user by username for offline authentication
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} username
+ * @returns {Object|null} User with hashed PIN or null if not found
+ */
+export function getUserByUsername(db, username) {
+  const stmt = db.prepare(
+    'SELECT * FROM users WHERE username = ? AND is_pos_staff = 1 AND is_active = 1'
+  );
+  const user = stmt.get(username);
+
+  if (!user) return null;
+
+  return {
+    ...user,
+    is_pos_staff: user.is_pos_staff === 1,
+    is_active: user.is_active === 1
+  };
+}

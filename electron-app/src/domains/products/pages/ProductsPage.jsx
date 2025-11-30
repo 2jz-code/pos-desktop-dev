@@ -50,7 +50,7 @@ import {
 import { toast } from "@/shared/components/ui/use-toast";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@ajeen/ui";
-import { useProductBarcode, useOfflineProducts, useOfflineCategories } from "@/shared/hooks";
+import { useProductBarcode, useOfflineProducts, useOfflineCategories, useOnlineStatus } from "@/shared/hooks";
 import { useScrollToScannedItem } from "@ajeen/ui";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 
@@ -77,6 +77,7 @@ const ProductsPage = () => {
 	// Role-based permissions
 	const { canCreateProducts, canEditProducts, canDeleteProducts } =
 		useRolePermissions();
+	const isOnline = useOnlineStatus();
 	const [filters, setFilters] = useState({
 		search: "",
 		category: "",
@@ -764,6 +765,7 @@ const ProductsPage = () => {
 					onArchiveToggle={handleArchiveToggle}
 					canEditProducts={canEditProducts}
 					canDeleteProducts={canDeleteProducts}
+					isOnline={isOnline}
 				/>
 			);
 		}
@@ -924,7 +926,11 @@ const ProductsPage = () => {
 					>
 						<DropdownMenuLabel>Product Management</DropdownMenuLabel>
 						{canCreateProducts() && (
-							<DropdownMenuItem onClick={handleCreateProduct}>
+							<DropdownMenuItem
+								disabled={!isOnline}
+								onClick={() => isOnline && handleCreateProduct()}
+								className={!isOnline ? "opacity-50" : ""}
+							>
 								<PlusCircle className="mr-2 h-4 w-4" />
 								Add New Product
 							</DropdownMenuItem>

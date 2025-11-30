@@ -188,6 +188,9 @@ contextBridge.exposeInMainWorld("offlineAPI", {
 	getCachedSettings: () => ipcRenderer.invoke("offline:get-cached-settings"),
 	getCachedUsers: (options) => ipcRenderer.invoke("offline:get-cached-users", options),
 
+	// Offline authentication
+	authenticate: (username, pin) => ipcRenderer.invoke("offline:authenticate", { username, pin }),
+
 	// Developer tools
 	clearCache: () => ipcRenderer.invoke("offline:clear-cache"),
 

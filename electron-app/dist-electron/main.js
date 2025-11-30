@@ -1393,6 +1393,18 @@ function getUserById$1(db2, id) {
     is_active: user.is_active === 1
   };
 }
+function getUserByUsername(db2, username) {
+  const stmt = db2.prepare(
+    "SELECT * FROM users WHERE username = ? AND is_pos_staff = 1 AND is_active = 1"
+  );
+  const user = stmt.get(username);
+  if (!user) return null;
+  return {
+    ...user,
+    is_pos_staff: user.is_pos_staff === 1,
+    is_active: user.is_active === 1
+  };
+}
 const datasets = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   deleteRecords: deleteRecords$1,
@@ -1410,6 +1422,7 @@ const datasets = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProp
   getSettings: getSettings$1,
   getTaxes: getTaxes$1,
   getUserById: getUserById$1,
+  getUserByUsername,
   getUsers: getUsers$1,
   updateDatasetVersion: updateDatasetVersion$1,
   upsertCategories: upsertCategories$1,
@@ -3076,6 +3089,20 @@ ipcMain.handle("offline:get-cached-users", async (event, options = {}) => {
   } catch (error) {
     console.error("[Offline DB] Error getting cached users:", error);
     throw error;
+  }
+});
+ipcMain.handle("offline:authenticate", async (event, { username, pin }) => {
+  try {
+    const db2 = getDatabase();
+    const { authenticateOffline } = await import("./auth-CVfH7hD5.js");
+    const { getUserByUsername: getUserByUsername2 } = await Promise.resolve().then(() => datasets);
+    return authenticateOffline(db2, username, pin, getUserByUsername2);
+  } catch (error) {
+    console.error("[Offline Auth] Authentication error:", error);
+    return {
+      success: false,
+      error: "Authentication system error"
+    };
   }
 });
 ipcMain.handle("offline:clear-cache", async () => {

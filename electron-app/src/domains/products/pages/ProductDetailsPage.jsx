@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { archiveProduct, unarchiveProduct } from "@/domains/products/services/productService";
-import { useOfflineProductById } from "@/shared/hooks";
+import { useOfflineProductById, useOnlineStatus } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
@@ -56,6 +56,7 @@ const ProductDetailsPage = () => {
 
 	// Role-based permissions
 	const { canEditProducts, canDeleteProducts } = useRolePermissions();
+	const isOnline = useOnlineStatus();
 
 	// Fetch product with offline support
 	const {
@@ -216,7 +217,12 @@ const ProductDetailsPage = () => {
 						{/* Quick Actions */}
 						<div className="flex items-center gap-2">
 							{canEditProducts() && (
-								<Button onClick={handleEdit} size="lg" className="hidden sm:flex">
+								<Button
+									onClick={() => isOnline && handleEdit()}
+									size="lg"
+									className="hidden sm:flex"
+									disabled={!isOnline}
+								>
 									<Edit className="mr-2 h-4 w-4" />
 									Edit Product
 								</Button>
@@ -233,7 +239,11 @@ const ProductDetailsPage = () => {
 										<DropdownMenuLabel>Actions</DropdownMenuLabel>
 										{canEditProducts() && (
 											<>
-												<DropdownMenuItem onClick={handleEdit} className="sm:hidden">
+												<DropdownMenuItem
+													disabled={!isOnline}
+													onClick={() => isOnline && handleEdit()}
+													className={cn("sm:hidden", !isOnline && "opacity-50")}
+												>
 													<Edit className="mr-2 h-4 w-4" />
 													Edit Product
 												</DropdownMenuItem>
@@ -254,11 +264,14 @@ const ProductDetailsPage = () => {
 											<>
 												<DropdownMenuSeparator />
 												<DropdownMenuItem
-													onClick={handleArchiveToggle}
+													disabled={!isOnline}
+													onClick={() => isOnline && handleArchiveToggle()}
 													className={
-														product.is_active
-															? "text-orange-600 focus:text-orange-600"
-															: "text-green-600 focus:text-green-600"
+														!isOnline
+															? "opacity-50"
+															: product.is_active
+																? "text-orange-600 focus:text-orange-600"
+																: "text-green-600 focus:text-green-600"
 													}
 												>
 													{product.is_active ? (
@@ -545,8 +558,9 @@ const ProductDetailsPage = () => {
 				<div className="fixed bottom-6 right-6 z-30 sm:hidden">
 					<Button
 						size="lg"
-						onClick={handleEdit}
+						onClick={() => isOnline && handleEdit()}
 						className="h-14 w-14 rounded-full shadow-lg"
+						disabled={!isOnline}
 					>
 						<Edit className="h-5 w-5" />
 					</Button>
