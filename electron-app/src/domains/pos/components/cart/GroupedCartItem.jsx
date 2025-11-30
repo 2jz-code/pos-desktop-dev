@@ -7,7 +7,6 @@ import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
 import { X, Plus, Minus, Edit3, ChevronDown, ChevronRight, ShieldOff } from "lucide-react";
 import ProductModifierSelector from "../ProductModifierSelector";
-import { removeAdjustment } from "@/domains/orders/services/orderService";
 import { toast } from "@/shared/components/ui/use-toast";
 
 export default function GroupedCartItem({ baseProduct, items }) {
@@ -18,6 +17,7 @@ export default function GroupedCartItem({ baseProduct, items }) {
 		isUpdating,
 		adjustments,
 		orderId,
+		removeAdjustment,
 	} = usePosStore(
 		(state) => ({
 			removeItemViaSocket: state.removeItemViaSocket,
@@ -28,6 +28,7 @@ export default function GroupedCartItem({ baseProduct, items }) {
 			),
 			adjustments: state.adjustments,
 			orderId: state.orderId,
+			removeAdjustment: state.removeAdjustment,
 		}),
 		shallow
 	);
@@ -67,8 +68,8 @@ export default function GroupedCartItem({ baseProduct, items }) {
 		if (!orderId) return;
 
 		try {
-			await removeAdjustment(orderId, adjustmentId);
-			// Cart will update automatically via WebSocket
+			await removeAdjustment(adjustmentId);
+			// Cart will update automatically via WebSocket or local state
 		} catch (error) {
 			console.error("Error removing adjustment:", error);
 			toast({
@@ -82,8 +83,9 @@ export default function GroupedCartItem({ baseProduct, items }) {
 	// If only one item, render as individual item (but with grouping styling)
 	if (items.length === 1) {
 		const item = items[0];
+		// Ensure selected_modifiers_snapshot is an array and has items
 		const hasItemModifiers =
-			item.selected_modifiers_snapshot &&
+			Array.isArray(item.selected_modifiers_snapshot) &&
 			item.selected_modifiers_snapshot.length > 0;
 
 		// Find price override for this specific item

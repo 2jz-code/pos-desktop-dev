@@ -15,7 +15,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
 import { Percent, DollarSign, FileText, Tag, ShoppingCart, Package } from "lucide-react";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { applyOneOffDiscount } from "@/domains/orders/services/orderService";
 import { toast } from "@/shared/components/ui/use-toast";
 import { useApprovalDialog } from "@/domains/approvals/hooks/useApprovalDialog.jsx";
 
@@ -30,11 +29,12 @@ export function OneOffDiscountDialog({ open, onClose }) {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { orderId, items, subtotal, adjustments } = usePosStore((state) => ({
+  const { orderId, items, subtotal, adjustments, applyOneOffDiscount } = usePosStore((state) => ({
     orderId: state.orderId,
     items: state.items,
     subtotal: state.subtotal,
     adjustments: state.adjustments,
+    applyOneOffDiscount: state.applyOneOffDiscount,
   }));
 
   const { showApprovalDialog, approvalDialog } = useApprovalDialog();
@@ -129,20 +129,14 @@ export function OneOffDiscountDialog({ open, onClose }) {
     setIsSubmitting(true);
 
     try {
-      const payload = {
-        discount_type: discountType,
-        discount_value: value,
+      const response = await applyOneOffDiscount({
+        discountType: discountType,
+        discountValue: value,
         reason: formData.reason.trim(),
-      };
+        orderItemId: discountLevel === "item" ? selectedItemId : null,
+      });
 
-      // Add order_item_id if item-level
-      if (discountLevel === "item" && selectedItemId) {
-        payload.order_item_id = selectedItemId;
-      }
-
-      const response = await applyOneOffDiscount(orderId, payload);
-
-      // Check if approval is required
+      // Check if approval is required (online mode only)
       if (response.status === "pending_approval") {
         // Show approval dialog
         showApprovalDialog({
@@ -161,7 +155,7 @@ export function OneOffDiscountDialog({ open, onClose }) {
         });
         handleCancel();
       } else {
-        // Discount applied successfully - cart will update automatically via WebSocket
+        // Discount applied successfully
         const itemDescription = discountLevel === "item" && selectedItem
           ? ` to ${selectedItem.product?.name || selectedItem.custom_name}`
           : " to order";

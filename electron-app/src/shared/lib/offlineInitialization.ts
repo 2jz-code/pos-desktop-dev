@@ -3,11 +3,13 @@
  *
  * Handles startup tasks for offline mode:
  * - Preload relation caches
+ * - Preload calculation settings (tax rates, surcharge, etc.)
  * - Check sync status
  * - Initialize network monitoring
  */
 
 import { preloadRelationCaches, clearRelationCache } from './offlineRelationHelpers';
+import { preloadCalculationSettings, invalidateCalculationSettingsCache } from '@/domains/pos/store/cartSlice';
 
 /**
  * Initialize offline mode on app startup
@@ -20,6 +22,9 @@ export async function initializeOfflineMode(): Promise<void> {
   try {
     // Preload relation caches for faster hydration
     await preloadRelationCaches();
+
+    // Preload calculation settings (tax rate, surcharge, etc.) for CartCalculator
+    await preloadCalculationSettings();
 
     console.log('✅ [Offline] Offline mode initialized');
   } catch (err) {
@@ -50,6 +55,19 @@ export function handleSyncComplete(datasetsUpdated: string[]): void {
     // Optionally preload again immediately
     preloadRelationCaches().catch(err => {
       console.warn('⚠️ [Offline] Failed to preload caches after sync:', err);
+    });
+  }
+
+  // Invalidate calculation settings cache if settings, taxes, or product_types were updated
+  // Tax calculation depends on all three: settings (default rate), taxes (rate lookup), product_types (default_tax_ids)
+  const taxRelatedDatasets = ['settings', 'store_location', 'global_settings', 'taxes', 'product_types'];
+  const shouldReloadSettings = datasetsUpdated.some(ds => taxRelatedDatasets.includes(ds));
+
+  if (shouldReloadSettings) {
+    console.log('🔄 [Offline] Reloading calculation settings after sync');
+    invalidateCalculationSettingsCache();
+    preloadCalculationSettings().catch(err => {
+      console.warn('⚠️ [Offline] Failed to reload calculation settings after sync:', err);
     });
   }
 }

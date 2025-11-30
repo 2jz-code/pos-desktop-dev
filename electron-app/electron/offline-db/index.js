@@ -271,6 +271,7 @@ export const {
   incrementRetryCounter,
   deleteOperation,
   purgeSuccessfulOperations,
+  clearAllPendingData,
   recordOfflineOrder,
   getOfflineOrder,
   updateOfflineOrderStatus,

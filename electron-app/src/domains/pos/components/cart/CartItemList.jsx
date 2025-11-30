@@ -29,6 +29,13 @@ const CartItemList = () => {
 		return Object.values(grouped);
 	};
 
+	// Check if a product has modifier groups
+	const productHasModifierGroups = (product) => {
+		return product &&
+			Array.isArray(product.modifier_groups) &&
+			product.modifier_groups.length > 0;
+	};
+
 	if (items.length === 0) {
 		return (
 			<div className="flex-grow flex items-center justify-center p-8">
@@ -58,14 +65,25 @@ const CartItemList = () => {
 								<CartItem key={item.id} item={item} />
 							));
 						}
-						// Render regular product items as grouped
-						return (
-							<GroupedCartItem
-								key={group.baseProduct.id}
-								baseProduct={group.baseProduct}
-								items={group.items}
-							/>
-						);
+
+						// For products WITH modifier groups, use GroupedCartItem
+						// This allows each instance to have different modifier selections
+						if (productHasModifierGroups(group.baseProduct)) {
+							return (
+								<GroupedCartItem
+									key={group.baseProduct.id}
+									baseProduct={group.baseProduct}
+									items={group.items}
+								/>
+							);
+						}
+
+						// For products WITHOUT modifier groups, render as simple CartItem
+						// All items of the same product are identical, so just render the first one
+						// (quantity is already aggregated on the backend)
+						return group.items.map(item => (
+							<CartItem key={item.id} item={item} />
+						));
 					})}
 				</ul>
 			</div>

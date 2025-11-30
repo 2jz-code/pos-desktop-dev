@@ -166,7 +166,7 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
       printer.bold(true);
       printer.println("Payment Details:");
       printer.bold(false);
-      for (const [index, txn] of transactions.entries()) {
+      for (const [index2, txn] of transactions.entries()) {
         const method = (txn.method || "N/A").toUpperCase();
         const baseAmount = parseFloat(txn.amount || 0);
         const surcharge = parseFloat(txn.surcharge || 0);
@@ -179,10 +179,10 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
             const displayName = `${cardBrand.toUpperCase()} ******${cardLast4}`;
             printLine(printer, ` ${displayName}`, `$${totalAmount}`);
           } else {
-            printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+            printLine(printer, ` ${method} (${index2 + 1})`, `$${totalAmount}`);
           }
         } else {
-          printLine(printer, ` ${method} (${index + 1})`, `$${totalAmount}`);
+          printLine(printer, ` ${method} (${index2 + 1})`, `$${totalAmount}`);
         }
         if (method === "CASH") {
           const tendered = parseFloat(txn.cashTendered || 0).toFixed(2);
@@ -534,7 +534,8 @@ function initializeSchema(db2) {
       exclude_from_discounts INTEGER NOT NULL DEFAULT 0,
       max_quantity_per_item INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      default_tax_ids TEXT DEFAULT '[]'
     );
   `);
   db2.exec(`
@@ -906,8 +907,8 @@ function upsertProductTypes$1(db2, productTypes) {
     INSERT INTO product_types (
       id, tenant_id, name, description, inventory_behavior, stock_enforcement,
       allow_negative_stock, tax_inclusive, pricing_method, exclude_from_discounts,
-      max_quantity_per_item, is_active, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      max_quantity_per_item, is_active, updated_at, default_tax_ids
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       tenant_id = excluded.tenant_id,
       name = excluded.name,
@@ -920,7 +921,8 @@ function upsertProductTypes$1(db2, productTypes) {
       exclude_from_discounts = excluded.exclude_from_discounts,
       max_quantity_per_item = excluded.max_quantity_per_item,
       is_active = excluded.is_active,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      default_tax_ids = excluded.default_tax_ids
   `);
   const insertMany = db2.transaction((types) => {
     for (const type of types) {
@@ -937,7 +939,8 @@ function upsertProductTypes$1(db2, productTypes) {
         type.exclude_from_discounts ? 1 : 0,
         type.max_quantity_per_item,
         type.is_active ? 1 : 0,
-        type.updated_at
+        type.updated_at,
+        JSON.stringify(type.default_tax_ids || [])
       );
     }
   });
@@ -1076,6 +1079,74 @@ function deleteRecords$1(db2, tableName, deletedIds) {
   const stmt = db2.prepare(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`);
   stmt.run(...deletedIds);
 }
+function hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap) {
+  if (!modifierSetRefs || modifierSetRefs.length === 0) {
+    return [];
+  }
+  const optionTriggersMap = /* @__PURE__ */ new Map();
+  new Set(modifierSetRefs.map((ref) => ref.modifier_set_id));
+  modifierSetRefs.forEach((ref) => {
+    const modifierSetId = ref.modifier_set_id;
+    let modifierSet = modifierSetMap.get(modifierSetId) || modifierSetMap.get(String(modifierSetId));
+    if (modifierSet && modifierSet.triggered_by_option_id) {
+      const triggerOptionId = modifierSet.triggered_by_option_id;
+      if (!optionTriggersMap.has(triggerOptionId)) {
+        optionTriggersMap.set(triggerOptionId, []);
+      }
+      optionTriggersMap.get(triggerOptionId).push({
+        id: modifierSet.id,
+        name: modifierSet.name,
+        internal_name: modifierSet.internal_name,
+        selection_type: modifierSet.selection_type,
+        min_selections: modifierSet.min_selections,
+        max_selections: modifierSet.max_selections,
+        options: modifierSet.options || []
+      });
+    }
+  });
+  return modifierSetRefs.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).map((ref) => {
+    const modifierSetId = ref.modifier_set_id;
+    let modifierSet = modifierSetMap.get(modifierSetId);
+    if (!modifierSet && modifierSetId) {
+      modifierSet = modifierSetMap.get(String(modifierSetId));
+    }
+    if (!modifierSet) {
+      console.warn(`[hydrateModifierGroups] Modifier set not found for ID: ${modifierSetId}`);
+      return null;
+    }
+    const hydratedOptions = (modifierSet.options || []).map((option) => {
+      const triggeredSets = optionTriggersMap.get(option.id) || [];
+      return {
+        ...option,
+        triggered_sets: triggeredSets
+      };
+    });
+    return {
+      id: modifierSet.id,
+      name: modifierSet.name,
+      internal_name: modifierSet.internal_name,
+      selection_type: modifierSet.selection_type,
+      min_selections: modifierSet.min_selections,
+      max_selections: modifierSet.max_selections,
+      triggered_by_option_id: modifierSet.triggered_by_option_id,
+      display_order: ref.display_order,
+      is_required_override: ref.is_required_override,
+      options: hydratedOptions
+    };
+  }).filter(Boolean);
+}
+function hydrateModifierGroups(db2, modifierSetRefs) {
+  if (!modifierSetRefs || modifierSetRefs.length === 0) {
+    return [];
+  }
+  const allModifierSets = getModifierSets$1(db2);
+  const modifierSetMap = /* @__PURE__ */ new Map();
+  allModifierSets.forEach((ms) => {
+    modifierSetMap.set(ms.id, ms);
+    modifierSetMap.set(String(ms.id), ms);
+  });
+  return hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap);
+}
 function getProducts$1(db2, filters = {}) {
   let query = "SELECT * FROM products WHERE 1=1";
   const params = [];
@@ -1094,42 +1165,69 @@ function getProducts$1(db2, filters = {}) {
   }
   const stmt = db2.prepare(query);
   const products = stmt.all(...params);
-  return products.map((p) => ({
-    ...p,
-    track_inventory: p.track_inventory === 1,
-    has_modifiers: p.has_modifiers === 1,
-    is_active: p.is_active === 1,
-    is_public: p.is_public === 1,
-    tax_ids: JSON.parse(p.tax_ids || "[]"),
-    modifier_sets: JSON.parse(p.modifier_sets || "[]")
-  }));
+  const allModifierSets = getModifierSets$1(db2);
+  const modifierSetMap = /* @__PURE__ */ new Map();
+  allModifierSets.forEach((ms) => {
+    modifierSetMap.set(ms.id, ms);
+    modifierSetMap.set(String(ms.id), ms);
+  });
+  return products.map((p) => {
+    const modifierSetRefs = JSON.parse(p.modifier_sets || "[]");
+    const modifierGroups = hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap);
+    const hasModifiers = modifierGroups.length > 0;
+    return {
+      ...p,
+      track_inventory: p.track_inventory === 1,
+      // Use derived value - if we have modifier_groups, product has modifiers
+      has_modifiers: hasModifiers,
+      is_active: p.is_active === 1,
+      is_public: p.is_public === 1,
+      tax_ids: JSON.parse(p.tax_ids || "[]"),
+      modifier_sets: modifierSetRefs,
+      // Keep raw references
+      // Hydrated modifier_groups matching API response shape expected by UI
+      modifier_groups: modifierGroups
+    };
+  });
 }
 function getProductById$1(db2, id) {
   const stmt = db2.prepare("SELECT * FROM products WHERE id = ?");
   const product = stmt.get(id);
   if (!product) return null;
+  const modifierSetRefs = JSON.parse(product.modifier_sets || "[]");
+  const modifierGroups = hydrateModifierGroups(db2, modifierSetRefs);
+  const hasModifiers = modifierGroups.length > 0;
   return {
     ...product,
     track_inventory: product.track_inventory === 1,
-    has_modifiers: product.has_modifiers === 1,
+    // Use derived value - if we have modifier_groups, product has modifiers
+    has_modifiers: hasModifiers,
     is_active: product.is_active === 1,
     is_public: product.is_public === 1,
     tax_ids: JSON.parse(product.tax_ids || "[]"),
-    modifier_sets: JSON.parse(product.modifier_sets || "[]")
+    modifier_sets: modifierSetRefs,
+    // Hydrated modifier_groups matching API response shape expected by UI
+    modifier_groups: modifierGroups
   };
 }
 function getProductByBarcode$1(db2, barcode) {
   const stmt = db2.prepare("SELECT * FROM products WHERE barcode = ? AND is_active = 1");
   const product = stmt.get(barcode);
   if (!product) return null;
+  const modifierSetRefs = JSON.parse(product.modifier_sets || "[]");
+  const modifierGroups = hydrateModifierGroups(db2, modifierSetRefs);
+  const hasModifiers = modifierGroups.length > 0;
   return {
     ...product,
     track_inventory: product.track_inventory === 1,
-    has_modifiers: product.has_modifiers === 1,
+    // Use derived value - if we have modifier_groups, product has modifiers
+    has_modifiers: hasModifiers,
     is_active: product.is_active === 1,
     is_public: product.is_public === 1,
     tax_ids: JSON.parse(product.tax_ids || "[]"),
-    modifier_sets: JSON.parse(product.modifier_sets || "[]")
+    modifier_sets: modifierSetRefs,
+    // Hydrated modifier_groups matching API response shape expected by UI
+    modifier_groups: modifierGroups
   };
 }
 function getCategories$1(db2) {
@@ -1172,12 +1270,20 @@ function getDiscounts$1(db2, options = {}) {
   }
   const stmt = db2.prepare(query);
   const discounts = stmt.all();
-  return discounts.map((d) => ({
-    ...d,
-    is_active: d.is_active === 1,
-    applicable_products: JSON.parse(d.applicable_products || "[]"),
-    applicable_categories: JSON.parse(d.applicable_categories || "[]")
-  }));
+  return discounts.map((d) => {
+    const applicableProducts = JSON.parse(d.applicable_products || "[]");
+    const applicableCategories = JSON.parse(d.applicable_categories || "[]");
+    return {
+      ...d,
+      is_active: d.is_active === 1,
+      // Keep original names for backwards compatibility
+      applicable_products: applicableProducts,
+      applicable_categories: applicableCategories,
+      // Add _ids variants for DiscountCalculator compatibility
+      applicable_product_ids: applicableProducts,
+      applicable_category_ids: applicableCategories
+    };
+  });
 }
 function getModifierSets$1(db2) {
   const stmt = db2.prepare("SELECT * FROM modifier_sets");
@@ -1199,7 +1305,8 @@ function getProductTypes$1(db2) {
     allow_negative_stock: t.allow_negative_stock === 1,
     tax_inclusive: t.tax_inclusive === 1,
     exclude_from_discounts: t.exclude_from_discounts === 1,
-    is_active: t.is_active === 1
+    is_active: t.is_active === 1,
+    default_tax_ids: JSON.parse(t.default_tax_ids || "[]")
   }));
 }
 function getInventoryStocks$1(db2) {
@@ -1449,6 +1556,18 @@ function purgeSuccessfulOperations(db2, daysOld = 7) {
   const result = stmt.run(daysOld);
   return result.changes;
 }
+function clearAllPendingData$1(db2) {
+  const operations = db2.prepare("DELETE FROM pending_operations").run();
+  const orders = db2.prepare("DELETE FROM offline_orders").run();
+  const payments = db2.prepare("DELETE FROM offline_payments").run();
+  const approvals = db2.prepare("DELETE FROM offline_approvals WHERE synced = 0").run();
+  return {
+    pending_operations: operations.changes,
+    offline_orders: orders.changes,
+    offline_payments: payments.changes,
+    offline_approvals: approvals.changes
+  };
+}
 function recordOfflineOrder$1(db2, orderPayload) {
   const localId = v4();
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -1581,6 +1700,7 @@ function getQueueStats$1(db2) {
 }
 const queue = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
+  clearAllPendingData: clearAllPendingData$1,
   deleteOperation,
   getOfflineOrder: getOfflineOrder$1,
   getOfflinePayments: getOfflinePayments$1,
@@ -2014,6 +2134,7 @@ const {
   listPendingOperations,
   markOperationSynced,
   markOperationFailed,
+  clearAllPendingData,
   recordOfflineOrder,
   getOfflineOrder,
   updateOfflineOrderStatus,
@@ -2038,6 +2159,71 @@ const {
   clearPairingInfo,
   isPaired
 } = meta;
+const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  checkLimitExceeded,
+  clearAllPendingData,
+  clearPairingInfo,
+  closeDatabase,
+  createBackup,
+  datasets,
+  deleteRecords,
+  getCategories,
+  getCompleteStats,
+  getDatabase,
+  getDatabasePath,
+  getDatabaseStats,
+  getDatasetVersion,
+  getDiscounts,
+  getInventoryByProductId,
+  getInventoryLocations,
+  getInventoryStocks,
+  getModifierSets,
+  getNetworkStatus,
+  getOfflineExposure,
+  getOfflineOrder,
+  getOfflinePayments,
+  getPairingInfo,
+  getProductByBarcode,
+  getProductById,
+  getProductTypes,
+  getProducts,
+  getQueueStats,
+  getSettings,
+  getSyncStatus,
+  getTaxes,
+  getUnsyncedApprovals,
+  getUserById,
+  getUsers,
+  initializeDatabase,
+  isPaired,
+  listOfflineOrders,
+  listPendingOperations,
+  markOperationFailed,
+  markOperationSynced,
+  meta,
+  queue,
+  queueOperation,
+  recordOfflineApproval,
+  recordOfflineOrder,
+  recordOfflinePayment,
+  storePairingInfo,
+  updateDatasetVersion,
+  updateNetworkStatus,
+  updateOfflineOrderStatus,
+  updateSyncTimestamp,
+  upsertCategories,
+  upsertDiscounts,
+  upsertInventoryLocations,
+  upsertInventoryStocks,
+  upsertModifierSets,
+  upsertProductTypes,
+  upsertProducts,
+  upsertSettings,
+  upsertTaxes,
+  upsertUsers,
+  vacuumDatabase
+}, Symbol.toStringTag, { value: "Module" }));
 const httpsAgent = new https.Agent({
   rejectUnauthorized: false
 });
@@ -3088,6 +3274,18 @@ ipcMain.handle("offline:get-queue-stats", async () => {
     throw error;
   }
 });
+ipcMain.handle("offline:clear-all-pending", async () => {
+  try {
+    const db2 = getDatabase();
+    const { clearAllPendingData: clearAllPendingData2 } = await Promise.resolve().then(() => index);
+    const result = clearAllPendingData2(db2);
+    console.log("[Offline DB] Cleared all pending data:", result);
+    return result;
+  } catch (error) {
+    console.error("[Offline DB] Error clearing pending data:", error);
+    throw error;
+  }
+});
 ipcMain.handle("offline:get-exposure", async () => {
   try {
     const db2 = getDatabase();
@@ -3209,9 +3407,9 @@ ipcMain.handle("get-session-cookies", async (event, url) => {
     const { session: session2 } = require2("electron");
     const cookies = await session2.defaultSession.cookies.get({ url });
     console.log(`[Main Process] Found ${cookies.length} cookies for ${url}`);
-    cookies.forEach((cookie, index) => {
+    cookies.forEach((cookie, index2) => {
       console.log(
-        `[Main Process] Cookie ${index + 1}: ${cookie.name} (${cookie.httpOnly ? "HttpOnly" : "Regular"})`
+        `[Main Process] Cookie ${index2 + 1}: ${cookie.name} (${cookie.httpOnly ? "HttpOnly" : "Regular"})`
       );
     });
     const cookieString = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");

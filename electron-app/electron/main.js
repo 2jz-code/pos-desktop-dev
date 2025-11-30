@@ -1169,6 +1169,19 @@ ipcMain.handle("offline:get-queue-stats", async () => {
 	}
 });
 
+ipcMain.handle("offline:clear-all-pending", async () => {
+	try {
+		const db = getDatabase();
+		const { clearAllPendingData } = await import("./offline-db/index.js");
+		const result = clearAllPendingData(db);
+		console.log("[Offline DB] Cleared all pending data:", result);
+		return result;
+	} catch (error) {
+		console.error("[Offline DB] Error clearing pending data:", error);
+		throw error;
+	}
+});
+
 ipcMain.handle("offline:get-exposure", async () => {
 	try {
 		const db = getDatabase();

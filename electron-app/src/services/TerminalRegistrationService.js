@@ -235,8 +235,10 @@ class TerminalRegistrationService {
 	}
 
 	/**
-	 * Initialize terminal on app startup
-	 * 3-step fallback: Server lookup → localStorage cache → Pairing screen
+	 * Initialize terminal on app startup using cache-first pattern.
+	 * 1. Check localStorage cache first for instant startup
+	 * 2. Return cached config immediately if available
+	 * 3. Refresh from server in background (updates last_seen, gets latest settings)
 	 *
 	 * @returns {Promise<Object|null>} Terminal config or null if not registered
 	 */
@@ -247,14 +249,33 @@ class TerminalRegistrationService {
 		const fingerprint = await this.getDeviceFingerprint();
 		console.log('🔐 Device fingerprint:', fingerprint);
 
-		// Step 2: Try to fetch config from server (source of truth)
+		// Step 2: Cache-first - Check localStorage for instant startup
+		const cachedConfig = this.getTerminalConfig();
+		if (cachedConfig) {
+			console.log('⚡ Using cached terminal config for instant startup');
+			console.log('📍 Location:', cachedConfig.location_name);
+			this._terminalConfig = cachedConfig;
+
+			// Set location ID for axios interceptor
+			if (cachedConfig.location_id) {
+				setLocationId(cachedConfig.location_id);
+			}
+
+			// Background refresh from server (non-blocking)
+			// This updates last_seen and gets any config changes
+			this.refreshConfigInBackground(fingerprint);
+
+			return cachedConfig;
+		}
+
+		// Step 3: No cache - must fetch from server
 		try {
 			const config = await this.fetchConfigByFingerprint(fingerprint);
 			if (config) {
-				console.log('✅ Terminal config restored from server');
+				console.log('✅ Terminal config fetched from server');
 				console.log('📍 Location:', config.location_name);
 				this._terminalConfig = config;
-				await this.saveTerminalConfig(config); // Update cache
+				await this.saveTerminalConfig(config);
 
 				// Set location ID for axios interceptor
 				if (config.location_id) {
@@ -271,23 +292,28 @@ class TerminalRegistrationService {
 			}
 		}
 
-		// Step 3: Try localStorage cache (performance optimization)
-		const cachedConfig = this.getTerminalConfig();
-		if (cachedConfig) {
-			console.log('⚠️  Using cached config (server unavailable)');
-			this._terminalConfig = cachedConfig;
-
-			// Set location ID for axios interceptor
-			if (cachedConfig.location_id) {
-				setLocationId(cachedConfig.location_id);
-			}
-
-			return cachedConfig;
-		}
-
 		// Step 4: Not registered - show pairing screen
 		console.log('❌ Terminal not registered - pairing required');
 		return null;
+	}
+
+	/**
+	 * Refresh terminal config from server in background
+	 * Non-blocking - used to update last_seen and get config changes
+	 * @param {string} fingerprint - Device fingerprint
+	 */
+	async refreshConfigInBackground(fingerprint) {
+		try {
+			const config = await this.fetchConfigByFingerprint(fingerprint);
+			if (config) {
+				this._terminalConfig = config;
+				await this.saveTerminalConfig(config);
+				console.log('🔄 Terminal config refreshed from server in background');
+			}
+		} catch (error) {
+			// Silent fail - we already have cached config
+			console.log('ℹ️  Background refresh skipped:', error.message);
+		}
 	}
 
 	/**

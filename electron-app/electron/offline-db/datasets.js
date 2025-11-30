@@ -276,8 +276,8 @@ export function upsertProductTypes(db, productTypes) {
     INSERT INTO product_types (
       id, tenant_id, name, description, inventory_behavior, stock_enforcement,
       allow_negative_stock, tax_inclusive, pricing_method, exclude_from_discounts,
-      max_quantity_per_item, is_active, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      max_quantity_per_item, is_active, updated_at, default_tax_ids
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       tenant_id = excluded.tenant_id,
       name = excluded.name,
@@ -290,7 +290,8 @@ export function upsertProductTypes(db, productTypes) {
       exclude_from_discounts = excluded.exclude_from_discounts,
       max_quantity_per_item = excluded.max_quantity_per_item,
       is_active = excluded.is_active,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      default_tax_ids = excluded.default_tax_ids
   `);
 
   const insertMany = db.transaction((types) => {
@@ -308,7 +309,8 @@ export function upsertProductTypes(db, productTypes) {
         type.exclude_from_discounts ? 1 : 0,
         type.max_quantity_per_item,
         type.is_active ? 1 : 0,
-        type.updated_at
+        type.updated_at,
+        JSON.stringify(type.default_tax_ids || [])
       );
     }
   });
@@ -497,6 +499,117 @@ export function deleteRecords(db, tableName, deletedIds) {
 }
 
 /**
+ * Hydrate product modifier references using a pre-built map
+ * @param {Array} modifierSetRefs - Array of modifier set references from product
+ * @param {Map} modifierSetMap - Pre-built map of modifier set ID -> modifier set
+ * @returns {Array} - Hydrated modifier groups matching API response shape
+ */
+function hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap) {
+  if (!modifierSetRefs || modifierSetRefs.length === 0) {
+    return [];
+  }
+
+  // First pass: Build a map of option_id -> triggered modifier sets
+  // This is needed because sync API stores triggered_by_option_id on the set,
+  // but the UI expects triggered_sets array on each option
+  const optionTriggersMap = new Map(); // option_id -> array of triggered modifier sets
+
+  // Get all modifier sets that belong to this product
+  const productModifierSetIds = new Set(modifierSetRefs.map(ref => ref.modifier_set_id));
+
+  modifierSetRefs.forEach(ref => {
+    const modifierSetId = ref.modifier_set_id;
+    let modifierSet = modifierSetMap.get(modifierSetId) || modifierSetMap.get(String(modifierSetId));
+
+    if (modifierSet && modifierSet.triggered_by_option_id) {
+      const triggerOptionId = modifierSet.triggered_by_option_id;
+      if (!optionTriggersMap.has(triggerOptionId)) {
+        optionTriggersMap.set(triggerOptionId, []);
+      }
+      // Store the full modifier set info for the triggered_sets array
+      optionTriggersMap.get(triggerOptionId).push({
+        id: modifierSet.id,
+        name: modifierSet.name,
+        internal_name: modifierSet.internal_name,
+        selection_type: modifierSet.selection_type,
+        min_selections: modifierSet.min_selections,
+        max_selections: modifierSet.max_selections,
+        options: modifierSet.options || [],
+      });
+    }
+  });
+
+  // Second pass: Build hydrated modifier groups sorted by display_order
+  // and attach triggered_sets to options
+  return modifierSetRefs
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+    .map(ref => {
+      // Try both string and original type for ID lookup (handles UUID vs int mismatches)
+      const modifierSetId = ref.modifier_set_id;
+      let modifierSet = modifierSetMap.get(modifierSetId);
+
+      // If not found, try string conversion (sync API might send UUID strings)
+      if (!modifierSet && modifierSetId) {
+        modifierSet = modifierSetMap.get(String(modifierSetId));
+      }
+
+      if (!modifierSet) {
+        console.warn(`[hydrateModifierGroups] Modifier set not found for ID: ${modifierSetId}`);
+        return null;
+      }
+
+      // Hydrate options with triggered_sets
+      const hydratedOptions = (modifierSet.options || []).map(option => {
+        const triggeredSets = optionTriggersMap.get(option.id) || [];
+        return {
+          ...option,
+          triggered_sets: triggeredSets,
+        };
+      });
+
+      // Return structure matching the API's modifier_groups format
+      return {
+        id: modifierSet.id,
+        name: modifierSet.name,
+        internal_name: modifierSet.internal_name,
+        selection_type: modifierSet.selection_type,
+        min_selections: modifierSet.min_selections,
+        max_selections: modifierSet.max_selections,
+        triggered_by_option_id: modifierSet.triggered_by_option_id,
+        display_order: ref.display_order,
+        is_required_override: ref.is_required_override,
+        options: hydratedOptions,
+      };
+    })
+    .filter(Boolean); // Remove nulls for missing modifier sets
+}
+
+/**
+ * Hydrate product modifier references with full modifier set data
+ * The sync API stores modifier_sets as references: [{modifier_set_id, display_order, is_required_override}]
+ * The UI expects modifier_groups to be full modifier set objects with options
+ * @param {object} db - Database instance
+ * @param {Array} modifierSetRefs - Array of modifier set references from product
+ * @returns {Array} - Hydrated modifier groups matching API response shape
+ */
+function hydrateModifierGroups(db, modifierSetRefs) {
+  if (!modifierSetRefs || modifierSetRefs.length === 0) {
+    return [];
+  }
+
+  // Get all modifier sets once (they're cached in memory during the query)
+  const allModifierSets = getModifierSets(db);
+  // Store both integer and string keys to handle type mismatches from sync API
+  const modifierSetMap = new Map();
+  allModifierSets.forEach(ms => {
+    modifierSetMap.set(ms.id, ms);
+    modifierSetMap.set(String(ms.id), ms); // Also store as string for UUID lookups
+  });
+
+  return hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap);
+}
+
+/**
  * Get all products with optional filters
  * @param {object} db - Database instance
  * @param {object} filters - Optional filters
@@ -530,16 +643,38 @@ export function getProducts(db, filters = {}) {
   const stmt = db.prepare(query);
   const products = stmt.all(...params);
 
-  // Parse JSON fields
-  return products.map(p => ({
-    ...p,
-    track_inventory: p.track_inventory === 1,
-    has_modifiers: p.has_modifiers === 1,
-    is_active: p.is_active === 1,
-    is_public: p.is_public === 1,
-    tax_ids: JSON.parse(p.tax_ids || '[]'),
-    modifier_sets: JSON.parse(p.modifier_sets || '[]')
-  }));
+  // Pre-fetch all modifier sets once for efficient hydration
+  const allModifierSets = getModifierSets(db);
+  // Store both integer and string keys to handle type mismatches from sync API
+  const modifierSetMap = new Map();
+  allModifierSets.forEach(ms => {
+    modifierSetMap.set(ms.id, ms);
+    modifierSetMap.set(String(ms.id), ms); // Also store as string for UUID lookups
+  });
+
+  // Parse JSON fields and normalize field names to match API response shape
+  return products.map(p => {
+    const modifierSetRefs = JSON.parse(p.modifier_sets || '[]');
+    // Hydrate modifier groups from references to full objects using pre-fetched map
+    const modifierGroups = hydrateModifierGroupsWithMap(modifierSetRefs, modifierSetMap);
+
+    // Derive has_modifiers from actual hydrated data (more reliable than DB flag)
+    // This handles cases where the DB flag might be stale or incorrect
+    const hasModifiers = modifierGroups.length > 0;
+
+    return {
+      ...p,
+      track_inventory: p.track_inventory === 1,
+      // Use derived value - if we have modifier_groups, product has modifiers
+      has_modifiers: hasModifiers,
+      is_active: p.is_active === 1,
+      is_public: p.is_public === 1,
+      tax_ids: JSON.parse(p.tax_ids || '[]'),
+      modifier_sets: modifierSetRefs, // Keep raw references
+      // Hydrated modifier_groups matching API response shape expected by UI
+      modifier_groups: modifierGroups,
+    };
+  });
 }
 
 /**
@@ -551,14 +686,24 @@ export function getProductById(db, id) {
 
   if (!product) return null;
 
+  const modifierSetRefs = JSON.parse(product.modifier_sets || '[]');
+  // Hydrate modifier groups from references to full objects
+  const modifierGroups = hydrateModifierGroups(db, modifierSetRefs);
+
+  // Derive has_modifiers from actual hydrated data (more reliable than DB flag)
+  const hasModifiers = modifierGroups.length > 0;
+
   return {
     ...product,
     track_inventory: product.track_inventory === 1,
-    has_modifiers: product.has_modifiers === 1,
+    // Use derived value - if we have modifier_groups, product has modifiers
+    has_modifiers: hasModifiers,
     is_active: product.is_active === 1,
     is_public: product.is_public === 1,
     tax_ids: JSON.parse(product.tax_ids || '[]'),
-    modifier_sets: JSON.parse(product.modifier_sets || '[]')
+    modifier_sets: modifierSetRefs,
+    // Hydrated modifier_groups matching API response shape expected by UI
+    modifier_groups: modifierGroups,
   };
 }
 
@@ -571,14 +716,24 @@ export function getProductByBarcode(db, barcode) {
 
   if (!product) return null;
 
+  const modifierSetRefs = JSON.parse(product.modifier_sets || '[]');
+  // Hydrate modifier groups from references to full objects
+  const modifierGroups = hydrateModifierGroups(db, modifierSetRefs);
+
+  // Derive has_modifiers from actual hydrated data (more reliable than DB flag)
+  const hasModifiers = modifierGroups.length > 0;
+
   return {
     ...product,
     track_inventory: product.track_inventory === 1,
-    has_modifiers: product.has_modifiers === 1,
+    // Use derived value - if we have modifier_groups, product has modifiers
+    has_modifiers: hasModifiers,
     is_active: product.is_active === 1,
     is_public: product.is_public === 1,
     tax_ids: JSON.parse(product.tax_ids || '[]'),
-    modifier_sets: JSON.parse(product.modifier_sets || '[]')
+    modifier_sets: modifierSetRefs,
+    // Hydrated modifier_groups matching API response shape expected by UI
+    modifier_groups: modifierGroups,
   };
 }
 
@@ -637,12 +792,20 @@ export function getDiscounts(db, options = {}) {
   const stmt = db.prepare(query);
   const discounts = stmt.all();
 
-  return discounts.map(d => ({
-    ...d,
-    is_active: d.is_active === 1,
-    applicable_products: JSON.parse(d.applicable_products || '[]'),
-    applicable_categories: JSON.parse(d.applicable_categories || '[]')
-  }));
+  return discounts.map(d => {
+    const applicableProducts = JSON.parse(d.applicable_products || '[]');
+    const applicableCategories = JSON.parse(d.applicable_categories || '[]');
+    return {
+      ...d,
+      is_active: d.is_active === 1,
+      // Keep original names for backwards compatibility
+      applicable_products: applicableProducts,
+      applicable_categories: applicableCategories,
+      // Add _ids variants for DiscountCalculator compatibility
+      applicable_product_ids: applicableProducts,
+      applicable_category_ids: applicableCategories,
+    };
+  });
 }
 
 /**
@@ -678,7 +841,8 @@ export function getProductTypes(db) {
     allow_negative_stock: t.allow_negative_stock === 1,
     tax_inclusive: t.tax_inclusive === 1,
     exclude_from_discounts: t.exclude_from_discounts === 1,
-    is_active: t.is_active === 1
+    is_active: t.is_active === 1,
+    default_tax_ids: JSON.parse(t.default_tax_ids || '[]')
   }));
 }
 

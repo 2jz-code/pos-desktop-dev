@@ -8,11 +8,10 @@ import { Badge } from "@/shared/components/ui/badge";
 import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2, ShieldOff } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import ProductModifierSelector from "../ProductModifierSelector";
-import { removeAdjustment } from "@/domains/orders/services/orderService";
 import { toast } from "@/shared/components/ui/use-toast";
 
 export default function CartItem({ item }) {
-	const { removeItemViaSocket, updateItemQuantityViaSocket, updateItemViaSocket, isUpdating, adjustments, orderId } =
+	const { removeItemViaSocket, updateItemQuantityViaSocket, updateItemViaSocket, isUpdating, adjustments, orderId, removeAdjustment } =
 		usePosStore(
 			(state) => ({
 				removeItemViaSocket: state.removeItemViaSocket,
@@ -21,6 +20,7 @@ export default function CartItem({ item }) {
 				isUpdating: state.updatingItems?.includes(item.id) ?? false,
 				adjustments: state.adjustments,
 				orderId: state.orderId,
+				removeAdjustment: state.removeAdjustment,
 			}),
 			shallow
 		);
@@ -72,8 +72,8 @@ export default function CartItem({ item }) {
 		if (!orderId) return;
 
 		try {
-			await removeAdjustment(orderId, adjustmentId);
-			// Cart will update automatically via WebSocket
+			await removeAdjustment(adjustmentId);
+			// Cart will update automatically via WebSocket or local state
 		} catch (error) {
 			console.error("Error removing adjustment:", error);
 			toast({

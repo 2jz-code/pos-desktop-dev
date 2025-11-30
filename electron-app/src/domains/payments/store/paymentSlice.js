@@ -9,6 +9,8 @@ import {
 import useTerminalStore from "@/domains/pos/store/terminalStore";
 import { openCashDrawer } from "@/shared/lib/hardware";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { cartGateway } from "@/shared/lib/cartGateway";
+import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 export const createPaymentSlice = (set, get) => ({
 	// CORE DIALOG STATE
@@ -210,6 +212,149 @@ export const createPaymentSlice = (set, get) => ({
 		const isSplit = state.partialAmount > 0;
 		const amountToProcess = isSplit ? state.partialAmount : state.balanceDue;
 
+		// Check if this is an offline order
+		const isOfflineOrder = state.order?._isOfflineOrder || false;
+
+		if (isOfflineOrder) {
+			// OFFLINE FLOW: Queue the complete order for sync
+			console.log("📡 [PaymentSlice] Processing offline cash payment...");
+
+			try {
+				// Separate order-level and item-level adjustments
+				const orderAdjustments = (state.order.adjustments || []).filter(adj => !adj.order_item);
+				const itemAdjustmentsMap = {};
+				(state.order.adjustments || []).filter(adj => adj.order_item).forEach(adj => {
+					if (!itemAdjustmentsMap[adj.order_item]) {
+						itemAdjustmentsMap[adj.order_item] = [];
+					}
+					itemAdjustmentsMap[adj.order_item].push(adj);
+				});
+
+				// Build the complete order payload for offline queueing
+				const orderPayload = {
+					// Order metadata
+					local_order_id: state.orderId,
+					order_type: "POS",
+					dining_preference: state.order.dining_preference || "TAKE_OUT",
+					store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
+					cashier_id: terminalRegistrationService.getTerminalConfig()?.user_id,
+
+					// Customer info
+					guest_first_name: state.order.guest_first_name || "",
+
+					// Items - map to expected format with item-level adjustments
+					items: state.order.items.map(item => {
+						const itemId = item.id;
+						const itemAdjs = itemAdjustmentsMap[itemId] || [];
+
+						return {
+							product_id: item.product?.id || item.product_id,
+							quantity: item.quantity,
+							price_at_sale: item.price_at_sale,
+							notes: item.notes || "",
+							selected_modifiers: item.selected_modifiers_snapshot || item.modifiers || [],
+							// Item-level adjustments (price override, tax exempt, one-off discount)
+							adjustments: itemAdjs.map(adj => ({
+								adjustment_type: adj.adjustment_type,
+								value: adj.amount || adj.discount_value || 0,
+								discount_type: adj.discount_type || null,
+								notes: adj.notes || "",
+								approved_by_user_id: adj.approved_by_user_id || null,
+							})),
+						};
+					}),
+
+					// Discounts (promotional/code discounts)
+					discounts: state.order.applied_discounts?.map(d => ({
+						discount_id: d.discount?.id || d.id,
+						amount: d.amount,
+					})) || [],
+
+					// Order-level adjustments only (one-off discounts, fee exempt)
+					adjustments: orderAdjustments.map(adj => ({
+						adjustment_type: adj.adjustment_type,
+						discount_type: adj.discount_type || null,
+						value: adj.amount || adj.discount_value || 0,
+						notes: adj.notes || "",
+						approved_by_user_id: adj.approved_by_user_id || null,
+					})),
+
+					// Totals (for verification on sync)
+					subtotal: state.order.subtotal,
+					tax_amount: state.order.tax_total,
+					total_discounts: state.order.total_discounts_amount,
+					total_adjustments: state.order.adjustments?.reduce(
+						(sum, adj) => sum + parseFloat(adj.amount || 0),
+						0
+					) || 0,
+					total: state.order.grand_total,
+
+					// Payment (cash only for offline)
+					payment: {
+						method: "CASH",
+						amount: amountToProcess,
+						tendered: tenderedAmount,
+						tip: 0,
+					},
+
+					// Timestamp
+					created_offline_at: new Date().toISOString(),
+				};
+
+				// Queue the order through CartGateway
+				const result = await cartGateway.queueOfflineOrder(orderPayload);
+
+				const changeForThisTransaction =
+					tenderedAmount >= amountToProcess
+						? tenderedAmount - amountToProcess
+						: 0;
+
+				// Open cash drawer
+				try {
+					const settingsState = useSettingsStore.getState();
+					const { printers, receiptPrinterId } = settingsState;
+					const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+
+					if (receiptPrinter) {
+						await openCashDrawer(receiptPrinter);
+					} else {
+						console.warn("No receipt printer configured for cash drawer opening");
+					}
+				} catch (error) {
+					console.error("Failed to open cash drawer:", error);
+					// Don't fail the payment if cash drawer fails to open
+				}
+
+				// Mark as complete - offline orders are always complete after cash payment
+				set({
+					lastCompletedOrder: {
+						...state.order,
+						_localId: result.localId,
+						_isQueued: true,
+					},
+					balanceDue: 0,
+					paymentHistory: [{
+						method: "CASH",
+						amount: amountToProcess,
+						status: "QUEUED",
+						_isOffline: true,
+					}],
+					changeDue: state.changeDue + changeForThisTransaction,
+					tenderState: "complete",
+					partialAmount: 0,
+					surchargeAmount: 0,
+				});
+
+				console.log(`✅ [PaymentSlice] Offline order queued: ${result.localId}`);
+			} catch (error) {
+				console.error("❌ [PaymentSlice] Failed to queue offline order:", error);
+				set({ tenderState: "paymentError", error: error.message || "Failed to save offline order" });
+			}
+
+			return;
+		}
+
+		// ONLINE FLOW: Use normal cash payment model
 		const result = await cashPaymentModel.process({
 			orderId: state.orderId,
 			amount: amountToProcess,
@@ -227,16 +372,16 @@ export const createPaymentSlice = (set, get) => ({
 			// Open cash drawer if the order is complete and any cash payment was made
 			if (isComplete) {
 				// Check if there are any cash payments in the transaction history
-				const hasCashPayment = data.transactions.some(transaction => 
+				const hasCashPayment = data.transactions.some(transaction =>
 					transaction.method === 'CASH'
 				);
-				
+
 				if (hasCashPayment) {
 					try {
 						const settingsState = useSettingsStore.getState();
 						const { printers, receiptPrinterId } = settingsState;
 						const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
-						
+
 						if (receiptPrinter) {
 							await openCashDrawer(receiptPrinter);
 						} else {

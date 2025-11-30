@@ -6,10 +6,11 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import apiClient from "@/shared/lib/apiClient";
 import { toast } from "@/shared/components/ui/use-toast";
-import { Loader2, Tag, X, ChefHat, CreditCard } from "lucide-react";
+import { Loader2, Tag, X, ChefHat, CreditCard, WifiOff } from "lucide-react";
 import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
 import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
-import { markSentToKitchen, removeAdjustment } from "@/domains/orders/services/orderService";
+import { markSentToKitchen } from "@/domains/orders/services/orderService";
+import { cartGateway } from "@/shared/lib/cartGateway";
 
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
@@ -50,6 +51,7 @@ const CartSummary = () => {
 	const {
 		total,
 		orderId,
+		orderNumber,
 		items,
 		startTender,
 		forceCancelAndStartPayment,
@@ -60,10 +62,15 @@ const CartSummary = () => {
 		adjustments,
 		setIsDiscountDialogOpen,
 		removeDiscountViaSocket,
+		removeAdjustment,
+		isOfflineOrder,
+		diningPreference,
+		customerFirstName,
 	} = usePosStore(
 		(state) => ({
 			total: state.total,
 			orderId: state.orderId,
+			orderNumber: state.orderNumber,
 			items: state.items,
 			startTender: state.startTender,
 			forceCancelAndStartPayment: state.forceCancelAndStartPayment,
@@ -74,6 +81,10 @@ const CartSummary = () => {
 			adjustments: state.adjustments,
 			setIsDiscountDialogOpen: state.setIsDiscountDialogOpen,
 			removeDiscountViaSocket: state.removeDiscountViaSocket,
+			removeAdjustment: state.removeAdjustment,
+			isOfflineOrder: state.isOfflineOrder,
+			diningPreference: state.diningPreference,
+			customerFirstName: state.customerFirstName,
 		}),
 		shallow
 	);
@@ -92,16 +103,49 @@ const CartSummary = () => {
 
 		setIsLoading(true);
 		try {
-			const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
+			// Check if this is an offline order or we're currently offline
+			const isOffline = isOfflineOrder || cartGateway.isOfflineMode();
 
-			if (orderDetails.payment_in_progress) {
-				toast({
-					title: "Resolving a prior session...",
-					description: "An incomplete payment was found and is being reset.",
-				});
-				await forceCancelAndStartPayment(orderId);
+			if (isOffline) {
+				// For offline orders, build a local order object from cart state
+				// No API call needed - use local state
+				const localOrderDetails = {
+					id: orderId,
+					order_number: orderNumber || `OFFLINE-${orderId.substring(6, 14)}`,
+					items: items,
+					subtotal: subtotal,
+					tax_total: taxAmount,
+					grand_total: total,
+					total_discounts_amount: appliedDiscounts?.reduce(
+						(sum, d) => sum + parseFloat(d.amount || 0),
+						0
+					) || 0,
+					applied_discounts: appliedDiscounts || [],
+					adjustments: adjustments || [],
+					dining_preference: diningPreference,
+					guest_first_name: customerFirstName,
+					payment_details: {
+						amount_paid: 0,
+						transactions: [],
+					},
+					// Mark this as an offline order for payment handling
+					_isOfflineOrder: true,
+				};
+
+				startTender(localOrderDetails);
 			} else {
-				startTender(orderDetails);
+				// Online flow - fetch latest order details from server
+				const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
+
+				if (orderDetails.payment_in_progress) {
+					toast({
+						title: "Resolving a prior session...",
+						description: "An incomplete payment was found and is being reset.",
+					});
+					await forceCancelAndStartPayment(orderId);
+				} else {
+					startTender(orderDetails);
+				}
 			}
 		} catch (error) {
 			console.error("Error during pre-flight payment check:", error);
@@ -121,18 +165,35 @@ const CartSummary = () => {
 		setIsSendingToKitchen(true);
 
 		try {
-			const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
+			// Check if we're offline - use local cart state instead of API
+			const isOffline = isOfflineOrder || cartGateway.isOfflineMode();
 
-			const kitchenOrder = {
-				...orderDetails,
-				id: orderDetails.id,
-				order_number: orderDetails.order_number,
-				items: orderDetails.items,
-				status: "SENT_TO_KITCHEN",
-				created_at: orderDetails.created_at,
-				guest_first_name: orderDetails.guest_first_name,
-				dining_preference: orderDetails.dining_preference,
-			};
+			let kitchenOrder;
+			if (isOffline) {
+				// Build order object from local cart state
+				kitchenOrder = {
+					id: orderId,
+					order_number: orderNumber || `OFFLINE-${orderId.substring(6, 14)}`,
+					items: items,
+					status: "SENT_TO_KITCHEN",
+					created_at: new Date().toISOString(),
+					guest_first_name: customerFirstName,
+					dining_preference: diningPreference,
+				};
+			} else {
+				// Online - fetch latest order details from server
+				const { data: orderDetails } = await apiClient.get(`/orders/${orderId}/`);
+				kitchenOrder = {
+					...orderDetails,
+					id: orderDetails.id,
+					order_number: orderDetails.order_number,
+					items: orderDetails.items,
+					status: "SENT_TO_KITCHEN",
+					created_at: orderDetails.created_at,
+					guest_first_name: orderDetails.guest_first_name,
+					dining_preference: orderDetails.dining_preference,
+				};
+			}
 
 			if (!kitchenZones || kitchenZones.length === 0) {
 				toast({
@@ -205,11 +266,14 @@ const CartSummary = () => {
 			}
 
 			if (ticketsPrinted > 0) {
-				// Mark items as sent to kitchen in the backend
-				try {
-					await markSentToKitchen(orderId);
-				} catch (error) {
-					console.error("Failed to mark items as sent to kitchen:", error);
+				// Mark items as sent to kitchen in the backend (skip for offline orders)
+				const isOffline = isOfflineOrder || cartGateway.isOfflineMode();
+				if (!isOffline) {
+					try {
+						await markSentToKitchen(orderId);
+					} catch (error) {
+						console.error("Failed to mark items as sent to kitchen:", error);
+					}
 				}
 
 				toast({
@@ -252,8 +316,8 @@ const CartSummary = () => {
 		if (!orderId) return;
 
 		try {
-			await removeAdjustment(orderId, adjustmentId);
-			// Cart will update automatically via WebSocket
+			await removeAdjustment(adjustmentId);
+			// Cart will update automatically via WebSocket or local state
 		} catch (error) {
 			console.error("Error removing adjustment:", error);
 			toast({
@@ -444,16 +508,22 @@ const CartSummary = () => {
 					</Button>
 
 					<Button
-						className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+						className={`h-12 font-semibold ${
+							isOfflineOrder
+								? "bg-orange-600 hover:bg-orange-700 text-white"
+								: "bg-primary hover:bg-primary/90 text-primary-foreground"
+						}`}
 						disabled={!hasItems || isLoading || isSendingToKitchen}
 						onClick={handleCharge}
 					>
 						{isLoading ? (
 							<Loader2 className="mr-2 h-5 w-5 animate-spin" />
+						) : isOfflineOrder ? (
+							<WifiOff className="mr-2 h-5 w-5" />
 						) : (
 							<CreditCard className="mr-2 h-5 w-5" />
 						)}
-						Charge
+						{isOfflineOrder ? "Cash Only" : "Charge"}
 					</Button>
 				</div>
 

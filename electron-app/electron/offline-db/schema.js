@@ -146,7 +146,8 @@ export function initializeSchema(db) {
       exclude_from_discounts INTEGER NOT NULL DEFAULT 0,
       max_quantity_per_item INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      default_tax_ids TEXT DEFAULT '[]'
     );
   `);
 

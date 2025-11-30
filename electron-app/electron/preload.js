@@ -256,6 +256,7 @@ contextBridge.exposeInMainWorld("offlineAPI", {
 	getCompleteStats: () => ipcRenderer.invoke("offline:get-complete-stats"),
 	checkLimitExceeded: (type, amount) =>
 		ipcRenderer.invoke("offline:check-limit", type, amount),
+	clearAllPendingData: () => ipcRenderer.invoke("offline:clear-all-pending"),
 
 	// Network events
 	onNetworkStatusChanged: (callback) => {

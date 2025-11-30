@@ -1,5 +1,6 @@
 import apiClient from "@/shared/lib/apiClient";
 import { handleSyncComplete } from "@/shared/lib/offlineInitialization";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * OfflineSyncService
@@ -455,56 +456,180 @@ class OfflineSyncService {
 	}
 
 	/**
-	 * Flush pending operations queue
-	 * Sends queued offline operations to the backend
+	 * Flush pending offline orders queue
+	 * Sends queued complete orders to the backend
 	 */
 	async flushQueue() {
 		try {
-			// Get pending operations
-			const pending = await window.offlineAPI.listPendingOperations({ status: "PENDING" });
+			// Get pending ORDERS (not individual cart operations)
+			// offline_orders table stores complete orders ready for sync
+			const pendingOrders = await window.offlineAPI.listOfflineOrders("PENDING");
 
-			if (pending.length === 0) {
+			if (pendingOrders.length === 0) {
 				return; // Nothing to flush
 			}
 
-			console.log(`📤 Flushing ${pending.length} pending operations...`);
+			console.log(`📤 Flushing ${pendingOrders.length} pending offline orders...`);
 
-			for (const operation of pending) {
+			// Get pairing info for device_id
+			const pairingInfo = await window.offlineAPI.getPairingInfo();
+			if (!pairingInfo) {
+				console.error("❌ No pairing info available, cannot sync offline orders");
+				return;
+			}
+
+			// Get dataset versions for conflict detection
+			const versions = await window.offlineAPI.getAllDatasetVersions();
+			const datasetVersions = {};
+			for (const v of versions) {
+				datasetVersions[v.key] = v.version;
+			}
+
+			for (const order of pendingOrders) {
 				try {
-					// Send to backend based on operation type
-					let response;
-					switch (operation.type) {
-						case "ORDER":
-							response = await apiClient.post("/sync/offline-orders/", operation.payload);
-							break;
-						case "APPROVAL":
-							response = await apiClient.post("/sync/offline-approvals/", operation.payload);
-							break;
-						// Note: Payments are included in ORDER payloads, not sent separately
-						// The /sync/offline-payments/ endpoint doesn't exist
-						case "PAYMENT":
-							console.warn(`⚠️ PAYMENT operations are included in ORDER payloads - skipping separate sync`);
-							// Mark as synced since payments are handled within orders
-							await window.offlineAPI.markOperationSynced(operation.id, { skipped: true, reason: "included_in_order" });
-							continue;
-						default:
-							throw new Error(`Unknown operation type: ${operation.type}`);
-					}
+					// Build the ingest payload from the stored order data
+					const payload = this.buildIngestPayload(order, pairingInfo, datasetVersions);
 
-					// Mark as synced
-					await window.offlineAPI.markOperationSynced(operation.id, response.data);
-					console.log(`✅ Operation ${operation.id} synced successfully`);
+					// Send to backend
+					const response = await apiClient.post("/sync/offline-orders/", payload);
+
+					// Update order status based on response
+					if (response.data.status === 'SUCCESS') {
+						await window.offlineAPI.updateOfflineOrderStatus(
+							order.local_id,
+							'SYNCED',
+							{
+								serverOrderId: response.data.order_id,
+								serverOrderNumber: response.data.order_number
+							}
+						);
+						console.log(`✅ Order ${order.local_id} synced as ${response.data.order_number}`);
+					} else if (response.data.status === 'CONFLICT') {
+						await window.offlineAPI.updateOfflineOrderStatus(
+							order.local_id,
+							'CONFLICT',
+							{
+								conflictReason: response.data.conflicts?.map(c => c.message).join('; ')
+							}
+						);
+						console.warn(`⚠️ Order ${order.local_id} has conflicts:`, response.data.conflicts);
+					} else {
+						throw new Error(response.data.errors?.join('; ') || 'Unknown error');
+					}
 				} catch (error) {
-					// Mark as failed
-					await window.offlineAPI.markOperationFailed(operation.id, error.message);
-					console.error(`❌ Failed to sync operation ${operation.id}:`, error.message);
+					// Mark order as failed but keep in queue for retry
+					const errorMsg = error.response?.data?.errors?.join('; ') ||
+						error.response?.data?.detail ||
+						error.message;
+					console.error(`❌ Failed to sync order ${order.local_id}:`, errorMsg);
+
+					// Don't update status to FAILED immediately - allow retries
+					// Only log the error for now
 				}
 			}
 
-			console.log(`✅ Queue flush complete`);
+			console.log(`✅ Order queue flush complete`);
 		} catch (error) {
-			console.error("❌ Failed to flush queue:", error);
+			console.error("❌ Failed to flush order queue:", error);
 		}
+	}
+
+	/**
+	 * Build the ingest payload for the backend from stored order data
+	 * Transforms the raw order payload into the format expected by /sync/offline-orders/
+	 *
+	 * @param {Object} order - The stored offline order record
+	 * @param {Object} pairingInfo - Terminal pairing info
+	 * @param {Object} datasetVersions - Current dataset versions
+	 * @returns {Object} - Formatted payload for /sync/offline-orders/
+	 */
+	buildIngestPayload(order, pairingInfo, datasetVersions) {
+		const payload = order.payload;
+
+		return {
+			// Operation metadata
+			operation_id: uuidv4(),
+			device_id: pairingInfo.terminal_id,
+			nonce: uuidv4().replace(/-/g, '').substring(0, 32),
+			created_at: payload.created_offline_at || order.created_at,
+			dataset_versions: datasetVersions,
+
+			// Order details
+			order: {
+				order_type: this.mapOrderType(payload.dining_preference),
+				dining_preference: payload.dining_preference || 'TAKE_OUT',
+				status: 'COMPLETED',
+				store_location_id: payload.store_location,
+				cashier_id: payload.cashier_id,
+				guest_first_name: payload.guest_first_name || '',
+
+				// Items
+				items: (payload.items || []).map(item => ({
+					product_id: item.product_id,
+					quantity: item.quantity,
+					price_at_sale: item.price_at_sale,
+					notes: item.notes || '',
+					modifiers: (item.selected_modifiers || []).map(mod => ({
+						modifier_set_id: mod.modifier_set_id || mod.set_id,
+						modifier_option_id: mod.modifier_option_id || mod.option_id || mod.id,
+						price_delta: mod.price_delta || mod.price || 0,
+					})),
+					adjustments: (item.adjustments || []).map(adj => ({
+						adjustment_type: adj.adjustment_type,
+						discount_type: adj.discount_type || null,
+						value: parseFloat(adj.value || 0),
+						notes: adj.notes || '',
+						approved_by_user_id: adj.approved_by_user_id || null,
+					})),
+				})),
+
+				// Discounts
+				discounts: (payload.discounts || []).map(d => ({
+					discount_id: d.discount_id,
+					amount: parseFloat(d.amount),
+				})),
+
+				// Order-level adjustments
+				adjustments: (payload.adjustments || []).map(adj => ({
+					adjustment_type: adj.adjustment_type,
+					discount_type: adj.discount_type || null,
+					value: parseFloat(adj.value || 0),
+					notes: adj.notes || '',
+					approved_by_user_id: adj.approved_by_user_id || null,
+				})),
+
+				// Totals
+				subtotal: parseFloat(payload.subtotal || 0),
+				tax: parseFloat(payload.tax_amount || 0),
+				total: parseFloat(payload.total || 0),
+			},
+
+			// Payments
+			payments: [{
+				method: payload.payment?.method || 'CASH',
+				amount: parseFloat(parseFloat(payload.payment?.amount || payload.total || 0).toFixed(2)),
+				tip: parseFloat(parseFloat(payload.payment?.tip || 0).toFixed(2)),
+				surcharge: 0,
+				status: 'COMPLETED',
+				cash_tendered: payload.payment?.tendered
+					? parseFloat(parseFloat(payload.payment.tendered).toFixed(2))
+					: null,
+				change_given: payload.payment?.tendered
+					? parseFloat(Math.max(0, parseFloat(payload.payment.tendered) - parseFloat(payload.payment.amount || payload.total || 0)).toFixed(2))
+					: null,
+			}],
+
+			// Inventory deltas - backend computes from items
+			inventory_deltas: [],
+		};
+	}
+
+	/**
+	 * Map dining preference to order type
+	 */
+	mapOrderType(diningPreference) {
+		// POS orders are always type 'POS', dining preference is separate
+		return 'POS';
 	}
 
 	/**

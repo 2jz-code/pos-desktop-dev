@@ -4,7 +4,9 @@ Service for processing offline payloads.
 Handles ingestion of orders, payments, inventory changes, and approvals
 that were created while a terminal was offline.
 """
+import json
 import logging
+import uuid
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
@@ -18,6 +20,24 @@ from inventory.models import InventoryStock
 from sync.models import OfflineConflict, ProcessedOperation
 
 logger = logging.getLogger(__name__)
+
+
+def serialize_payload(obj):
+    """Recursively convert UUIDs, Decimals, and datetimes to JSON-serializable types."""
+    from datetime import datetime, date
+    if isinstance(obj, dict):
+        return {k: serialize_payload(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_payload(item) for item in obj]
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    elif isinstance(obj, Decimal):
+        return str(obj)
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    return obj
 
 
 class OfflineOrderIngestService:
@@ -69,7 +89,7 @@ class OfflineOrderIngestService:
                     tenant=terminal.tenant,
                     terminal=terminal,
                     operation_id=payload['operation_id'],
-                    payload_snapshot=payload,
+                    payload_snapshot=serialize_payload(payload),
                     conflict_type='OTHER',  # Or determine based on first conflict
                     conflict_message='; '.join([c['message'] for c in conflicts]),
                     status='PENDING'
@@ -123,7 +143,7 @@ class OfflineOrderIngestService:
                 tenant=terminal.tenant,
                 terminal=terminal,
                 operation_id=payload['operation_id'],
-                payload_snapshot=payload,
+                payload_snapshot=serialize_payload(payload),
                 conflict_type='OTHER',
                 conflict_message=f"Error: {str(e)}",
                 status='PENDING'
@@ -196,25 +216,35 @@ class OfflineOrderIngestService:
     @staticmethod
     def _create_order(payload, terminal):
         """Create Order and OrderItems from payload"""
+        from django.utils.dateparse import parse_datetime
+
         order_data = payload['order']
 
-        # Create order
+        # Parse the offline created_at timestamp
+        created_at = payload.get('created_at')
+        if isinstance(created_at, str):
+            created_at = parse_datetime(created_at) or timezone.now()
+
+        # Create order - offline orders are already paid/completed
         order = Order.objects.create(
             tenant=terminal.tenant,
             order_type=order_data['order_type'],
-            status=order_data.get('status', 'COMPLETED'),
+            status='COMPLETED',  # Offline orders are always completed
+            payment_status='PAID',  # Offline orders are already paid
             store_location=terminal.store_location,
             cashier_id=order_data.get('cashier_id'),
             customer_id=order_data.get('customer_id'),
-            guest_name=order_data.get('guest_name'),
+            guest_first_name=order_data.get('guest_first_name', ''),
             guest_email=order_data.get('guest_email'),
             guest_phone=order_data.get('guest_phone'),
+            dining_preference=order_data.get('dining_preference', 'TAKE_OUT'),
             subtotal=Decimal(str(order_data['subtotal'])),
-            tax=Decimal(str(order_data['tax'])),
-            surcharge=Decimal(str(order_data.get('surcharge', 0))),
-            discount_total=Decimal(str(order_data.get('discount_total', 0))),
-            total=Decimal(str(order_data['total'])),
-            created_at=payload['created_at']  # Use offline timestamp
+            tax_total=Decimal(str(order_data['tax'])),
+            surcharges_total=Decimal(str(order_data.get('surcharge', 0))),
+            total_discounts_amount=Decimal(str(order_data.get('discount_total', 0))),
+            grand_total=Decimal(str(order_data['total'])),
+            created_at=created_at,
+            completed_at=created_at,  # Use offline timestamp as completion time
         )
 
         # Create order items
@@ -245,12 +275,12 @@ class OfflineOrderIngestService:
         tips = sum(Decimal(str(p.get('tip', 0))) for p in payment_list)
         surcharges = sum(Decimal(str(p.get('surcharge', 0))) for p in payment_list)
 
-        # Validate: amount_paid should equal order.total
+        # Validate: amount_paid should equal order.grand_total
         # Allow small rounding differences (within 0.01)
-        if abs(amount_paid - order.total) > Decimal('0.01'):
+        if abs(amount_paid - order.grand_total) > Decimal('0.01'):
             logger.warning(
                 f"Payment amount mismatch for offline order: "
-                f"amount_paid={amount_paid}, order.total={order.total}. "
+                f"amount_paid={amount_paid}, order.grand_total={order.grand_total}. "
                 f"Using actual tender data."
             )
 
@@ -258,15 +288,21 @@ class OfflineOrderIngestService:
         payment = Payment.objects.create(
             tenant=terminal.tenant,
             order=order,
-            status='COMPLETED' if amount_paid >= order.total else 'PARTIAL',
-            total_amount_due=order.total,
+            store_location=terminal.store_location,
+            status='PAID' if amount_paid >= order.grand_total else 'PARTIALLY_PAID',
+            total_amount_due=order.grand_total,
             amount_paid=amount_paid,  # Use actual tender total
-            tips=tips,
-            surcharges=surcharges
+            total_tips=tips,
+            total_surcharges=surcharges,
+            total_collected=amount_paid + tips + surcharges
         )
 
         # Create transaction records
         for payment_data in payment_list:
+            # Map status to valid TransactionStatus choices
+            raw_status = payment_data.get('status', 'COMPLETED')
+            tx_status = 'SUCCESSFUL' if raw_status in ('COMPLETED', 'SUCCESSFUL') else raw_status
+
             PaymentTransaction.objects.create(
                 tenant=terminal.tenant,
                 payment=payment,
@@ -274,7 +310,7 @@ class OfflineOrderIngestService:
                 tip=Decimal(str(payment_data.get('tip', 0))),
                 surcharge=Decimal(str(payment_data.get('surcharge', 0))),
                 method=payment_data['method'],
-                status=payment_data.get('status', 'COMPLETED'),
+                status=tx_status,
                 transaction_id=payment_data.get('transaction_id'),
                 provider_response=payment_data.get('provider_response', {})
             )

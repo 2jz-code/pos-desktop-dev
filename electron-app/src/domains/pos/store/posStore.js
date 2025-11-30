@@ -9,6 +9,7 @@ import { createDiscountSlice } from "@/domains/discounts/store/discountSlice";
 import { createPaymentSlice } from "@/domains/payments/store/paymentSlice";
 import { createInventorySlice } from "@/domains/inventory/store/inventorySlice";
 import { cartSocket } from "@/shared/lib/cartSocket";
+import { cartGateway } from "@/shared/lib/cartGateway";
 
 export const usePosStore = createWithEqualityFn(
 	persist(
@@ -27,6 +28,8 @@ export const usePosStore = createWithEqualityFn(
 				// Persist all relevant cart state but NOT filter state
 				orderId: state.orderId,
 				orderStatus: state.orderStatus,
+				orderNumber: state.orderNumber,
+				isOfflineOrder: state.isOfflineOrder, // Track if order was created offline
 				items: state.items,
 				subtotal: state.subtotal,
 				total: state.total,
@@ -38,6 +41,7 @@ export const usePosStore = createWithEqualityFn(
 				appliedDiscounts: state.appliedDiscounts,
 				adjustments: state.adjustments,
 				currentUser: state.currentUser,
+				customerFirstName: state.customerFirstName, // Persist customer name
 				diningPreference: state.diningPreference, // Persist dining preference
 				// Persist payment state across sessions for order continuity
 				order: state.order,
@@ -57,4 +61,6 @@ export const usePosStore = createWithEqualityFn(
 	shallow
 );
 
+// Initialize cart socket and gateway with the store
 cartSocket.init(usePosStore);
+cartGateway.init(usePosStore);

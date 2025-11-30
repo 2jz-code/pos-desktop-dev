@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { usePosStore } from "../store/posStore";
 import { toast } from "@/shared/components/ui/use-toast";
-import { applyFeeExempt } from "@/domains/orders/services/orderService";
 import { useApprovalDialog } from "@/domains/approvals/hooks/useApprovalDialog.jsx";
 import {
 	Dialog,
@@ -21,7 +20,10 @@ export const FeeExemptDialog = ({ open, onClose }) => {
 	const [reason, setReason] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const orderId = usePosStore((state) => state.orderId);
+	const { orderId, applyFeeExemption } = usePosStore((state) => ({
+		orderId: state.orderId,
+		applyFeeExemption: state.applyFeeExemption,
+	}));
 	const { showApprovalDialog, approvalDialog } = useApprovalDialog();
 
 	const handleSubmit = async () => {
@@ -37,9 +39,9 @@ export const FeeExemptDialog = ({ open, onClose }) => {
 		setIsSubmitting(true);
 
 		try {
-			const response = await applyFeeExempt(orderId, reason || "Fee exemption requested");
+			const response = await applyFeeExemption({ reason: reason || "Fee exemption requested" });
 
-			// Check if approval is required
+			// Check if approval is required (online mode only)
 			if (response.status === "pending_approval") {
 				// Show approval dialog
 				showApprovalDialog({
@@ -55,7 +57,7 @@ export const FeeExemptDialog = ({ open, onClose }) => {
 				});
 				handleCancel();
 			} else {
-				// Fee exemption applied successfully - cart will update automatically via WebSocket
+				// Fee exemption applied successfully
 				toast({
 					title: "Fee Exemption Applied",
 					description: "Service fees will not be added when payment is processed.",

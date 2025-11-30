@@ -185,6 +185,25 @@ export function purgeSuccessfulOperations(db, daysOld = 7) {
 }
 
 /**
+ * Clear all pending operations (for debugging/reset)
+ * @param {import('better-sqlite3').Database} db
+ * @returns {Object} Count of deleted records from each table
+ */
+export function clearAllPendingData(db) {
+  const operations = db.prepare('DELETE FROM pending_operations').run();
+  const orders = db.prepare('DELETE FROM offline_orders').run();
+  const payments = db.prepare('DELETE FROM offline_payments').run();
+  const approvals = db.prepare('DELETE FROM offline_approvals WHERE synced = 0').run();
+
+  return {
+    pending_operations: operations.changes,
+    offline_orders: orders.changes,
+    offline_payments: payments.changes,
+    offline_approvals: approvals.changes
+  };
+}
+
+/**
  * Record an offline order
  * @param {import('better-sqlite3').Database} db
  * @param {Object} orderPayload - Full order payload

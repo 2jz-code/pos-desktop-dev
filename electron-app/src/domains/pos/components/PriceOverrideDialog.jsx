@@ -14,7 +14,6 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
 import { DollarSign, FileText, Edit3, TrendingUp, TrendingDown } from "lucide-react";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { applyPriceOverride } from "@/domains/orders/services/orderService";
 import { toast } from "@/shared/components/ui/use-toast";
 import { useApprovalDialog } from "@/domains/approvals/hooks/useApprovalDialog.jsx";
 
@@ -27,9 +26,10 @@ export function PriceOverrideDialog({ open, onClose }) {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { orderId, items } = usePosStore((state) => ({
+  const { orderId, items, applyPriceOverride } = usePosStore((state) => ({
     orderId: state.orderId,
     items: state.items,
+    applyPriceOverride: state.applyPriceOverride,
   }));
 
   const { showApprovalDialog, approvalDialog } = useApprovalDialog();
@@ -66,13 +66,13 @@ export function PriceOverrideDialog({ open, onClose }) {
     setIsSubmitting(true);
 
     try {
-      const response = await applyPriceOverride(orderId, {
-        order_item_id: selectedItemId,
-        new_price: newPrice,
+      const response = await applyPriceOverride({
+        orderItemId: selectedItemId,
+        newPrice: newPrice,
         reason: formData.reason.trim(),
       });
 
-      // Check if approval is required
+      // Check if approval is required (online mode only)
       if (response.status === "pending_approval") {
         // Show approval dialog
         showApprovalDialog({
@@ -88,7 +88,7 @@ export function PriceOverrideDialog({ open, onClose }) {
         });
         handleCancel();
       } else {
-        // Price override applied successfully - cart will update automatically via WebSocket
+        // Price override applied successfully
         toast({
           title: "Price Override Applied",
           description: `Item price updated from $${originalPrice.toFixed(2)} to $${newPrice.toFixed(2)}.`,

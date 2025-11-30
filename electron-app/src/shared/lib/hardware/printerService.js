@@ -45,13 +45,112 @@ export const printKitchenTicket = (
 // === NEW: Cloud-based printer configuration management ===
 
 /**
+ * Try to get printer config from local offline cache first
+ * @returns {Promise<object|null>} Cached printer config or null
+ */
+const getCachedPrinterConfig = async () => {
+	try {
+		if (!window.offlineAPI?.getCachedSettings) {
+			console.log("[printerService] offlineAPI.getCachedSettings not available");
+			return null;
+		}
+
+		const settings = await window.offlineAPI.getCachedSettings();
+		console.log("[printerService] Cached settings keys:", settings ? Object.keys(settings) : "null");
+
+		// Return null only if settings object itself is missing or empty
+		if (!settings || Object.keys(settings).length === 0) {
+			console.log("[printerService] No cached settings found");
+			return null;
+		}
+
+		const printers = settings.printers || [];
+		const zones = settings.kitchen_zones || [];
+
+		console.log("[printerService] Found cached printers:", printers.length, "kitchen_zones:", zones.length);
+
+		// Transform to expected format
+		const receipt_printers = printers
+			.filter((p) => p.printer_type === "receipt" && p.is_active)
+			.map((p) => ({
+				id: p.id,
+				name: p.name,
+				ip_address: p.ip_address,
+				port: p.port,
+				connection_type: "network",
+			}));
+
+		const kitchen_printers = printers
+			.filter((p) => p.printer_type === "kitchen" && p.is_active)
+			.map((p) => ({
+				id: p.id,
+				name: p.name,
+				ip_address: p.ip_address,
+				port: p.port,
+				connection_type: "network",
+			}));
+
+		const kitchen_zones = zones
+			.filter((z) => z.is_active)
+			.map((z) => {
+				// Try to get full printer details from printer_details first
+				// If ip_address/port are missing, look up from printers array
+				let printerInfo = null;
+				if (z.printer_details) {
+					printerInfo = {
+						id: z.printer_details.id,
+						name: z.printer_details.name,
+						ip_address: z.printer_details.ip_address,
+						port: z.printer_details.port,
+						connection_type: "network",
+					};
+
+					// If ip_address is missing, try to find printer in printers array
+					if (!printerInfo.ip_address && z.printer) {
+						const fullPrinter = printers.find(p =>
+							p.id === z.printer || p.id === String(z.printer)
+						);
+						if (fullPrinter) {
+							printerInfo.ip_address = fullPrinter.ip_address;
+							printerInfo.port = fullPrinter.port;
+						}
+					}
+				}
+
+				return {
+					id: z.id,
+					name: z.name,
+					printer_name: z.printer_details?.name,
+					printer_id: z.printer,
+					categories: z.category_ids || [],
+					print_all_items: z.print_all_items || false,
+					productTypes: [],
+					printer: printerInfo,
+				};
+			});
+
+		console.log("[printerService] Using cached printer config from offline DB");
+		return { receipt_printers, kitchen_printers, kitchen_zones };
+	} catch (error) {
+		console.warn("[printerService] Failed to get cached config:", error);
+		return null;
+	}
+};
+
+/**
  * Fetch printer configuration for the terminal's location.
- * Uses new relational endpoints: /settings/printers/ and /settings/kitchen-zones/
+ * Uses cache-first pattern: check local cache, fallback to API if needed.
  *
  * @returns {Promise<object>} Printer configuration matching old structure for backward compatibility
  */
 export const getCloudPrinterConfig = async () => {
 	try {
+		// Cache-first: Try local offline DB first
+		const cachedConfig = await getCachedPrinterConfig();
+		if (cachedConfig) {
+			return cachedConfig;
+		}
+
 		// Get terminal's location ID
 		const locationId = terminalRegistrationService.getLocationId();
 
@@ -142,7 +241,12 @@ export const getCloudPrinterConfig = async () => {
 			response: error.response?.data,
 			status: error.response?.status,
 		});
-		throw error;
+		// Return empty config instead of throwing - allows graceful degradation when offline
+		return {
+			receipt_printers: [],
+			kitchen_printers: [],
+			kitchen_zones: [],
+		};
 	}
 };
 
@@ -155,7 +259,10 @@ export const getCloudPrinterConfig = async () => {
 export const getKitchenZonesWithPrinters = async () => {
 	try {
 		const config = await getCloudPrinterConfig();
+		console.log("[printerService] getKitchenZonesWithPrinters config:", config);
 		const { kitchen_zones = [] } = config;
+
+		console.log("[printerService] Kitchen zones before filter:", kitchen_zones.length, kitchen_zones);
 
 		// With new API, printer is already embedded in each zone
 		const zonesWithPrinters = kitchen_zones.filter((zone) => zone.printer);

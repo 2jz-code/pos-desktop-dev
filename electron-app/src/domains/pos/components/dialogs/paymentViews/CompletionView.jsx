@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useEffect } from "react";
 import { usePosStore } from "@/domains/pos/store/posStore";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { Button } from "@/shared/components/ui/button";
-import { CheckCircle, Printer, Mail } from "lucide-react";
+import { CheckCircle, Printer, Mail, WifiOff, CloudOff } from "lucide-react";
 import { formatCurrency } from "@ajeen/ui";
 import {
 	printReceipt,
@@ -182,10 +182,34 @@ const CompletionView = ({ order, changeDue, onClose }) => {
 		}
 	};
 
+	// Check if this is an offline/queued order
+	const isOfflineOrder = order?._isQueued || order?._isOfflineOrder;
+
 	return (
 		<div className="flex flex-col items-center justify-center space-y-6 p-8 text-center">
-			<CheckCircle className="h-24 w-24 text-green-500" />
-			<h2 className="text-3xl font-bold">Payment Successful</h2>
+			{isOfflineOrder ? (
+				<>
+					<div className="relative">
+						<CheckCircle className="h-24 w-24 text-orange-500" />
+						<CloudOff className="h-8 w-8 text-orange-600 absolute -bottom-1 -right-1 bg-white dark:bg-gray-900 rounded-full p-1" />
+					</div>
+					<h2 className="text-3xl font-bold">Order Saved</h2>
+					<div className="p-3 bg-orange-100 dark:bg-orange-950/30 rounded-lg w-full">
+						<div className="flex items-center justify-center gap-2 text-orange-700 dark:text-orange-300">
+							<WifiOff className="h-5 w-5" />
+							<span className="text-sm font-medium">Offline Order Queued</span>
+						</div>
+						<p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+							This order will sync automatically when connection is restored
+						</p>
+					</div>
+				</>
+			) : (
+				<>
+					<CheckCircle className="h-24 w-24 text-green-500" />
+					<h2 className="text-3xl font-bold">Payment Successful</h2>
+				</>
+			)}
 
 			{changeDue > 0 && (
 				<div className="p-4 bg-blue-100 dark:bg-blue-900/50 rounded-lg w-full">

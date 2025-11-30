@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { usePosStore } from "../store/posStore";
 import { toast } from "@/shared/components/ui/use-toast";
-import { applyTaxExempt } from "@/domains/orders/services/orderService";
 import { useApprovalDialog } from "@/domains/approvals/hooks/useApprovalDialog.jsx";
 import {
 	Dialog,
@@ -21,9 +20,10 @@ export const TaxExemptDialog = ({ open, onClose }) => {
 	const [reason, setReason] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const { taxAmount, orderId } = usePosStore((state) => ({
+	const { taxAmount, orderId, applyTaxExemption } = usePosStore((state) => ({
 		taxAmount: state.taxAmount,
 		orderId: state.orderId,
+		applyTaxExemption: state.applyTaxExemption,
 	}));
 
 	const { showApprovalDialog, approvalDialog } = useApprovalDialog();
@@ -50,9 +50,9 @@ export const TaxExemptDialog = ({ open, onClose }) => {
 		setIsSubmitting(true);
 
 		try {
-			const response = await applyTaxExempt(orderId, reason);
+			const response = await applyTaxExemption({ reason });
 
-			// Check if approval is required
+			// Check if approval is required (online mode only)
 			if (response.status === "pending_approval") {
 				// Show approval dialog
 				showApprovalDialog({
@@ -68,7 +68,7 @@ export const TaxExemptDialog = ({ open, onClose }) => {
 				});
 				handleCancel();
 			} else {
-				// Tax exemption applied successfully - cart will update automatically via WebSocket
+				// Tax exemption applied successfully
 				toast({
 					title: "Tax Exemption Applied",
 					description: `Tax of ${formatCurrency(taxAmount)} has been exempted from this order.`,

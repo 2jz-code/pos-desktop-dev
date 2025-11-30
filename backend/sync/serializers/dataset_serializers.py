@@ -168,6 +168,7 @@ class SyncProductTypeSerializer(serializers.ModelSerializer):
     """ProductType serializer for offline sync"""
 
     updated_at = serializers.DateTimeField(format='iso-8601')
+    default_tax_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductType
@@ -184,7 +185,12 @@ class SyncProductTypeSerializer(serializers.ModelSerializer):
             'max_quantity_per_item',
             'is_active',
             'updated_at',
+            'default_tax_ids',
         ]
+
+    def get_default_tax_ids(self, obj):
+        """Return list of default tax IDs for client-side tax calculation"""
+        return list(obj.default_taxes.values_list('id', flat=True))
 
 
 class SyncDiscountSerializer(serializers.ModelSerializer):
@@ -390,11 +396,13 @@ class SyncKitchenZoneSerializer(serializers.ModelSerializer):
         return [str(c.id) for c in obj.categories.all()]
 
     def get_printer_details(self, obj):
-        """Return basic printer info for display"""
+        """Return full printer info needed for printing"""
         if obj.printer:
             return {
                 'id': str(obj.printer.id),
                 'name': obj.printer.name,
+                'ip_address': obj.printer.ip_address,
+                'port': obj.printer.port,
             }
         return None
 
