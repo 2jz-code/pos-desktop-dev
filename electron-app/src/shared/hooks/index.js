@@ -18,3 +18,4 @@ export { useOfflineDiscounts } from "./useOfflineDiscounts.js";
 export { useOfflineModifiers } from "./useOfflineModifiers.js";
 export { useOnlineStatus } from "./useOnlineStatus.js";
 export { useOfflineGuard } from "./useOfflineGuard.js";
+export { useOfflineOrders } from "./useOfflineOrders.js";

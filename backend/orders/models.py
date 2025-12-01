@@ -437,6 +437,24 @@ class Order(models.Model):
 
     legacy_id = models.IntegerField(unique=True, null=True, blank=True, db_index=True, help_text="The order ID from the old system.")
 
+    # Offline mode tracking
+    is_offline_order = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=_("True if this order was created while the terminal was offline and later synced")
+    )
+    offline_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("Original creation timestamp from when the order was created offline")
+    )
+    offline_terminal_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=_("Device ID of the terminal that created this order while offline")
+    )
+
     objects = TenantManager()
     all_objects = models.Manager()
 

@@ -66,8 +66,8 @@ async function handleOnline() {
   // Wrap in try-catch to prevent errors from breaking the online handler
   try {
     const result = await flushOfflineOrders();
-    if (result.synced > 0 || result.conflicts > 0) {
-      console.log(`🔄 [CartGateway] Auto-flushed on reconnect: ${result.synced} synced, ${result.conflicts} conflicts`);
+    if (result.synced > 0) {
+      console.log(`🔄 [CartGateway] Auto-flushed on reconnect: ${result.synced} synced`);
     }
   } catch (error) {
     console.error('❌ [CartGateway] Failed to auto-flush on reconnect:', error);
@@ -419,114 +419,31 @@ function buildOfflineOrderPayload(state, checkoutData) {
  * Flush pending offline orders to server
  * Called when coming back online or explicitly triggered
  *
- * @returns {Promise<{synced: number, failed: number, conflicts: number}>}
+ * Delegates to OfflineSyncService.flushQueue() to avoid duplicate implementations
+ *
+ * @returns {Promise<{synced: number, failed: number}>}
  */
 export async function flushOfflineOrders() {
-  if (!window.offlineAPI?.listOfflineOrders) {
-    return { synced: 0, failed: 0, conflicts: 0 };
-  }
-
   // Don't try to flush while offline
   if (isOfflineMode()) {
     console.log('📡 [CartGateway] Still offline, skipping flush');
-    return { synced: 0, failed: 0, conflicts: 0 };
+    return { synced: 0, failed: 0 };
   }
 
-  console.log('🔄 [CartGateway] Flushing offline orders...');
+  try {
+    // Delegate to OfflineSyncService which has the consolidated flush logic
+    const offlineSyncService = (await import('@/services/OfflineSyncService')).default;
+    await offlineSyncService.flushQueue();
 
-  const pendingOrders = await window.offlineAPI.listOfflineOrders('PENDING');
+    // OfflineSyncService doesn't return counts, so we check remaining
+    const remaining = await window.offlineAPI?.listOfflineOrders?.('PENDING') || [];
+    const synced = remaining.length === 0 ? 1 : 0; // Approximate
 
-  if (!pendingOrders || pendingOrders.length === 0) {
-    console.log('✅ [CartGateway] No pending offline orders');
-    return { synced: 0, failed: 0, conflicts: 0 };
+    return { synced, failed: remaining.length };
+  } catch (error) {
+    console.error('❌ [CartGateway] Failed to flush:', error);
+    return { synced: 0, failed: 1 };
   }
-
-  console.log(`📦 [CartGateway] Found ${pendingOrders.length} pending offline orders`);
-
-  // Get pairing info for device authentication
-  const pairingInfo = await window.offlineAPI?.getPairingInfo();
-  if (!pairingInfo?.terminal_id) {
-    console.error('❌ [CartGateway] No terminal pairing info available');
-    return { synced: 0, failed: 0, conflicts: 0 };
-  }
-
-  // Get dataset versions for conflict detection
-  const datasetVersions = await window.offlineAPI?.getAllDatasetVersions() || [];
-  const versionsMap = {};
-  for (const ds of datasetVersions) {
-    versionsMap[ds.key] = ds.version;
-  }
-
-  // Dynamic import of apiClient to avoid circular deps
-  const apiClient = (await import('./apiClient')).default;
-
-  let synced = 0;
-  let failed = 0;
-  let conflicts = 0;
-
-  for (const order of pendingOrders) {
-    try {
-      console.log(`⏳ [CartGateway] Syncing order: ${order.local_id}`);
-
-      // Build the ingest payload matching backend expectations
-      const ingestPayload = buildIngestPayload(order, pairingInfo, versionsMap);
-
-      // POST to offline-orders ingest endpoint
-      const response = await apiClient.post('/sync/offline-orders/', ingestPayload);
-
-      const { status, order_id, order_number, conflicts: responseConflicts } = response.data;
-
-      if (status === 'SUCCESS') {
-        // Mark as synced with server order details
-        await window.offlineAPI.updateOfflineOrderStatus(
-          order.local_id,
-          'SYNCED',
-          order_id,
-          order_number
-        );
-        synced++;
-        console.log(`✅ [CartGateway] Order ${order.local_id} synced as ${order_number}`);
-      } else if (status === 'CONFLICT') {
-        // Mark as conflict with details
-        const conflictReason = responseConflicts?.map(c => c.message).join('; ') || 'Unknown conflict';
-        await window.offlineAPI.updateOfflineOrderStatus(
-          order.local_id,
-          'CONFLICT',
-          null,
-          null,
-          conflictReason
-        );
-        conflicts++;
-        console.warn(`⚠️ [CartGateway] Order ${order.local_id} has conflicts: ${conflictReason}`);
-      } else {
-        throw new Error(`Unexpected status: ${status}`);
-      }
-    } catch (error) {
-      console.error(`❌ [CartGateway] Failed to sync order ${order.local_id}:`, error);
-
-      // Check if it's a conflict response (409)
-      if (error.response?.status === 409) {
-        const conflictReason = error.response.data?.conflicts?.map(c => c.message).join('; ')
-          || error.response.data?.errors?.join('; ')
-          || 'Server conflict';
-        await window.offlineAPI.updateOfflineOrderStatus(
-          order.local_id,
-          'CONFLICT',
-          null,
-          null,
-          conflictReason
-        );
-        conflicts++;
-      } else {
-        // Other errors - don't mark as failed immediately, allow retry
-        failed++;
-      }
-    }
-  }
-
-  console.log(`✅ [CartGateway] Flush complete: ${synced} synced, ${failed} failed, ${conflicts} conflicts`);
-
-  return { synced, failed, conflicts };
 }
 
 /**
@@ -536,42 +453,55 @@ export async function flushOfflineOrders() {
 function buildIngestPayload(order, pairingInfo, datasetVersions) {
   const payload = order.payload;
 
+  // Use stable operation_id from local order for idempotency
+  // This ensures retries return the cached result instead of creating duplicates
+  const operationId = order.local_id || uuidv4();
+
+  // IMPORTANT: created_at is used for auth freshness check (5 min window)
+  // We must use current time for auth, but preserve the original offline timestamp separately
+  const authTimestamp = new Date().toISOString();
+  const originalOfflineTimestamp = payload.created_offline_at || order.created_at;
+
   return {
     // Operation metadata
-    operation_id: uuidv4(),
+    operation_id: operationId,
     device_id: pairingInfo.terminal_id,
     nonce: uuidv4().replace(/-/g, '').substring(0, 32), // 32-char hex nonce
-    created_at: payload.created_offline_at || order.created_at,
+    // created_at must be fresh for auth validation (5 min window)
+    created_at: authTimestamp,
+    // Store original offline timestamp separately for order creation
+    offline_created_at: originalOfflineTimestamp,
     dataset_versions: datasetVersions,
 
     // Order details - nested in 'order' object
     order: {
-      order_type: mapOrderType(payload.dining_preference),
+      order_type: payload.order_type || 'POS',
       dining_preference: payload.dining_preference || 'TAKE_OUT',
       status: 'COMPLETED', // Offline orders are always completed at checkout
       store_location_id: payload.store_location,
       cashier_id: payload.cashier_id,
       guest_first_name: payload.guest_first_name || '',
 
-      // Items with item-level adjustments
+      // Items with modifiers and item-level adjustments
       items: (payload.items || []).map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
         price_at_sale: item.price_at_sale,
         notes: item.notes || '',
-        modifiers: (item.selected_modifiers || []).map(mod => ({
-          modifier_set_id: mod.modifier_set_id || mod.set_id,
-          modifier_option_id: mod.modifier_option_id || mod.option_id || mod.id,
-          price_delta: mod.price_delta || mod.price || 0,
-        })),
-        // Item-level adjustments (price override, tax exempt, item discount)
-        adjustments: (item.adjustments || []).map(adj => ({
-          adjustment_type: adj.adjustment_type,
-          discount_type: adj.discount_type || null,
-          value: parseFloat(adj.value || 0),
-          notes: adj.notes || '',
-          approved_by_user_id: adj.approved_by_user_id || null,
-        })),
+        // Map modifiers from snapshot (which now includes IDs) or selected_modifiers
+        modifiers: extractModifiers(item),
+        // Item-level adjustments - all types can apply at item level
+        adjustments: (item.adjustments || [])
+          .filter(adj => ['PRICE_OVERRIDE', 'TAX_EXEMPT', 'ONE_OFF_DISCOUNT', 'FEE_EXEMPT'].includes(adj.adjustment_type))
+          .map(adj => ({
+            adjustment_type: adj.adjustment_type,
+            discount_type: adj.discount_type || null,
+            // Clamp value to safe bound: 99999999.99 (8 digits + 2 decimal = 10 total)
+            // Backend allows max_digits=12 but we use safer bound to prevent overflow
+            value: parseFloat(Math.min(Math.abs(parseFloat(adj.value || 0)), 99999999.99).toFixed(2)),
+            notes: adj.notes || '',
+            approved_by_user_id: adj.approved_by_user_id || null,
+          })),
       })),
 
       // Promotional/code discounts
@@ -580,18 +510,24 @@ function buildIngestPayload(order, pairingInfo, datasetVersions) {
         amount: parseFloat(d.amount),
       })),
 
-      // Order-level adjustments (one-off discounts, fee exempt)
-      adjustments: (payload.adjustments || []).map(adj => ({
-        adjustment_type: adj.adjustment_type,
-        discount_type: adj.discount_type || null,
-        value: parseFloat(adj.value || 0),
-        notes: adj.notes || '',
-        approved_by_user_id: adj.approved_by_user_id || null,
-      })),
+      // Order-level adjustments - all types can apply at order level
+      adjustments: (payload.adjustments || [])
+        .filter(adj => ['ONE_OFF_DISCOUNT', 'FEE_EXEMPT', 'TAX_EXEMPT', 'PRICE_OVERRIDE'].includes(adj.adjustment_type))
+        .map(adj => ({
+          adjustment_type: adj.adjustment_type,
+          discount_type: adj.discount_type || null,
+          // Clamp value to safe bound: 99999999.99 (8 digits + 2 decimal = 10 total)
+          // Backend allows max_digits=12 but we use safer bound to prevent overflow
+          value: parseFloat(Math.min(Math.abs(parseFloat(adj.value || 0)), 99999999.99).toFixed(2)),
+          notes: adj.notes || '',
+          approved_by_user_id: adj.approved_by_user_id || null,
+        })),
 
       // Totals
       subtotal: parseFloat(payload.subtotal || 0),
       tax: parseFloat(payload.tax_amount || 0),
+      surcharge: parseFloat(payload.surcharge || 0),
+      discount_total: parseFloat(payload.total_discounts || 0),
       total: parseFloat(payload.total || 0),
     },
 
@@ -600,7 +536,7 @@ function buildIngestPayload(order, pairingInfo, datasetVersions) {
       method: payload.payment?.method || 'CASH',
       amount: parseFloat(parseFloat(payload.payment?.amount || payload.total || 0).toFixed(2)),
       tip: parseFloat(parseFloat(payload.payment?.tip || 0).toFixed(2)),
-      surcharge: 0,
+      surcharge: parseFloat(parseFloat(payload.payment?.surcharge || 0).toFixed(2)),
       status: 'COMPLETED',
       cash_tendered: payload.payment?.tendered
         ? parseFloat(parseFloat(payload.payment.tendered).toFixed(2))
@@ -610,12 +546,62 @@ function buildIngestPayload(order, pairingInfo, datasetVersions) {
         : null,
     }],
 
-    // Inventory deltas - backend computes from items
-    inventory_deltas: [],
+    // Inventory deltas - computed from items
+    inventory_deltas: computeInventoryDeltas(payload, pairingInfo),
 
     // Approvals - collected from adjustments that required approval
     approvals: collectApprovals(payload),
   };
+}
+
+/**
+ * Extract modifiers from item, handling both new and old data structures
+ * New structure: selected_modifiers_snapshot with modifier_set_id and modifier_option_id
+ * Old structure: selected_modifiers with option_id only
+ */
+function extractModifiers(item) {
+  // Prefer snapshot which has full data including IDs
+  const modifiers = item.selected_modifiers_snapshot || item.selected_modifiers || [];
+
+  return modifiers
+    .filter(mod => {
+      // Must have both modifier_set_id and modifier_option_id (or option_id)
+      const setId = mod.modifier_set_id;
+      const optionId = mod.modifier_option_id || mod.option_id;
+      return setId && optionId;
+    })
+    .map(mod => ({
+      modifier_set_id: mod.modifier_set_id,
+      modifier_option_id: mod.modifier_option_id || mod.option_id,
+      price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
+    }));
+}
+
+/**
+ * Compute inventory deltas from order items
+ * Each item sold decrements stock at the terminal's location
+ */
+function computeInventoryDeltas(payload, pairingInfo) {
+  const deltas = [];
+  const locationId = payload.store_location || pairingInfo.location_id;
+
+  if (!locationId) {
+    console.warn('[CartGateway] No location ID for inventory deltas');
+    return deltas;
+  }
+
+  for (const item of payload.items || []) {
+    if (item.product_id && item.quantity > 0) {
+      deltas.push({
+        product_id: item.product_id,
+        location_id: locationId,
+        quantity_change: -item.quantity, // Negative = decrement
+        reason: 'ORDER_DEDUCTION',
+      });
+    }
+  }
+
+  return deltas;
 }
 
 /**
@@ -672,22 +658,6 @@ function mapAdjustmentToApprovalAction(adjustmentType) {
   }
 }
 
-/**
- * Map dining preference to backend order_type
- */
-function mapOrderType(diningPreference) {
-  switch (diningPreference) {
-    case 'DINE_IN':
-      return 'DINE_IN';
-    case 'TAKE_OUT':
-    case 'TAKEOUT':
-      return 'TAKEOUT';
-    case 'DELIVERY':
-      return 'DELIVERY';
-    default:
-      return 'TAKEOUT';
-  }
-}
 
 /**
  * Disconnect and cleanup

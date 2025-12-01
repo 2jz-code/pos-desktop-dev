@@ -532,10 +532,9 @@ export const createCartSlice = (set, get) => {
 				let totalModifierPrice = 0;
 				if (selected_modifiers) {
 					selected_modifiers.forEach(modifier => {
-						const option = findModifierOptionById(product, modifier.option_id);
-						if (option) {
-							totalModifierPrice += parseFloat(option.price_delta) * (modifier.quantity || 1);
-						}
+						// New structure includes price_delta directly, fallback to looking it up
+						const priceDelta = modifier.price_delta ?? findModifierOptionById(product, modifier.option_id)?.price_delta ?? 0;
+						totalModifierPrice += parseFloat(priceDelta) * (modifier.quantity || 1);
 					});
 				}
 
@@ -544,15 +543,20 @@ export const createCartSlice = (set, get) => {
 					product: product,
 					quantity: quantity,
 					price_at_sale: parseFloat(product.price) + totalModifierPrice,
+					// Store full modifier data including IDs for offline ingest
 					selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
+						// New structure from ProductModifierSelector includes all data
+						// Fallback to looking up option for backward compatibility
 						const option = findModifierOptionById(product, modifier.option_id);
-						return option ? {
-							modifier_set_name: option.modifier_set?.name || "Unknown",
-							option_name: option.name,
-							price_at_sale: parseFloat(option.price_delta),
+						return {
+							modifier_set_id: modifier.modifier_set_id || option?.modifier_set?.id,
+							modifier_set_name: modifier.modifier_set_name || option?.modifier_set?.name || "Unknown",
+							modifier_option_id: modifier.option_id,
+							option_name: modifier.option_name || option?.name || "Unknown",
+							price_at_sale: parseFloat(modifier.price_delta ?? option?.price_delta ?? 0),
 							quantity: modifier.quantity || 1
-						} : null;
-					}).filter(Boolean) || [],
+						};
+					}).filter(mod => mod.modifier_set_id && mod.modifier_option_id) || [],
 					total_modifier_price: totalModifierPrice,
 					notes: notes || ""
 				};

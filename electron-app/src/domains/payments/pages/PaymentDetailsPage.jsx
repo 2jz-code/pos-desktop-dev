@@ -7,6 +7,7 @@ import {
 import { processItemRefund } from "@/domains/payments/services/refundService";
 import { openCashDrawer } from "@/shared/lib/hardware/cashDrawerService";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { useOnlineStatus } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import {
 	Card,
@@ -62,6 +63,7 @@ const PaymentDetailsPage = () => {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
 	const { printers, receiptPrinterId } = useSettingsStore();
+	const isOnline = useOnlineStatus();
 
 	const [isRefundDialogOpen, setRefundDialogOpen] = useState(false);
 	const [refundSuccessData, setRefundSuccessData] = useState(null);
@@ -527,12 +529,13 @@ const PaymentDetailsPage = () => {
 										{/* Only show refund button if payment is not fully refunded */}
 										{payment.status !== "REFUNDED" && (
 											<Button
-												onClick={handleOpenRefundDialog}
+												onClick={() => isOnline && handleOpenRefundDialog()}
 												variant="outline"
 												size="sm"
-												disabled={isRefunding || !payment.order?.items?.some(
+												disabled={!isOnline || isRefunding || !payment.order?.items?.some(
 													(item) => (item.quantity - (item.refunded_quantity || 0)) > 0
 												)}
+												className={!isOnline ? 'opacity-50' : ''}
 											>
 												Refund Items
 											</Button>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { getPayments } from "@/domains/payments/services/paymentService";
+import { useOnlineStatus } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   LayoutGrid,
   List,
+  CloudOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@ajeen/ui";
@@ -27,12 +29,14 @@ import { FilterPill } from "@/domains/orders/components/FilterPill";
 import { PaymentsTableView } from "../components/PaymentsTableView";
 
 export default function PaymentsPage() {
-	const [payments, setPayments] = useState([]);
-	const [loading, setLoading] = useState(true);
+	const [onlinePayments, setOnlinePayments] = useState([]);
+	const [offlinePayments, setOfflinePayments] = useState([]);
+	const [onlineLoading, setOnlineLoading] = useState(true);
+	const [offlineLoading, setOfflineLoading] = useState(false);
 	const [error, setError] = useState(null);
 	const [nextUrl, setNextUrl] = useState(null);
 	const [prevUrl, setPrevUrl] = useState(null);
-	const [count, setCount] = useState(0);
+	const [onlineCount, setOnlineCount] = useState(0);
 	const [currentPage, setCurrentPage] = useState(1);
 	const [filters, setFilters] = useState({
 		status: "",
@@ -44,16 +48,65 @@ export default function PaymentsPage() {
 		return localStorage.getItem('paymentsViewMode') || 'cards';
 	});
 	const navigate = useNavigate();
+	const isOnline = useOnlineStatus();
+
+	// Use offline or online payments based on connectivity
+	const payments = isOnline ? onlinePayments : offlinePayments;
+	const loading = isOnline ? onlineLoading : offlineLoading;
+	const count = isOnline ? onlineCount : offlinePayments.length;
+
+	// Fetch offline payments from orders
+	const fetchOfflinePayments = useCallback(async () => {
+		if (!window.offlineAPI?.listOfflineOrders) return;
+
+		setOfflineLoading(true);
+		try {
+			const orders = await window.offlineAPI.listOfflineOrders();
+			// Extract payment data from offline orders
+			const payments = orders
+				.filter(order => order.payload?.payment_status === 'PAID' || order.payload?.total_collected > 0)
+				.map(order => ({
+					id: `offline-${order.local_id}`,
+					local_id: order.local_id,
+					payment_number: `OFF-${order.local_id.slice(0, 6).toUpperCase()}`,
+					order: order.local_id,
+					order_number: order.server_order_number || `OFF-${order.local_id.slice(0, 6).toUpperCase()}`,
+					status: order.payload?.payment_status || 'PAID',
+					total_collected: order.payload?.total_collected || order.payload?.total || 0,
+					total_due: order.payload?.total || 0,
+					tip: order.payload?.tip || 0,
+					created_at: order.created_at,
+					transactions: order.payload?.transactions || [{
+						method: order.payload?.payment_method || 'CASH',
+						status: 'SUCCESSFUL',
+						amount: order.payload?.total_collected || order.payload?.total || 0,
+					}],
+					is_offline: true,
+					sync_status: order.status,
+				}));
+			setOfflinePayments(payments);
+		} catch (err) {
+			console.error('Error fetching offline payments:', err);
+		} finally {
+			setOfflineLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!isOnline) {
+			fetchOfflinePayments();
+		}
+	}, [isOnline, fetchOfflinePayments]);
 
 	const fetchPayments = useCallback(
 		async (url = null) => {
 			try {
-				setLoading(true);
+				setOnlineLoading(true);
 				const data = await getPayments(filters, url);
-				setPayments(data.results || []);
+				setOnlinePayments(data.results || []);
 				setNextUrl(data.next);
 				setPrevUrl(data.previous);
-				setCount(data.count || 0);
+				setOnlineCount(data.count || 0);
 
 				// Extract current page from URL or use page 1 as default
 				if (url) {
@@ -69,15 +122,21 @@ export default function PaymentsPage() {
 				setError("Failed to fetch payments.");
 				console.error("Payment fetch error:", err);
 			} finally {
-				setLoading(false);
+				setOnlineLoading(false);
 			}
 		},
 		[filters]
 	);
 
+	// Fetch payments when online
 	useEffect(() => {
-		fetchPayments();
-	}, [fetchPayments]);
+		if (isOnline) {
+			fetchPayments();
+		}
+	}, [fetchPayments, isOnline]);
+
+	// Refetch function that works for both online and offline
+	const refetch = isOnline ? fetchPayments : fetchOfflinePayments;
 
 	const handleNavigate = (url) => {
 		if (url) fetchPayments(url);
@@ -197,10 +256,11 @@ export default function PaymentsPage() {
 					error={error}
 					hasFilters={hasFilters}
 					clearFilters={clearFilters}
-					fetchPayments={fetchPayments}
+					fetchPayments={refetch}
 					onCardClick={handleCardClick}
 					getPaymentStatusConfig={getPaymentStatusConfig}
 					getPaymentMethod={getPaymentMethod}
+					isOnline={isOnline}
 				/>
 			);
 		}
@@ -281,7 +341,7 @@ export default function PaymentsPage() {
 					>
 						<div className="flex items-start justify-between gap-4">
 							<div className="flex-1 space-y-3">
-								<div className="flex items-center gap-3">
+								<div className="flex items-center gap-3 flex-wrap">
 									<span className="font-mono text-sm font-medium">
 										{payment.payment_number}
 									</span>
@@ -291,6 +351,12 @@ export default function PaymentsPage() {
 									>
 										{payment.status}
 									</Badge>
+									{payment.is_offline && (
+										<Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-amber-200">
+											<CloudOff className="h-3 w-3 mr-1" />
+											{payment.sync_status === 'SYNCED' ? 'Synced' : 'Pending Sync'}
+										</Badge>
+									)}
 								</div>
 								<div className="text-sm text-muted-foreground">
 									Order: {payment.order ? payment.order_number : "N/A"}
@@ -325,6 +391,16 @@ export default function PaymentsPage() {
 				className="shrink-0"
 			/>
 
+			{/* Offline Banner */}
+			{!isOnline && (
+				<div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
+					<CloudOff className="h-4 w-4 text-amber-600" />
+					<span className="text-sm text-amber-800">
+						Offline Mode - Showing payments from this session only. Some actions are unavailable.
+					</span>
+				</div>
+			)}
+
 			{/* Search and Filters */}
 			<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">
 				{/* Controls Row */}
@@ -335,6 +411,7 @@ export default function PaymentsPage() {
 							size="sm"
 							onClick={() => setShowFilters(!showFilters)}
 							className="shrink-0"
+							disabled={!isOnline}
 						>
 							<Filter className="h-3 w-3 mr-1" />
 							{showFilters ? "Hide Filters" : "Show Filters"}
@@ -343,7 +420,10 @@ export default function PaymentsPage() {
 
 					<div className="flex items-center gap-4">
 						<span className="text-sm text-muted-foreground">
-							Displaying {payments.length} of {count} payments
+							{isOnline
+								? `Displaying ${payments.length} of ${count} payments`
+								: `${payments.length} offline payment${payments.length !== 1 ? 's' : ''}`
+							}
 						</span>
 
 						{/* View Toggle */}

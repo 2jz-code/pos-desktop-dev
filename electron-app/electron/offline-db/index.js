@@ -276,6 +276,7 @@ export const {
   recordOfflineOrder,
   getOfflineOrder,
   updateOfflineOrderStatus,
+  deleteOfflineOrder,
   listOfflineOrders,
   recordOfflinePayment,
   getOfflinePayments,

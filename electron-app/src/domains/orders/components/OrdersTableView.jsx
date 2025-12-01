@@ -21,6 +21,7 @@ import {
   MoreVertical,
   Play,
   XCircle,
+  CloudOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@ajeen/ui";
@@ -39,6 +40,7 @@ export const OrdersTableView = ({
   getPaymentStatusConfig,
   isAuthenticated,
   isOwner,
+  isOnline = true,
 }) => {
   if (loading) {
     return (
@@ -142,9 +144,25 @@ export const OrdersTableView = ({
                 <TableCell className="font-medium">
                   <div className="space-y-1">
                     <div className="font-mono text-sm">#{order.order_number}</div>
-                    <Badge variant="outline" className="text-xs">
-                      {order.order_type}
-                    </Badge>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Badge variant="outline" className="text-xs">
+                        {order.order_type}
+                      </Badge>
+                      {/* Local offline order pending sync */}
+                      {order.is_offline && (
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-amber-200">
+                          <CloudOff className="h-3 w-3 mr-1" />
+                          {order.sync_status === 'SYNCED' ? 'Synced' : 'Pending'}
+                        </Badge>
+                      )}
+                      {/* Synced order that was originally created offline */}
+                      {!order.is_offline && order.is_offline_order && (
+                        <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600 border-slate-200">
+                          <CloudOff className="h-3 w-3 mr-1" />
+                          Offline
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </TableCell>
 
@@ -194,9 +212,10 @@ export const OrdersTableView = ({
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onResumeOrder(order.id);
+                            if (isOnline) onResumeOrder(order.id);
                           }}
-                          className="h-8 w-8 p-0"
+                          className={`h-8 w-8 p-0 ${!isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          disabled={!isOnline}
                         >
                           <Play className="h-3 w-3" />
                         </Button>
@@ -217,10 +236,11 @@ export const OrdersTableView = ({
                           <DropdownMenuContent align="end" className="min-w-[120px]">
                             {canVoid && (
                               <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
+                                className={isOnline ? "text-destructive focus:text-destructive" : "opacity-50"}
+                                disabled={!isOnline}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onVoidOrder(order.id);
+                                  if (isOnline) onVoidOrder(order.id);
                                 }}
                               >
                                 <XCircle className="mr-2 h-4 w-4" />

@@ -123,6 +123,8 @@ class UnifiedOrderSerializer(
                 "updated_at",
                 "completed_at",
                 "payment_in_progress",
+                # Offline tracking
+                "is_offline_order",
             ],
             # Optimized for WebSocket real-time updates
             # Only includes fields actively used by frontend (electron-app/src/domains/pos/store/cartSlice.js)
@@ -193,6 +195,10 @@ class UnifiedOrderSerializer(
                 "updated_at",
                 "completed_at",
                 "legacy_id",
+                # Offline tracking
+                "is_offline_order",
+                "offline_created_at",
+                "offline_terminal_id",
             ],
         }
 

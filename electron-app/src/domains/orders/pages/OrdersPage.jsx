@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getAllOrders,
   resumeOrder,
   voidOrder,
 } from "@/domains/orders/services/orderService";
+import { useOnlineStatus } from "@/shared/hooks";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { Badge } from "@/shared/components/ui/badge";
 import {
   ClipboardList,
   Search,
@@ -24,6 +26,8 @@ import {
   Package,
   LayoutGrid,
   List,
+  WifiOff,
+  CloudOff,
 } from "lucide-react";
 import {
   getStatusConfig as getSharedStatusConfig,
@@ -56,7 +60,10 @@ export default function OrdersPage() {
   });
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [approvalRequest, setApprovalRequest] = useState(null);
+  const [offlineOrders, setOfflineOrders] = useState([]);
+  const [offlineLoading, setOfflineLoading] = useState(false);
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
 
   const { isAuthenticated, isOwner } = useAuth();
   const { resumeCart } = usePosStore(
@@ -68,14 +75,14 @@ export default function OrdersPage() {
   const printers = useSettingsStore((state) => state.printers);
   const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
-  // Use shared orders data hook
+  // Use shared orders data hook (for online mode)
   const {
-    orders,
-    loading,
-    error,
+    orders: onlineOrders,
+    loading: onlineLoading,
+    error: onlineError,
     nextUrl,
     prevUrl,
-    count,
+    count: onlineCount,
     currentPage,
     filters,
     hasFilters,
@@ -83,10 +90,57 @@ export default function OrdersPage() {
     handleFilterChange,
     handleSearchChange,
     clearFilters,
-    refetch
+    refetch: refetchOnline
   } = useOrdersData({
     getAllOrdersService: getAllOrders
   });
+
+  // Fetch offline orders when offline
+  const fetchOfflineOrders = useCallback(async () => {
+    if (!window.offlineAPI?.listOfflineOrders) return;
+
+    setOfflineLoading(true);
+    try {
+      const orders = await window.offlineAPI.listOfflineOrders();
+      // Transform offline orders to match expected format
+      const transformed = orders.map(order => ({
+        id: order.local_id,
+        local_id: order.local_id,
+        server_order_id: order.server_order_id,
+        order_number: order.server_order_number || `OFF-${order.local_id.slice(0, 6).toUpperCase()}`,
+        status: order.status === 'SYNCED' ? (order.payload?.status || 'COMPLETED') : 'PENDING',
+        sync_status: order.status,
+        payment_status: order.payload?.payment_status || 'PAID',
+        order_type: order.payload?.order_type || 'POS',
+        created_at: order.created_at,
+        total: order.payload?.total || 0,
+        total_with_tip: order.payload?.total_with_tip || order.payload?.total || 0,
+        total_collected: order.payload?.total_collected || order.payload?.total || 0,
+        items: order.payload?.items || [],
+        customer_name: order.payload?.customer_name,
+        is_offline: true,
+        offline_status: order.status,
+      }));
+      setOfflineOrders(transformed);
+    } catch (err) {
+      console.error('Error fetching offline orders:', err);
+    } finally {
+      setOfflineLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline) {
+      fetchOfflineOrders();
+    }
+  }, [isOnline, fetchOfflineOrders]);
+
+  // Use offline or online orders based on connectivity
+  const orders = isOnline ? onlineOrders : offlineOrders;
+  const loading = isOnline ? onlineLoading : offlineLoading;
+  const error = isOnline ? onlineError : null;
+  const count = isOnline ? onlineCount : offlineOrders.length;
+  const refetch = isOnline ? refetchOnline : fetchOfflineOrders;
 
   // Use shared order actions hook
   const { handleAction } = useOrderActions({
@@ -244,6 +298,7 @@ export default function OrdersPage() {
           getPaymentStatusConfig={getPaymentStatusConfig}
           isAuthenticated={isAuthenticated}
           isOwner={isOwner}
+          isOnline={isOnline}
         />
       );
     }
@@ -327,6 +382,7 @@ export default function OrdersPage() {
             getPaymentStatusConfig={getPaymentStatusConfig}
             showActions={isAuthenticated}
             isOwner={isOwner}
+            isOnline={isOnline}
           />
         ))}
       </div>
@@ -343,6 +399,15 @@ export default function OrdersPage() {
         className="shrink-0"
       />
 
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
+          <CloudOff className="h-4 w-4 text-amber-600" />
+          <span className="text-sm text-amber-800">
+            Offline Mode - Showing orders from this session only. Some actions are unavailable.
+          </span>
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">
@@ -354,6 +419,7 @@ export default function OrdersPage() {
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
               className="shrink-0"
+              disabled={!isOnline}
             >
               <Filter className="h-3 w-3 mr-1" />
               {showFilters ? "Hide Filters" : "Show Filters"}
@@ -362,7 +428,10 @@ export default function OrdersPage() {
 
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
-              Displaying {orders.length} of {count} orders
+              {isOnline
+                ? `Displaying ${orders.length} of ${count} orders`
+                : `${orders.length} offline order${orders.length !== 1 ? 's' : ''}`
+              }
             </span>
 
             {/* View Toggle */}

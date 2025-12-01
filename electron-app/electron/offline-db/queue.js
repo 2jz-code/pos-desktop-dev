@@ -256,6 +256,15 @@ export function updateOfflineOrderStatus(db, localId, status, serverOrderId = nu
 }
 
 /**
+ * Delete offline order from local DB (after successful sync)
+ */
+export function deleteOfflineOrder(db, localId) {
+  const stmt = db.prepare('DELETE FROM offline_orders WHERE local_id = ?');
+  const result = stmt.run(localId);
+  return result.changes > 0;
+}
+
+/**
  * List offline orders
  */
 export function listOfflineOrders(db, status = null) {

@@ -396,19 +396,30 @@ const ProductModifierSelectorContent = ({
 
   const handleAddToCart = () => {
     if (!validateSelections()) return;
-    
-    // Flatten selected modifiers for the API
+
+    // Flatten selected modifiers for the API, preserving modifier_set_id
     const flattenedModifiers = [];
-    Object.values(selectedModifiers).forEach(selections => {
+    Object.entries(selectedModifiers).forEach(([modifierSetId, selections]) => {
+      // Find the modifier set to get its name
+      const modifierSet = modifierSets.find(ms => ms.id === modifierSetId);
       selections.forEach(selection => {
-        flattenedModifiers.push(selection);
+        // Find the option to get its details
+        const option = modifierSet?.options?.find(opt => opt.id === selection.option_id);
+        flattenedModifiers.push({
+          modifier_set_id: modifierSetId,
+          modifier_set_name: modifierSet?.name || 'Unknown',
+          option_id: selection.option_id,
+          option_name: option?.name || 'Unknown',
+          price_delta: parseFloat(option?.price_delta || 0),
+          quantity: selection.quantity || 1,
+        });
       });
     });
-    
+
     console.log('Adding to cart - selectedModifiers:', selectedModifiers);
     console.log('Adding to cart - flattenedModifiers:', flattenedModifiers);
     console.log('Product modifier groups:', product.modifier_groups);
-    
+
     onAddToCart({
       product_id: product.id,
       quantity: quantity,

@@ -58,6 +58,7 @@ import {
 	recordOfflineOrder,
 	getOfflineOrder,
 	updateOfflineOrderStatus,
+	deleteOfflineOrder,
 	listOfflineOrders,
 	recordOfflinePayment,
 	getOfflinePayments,
@@ -1128,6 +1129,16 @@ ipcMain.handle("offline:update-order-status", async (event, localOrderId, status
 		return updateOfflineOrderStatus(db, localOrderId, status, serverData);
 	} catch (error) {
 		console.error("[Offline DB] Error updating order status:", error);
+		throw error;
+	}
+});
+
+ipcMain.handle("offline:delete-order", async (event, localOrderId) => {
+	try {
+		const db = getDatabase();
+		return deleteOfflineOrder(db, localOrderId);
+	} catch (error) {
+		console.error("[Offline DB] Error deleting offline order:", error);
 		throw error;
 	}
 });

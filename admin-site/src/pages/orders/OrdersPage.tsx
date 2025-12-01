@@ -25,6 +25,7 @@ import {
 	X,
 	RotateCw,
 	Info,
+	CloudOff,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/components/ui/use-toast";
@@ -64,6 +65,7 @@ interface Order {
 	item_count: number;
 	created_at: string;
 	completed_at: string | null;
+	is_offline_order?: boolean;
 }
 
 export default function OrdersPage() {
@@ -228,12 +230,20 @@ export default function OrdersPage() {
 
 			{/* Source - PROMINENT */}
 			<TableCell className="py-3">
-				<Badge
-					variant={order.order_type === "WEB" ? "default" : "secondary"}
-					className="text-sm font-bold px-3 py-1"
-				>
-					{order.order_type}
-				</Badge>
+				<div className="flex flex-col gap-1">
+					<Badge
+						variant={order.order_type === "WEB" ? "default" : "secondary"}
+						className="text-sm font-bold px-3 py-1 w-fit"
+					>
+						{order.order_type}
+					</Badge>
+					{order.is_offline_order && (
+						<Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600 border-slate-200 w-fit">
+							<CloudOff className="h-3 w-3 mr-1" />
+							Offline
+						</Badge>
+					)}
+				</div>
 			</TableCell>
 
 			{/* Location - Only show when viewing all locations */}

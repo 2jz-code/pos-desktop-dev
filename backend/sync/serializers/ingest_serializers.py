@@ -10,15 +10,26 @@ from decimal import Decimal
 
 class OfflineModifierSerializer(serializers.Serializer):
     """Modifier applied to an order item"""
-    modifier_set_id = serializers.UUIDField()
-    modifier_option_id = serializers.UUIDField()
+    # Use CharField to accept both integer PKs (from ModifierSet/ModifierOption models)
+    # and UUIDs (if codebase migrates to UUIDs in future)
+    modifier_set_id = serializers.CharField(max_length=50)
+    modifier_option_id = serializers.CharField(max_length=50)
     price_delta = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
 class OfflineItemAdjustmentSerializer(serializers.Serializer):
-    """Item-level adjustment (price override, tax exempt)"""
-    adjustment_type = serializers.ChoiceField(choices=['PRICE_OVERRIDE', 'TAX_EXEMPT'])
-    value = serializers.DecimalField(max_digits=10, decimal_places=2)
+    """Item-level adjustment (price override, tax exempt, one-off discount)"""
+    # Allow all adjustment types at item level - they can all apply to items
+    adjustment_type = serializers.ChoiceField(
+        choices=['PRICE_OVERRIDE', 'TAX_EXEMPT', 'ONE_OFF_DISCOUNT', 'FEE_EXEMPT']
+    )
+    discount_type = serializers.ChoiceField(
+        choices=['PERCENTAGE', 'FIXED'],
+        required=False,
+        allow_null=True
+    )
+    # Increased max_digits to handle larger values safely
+    value = serializers.DecimalField(max_digits=12, decimal_places=2)
     notes = serializers.CharField(max_length=500, allow_blank=True, default='')
     approved_by_user_id = serializers.UUIDField(allow_null=True, required=False)
     approval_pin = serializers.CharField(max_length=255, allow_null=True, required=False)
@@ -41,10 +52,18 @@ class OfflineDiscountSerializer(serializers.Serializer):
 
 
 class OfflineOrderAdjustmentSerializer(serializers.Serializer):
-    """Order-level adjustment (one-off discount, fee exempt)"""
-    adjustment_type = serializers.ChoiceField(choices=['ONE_OFF_DISCOUNT', 'FEE_EXEMPT'])
-    discount_type = serializers.ChoiceField(choices=['PERCENTAGE', 'FIXED'], required=False)
-    value = serializers.DecimalField(max_digits=10, decimal_places=2)
+    """Order-level adjustment (one-off discount, fee exempt, tax exempt)"""
+    # Allow all adjustment types at order level
+    adjustment_type = serializers.ChoiceField(
+        choices=['ONE_OFF_DISCOUNT', 'FEE_EXEMPT', 'TAX_EXEMPT', 'PRICE_OVERRIDE']
+    )
+    discount_type = serializers.ChoiceField(
+        choices=['PERCENTAGE', 'FIXED'],
+        required=False,
+        allow_null=True
+    )
+    # Increased max_digits to handle larger values safely
+    value = serializers.DecimalField(max_digits=12, decimal_places=2)
     notes = serializers.CharField(max_length=500, allow_blank=True, default='')
     approved_by_user_id = serializers.UUIDField(allow_null=True, required=False)
     approval_pin = serializers.CharField(max_length=255, allow_null=True, required=False)
@@ -92,7 +111,10 @@ class OfflineOrderSerializer(serializers.Serializer):
     operation_id = serializers.UUIDField()
     device_id = serializers.CharField(max_length=255)  # Can be device_id or fingerprint
     nonce = serializers.CharField(max_length=255)
+    # created_at is used for auth freshness check (must be recent)
     created_at = serializers.DateTimeField()
+    # offline_created_at is the actual time the order was created offline
+    offline_created_at = serializers.DateTimeField(required=False, allow_null=True)
     dataset_versions = serializers.DictField(
         child=serializers.CharField(),
         required=False,
@@ -119,9 +141,16 @@ class OfflineOrderSerializer(serializers.Serializer):
             if field not in value:
                 raise serializers.ValidationError(f"Missing required field: {field}")
 
-        # Validate order_type
-        if value['order_type'] not in ['DINE_IN', 'TAKEOUT', 'DELIVERY', 'ONLINE']:
-            raise serializers.ValidationError(f"Invalid order_type: {value['order_type']}")
+        # Validate order_type (matches Order.OrderType choices)
+        valid_order_types = ['POS', 'WEB', 'APP', 'DOORDASH', 'UBER_EATS']
+        if value['order_type'] not in valid_order_types:
+            raise serializers.ValidationError(f"Invalid order_type: {value['order_type']}. Must be one of {valid_order_types}")
+
+        # Validate dining_preference (matches Order.DiningPreference choices)
+        valid_dining_prefs = ['DINE_IN', 'TAKE_OUT']
+        dining_pref = value.get('dining_preference', 'TAKE_OUT')
+        if dining_pref not in valid_dining_prefs:
+            raise serializers.ValidationError(f"Invalid dining_preference: {dining_pref}. Must be one of {valid_dining_prefs}")
 
         # Validate status
         if value['status'] not in ['PENDING', 'COMPLETED']:

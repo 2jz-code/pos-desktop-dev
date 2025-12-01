@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
-import { CreditCard } from "lucide-react";
+import { CreditCard, CloudOff } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@ajeen/ui";
 
@@ -24,6 +24,7 @@ export const PaymentsTableView = ({
   onCardClick,
   getPaymentStatusConfig,
   getPaymentMethod,
+  isOnline = true,
 }) => {
   if (loading) {
     return (
@@ -119,8 +120,16 @@ export const PaymentsTableView = ({
                 <TableCell className="font-medium">
                   <div className="space-y-1">
                     <div className="font-mono text-sm">#{payment.payment_number}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {payment.transaction_count || 0} transaction{payment.transaction_count === 1 ? '' : 's'}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground">
+                        {payment.transaction_count || 0} transaction{payment.transaction_count === 1 ? '' : 's'}
+                      </span>
+                      {payment.is_offline && (
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-amber-200">
+                          <CloudOff className="h-3 w-3 mr-1" />
+                          {payment.sync_status === 'SYNCED' ? 'Synced' : 'Pending'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </TableCell>

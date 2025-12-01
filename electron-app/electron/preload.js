@@ -238,6 +238,8 @@ contextBridge.exposeInMainWorld("offlineAPI", {
 			status,
 			serverData
 		),
+	deleteOfflineOrder: (localOrderId) =>
+		ipcRenderer.invoke("offline:delete-order", localOrderId),
 
 	// Offline payments
 	recordOfflinePayment: (paymentData) =>

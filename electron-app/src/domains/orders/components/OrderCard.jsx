@@ -14,6 +14,7 @@ import {
   Play,
   XCircle,
   User,
+  CloudOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@ajeen/ui";
@@ -27,6 +28,7 @@ export const OrderCard = ({
   getPaymentStatusConfig,
   showActions = true,
   isOwner = false,
+  isOnline = true,
 }) => {
   const statusConfig = getStatusConfig(order.status);
   const paymentConfig = getPaymentStatusConfig(order.payment_status);
@@ -66,6 +68,20 @@ export const OrderCard = ({
             <Badge variant="outline" className="text-xs">
               {order.order_type}
             </Badge>
+            {/* Local offline order pending sync */}
+            {order.is_offline && (
+              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-amber-200">
+                <CloudOff className="h-3 w-3 mr-1" />
+                {order.sync_status === 'SYNCED' ? 'Synced' : 'Pending Sync'}
+              </Badge>
+            )}
+            {/* Synced order that was originally created offline */}
+            {!order.is_offline && order.is_offline_order && (
+              <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600 border-slate-200">
+                <CloudOff className="h-3 w-3 mr-1" />
+                Offline Origin
+              </Badge>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -111,9 +127,10 @@ export const OrderCard = ({
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onResumeOrder(order.id);
+                    if (isOnline) onResumeOrder(order.id);
                   }}
-                  className="min-h-[36px] px-3"
+                  className={`min-h-[36px] px-3 ${!isOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!isOnline}
                 >
                   <Play className="h-3 w-3 mr-1" />
                   Resume
@@ -135,10 +152,11 @@ export const OrderCard = ({
                   <DropdownMenuContent align="end" className="min-w-[120px]">
                     {canVoid && (
                       <DropdownMenuItem
-                        className="text-destructive focus:text-destructive min-h-[40px]"
+                        className={`min-h-[40px] ${isOnline ? 'text-destructive focus:text-destructive' : 'opacity-50'}`}
+                        disabled={!isOnline}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onVoidOrder(order.id);
+                          if (isOnline) onVoidOrder(order.id);
                         }}
                       >
                         <XCircle className="mr-2 h-4 w-4" />

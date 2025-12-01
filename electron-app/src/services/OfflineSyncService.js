@@ -17,6 +17,7 @@ class OfflineSyncService {
 		this.syncInterval = null;
 		this.syncIntervalMs = 30000; // Sync every 30 seconds
 		this.isSyncing = false;
+		this.isFlushingQueue = false; // Guard against concurrent flush attempts
 		this.datasetVersions = {}; // Track last synced version for each dataset
 		this.versionsLoaded = false; // Flag to track if versions have been loaded from DB
 		this.updatedDatasets = []; // Track which datasets were updated in current sync
@@ -460,6 +461,13 @@ class OfflineSyncService {
 	 * Sends queued complete orders to the backend
 	 */
 	async flushQueue() {
+		// Guard against concurrent flush attempts (can happen from multiple sources)
+		if (this.isFlushingQueue) {
+			console.log('⏳ [OfflineSync] Flush already in progress, skipping');
+			return;
+		}
+
+		this.isFlushingQueue = true;
 		try {
 			// Get pending ORDERS (not individual cart operations)
 			// offline_orders table stores complete orders ready for sync
@@ -493,26 +501,22 @@ class OfflineSyncService {
 					// Send to backend
 					const response = await apiClient.post("/sync/offline-orders/", payload);
 
-					// Update order status based on response
+					// Handle response - orders are always accepted (industry standard)
+					console.log(`[OfflineSync] Response status: "${response.data.status}"`, response.data);
+
 					if (response.data.status === 'SUCCESS') {
-						await window.offlineAPI.updateOfflineOrderStatus(
-							order.local_id,
-							'SYNCED',
-							{
-								serverOrderId: response.data.order_id,
-								serverOrderNumber: response.data.order_number
-							}
-						);
-						console.log(`✅ Order ${order.local_id} synced as ${response.data.order_number}`);
-					} else if (response.data.status === 'CONFLICT') {
-						await window.offlineAPI.updateOfflineOrderStatus(
-							order.local_id,
-							'CONFLICT',
-							{
-								conflictReason: response.data.conflicts?.map(c => c.message).join('; ')
-							}
-						);
-						console.warn(`⚠️ Order ${order.local_id} has conflicts:`, response.data.conflicts);
+						// Log any warnings (informational only - order was still created)
+						if (response.data.warnings?.length > 0) {
+							console.warn(`⚠️ Order ${order.local_id} synced with warnings:`, response.data.warnings);
+						}
+
+						// Delete from local DB after successful sync - order now lives on backend
+						try {
+							const deleted = await window.offlineAPI.deleteOfflineOrder(order.local_id);
+							console.log(`✅ Order ${order.local_id} synced as ${response.data.order_number} - delete result: ${deleted}`);
+						} catch (deleteErr) {
+							console.error(`❌ Failed to delete local order ${order.local_id}:`, deleteErr);
+						}
 					} else {
 						throw new Error(response.data.errors?.join('; ') || 'Unknown error');
 					}
@@ -531,6 +535,8 @@ class OfflineSyncService {
 			console.log(`✅ Order queue flush complete`);
 		} catch (error) {
 			console.error("❌ Failed to flush order queue:", error);
+		} finally {
+			this.isFlushingQueue = false;
 		}
 	}
 
@@ -546,17 +552,27 @@ class OfflineSyncService {
 	buildIngestPayload(order, pairingInfo, datasetVersions) {
 		const payload = order.payload;
 
+		// Use stable operation_id from order.local_id for idempotency
+		// This ensures retries return cached results instead of creating duplicates
+		const operationId = order.local_id || uuidv4();
+
+		// IMPORTANT: created_at is used for auth freshness check (5 min window)
+		// We must use current time for auth, but preserve original offline timestamp separately
+		const authTimestamp = new Date().toISOString();
+		const originalOfflineTimestamp = payload.created_offline_at || order.created_at;
+
 		return {
 			// Operation metadata
-			operation_id: uuidv4(),
+			operation_id: operationId,
 			device_id: pairingInfo.terminal_id,
 			nonce: uuidv4().replace(/-/g, '').substring(0, 32),
-			created_at: payload.created_offline_at || order.created_at,
+			created_at: authTimestamp,  // For auth (must be fresh)
+			offline_created_at: originalOfflineTimestamp,  // For order creation time
 			dataset_versions: datasetVersions,
 
 			// Order details
 			order: {
-				order_type: this.mapOrderType(payload.dining_preference),
+				order_type: payload.order_type || 'POS',
 				dining_preference: payload.dining_preference || 'TAKE_OUT',
 				status: 'COMPLETED',
 				store_location_id: payload.store_location,
@@ -569,18 +585,23 @@ class OfflineSyncService {
 					quantity: item.quantity,
 					price_at_sale: item.price_at_sale,
 					notes: item.notes || '',
-					modifiers: (item.selected_modifiers || []).map(mod => ({
-						modifier_set_id: mod.modifier_set_id || mod.set_id,
-						modifier_option_id: mod.modifier_option_id || mod.option_id || mod.id,
-						price_delta: mod.price_delta || mod.price || 0,
-					})),
-					adjustments: (item.adjustments || []).map(adj => ({
-						adjustment_type: adj.adjustment_type,
-						discount_type: adj.discount_type || null,
-						value: parseFloat(adj.value || 0),
-						notes: adj.notes || '',
-						approved_by_user_id: adj.approved_by_user_id || null,
-					})),
+					modifiers: (item.selected_modifiers_snapshot || item.selected_modifiers || [])
+						.filter(mod => (mod.modifier_set_id || mod.set_id) && (mod.modifier_option_id || mod.option_id || mod.id))
+						.map(mod => ({
+							modifier_set_id: String(mod.modifier_set_id || mod.set_id),
+							modifier_option_id: String(mod.modifier_option_id || mod.option_id || mod.id),
+							price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
+						})),
+					adjustments: (item.adjustments || [])
+						.filter(adj => ['PRICE_OVERRIDE', 'TAX_EXEMPT', 'ONE_OFF_DISCOUNT', 'FEE_EXEMPT'].includes(adj.adjustment_type))
+						.map(adj => ({
+							adjustment_type: adj.adjustment_type,
+							discount_type: adj.discount_type || null,
+							// Clamp value to safe bound: 99999999.99 (8 digits + 2 decimal)
+							value: parseFloat(Math.min(Math.abs(parseFloat(adj.value || 0)), 99999999.99).toFixed(2)),
+							notes: adj.notes || '',
+							approved_by_user_id: adj.approved_by_user_id || null,
+						})),
 				})),
 
 				// Discounts
@@ -590,13 +611,16 @@ class OfflineSyncService {
 				})),
 
 				// Order-level adjustments
-				adjustments: (payload.adjustments || []).map(adj => ({
-					adjustment_type: adj.adjustment_type,
-					discount_type: adj.discount_type || null,
-					value: parseFloat(adj.value || 0),
-					notes: adj.notes || '',
-					approved_by_user_id: adj.approved_by_user_id || null,
-				})),
+				adjustments: (payload.adjustments || [])
+					.filter(adj => ['ONE_OFF_DISCOUNT', 'FEE_EXEMPT', 'TAX_EXEMPT', 'PRICE_OVERRIDE'].includes(adj.adjustment_type))
+					.map(adj => ({
+						adjustment_type: adj.adjustment_type,
+						discount_type: adj.discount_type || null,
+						// Clamp value to safe bound: 99999999.99 (8 digits + 2 decimal)
+						value: parseFloat(Math.min(Math.abs(parseFloat(adj.value || 0)), 99999999.99).toFixed(2)),
+						notes: adj.notes || '',
+						approved_by_user_id: adj.approved_by_user_id || null,
+					})),
 
 				// Totals
 				subtotal: parseFloat(payload.subtotal || 0),

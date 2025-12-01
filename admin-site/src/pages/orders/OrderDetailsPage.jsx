@@ -36,6 +36,7 @@ import {
 	Activity,
 	RotateCw,
 	ShieldOff,
+	CloudOff,
 } from "lucide-react";
 
 // Clean Transaction Display Component
@@ -337,6 +338,12 @@ const OrderDetailsPage = () => {
 										>
 											{order.dining_preference === "DINE_IN" ? "Dine In" : "Take Out"}
 										</Badge>
+										{order.is_offline_order && (
+											<Badge variant="secondary" className="text-sm bg-slate-100 text-slate-600 border-slate-200">
+												<CloudOff className="h-3 w-3 mr-1" />
+												Offline Origin
+											</Badge>
+										)}
 									</div>
 								</div>
 

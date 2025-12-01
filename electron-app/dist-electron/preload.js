@@ -184,6 +184,7 @@ contextBridge.exposeInMainWorld("offlineAPI", {
     status,
     serverData
   ),
+  deleteOfflineOrder: (localOrderId) => ipcRenderer.invoke("offline:delete-order", localOrderId),
   // Offline payments
   recordOfflinePayment: (paymentData) => ipcRenderer.invoke("offline:record-payment", paymentData),
   getOfflinePayments: (localOrderId) => ipcRenderer.invoke("offline:get-payments", localOrderId),

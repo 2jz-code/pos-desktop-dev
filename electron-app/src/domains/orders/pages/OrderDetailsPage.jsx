@@ -32,8 +32,10 @@ import {
   MoreVertical,
   CheckCircle,
   RefreshCw,
+  CloudOff,
 } from "lucide-react";
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
+import { useOnlineStatus } from "@/shared/hooks";
 import { useMutation } from "@tanstack/react-query";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
 import { openCashDrawer } from "@/shared/lib/hardware";
@@ -330,15 +332,25 @@ const OrderDetailsPage = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const permissions = useRolePermissions();
+  const isOnline = useOnlineStatus();
   const [isPrinting, setIsPrinting] = useState(false);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [approvalRequest, setApprovalRequest] = useState(null);
 
-  const order = usePosStore((state) => state.selectedOrder);
+  const [offlineOrder, setOfflineOrder] = useState(null);
+  const [offlineLoading, setOfflineLoading] = useState(false);
+  // Track if we're viewing a local offline order (by local_id, not server_id)
+  const [isLocalOrder, setIsLocalOrder] = useState(false);
+
+  const onlineOrder = usePosStore((state) => state.selectedOrder);
   const fetchOrderById = usePosStore((state) => state.fetchOrderById);
   const updateSingleOrder = usePosStore((state) => state.updateSingleOrder);
   const resumeCart = usePosStore((state) => state.resumeCart);
-  const isLoading = usePosStore((state) => !state.selectedOrder);
+  const onlineLoading = usePosStore((state) => !state.selectedOrder);
+
+  // Use offline order if we're viewing a local order, otherwise use online order when connected
+  const order = isLocalOrder ? offlineOrder : (isOnline ? onlineOrder : offlineOrder);
+  const isLoading = isLocalOrder ? offlineLoading : (isOnline ? onlineLoading : offlineLoading);
 
   const getLocalReceiptPrinter = useSettingsStore(
     (state) => state.getLocalReceiptPrinter
@@ -347,11 +359,151 @@ const OrderDetailsPage = () => {
   const printers = useSettingsStore((state) => state.printers);
   const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
-  useEffect(() => {
-    if (orderId) {
-      fetchOrderById(orderId);
+  // Fetch offline order from local DB
+  const fetchOfflineOrder = async (localOrderId) => {
+    if (!window.offlineAPI?.getOfflineOrder) return;
+
+    setOfflineLoading(true);
+    try {
+      const orderData = await window.offlineAPI.getOfflineOrder(localOrderId);
+      if (orderData) {
+        const payload = orderData.payload || {};
+
+        // Get cached products to enrich item data
+        let productsMap = {};
+        try {
+          const cachedProducts = await window.offlineAPI?.getCachedProducts?.() || [];
+          productsMap = cachedProducts.reduce((acc, p) => {
+            acc[p.id] = p;
+            return acc;
+          }, {});
+        } catch (e) {
+          console.warn('Could not load cached products for order display:', e);
+        }
+
+        // Get cached users to get cashier info
+        let cashierInfo = null;
+        if (payload.cashier_id) {
+          try {
+            const cachedUsers = await window.offlineAPI?.getCachedUsers?.() || [];
+            cashierInfo = cachedUsers.find(u => u.id === payload.cashier_id);
+          } catch (e) {
+            console.warn('Could not load cached users for cashier info:', e);
+          }
+        }
+
+        // Transform items with product info
+        const transformedItems = (payload.items || []).map(item => {
+          const product = productsMap[item.product_id];
+          return {
+            id: item.product_id,
+            product_id: item.product_id,
+            product: product || { id: item.product_id, name: 'Product' },
+            product_name: product?.name || 'Product',
+            quantity: item.quantity,
+            price_at_sale: item.price_at_sale,
+            notes: item.notes,
+            modifiers: item.selected_modifiers || [],
+            refunded_quantity: 0,
+          };
+        });
+
+        // Calculate totals from payload
+        const tipAmount = payload.payment?.tip || 0;
+        const totalAmount = parseFloat(payload.total || 0);
+        const paymentAmount = parseFloat(payload.payment?.amount || totalAmount);
+
+        // Transform to match expected format
+        const transformed = {
+          id: orderData.local_id,
+          local_id: orderData.local_id,
+          server_order_id: orderData.server_order_id,
+          order_number: orderData.server_order_number || `OFF-${orderData.local_id.slice(0, 6).toUpperCase()}`,
+          status: orderData.status === 'SYNCED' ? 'COMPLETED' : 'COMPLETED', // Offline orders are completed at checkout
+          sync_status: orderData.status,
+          payment_status: 'PAID',
+          order_type: payload.order_type || 'POS',
+          dining_preference: payload.dining_preference || 'TAKE_OUT',
+          created_at: payload.created_offline_at || orderData.created_at,
+          // Totals
+          subtotal: parseFloat(payload.subtotal || 0),
+          total_tax: parseFloat(payload.tax_amount || 0),
+          tax_total: parseFloat(payload.tax_amount || 0), // OrderSummary uses tax_total
+          total: totalAmount,
+          total_tips: tipAmount,
+          total_with_tip: totalAmount + tipAmount,
+          total_collected: paymentAmount + tipAmount,
+          total_discounts: parseFloat(payload.total_discounts || 0),
+          total_adjustments: parseFloat(payload.total_adjustments || 0),
+          // Items
+          items: transformedItems,
+          item_count: transformedItems.length,
+          // Customer info
+          guest_first_name: payload.guest_first_name,
+          customer_display_name: payload.guest_first_name || 'Guest Customer',
+          // Cashier info
+          cashier: cashierInfo ? {
+            id: cashierInfo.id,
+            username: cashierInfo.username || cashierInfo.first_name || 'Staff',
+            first_name: cashierInfo.first_name,
+            last_name: cashierInfo.last_name,
+          } : null,
+          // Payment info
+          payment: {
+            status: 'PAID',
+            total_collected: paymentAmount + tipAmount,
+            transactions: [{
+              method: payload.payment?.method || 'CASH',
+              amount: paymentAmount,
+              tip: tipAmount,
+              status: 'SUCCESSFUL',
+            }],
+          },
+          // Discounts and adjustments
+          discounts: payload.discounts || [],
+          adjustments: payload.adjustments || [],
+          // Offline flags
+          is_offline: true,
+          offline_status: orderData.status,
+        };
+        setOfflineOrder(transformed);
+      }
+    } catch (err) {
+      console.error('Error fetching offline order:', err);
+    } finally {
+      setOfflineLoading(false);
     }
-  }, [orderId, fetchOrderById]);
+  };
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    const loadOrder = async () => {
+      // First, check if this orderId exists in local offline orders
+      // This handles the case where we navigated here from the offline orders list
+      if (window.offlineAPI?.getOfflineOrder) {
+        try {
+          const localOrder = await window.offlineAPI.getOfflineOrder(orderId);
+          if (localOrder) {
+            // This is a local offline order - always load from local DB
+            setIsLocalOrder(true);
+            await fetchOfflineOrder(orderId);
+            return;
+          }
+        } catch (e) {
+          // Not a local order, continue to check online
+        }
+      }
+
+      // Not a local order - fetch from backend if online
+      setIsLocalOrder(false);
+      if (isOnline) {
+        fetchOrderById(orderId);
+      }
+    };
+
+    loadOrder();
+  }, [orderId, fetchOrderById, isOnline]);
 
   const getStatusConfig = (status) => {
     switch (status) {
@@ -617,6 +769,20 @@ const OrderDetailsPage = () => {
                 <paymentConfig.icon className="h-3 w-3 mr-1" />
                 {paymentConfig.label}
               </Badge>
+              {/* Local offline order (pending sync or viewing locally) */}
+              {order.is_offline && (
+                <Badge variant="secondary" className="px-3 py-1 bg-amber-100 text-amber-800 border-amber-200">
+                  <CloudOff className="h-3 w-3 mr-1" />
+                  {order.sync_status === 'SYNCED' ? 'Synced' : 'Pending Sync'}
+                </Badge>
+              )}
+              {/* Synced order that was originally created offline */}
+              {!order.is_offline && order.is_offline_order && (
+                <Badge variant="secondary" className="px-3 py-1 bg-slate-100 text-slate-600 border-slate-200">
+                  <CloudOff className="h-3 w-3 mr-1" />
+                  Offline Origin
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -781,7 +947,12 @@ const OrderDetailsPage = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-end">
             {/* Primary Actions */}
             {canResume && (
-              <Button size="lg" className="min-h-[48px] px-6" onClick={handleResume}>
+              <Button
+                size="lg"
+                className={`min-h-[48px] px-6 ${!isOnline ? 'opacity-50' : ''}`}
+                onClick={() => isOnline && handleResume()}
+                disabled={!isOnline}
+              >
                 <Play className="mr-2 h-4 w-4" />
                 Resume Order
               </Button>
@@ -828,8 +999,9 @@ const OrderDetailsPage = () => {
                   <DropdownMenuContent align="end" className="w-48">
                     {canVoid && (
                       <DropdownMenuItem
-                        className="h-12 px-4 text-destructive focus:text-destructive"
-                        onClick={handleVoid}
+                        className={`h-12 px-4 ${isOnline ? 'text-destructive focus:text-destructive' : 'opacity-50'}`}
+                        disabled={!isOnline}
+                        onClick={() => isOnline && handleVoid()}
                       >
                         <XCircle className="mr-3 h-4 w-4" />
                         Void Order
@@ -837,9 +1009,10 @@ const OrderDetailsPage = () => {
                     )}
                     {canCancel && (
                       <DropdownMenuItem
-                        className="h-12 px-4 text-destructive focus:text-destructive"
+                        className={`h-12 px-4 ${isOnline ? 'text-destructive focus:text-destructive' : 'opacity-50'}`}
+                        disabled={!isOnline}
                         onClick={() =>
-                          handleStatusChange(
+                          isOnline && handleStatusChange(
                             orderService.cancelOrder,
                             "Order has been cancelled."
                           )

@@ -1612,6 +1612,11 @@ function updateOfflineOrderStatus$1(db2, localId, status, serverOrderId = null, 
   `);
   stmt.run(status, serverOrderId, serverOrderNumber, conflictReason, status, localId);
 }
+function deleteOfflineOrder$1(db2, localId) {
+  const stmt = db2.prepare("DELETE FROM offline_orders WHERE local_id = ?");
+  const result = stmt.run(localId);
+  return result.changes > 0;
+}
 function listOfflineOrders$1(db2, status = null) {
   let query = "SELECT * FROM offline_orders";
   const params = [];
@@ -1714,6 +1719,7 @@ function getQueueStats$1(db2) {
 const queue = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   clearAllPendingData: clearAllPendingData$1,
+  deleteOfflineOrder: deleteOfflineOrder$1,
   deleteOperation,
   getOfflineOrder: getOfflineOrder$1,
   getOfflinePayments: getOfflinePayments$1,
@@ -2151,6 +2157,7 @@ const {
   recordOfflineOrder,
   getOfflineOrder,
   updateOfflineOrderStatus,
+  deleteOfflineOrder,
   listOfflineOrders,
   recordOfflinePayment,
   getOfflinePayments,
@@ -2180,6 +2187,7 @@ const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePropert
   closeDatabase,
   createBackup,
   datasets,
+  deleteOfflineOrder,
   deleteRecords,
   getCategories,
   getCompleteStats,
@@ -3253,6 +3261,15 @@ ipcMain.handle("offline:update-order-status", async (event, localOrderId, status
     return updateOfflineOrderStatus(db2, localOrderId, status, serverData);
   } catch (error) {
     console.error("[Offline DB] Error updating order status:", error);
+    throw error;
+  }
+});
+ipcMain.handle("offline:delete-order", async (event, localOrderId) => {
+  try {
+    const db2 = getDatabase();
+    return deleteOfflineOrder(db2, localOrderId);
+  } catch (error) {
+    console.error("[Offline DB] Error deleting offline order:", error);
     throw error;
   }
 });
