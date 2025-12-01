@@ -3,6 +3,32 @@ Service for processing offline payloads.
 
 Handles ingestion of orders, payments, inventory changes, and approvals
 that were created while a terminal was offline.
+
+TECHNICAL DEBT / FUTURE REFACTOR:
+---------------------------------
+This service currently bypasses domain services (OrderService, PaymentService)
+and uses raw Model.objects.create() calls. This has downsides:
+
+1. Future domain changes (validation, side effects, notifications) won't apply
+   to offline orders automatically
+2. Logic is duplicated between online and offline flows
+3. Harder to maintain consistency
+
+RECOMMENDED REFACTOR:
+- Add OrderService.create_complete_order(data, offline_mode=True) method
+- Add PaymentService.record_offline_payment(data) method
+- Have this service call those domain methods instead of raw creates
+- The `offline_mode=True` flag would skip validation that doesn't apply to
+  already-completed transactions (e.g., business hours, stock checks)
+
+For now, the raw creates are acceptable because:
+- Offline orders are already completed in the real world
+- We use bulk_create to bypass model validation where needed
+- Industry standard (Square, Toast) also accepts offline orders unconditionally
+
+Keep this service in sync with:
+- Frontend: electron-app/src/shared/types/offlineSync.ts
+- Serializers: sync/serializers/ingest_serializers.py
 """
 import json
 import logging

@@ -11,6 +11,11 @@ import { v4 as uuidv4 } from "uuid";
  * - Cache datasets in local SQLite database
  * - Track dataset versions for incremental sync
  * - Flush pending operations queue when online
+ *
+ * PAYLOAD CONTRACT: See @/shared/types/offlineSync.ts for type definitions.
+ * When modifying buildIngestPayload(), keep types in sync with:
+ * - Frontend: offlineSync.ts (OfflineOrderIngestPayload)
+ * - Backend: sync/serializers/ingest_serializers.py
  */
 class OfflineSyncService {
 	constructor() {

@@ -3,6 +3,15 @@ Serializers for offline ingest endpoints.
 
 These serializers validate complex payloads from terminals that were
 created while offline and are now being synced to the backend.
+
+PAYLOAD CONTRACT: Keep in sync with frontend types:
+- electron-app/src/shared/types/offlineSync.ts
+- electron-app/src/services/OfflineSyncService.js (buildIngestPayload)
+
+ID TYPES NOTE:
+- Most models use UUID primary keys (Product, Order, User, etc.)
+- ModifierSet and ModifierOption use integer PKs
+- modifier_set_id and modifier_option_id use CharField to accept both
 """
 from rest_framework import serializers
 from decimal import Decimal
