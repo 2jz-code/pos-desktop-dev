@@ -18,16 +18,20 @@
 /**
  * Models using UUID primary keys:
  * - Order, OrderItem, OrderAdjustment, OrderDiscount
- * - Payment, PaymentTransaction
- * - Product, Category, Discount
- * - User, StoreLocation
+ * - Payment, PaymentTransaction, Refund
+ * - User, Tenant, TerminalRegistration
+ * - ApprovalPolicy, ManagerApprovalRequest
  *
- * Models using integer primary keys:
+ * Models using integer primary keys (BigAutoField):
+ * - Product, Category, Discount, StoreLocation, Location
  * - ModifierSet, ModifierOption
  * - Tax, ProductType
+ *
+ * NOTE: Backend serializers use IntegerField for integer PKs.
+ * Frontend sends numbers; backend validates as integers.
  */
 export type UUID = string;
-export type IntegerId = string | number; // Accept both for flexibility
+export type IntegerId = number; // Integer PK models
 
 // =============================================================================
 // MODIFIER TYPES
@@ -102,7 +106,7 @@ export interface OfflineAdjustment {
  * Used by: cartGateway.buildOfflineOrderPayload()
  */
 export interface StoredOrderItem {
-  product_id: UUID;
+  product_id: IntegerId; // Product uses integer PK
   quantity: number;
   price_at_sale: number;
   notes: string;
@@ -117,7 +121,7 @@ export interface StoredOrderItem {
  * Backend: OfflineOrderItemSerializer
  */
 export interface IngestOrderItem {
-  product_id: UUID;
+  product_id: IntegerId; // Product uses integer PK
   quantity: number;
   price_at_sale: number;
   notes: string;
@@ -134,7 +138,7 @@ export interface IngestOrderItem {
  * Backend: OfflineDiscountSerializer
  */
 export interface OfflineDiscount {
-  discount_id: UUID;
+  discount_id: IntegerId; // Discount uses integer PK
   amount: number;
 }
 
@@ -185,8 +189,8 @@ export interface IngestPayment {
  * Backend: OfflineInventoryDeltaSerializer
  */
 export interface InventoryDelta {
-  product_id: UUID;
-  location_id: UUID;
+  product_id: IntegerId; // Product uses integer PK
+  location_id: IntegerId; // Location uses integer PK
   quantity_change: number; // Negative for deductions
   reason: string; // e.g., 'ORDER_DEDUCTION'
 }
@@ -226,7 +230,7 @@ export interface StoredOfflineOrderPayload {
   local_order_id: string; // e.g., "local-uuid"
   order_type: 'POS';
   dining_preference: 'DINE_IN' | 'TAKE_OUT';
-  store_location: UUID;
+  store_location: IntegerId; // StoreLocation uses integer PK
   cashier_id: UUID;
 
   // Customer info
@@ -265,7 +269,7 @@ export interface IngestOrderDetails {
   order_type: 'POS' | 'WEB' | 'APP' | 'DOORDASH' | 'UBER_EATS';
   dining_preference: 'DINE_IN' | 'TAKE_OUT';
   status: 'PENDING' | 'COMPLETED';
-  store_location_id: UUID;
+  store_location_id: IntegerId; // StoreLocation uses integer PK
   cashier_id: UUID;
   guest_first_name: string;
 
@@ -322,7 +326,7 @@ export interface OfflineOrderIngestResponse {
   warnings?: Array<{
     type: string;
     message: string;
-    product_id?: UUID;
+    product_id?: IntegerId; // Product uses integer PK
   }>;
   errors?: string[];
 }

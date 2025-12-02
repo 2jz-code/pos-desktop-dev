@@ -39,10 +39,20 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
     Admin view for managing TerminalRegistration, the new standard for POS devices.
     """
 
-    list_display = ("device_id", "nickname", "store_location", "is_active", "last_seen", "is_locked", "authentication_failures")
-    list_filter = ("store_location", "is_active", "is_locked")
+    list_display = (
+        "device_id", "nickname", "store_location", "sync_status_display",
+        "is_stale_display", "pending_orders_count", "last_heartbeat_at",
+        "is_active", "is_locked"
+    )
+    list_filter = ("store_location", "is_active", "is_locked", "sync_status")
     search_fields = ("device_id", "nickname", "reader_id", "device_fingerprint")
-    readonly_fields = ("last_seen", "last_authenticated_at", "device_fingerprint")
+    readonly_fields = (
+        "last_seen", "last_authenticated_at", "device_fingerprint",
+        # Heartbeat status fields (read-only, updated by heartbeat endpoint)
+        "last_heartbeat_at", "sync_status", "pending_orders_count",
+        "pending_operations_count", "last_sync_success_at", "last_flush_success_at",
+        "offline_since", "exposure_amount", "is_stale_display"
+    )
     autocomplete_fields = ["store_location", "pairing_code"]
     actions = ['unlock_terminals']
 
@@ -56,6 +66,18 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         ('Status', {
             'fields': ('is_active', 'is_locked')
         }),
+        ('Sync Status', {
+            'fields': (
+                'sync_status', 'is_stale_display', 'last_heartbeat_at',
+                'pending_orders_count', 'pending_operations_count',
+                'exposure_amount', 'offline_since'
+            ),
+            'description': 'Real-time status reported by terminal heartbeats'
+        }),
+        ('Sync Timestamps', {
+            'fields': ('last_sync_success_at', 'last_flush_success_at'),
+            'classes': ('collapse',)
+        }),
         ('Security', {
             'fields': ('last_authenticated_at', 'authentication_failures')
         }),
@@ -63,6 +85,26 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
             'fields': ('last_seen',)
         }),
     )
+
+    @admin.display(boolean=True, description='Stale?')
+    def is_stale_display(self, obj):
+        """Display is_stale property as boolean icon"""
+        return obj.is_stale
+
+    @admin.display(description='Sync Status')
+    def sync_status_display(self, obj):
+        """Display sync_status with color coding"""
+        status = obj.sync_status
+        if obj.is_stale:
+            return '⚠️ stale'
+        colors = {
+            'online': '🟢',
+            'offline': '🔴',
+            'syncing': '🔄',
+            'error': '❌',
+            'unknown': '⚪',
+        }
+        return f"{colors.get(status, '❓')} {status}"
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""

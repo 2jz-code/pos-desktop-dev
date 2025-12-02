@@ -20,12 +20,17 @@ import { v4 as uuidv4 } from "uuid";
 class OfflineSyncService {
 	constructor() {
 		this.syncInterval = null;
+		this.heartbeatInterval = null;
 		this.syncIntervalMs = 30000; // Sync every 30 seconds
+		this.heartbeatIntervalMs = 60000; // Heartbeat every 60 seconds
 		this.isSyncing = false;
 		this.isFlushingQueue = false; // Guard against concurrent flush attempts
 		this.datasetVersions = {}; // Track last synced version for each dataset
 		this.versionsLoaded = false; // Flag to track if versions have been loaded from DB
 		this.updatedDatasets = []; // Track which datasets were updated in current sync
+		this.lastSyncSuccess = null; // Track last successful full sync timestamp
+		this.lastFlushSuccess = null; // Track last successful queue flush timestamp
+		this.offlineSince = null; // Track when we went offline
 	}
 
 	/**
@@ -73,6 +78,12 @@ class OfflineSyncService {
 		this.syncInterval = setInterval(() => {
 			this.syncAll();
 		}, this.syncIntervalMs);
+
+		// Start heartbeat (runs independently of sync)
+		this.startHeartbeat();
+
+		// Listen for reconnect to send immediate heartbeat
+		this.setupReconnectListener();
 	}
 
 	/**
@@ -82,7 +93,125 @@ class OfflineSyncService {
 		if (this.syncInterval) {
 			clearInterval(this.syncInterval);
 			this.syncInterval = null;
-			console.log("⏹️ Stopped offline sync service");
+		}
+		if (this.heartbeatInterval) {
+			clearInterval(this.heartbeatInterval);
+			this.heartbeatInterval = null;
+		}
+		// Remove reconnect listener
+		if (this._onlineHandler) {
+			window.removeEventListener('online', this._onlineHandler);
+			this._onlineHandler = null;
+		}
+		console.log("⏹️ Stopped offline sync service");
+	}
+
+	/**
+	 * Set up listener to send immediate heartbeat on reconnect
+	 */
+	setupReconnectListener() {
+		if (this._onlineHandler) return; // Already set up
+
+		this._onlineHandler = () => {
+			console.log('🌐 [OfflineSync] Network reconnected, sending immediate heartbeat');
+			this.sendHeartbeat();
+		};
+
+		if (typeof window !== 'undefined') {
+			window.addEventListener('online', this._onlineHandler);
+		}
+	}
+
+	/**
+	 * Start heartbeat interval
+	 * Heartbeats run independently of sync to keep backend informed of terminal status
+	 */
+	startHeartbeat() {
+		if (this.heartbeatInterval) {
+			return; // Already running
+		}
+
+		console.log(`💓 Starting heartbeat (every ${this.heartbeatIntervalMs}ms)`);
+
+		// Initial heartbeat
+		this.sendHeartbeat();
+
+		// Set up periodic heartbeat
+		this.heartbeatInterval = setInterval(() => {
+			this.sendHeartbeat();
+		}, this.heartbeatIntervalMs);
+	}
+
+	/**
+	 * Send heartbeat to backend
+	 * Reports terminal status including online/offline, pending counts, exposure
+	 */
+	async sendHeartbeat() {
+		try {
+			const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+			// Track offline_since
+			if (!isOnline && !this.offlineSince) {
+				this.offlineSince = new Date().toISOString();
+			} else if (isOnline) {
+				this.offlineSince = null;
+			}
+
+			// Skip heartbeat if offline (can't reach backend anyway)
+			if (!isOnline) {
+				console.log('💔 [Heartbeat] Offline, skipping');
+				return;
+			}
+
+			// Get pairing info
+			const pairingInfo = await window.offlineAPI?.getPairingInfo();
+			if (!pairingInfo) {
+				console.log('💔 [Heartbeat] No pairing info, skipping');
+				return;
+			}
+
+			// Get queue stats
+			const stats = await window.offlineAPI?.getQueueStats() || {};
+
+			// Get exposure (correct API name from preload)
+			const exposure = await window.offlineAPI?.getOfflineExposure?.() || { total_exposure: 0 };
+
+			// Build heartbeat payload
+			// Note: is_syncing only reflects queue flushing (what admin cares about),
+			// not routine dataset syncs which run every 30s
+			const payload = {
+				device_id: pairingInfo.terminal_id,
+				is_online: isOnline,
+				is_syncing: this.isFlushingQueue, // Only true when flushing orders
+				is_flushing: this.isFlushingQueue,
+				pending_orders: stats.pending_orders || 0,
+				pending_operations: stats.pending_operations || 0,
+				conflict_orders: stats.conflict_orders || 0,
+				failed_operations: stats.failed_operations || 0,
+				exposure_amount: parseFloat(exposure.total_exposure || 0).toFixed(2),
+				offline_since: this.offlineSince,
+				last_sync_success: this.lastSyncSuccess,
+				last_flush_success: this.lastFlushSuccess,
+				client_timestamp: new Date().toISOString(),
+			};
+
+			// Send to backend
+			const response = await apiClient.post('/sync/heartbeat/', payload);
+
+			// Handle response instructions
+			if (response.data.force_flush && !this.isFlushingQueue) {
+				console.log('💓 [Heartbeat] Server requested flush');
+				this.flushQueue();
+			}
+
+			if (response.data.force_sync && !this.isSyncing) {
+				console.log('💓 [Heartbeat] Server requested sync');
+				this.syncAll();
+			}
+
+		} catch (error) {
+			// Heartbeat failures are non-critical, just log
+			console.warn('💔 [Heartbeat] Failed:', error.message);
 		}
 	}
 
@@ -123,6 +252,9 @@ class OfflineSyncService {
 			await this.flushQueue();
 
 			console.log("✅ Full sync completed successfully");
+
+			// Track successful sync
+			this.lastSyncSuccess = new Date().toISOString();
 
 			// Notify relation cache to invalidate if needed
 			if (this.updatedDatasets.length > 0) {
@@ -473,6 +605,8 @@ class OfflineSyncService {
 		}
 
 		this.isFlushingQueue = true;
+		let syncedCount = 0;
+
 		try {
 			// Get pending ORDERS (not individual cart operations)
 			// offline_orders table stores complete orders ready for sync
@@ -510,6 +644,8 @@ class OfflineSyncService {
 					console.log(`[OfflineSync] Response status: "${response.data.status}"`, response.data);
 
 					if (response.data.status === 'SUCCESS') {
+						syncedCount++;
+
 						// Log any warnings (informational only - order was still created)
 						if (response.data.warnings?.length > 0) {
 							console.warn(`⚠️ Order ${order.local_id} synced with warnings:`, response.data.warnings);
@@ -537,11 +673,18 @@ class OfflineSyncService {
 				}
 			}
 
-			console.log(`✅ Order queue flush complete`);
+			// Track successful flush if we synced at least one order
+			if (syncedCount > 0) {
+				this.lastFlushSuccess = new Date().toISOString();
+			}
+
+			console.log(`✅ Order queue flush complete (${syncedCount}/${pendingOrders.length} synced)`);
 		} catch (error) {
 			console.error("❌ Failed to flush order queue:", error);
 		} finally {
 			this.isFlushingQueue = false;
+			// Send heartbeat after flush to update backend with new counts/status
+			this.sendHeartbeat();
 		}
 	}
 
@@ -676,11 +819,16 @@ class OfflineSyncService {
 			const stats = await window.offlineAPI.getCompleteStats();
 			return {
 				isSyncing: this.isSyncing,
+				isFlushingQueue: this.isFlushingQueue,
 				datasetVersions: this.datasetVersions,
 				queue: stats.queue,
 				exposure: stats.exposure,
 				network: stats.network,
-				sync: stats.sync,
+				sync: {
+					...stats.sync,
+					last_sync_success: this.lastSyncSuccess,
+					last_flush_success: this.lastFlushSuccess,
+				},
 				limits: stats.limits
 			};
 		} catch (error) {

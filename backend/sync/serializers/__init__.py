@@ -21,6 +21,8 @@ from .ingest_serializers import (
     OfflineInventoryIngestSerializer,
     OfflineApprovalsIngestSerializer,
     OfflineOrderIngestResponseSerializer,
+    TerminalHeartbeatSerializer,
+    TerminalHeartbeatResponseSerializer,
 )
 
 __all__ = [
@@ -45,4 +47,7 @@ __all__ = [
     'OfflineInventoryIngestSerializer',
     'OfflineApprovalsIngestSerializer',
     'OfflineOrderIngestResponseSerializer',
+    # Heartbeat serializers
+    'TerminalHeartbeatSerializer',
+    'TerminalHeartbeatResponseSerializer',
 ]

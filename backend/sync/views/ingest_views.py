@@ -7,6 +7,7 @@ and sync them to the backend.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status as http_status
+from django.utils import timezone
 import logging
 
 from sync.authentication import DeviceSignatureAuthentication
@@ -16,12 +17,15 @@ from sync.serializers import (
     OfflineInventoryIngestSerializer,
     OfflineApprovalsIngestSerializer,
     OfflineOrderIngestResponseSerializer,
+    TerminalHeartbeatSerializer,
+    TerminalHeartbeatResponseSerializer,
 )
 from sync.services import (
     OfflineOrderIngestService,
     OfflineInventoryIngestService,
     OfflineApprovalsIngestService,
 )
+from terminals.models import TerminalRegistration
 
 logger = logging.getLogger(__name__)
 
@@ -179,3 +183,129 @@ class OfflineApprovalsIngestView(APIView):
             return Response(result, status=http_status.HTTP_200_OK)
         else:
             return Response(result, status=http_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class TerminalHeartbeatView(APIView):
+    """
+    Terminal heartbeat endpoint.
+
+    POST /api/sync/heartbeat/
+
+    Terminals send periodic heartbeats to report their status.
+    This allows the backend to:
+    - Track terminal health and connectivity
+    - Monitor pending sync queues
+    - Track offline exposure
+    - Trigger alerts for problematic terminals
+
+    OFFLINE DETECTION NOTE:
+    Terminals cannot send heartbeats while offline (no network).
+    To detect offline terminals, use a stale-heartbeat check:
+    - If last_heartbeat_at is older than 2-3 heartbeat intervals (~2-3 min),
+      consider the terminal offline even if sync_status says 'online'.
+    - The offline_since timestamp is set when terminal comes back online
+      and reports it was offline (client-side tracking).
+    """
+
+    authentication_classes = [DeviceSignatureAuthentication]
+    permission_classes = [IsAuthenticatedTerminal]
+
+    def post(self, request):
+        terminal = request.auth
+
+        # Validate payload
+        serializer = TerminalHeartbeatSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(
+                f"Invalid heartbeat from {terminal.device_id}: {serializer.errors}"
+            )
+            return Response(
+                {
+                    'status': 'ERROR',
+                    'server_timestamp': timezone.now(),
+                    'message': str(serializer.errors)
+                },
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
+        now = timezone.now()
+
+        # Determine sync status
+        if not data['is_online']:
+            sync_status = 'offline'
+        elif data['is_syncing'] or data['is_flushing']:
+            sync_status = 'syncing'
+        elif data['pending_orders'] > 0 or data['failed_operations'] > 0:
+            sync_status = 'error'
+        else:
+            sync_status = 'online'
+
+        # Update terminal status
+        try:
+            terminal.last_heartbeat_at = now
+            terminal.sync_status = sync_status
+            terminal.pending_orders_count = data['pending_orders']
+            terminal.pending_operations_count = data['pending_operations']
+            terminal.exposure_amount = data['exposure_amount']
+
+            # Track offline_since
+            if not data['is_online']:
+                if not terminal.offline_since:
+                    terminal.offline_since = data.get('offline_since') or now
+            else:
+                terminal.offline_since = None
+
+            # Update last_sync_success if provided
+            if data.get('last_sync_success'):
+                terminal.last_sync_success_at = data['last_sync_success']
+
+            # Update last_flush_success if provided
+            if data.get('last_flush_success'):
+                terminal.last_flush_success_at = data['last_flush_success']
+
+            terminal.save(update_fields=[
+                'last_heartbeat_at',
+                'sync_status',
+                'pending_orders_count',
+                'pending_operations_count',
+                'exposure_amount',
+                'offline_since',
+                'last_sync_success_at',
+                'last_flush_success_at',
+                'last_seen',  # auto_now field
+            ])
+
+            logger.debug(
+                f"Heartbeat from {terminal.device_id}: "
+                f"status={sync_status}, pending={data['pending_orders']}, "
+                f"exposure={data['exposure_amount']}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to update terminal status: {e}")
+            return Response(
+                {
+                    'status': 'ERROR',
+                    'server_timestamp': now,
+                    'message': 'Failed to update terminal status'
+                },
+                status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Build response
+        response_data = {
+            'status': 'OK',
+            'server_timestamp': now,
+            'force_sync': False,
+            'force_flush': False,
+            'message': ''
+        }
+
+        # Check if we should instruct terminal to flush
+        # (e.g., if it has pending orders and is online)
+        if data['is_online'] and data['pending_orders'] > 0:
+            response_data['force_flush'] = True
+            response_data['message'] = 'Pending orders detected, please flush'
+
+        return Response(response_data, status=http_status.HTTP_200_OK)

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.db import models
 from django.utils import timezone
 from tenant.managers import TenantManager
@@ -214,6 +215,55 @@ class TerminalRegistration(models.Model):
         help_text="HMAC secret for verifying offline payloads (TODO: Encrypt at rest in Phase 2)"
     )
 
+    # Heartbeat status tracking (for fleet monitoring dashboard)
+    last_heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last heartbeat received from terminal"
+    )
+    SYNC_STATUS_CHOICES = [
+        ('unknown', 'Unknown'),  # No heartbeat received yet
+        ('online', 'Online'),
+        ('offline', 'Offline'),
+        ('syncing', 'Syncing'),
+        ('error', 'Error'),
+    ]
+    sync_status = models.CharField(
+        max_length=20,
+        choices=SYNC_STATUS_CHOICES,
+        default='unknown',
+        help_text="Current sync state of the terminal (unknown until first heartbeat)"
+    )
+    pending_orders_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of orders pending sync at last heartbeat"
+    )
+    pending_operations_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of operations pending sync at last heartbeat"
+    )
+    last_sync_success_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last successful full sync to backend"
+    )
+    last_flush_success_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last successful queue flush to backend"
+    )
+    offline_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When terminal went offline (null if online)"
+    )
+    exposure_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Current offline exposure (total pending transaction value)"
+    )
+
     objects = TenantManager()
     all_objects = models.Manager()
 
@@ -222,6 +272,17 @@ class TerminalRegistration(models.Model):
             self.store_location.name if self.store_location else "Unassigned"
         )
         return f"{self.nickname or self.device_id} @ {location_name}"
+
+    @property
+    def is_stale(self):
+        """
+        A terminal is considered stale if it hasn't heartbeated in >2 minutes.
+        Used by admin/Fleet UI to mark devices as offline/unknown without
+        relying on an explicit "I'm offline" heartbeat.
+        """
+        if not self.last_heartbeat_at:
+            return True
+        return timezone.now() - self.last_heartbeat_at > timedelta(minutes=2)
 
     class Meta:
         db_table = 'settings_terminalregistration'  # Keep existing table name

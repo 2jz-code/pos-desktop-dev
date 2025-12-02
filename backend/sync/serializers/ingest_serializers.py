@@ -46,7 +46,8 @@ class OfflineItemAdjustmentSerializer(serializers.Serializer):
 
 class OfflineOrderItemSerializer(serializers.Serializer):
     """Single line item in an offline order"""
-    product_id = serializers.UUIDField()
+    # Product uses BigAutoField (integer PK), not UUID
+    product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(min_value=1)
     price_at_sale = serializers.DecimalField(max_digits=10, decimal_places=2)
     notes = serializers.CharField(max_length=500, allow_blank=True, default='')
@@ -56,7 +57,8 @@ class OfflineOrderItemSerializer(serializers.Serializer):
 
 class OfflineDiscountSerializer(serializers.Serializer):
     """Applied discount"""
-    discount_id = serializers.UUIDField()
+    # Discount uses BigAutoField (integer PK), not UUID
+    discount_id = serializers.IntegerField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
@@ -94,8 +96,9 @@ class OfflinePaymentSerializer(serializers.Serializer):
 
 class OfflineInventoryDeltaSerializer(serializers.Serializer):
     """Inventory stock change"""
-    product_id = serializers.UUIDField()
-    location_id = serializers.UUIDField()
+    # Product and Location use BigAutoField (integer PK), not UUID
+    product_id = serializers.IntegerField()
+    location_id = serializers.IntegerField()
     quantity_change = serializers.DecimalField(max_digits=10, decimal_places=2)
     reason = serializers.CharField(max_length=50, default='ORDER_DEDUCTION')
 
@@ -198,7 +201,8 @@ class OfflineInventoryIngestSerializer(serializers.Serializer):
     operation_id = serializers.UUIDField()
     device_id = serializers.CharField(max_length=255)
     nonce = serializers.CharField(max_length=255)
-    store_location_id = serializers.UUIDField()
+    # StoreLocation uses BigAutoField (integer PK), not UUID
+    store_location_id = serializers.IntegerField()
     dataset_version = serializers.CharField(required=False, allow_blank=True)
     deltas = OfflineInventoryDeltaSerializer(many=True)
 
@@ -224,7 +228,8 @@ class ConflictDetailSerializer(serializers.Serializer):
         'DISCOUNT_EXPIRED',
         'VERSION_MISMATCH'
     ])
-    product_id = serializers.UUIDField(required=False, allow_null=True)
+    # Product uses BigAutoField (integer PK), not UUID
+    product_id = serializers.IntegerField(required=False, allow_null=True)
     message = serializers.CharField()
     expected_version = serializers.CharField(required=False, allow_null=True)
     actual_version = serializers.CharField(required=False, allow_null=True)
@@ -245,3 +250,59 @@ class OfflineOrderIngestResponseSerializer(serializers.Serializer):
         required=False,
         default=list
     )
+
+
+# =============================================================================
+# HEARTBEAT SERIALIZERS
+# =============================================================================
+
+class TerminalHeartbeatSerializer(serializers.Serializer):
+    """
+    Heartbeat payload from terminal.
+
+    Terminals send periodic heartbeats to report their status.
+    This allows the backend to track terminal health and sync status.
+    """
+    # Device identification (for verification)
+    device_id = serializers.CharField(max_length=255)
+
+    # Network status
+    is_online = serializers.BooleanField()
+
+    # Sync state
+    is_syncing = serializers.BooleanField(default=False)
+    is_flushing = serializers.BooleanField(default=False)
+
+    # Queue counts
+    pending_orders = serializers.IntegerField(min_value=0, default=0)
+    pending_operations = serializers.IntegerField(min_value=0, default=0)
+    conflict_orders = serializers.IntegerField(min_value=0, default=0)
+    failed_operations = serializers.IntegerField(min_value=0, default=0)
+
+    # Exposure tracking
+    exposure_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+    offline_since = serializers.DateTimeField(allow_null=True, required=False)
+
+    # Timestamps
+    last_sync_success = serializers.DateTimeField(allow_null=True, required=False)
+    last_flush_success = serializers.DateTimeField(allow_null=True, required=False)
+    client_timestamp = serializers.DateTimeField()
+
+
+class TerminalHeartbeatResponseSerializer(serializers.Serializer):
+    """
+    Response to terminal heartbeat.
+
+    Returns acknowledgment and any server-side instructions.
+    """
+    status = serializers.ChoiceField(choices=['OK', 'ERROR'])
+    server_timestamp = serializers.DateTimeField()
+
+    # Optional instructions for terminal
+    force_sync = serializers.BooleanField(default=False)
+    force_flush = serializers.BooleanField(default=False)
+    message = serializers.CharField(required=False, allow_blank=True)

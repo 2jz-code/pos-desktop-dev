@@ -20,6 +20,8 @@ from .views import (
     OfflineOrderIngestView,
     OfflineInventoryIngestView,
     OfflineApprovalsIngestView,
+    # Heartbeat
+    TerminalHeartbeatView,
 )
 
 app_name = 'sync'
@@ -41,6 +43,9 @@ urlpatterns = [
     path('offline-orders/', OfflineOrderIngestView.as_view(), name='offline-orders-ingest'),
     path('offline-inventory/', OfflineInventoryIngestView.as_view(), name='offline-inventory-ingest'),
     path('offline-approvals/', OfflineApprovalsIngestView.as_view(), name='offline-approvals-ingest'),
+
+    # Terminal heartbeat
+    path('heartbeat/', TerminalHeartbeatView.as_view(), name='terminal-heartbeat'),
 
     # Conflict tracking (to be implemented)
     # path('conflicts/', ConflictListView.as_view(), name='conflicts-list'),
