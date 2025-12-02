@@ -4,7 +4,8 @@ from .models import (
     Order,
     OrderItem,
     OrderDiscount,
-    OrderItemModifier
+    OrderItemModifier,
+    OrderNumberCounter
 )
 from core_backend.admin.mixins import TenantAdminMixin
 
@@ -371,4 +372,40 @@ class OrderItemModifierAdmin(TenantAdminMixin, admin.ModelAdmin):
         """Show all tenants in Django admin with optimized queries"""
         return OrderItemModifier.all_objects.select_related(
             "tenant", "order_item", "order_item__order"
+        )
+
+
+@admin.register(OrderNumberCounter)
+class OrderNumberCounterAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """
+    Admin for the race-safe order number counter.
+
+    This model is automatically populated when orders are created.
+    Manual editing should be rare (e.g., correcting after data issues).
+    """
+    list_display = ("store_location", "tenant", "next_value", "updated_at")
+    list_filter = ("tenant", "store_location")
+    search_fields = ("store_location__name", "tenant__name")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("tenant", "store_location")
+
+    fieldsets = (
+        ("Location", {
+            "fields": ("tenant", "store_location")
+        }),
+        ("Counter", {
+            "fields": ("next_value",),
+            "description": "The next order number to allocate for this location. "
+                           "Editing this directly can cause duplicate order numbers if not careful."
+        }),
+        ("Timestamps", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries"""
+        return OrderNumberCounter.objects.select_related(
+            "tenant", "store_location"
         )

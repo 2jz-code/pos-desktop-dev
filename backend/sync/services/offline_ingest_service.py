@@ -97,22 +97,11 @@ class OfflineOrderIngestService:
                 'errors': list
             }
         """
+        from django.db import IntegrityError
+
         try:
-            # Idempotency check: Has this operation already been processed?
-            existing = ProcessedOperation.objects.filter(
-                tenant=terminal.tenant,
-                terminal=terminal,
-                operation_id=payload['operation_id']
-            ).first()
-
-            if existing:
-                logger.info(
-                    f"Duplicate operation detected: {payload['operation_id']}. "
-                    f"Returning cached result."
-                )
-                return existing.result_data
-
             # Check for issues (informational only - logged for internal tracking)
+            # Done outside atomic block to avoid holding locks during external lookups
             warnings = OfflineOrderIngestService._check_warnings(payload, terminal)
 
             if warnings:
@@ -123,8 +112,28 @@ class OfflineOrderIngestService:
                     f"has warnings: {'; '.join([w['message'] for w in warnings])}"
                 )
 
-            # Create order atomically
+            # Create order atomically with idempotency protection
+            # The atomic block ensures:
+            # 1. If ProcessedOperation exists, we return early (no order created)
+            # 2. If ProcessedOperation creation fails (race), transaction rolls back
+            # 3. Order number allocation uses SELECT FOR UPDATE to prevent collisions
             with transaction.atomic():
+                # Idempotency check INSIDE the atomic block
+                # This ensures we don't allocate an order number if the operation
+                # was already processed by a concurrent request
+                existing = ProcessedOperation.objects.filter(
+                    tenant=terminal.tenant,
+                    terminal=terminal,
+                    operation_id=payload['operation_id']
+                ).first()
+
+                if existing:
+                    logger.info(
+                        f"Duplicate operation detected: {payload['operation_id']}. "
+                        f"Returning cached result."
+                    )
+                    return existing.result_data
+
                 order = OfflineOrderIngestService._create_order(payload, terminal)
                 payments = OfflineOrderIngestService._create_payments(payload, order, terminal)
                 OfflineOrderIngestService._process_inventory_deltas(payload, terminal)
@@ -143,6 +152,8 @@ class OfflineOrderIngestService:
                 }
 
                 # Store for idempotency (within same transaction)
+                # If another request created this first, IntegrityError is raised
+                # and the entire transaction (including order) is rolled back
                 ProcessedOperation.objects.create(
                     tenant=terminal.tenant,
                     terminal=terminal,
@@ -159,6 +170,31 @@ class OfflineOrderIngestService:
             )
 
             return result
+
+        except IntegrityError as e:
+            # Handle race condition: another request processed this operation first
+            if 'unique_operation_per_terminal' in str(e):
+                logger.info(
+                    f"Race condition on operation {payload['operation_id']}. "
+                    f"Returning cached result from winner."
+                )
+                existing = ProcessedOperation.objects.filter(
+                    tenant=terminal.tenant,
+                    terminal=terminal,
+                    operation_id=payload['operation_id']
+                ).first()
+                if existing:
+                    return existing.result_data
+
+            # Re-raise if it's a different IntegrityError
+            logger.error(f"IntegrityError ingesting offline order: {str(e)}", exc_info=True)
+            return {
+                'status': 'ERROR',
+                'order_number': None,
+                'order_id': None,
+                'warnings': [],
+                'errors': [str(e)]
+            }
 
         except Exception as e:
             logger.error(f"Error ingesting offline order: {str(e)}", exc_info=True)

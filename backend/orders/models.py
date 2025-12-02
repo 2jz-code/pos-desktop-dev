@@ -14,6 +14,129 @@ import string
 import re  # Add this import for regular expressions
 
 
+class OrderNumberCounter(models.Model):
+    """
+    Race-safe counter for sequential order number generation.
+
+    Each (tenant, store_location) pair has its own counter row.
+    Uses SELECT FOR UPDATE to serialize number allocation under concurrent load.
+
+    Why this exists:
+    - The previous approach (scan last order, increment) had race conditions
+    - When multiple terminals flush offline orders simultaneously, they could
+      read the same "last order" and both try to insert the same next number
+    - This counter with row-level locking ensures unique numbers without collisions
+
+    Usage:
+    - Call allocate_order_number(tenant, store_location) to get the next number
+    - The allocator uses select_for_update() to lock this row during allocation
+    """
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='order_number_counters'
+    )
+    store_location = models.ForeignKey(
+        'settings.StoreLocation',
+        on_delete=models.CASCADE,
+        related_name='order_number_counters'
+    )
+    next_value = models.PositiveIntegerField(
+        default=1,
+        help_text="Next order number to allocate"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'orders_order_number_counter'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'store_location'],
+                name='unique_counter_per_tenant_location'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'store_location']),
+        ]
+
+    def __str__(self):
+        location_name = self.store_location.name if self.store_location else 'Unknown'
+        return f"Counter for {location_name}: next={self.next_value}"
+
+
+def allocate_order_number(tenant, store_location, prefix="ORD-", padding=5):
+    """
+    Race-safe order number allocator using SELECT FOR UPDATE.
+
+    This function:
+    1. Locks the counter row for the given (tenant, store_location)
+    2. Reads the current next_value
+    3. Increments and saves the counter
+    4. Returns the formatted order number (e.g., "ORD-00042")
+
+    The lock ensures only one allocator runs at a time per location,
+    eliminating collisions even with concurrent online/offline order creation.
+
+    Args:
+        tenant: Tenant instance
+        store_location: StoreLocation instance
+        prefix: Order number prefix (default: "ORD-")
+        padding: Number of digits with zero-padding (default: 5)
+
+    Returns:
+        str: Formatted order number like "ORD-00042"
+
+    Note:
+        This must be called within an atomic transaction block.
+        The lock is released when the inner atomic block commits.
+    """
+    import time
+    import logging
+    from django.db import transaction
+
+    logger = logging.getLogger(__name__)
+    lock_start = time.perf_counter()
+
+    with transaction.atomic():
+        # Get or create the counter, with a lock for update
+        counter, created = OrderNumberCounter.objects.select_for_update().get_or_create(
+            tenant=tenant,
+            store_location=store_location,
+            defaults={'next_value': 1}
+        )
+
+        # If newly created, backfill from existing orders to avoid duplicates
+        if created:
+            last_order = (
+                Order.objects.filter(
+                    tenant=tenant,
+                    store_location=store_location,
+                    order_number__startswith=prefix
+                )
+                .order_by("-order_number")
+                .first()
+            )
+            if last_order and last_order.order_number:
+                match = re.match(rf"^{re.escape(prefix)}(\d+)$", last_order.order_number)
+                if match:
+                    counter.next_value = int(match.group(1)) + 1
+                    counter.save(update_fields=['next_value', 'updated_at'])
+
+        # Allocate the next number
+        next_number = counter.next_value
+        counter.next_value += 1
+        counter.save(update_fields=['next_value', 'updated_at'])
+
+    # Lock released here when inner atomic commits
+    lock_duration_ms = (time.perf_counter() - lock_start) * 1000
+    logger.info(f"[OrderNumberAlloc] Lock held for {lock_duration_ms:.1f}ms (location={store_location.id})")
+
+    # Format with zero-padding (outside atomic - just string formatting)
+    padded_number = str(next_number).zfill(padding)
+    return f"{prefix}{padded_number}"
+
+
 class OrderDiscount(models.Model):
     """
     A through model to link a Discount to a specific Order, storing the
@@ -621,34 +744,24 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         # Generate order_number only if it's not already set
         if not self.order_number:
-            max_retries = 5  # Prevent infinite loop in extreme race conditions
-            for _ in range(max_retries):
-                try:
-                    self.order_number = self._generate_sequential_order_number()
-                    super().save(*args, **kwargs)
-                    break  # Break if save is successful
-                except Exception as e:  # Catch potential IntegrityError on unique field
-                    if (
-                        "duplicate key value" in str(e).lower()
-                        or "unique constraint failed" in str(e).lower()
-                    ):
-                        # Another process might have taken the number, retry
-                        continue
-                    else:
-                        raise  # Re-raise if it's another type of error
-            else:  # If loop finishes without breaking (max_retries reached)
-                raise Exception(
-                    "Failed to generate a unique order number after multiple retries."
-                )
-        else:
-            if not self._state.adding:
-                self.updated_at = timezone.now()
-            super().save(*args, **kwargs)
+            # Use the race-safe allocator to get the next order number.
+            # This uses SELECT FOR UPDATE on a per-location counter row,
+            # ensuring unique numbers even with concurrent order creation.
+            self.order_number = self._generate_sequential_order_number()
+
+        if not self._state.adding:
+            self.updated_at = timezone.now()
+        super().save(*args, **kwargs)
 
     def _generate_sequential_order_number(self):
         """
         Generates the next sequential order number PER LOCATION.
         Each location has independent numbering starting from 1.
+
+        Uses the race-safe allocate_order_number() function which:
+        - Locks a per-location counter row with SELECT FOR UPDATE
+        - Guarantees unique numbers even under concurrent load
+        - Auto-backfills from existing orders on first use
 
         CRITICAL: Both tenant AND store_location filtering for proper isolation.
 
@@ -666,37 +779,14 @@ class Order(models.Model):
         - Matches operational reality (staff work at one location)
         - Aligns with location-separated reports
         - Natural fit for terminal context (terminals are location-bound)
+        - Race-safe: multiple terminals can flush simultaneously without collisions
         """
-        prefix = "ORD-"
-        # Get the highest existing order number for THIS TENANT + LOCATION
-        last_order = (
-            Order.objects.filter(
-                tenant=self.tenant,           # ← Tenant isolation (security)
-                store_location=self.store_location,  # ← Location scoping (operations)
-                order_number__startswith=prefix
-            )
-            .order_by("-order_number")
-            .first()
+        return allocate_order_number(
+            tenant=self.tenant,
+            store_location=self.store_location,
+            prefix="ORD-",
+            padding=5
         )
-
-        if last_order and last_order.order_number:
-            # Extract the numeric part using regex
-            match = re.match(rf"^{re.escape(prefix)}(\d+)$", last_order.order_number)
-            if match:
-                last_number = int(match.group(1))
-                next_number = last_number + 1
-            else:
-                # If existing numbers don't follow the pattern, start from 1
-                next_number = 1
-        else:
-            # No existing order numbers with the prefix at this location, start from 1
-            next_number = 1
-
-        # Format with leading zeros (e.g., 00001) for a fixed width
-        # Adjust the padding (5 in this case) based on your expected maximum order number.
-        # e.g., if you expect up to 999,999 orders, use 6.
-        padded_number = f"{next_number:05d}"  # Ensures 5 digits, e.g., 1 -> "00001"
-        return f"{prefix}{padded_number}"
 
 
 class OrderItem(models.Model):
