@@ -40,8 +40,8 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
     """
 
     list_display = (
-        "device_id", "nickname", "store_location", "sync_status_display",
-        "is_stale_display", "pending_orders_count", "last_heartbeat_at",
+        "device_id", "nickname", "store_location", "status_display",
+        "pending_orders_count", "last_heartbeat_at",
         "is_active", "is_locked"
     )
     list_filter = ("store_location", "is_active", "is_locked", "sync_status")
@@ -51,7 +51,7 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         # Heartbeat status fields (read-only, updated by heartbeat endpoint)
         "last_heartbeat_at", "sync_status", "pending_orders_count",
         "pending_operations_count", "last_sync_success_at", "last_flush_success_at",
-        "offline_since", "exposure_amount", "is_stale_display"
+        "exposure_amount", "status_display", "offline_duration_display"
     )
     autocomplete_fields = ["store_location", "pairing_code"]
     actions = ['unlock_terminals']
@@ -68,9 +68,9 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         }),
         ('Sync Status', {
             'fields': (
-                'sync_status', 'is_stale_display', 'last_heartbeat_at',
+                'status_display', 'last_heartbeat_at',
                 'pending_orders_count', 'pending_operations_count',
-                'exposure_amount', 'offline_since'
+                'exposure_amount', 'offline_duration_display'
             ),
             'description': 'Real-time status reported by terminal heartbeats'
         }),
@@ -86,25 +86,49 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         }),
     )
 
-    @admin.display(boolean=True, description='Stale?')
-    def is_stale_display(self, obj):
-        """Display is_stale property as boolean icon"""
-        return obj.is_stale
-
-    @admin.display(description='Sync Status')
-    def sync_status_display(self, obj):
-        """Display sync_status with color coding"""
-        status = obj.sync_status
-        if obj.is_stale:
-            return '⚠️ stale'
-        colors = {
-            'online': '🟢',
-            'offline': '🔴',
-            'syncing': '🔄',
-            'error': '❌',
-            'unknown': '⚪',
+    @admin.display(description='Status')
+    def status_display(self, obj):
+        """
+        Display unified status with color coding.
+        Uses display_status property which returns:
+        - online: Terminal is operational
+        - syncing: Terminal is flushing offline queue
+        - offline: Terminal was active today but is now unreachable
+        - inactive: Terminal hasn't been used today
+        """
+        status = obj.display_status
+        icons = {
+            'online': '🟢 Online',
+            'syncing': '🔄 Syncing',
+            'offline': '🔴 Offline',
+            'inactive': '⚪ Inactive',
         }
-        return f"{colors.get(status, '❓')} {status}"
+        result = icons.get(status, f'❓ {status}')
+
+        # Add warning if needs attention (was active today, now offline)
+        if obj.needs_attention:
+            result += ' ⚠️'
+
+        return result
+
+    @admin.display(description='Offline Duration')
+    def offline_duration_display(self, obj):
+        """Display how long terminal has been offline, or N/A if online."""
+        duration = obj.offline_duration
+        if not duration:
+            return '—'
+
+        # Format duration nicely
+        total_seconds = int(duration.total_seconds())
+        if total_seconds < 60:
+            return f'{total_seconds}s'
+        elif total_seconds < 3600:
+            minutes = total_seconds // 60
+            return f'{minutes}m'
+        else:
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            return f'{hours}h {minutes}m'
 
     def get_queryset(self, request):
         """Show all tenants in Django admin"""

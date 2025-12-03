@@ -284,6 +284,80 @@ class TerminalRegistration(models.Model):
             return True
         return timezone.now() - self.last_heartbeat_at > timedelta(minutes=2)
 
+    @property
+    def was_active_today(self):
+        """
+        Check if terminal has heartbeated at least once today.
+        Used to distinguish between:
+        - Terminal that was online and went offline (needs attention)
+        - Terminal that was never turned on today (owner's choice)
+        """
+        if not self.last_heartbeat_at:
+            return False
+        # Check if last heartbeat was today (in terminal's timezone via location)
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return self.last_heartbeat_at >= today_start
+
+    @property
+    def display_status(self):
+        """
+        Unified status for UI display. Returns one of:
+        - 'online': Terminal is operational (heartbeat within 2 min)
+        - 'syncing': Terminal is flushing offline queue
+        - 'offline': Terminal was active today but is now unreachable
+        - 'inactive': Terminal hasn't been used today (not a concern)
+
+        This replaces the confusing stale/offline distinction.
+        """
+        # Never heartbeated or not active today = inactive
+        if not self.last_heartbeat_at or not self.was_active_today:
+            return 'inactive'
+
+        # Stale = offline (no heartbeat in > 2 min)
+        if self.is_stale:
+            return 'offline'
+
+        # Currently syncing
+        if self.sync_status == 'syncing':
+            return 'syncing'
+
+        # Default to online
+        return 'online'
+
+    @property
+    def needs_attention(self):
+        """
+        Flag for UI to highlight terminals that may need attention.
+        True if terminal was active today but is now offline.
+        """
+        return self.was_active_today and self.is_stale
+
+    @property
+    def effective_offline_since(self):
+        """
+        When the terminal went offline.
+
+        Returns offline_since if set (terminal reported going offline),
+        otherwise falls back to last_heartbeat_at (best estimate of when
+        it stopped responding).
+
+        Returns None if terminal is not stale/offline.
+        """
+        if not self.is_stale:
+            return None
+        return self.offline_since or self.last_heartbeat_at
+
+    @property
+    def offline_duration(self):
+        """
+        How long the terminal has been offline.
+        Returns None if terminal is not offline.
+        """
+        offline_start = self.effective_offline_since
+        if not offline_start:
+            return None
+        return timezone.now() - offline_start
+
     class Meta:
         db_table = 'settings_terminalregistration'  # Keep existing table name
         verbose_name = "Terminal Registration"
