@@ -1035,6 +1035,15 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=3, minute=0),  # Every day at 3:00 AM
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
+    # ========================================================================
+    # TERMINAL MANAGEMENT TASKS
+    # ========================================================================
+    # Daily offline revenue summary email and counter reset (11:59 PM)
+    "daily-offline-revenue-summary": {
+        "task": "terminals.tasks.daily_offline_revenue_summary",
+        "schedule": crontab(hour=23, minute=59),  # Every day at 11:59 PM
+        "options": {"expires": 3600},  # Task expires after 1 hour if not run
+    },
 }
 
 # Customer site URL for email links and redirects

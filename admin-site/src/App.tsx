@@ -27,6 +27,7 @@ import PaymentsPage from "@/pages/payments/PaymentsPage";
 import PaymentDetailsPage from "@/pages/payments/PaymentDetailsPage";
 import { DiscountsPage } from "@/pages/discounts/DiscountsPage";
 import { TerminalActivatePage } from "@/pages/terminals/ActivatePage";
+import { TerminalsPage } from "@/pages/terminals/TerminalsPage";
 import { Layout } from "@/components/layout/Layout";
 import { RoleProtectedRoute } from "@/components/shared/RoleProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
@@ -298,6 +299,20 @@ const AppRoutes = () => {
 						<ProtectedRoute>
 							<Layout>
 								<SettingsPage />
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="terminals"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessSettings()}
+								>
+									<TerminalsPage />
+								</RoleProtectedRoute>
 							</Layout>
 						</ProtectedRoute>
 					}

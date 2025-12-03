@@ -163,6 +163,9 @@ class OfflineOrderIngestService:
                     order_id=order.id
                 )
 
+                # Update terminal's daily offline metrics
+                OfflineOrderIngestService._update_daily_offline_metrics(terminal, order)
+
             logger.info(
                 f"Offline order ingested successfully: {order.order_number} "
                 f"from terminal {terminal.device_id}"
@@ -612,6 +615,43 @@ class OfflineOrderIngestService:
                     f"Inventory stock not found for product {delta['product_id']} "
                     f"at location {delta['location_id']}"
                 )
+
+    @staticmethod
+    def _update_daily_offline_metrics(terminal, order):
+        """
+        Update terminal's daily offline revenue metrics.
+
+        Increments the daily counters for offline order tracking.
+        These metrics reset at midnight via a Celery task.
+        """
+        from django.db.models import F
+
+        # Check if we need to reset (if last reset was before today)
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if (terminal.daily_offline_revenue_reset_at is None or
+                terminal.daily_offline_revenue_reset_at < today_start):
+            # Reset counters for new day
+            terminal.daily_offline_revenue = order.grand_total
+            terminal.daily_offline_order_count = 1
+            terminal.daily_offline_revenue_reset_at = timezone.now()
+            terminal.save(update_fields=[
+                'daily_offline_revenue',
+                'daily_offline_order_count',
+                'daily_offline_revenue_reset_at'
+            ])
+        else:
+            # Increment counters atomically
+            from terminals.models import TerminalRegistration
+            TerminalRegistration.objects.filter(pk=terminal.pk).update(
+                daily_offline_revenue=F('daily_offline_revenue') + order.grand_total,
+                daily_offline_order_count=F('daily_offline_order_count') + 1
+            )
+
+        logger.debug(
+            f"Updated daily offline metrics for terminal {terminal.device_id}: "
+            f"+${order.grand_total} (order {order.order_number})"
+        )
 
 
 class OfflineInventoryIngestService:

@@ -78,9 +78,15 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
     location_name = serializers.CharField(source='store_location.name', read_only=True, allow_null=True)
     pairing_code_user_code = serializers.CharField(source='pairing_code.user_code', read_only=True, allow_null=True)
 
+    # Fleet monitoring status fields (computed properties)
+    display_status = serializers.CharField(read_only=True)
+    needs_attention = serializers.BooleanField(read_only=True)
+    offline_duration_seconds = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = TerminalRegistration
         fields = [
+            'id',
             'device_id',
             'nickname',
             'last_seen',
@@ -96,8 +102,24 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             'location_name',
             'tenant',
             'tenant_slug',
+            # Heartbeat/sync status fields
+            'last_heartbeat_at',
+            'sync_status',
+            'pending_orders_count',
+            'pending_operations_count',
+            'last_sync_success_at',
+            'last_flush_success_at',
+            'exposure_amount',
+            # Daily offline metrics
+            'daily_offline_revenue',
+            'daily_offline_order_count',
+            # Computed status fields
+            'display_status',
+            'needs_attention',
+            'offline_duration_seconds',
         ]
         read_only_fields = [
+            'id',
             'device_id',
             'last_seen',
             'device_fingerprint',
@@ -105,4 +127,20 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             'authentication_failures',
             'tenant',
             'pairing_code',  # Pairing code should not be changed after initial pairing
+            'last_heartbeat_at',
+            'sync_status',
+            'pending_orders_count',
+            'pending_operations_count',
+            'last_sync_success_at',
+            'last_flush_success_at',
+            'exposure_amount',
+            'daily_offline_revenue',
+            'daily_offline_order_count',
         ]
+
+    def get_offline_duration_seconds(self, obj):
+        """Convert offline_duration timedelta to seconds for frontend consumption."""
+        duration = obj.offline_duration
+        if duration is None:
+            return None
+        return int(duration.total_seconds())

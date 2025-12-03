@@ -19,6 +19,7 @@ import {
 	Warehouse,
 	FileText,
 	Shield,
+	Monitor,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -26,6 +27,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const ADMIN_SUB_PAGE_TITLES = mergeSubPageTitles({
 	"scheduled": "Scheduled Reports",
 	"custom": "Custom Reports",
+	"activate": "Pair New Terminal",
 });
 
 export function useNavigationRoutes(): NavigationRoute[] {
@@ -60,6 +62,10 @@ export function useNavigationRoutes(): NavigationRoute[] {
 			excludeParams: true
 		}),
 		createRoutePattern(new RegExp(`^/${tenantSlug}/audit$`), "Audit", Shield),
+		createRoutePattern(new RegExp(`^/${tenantSlug}/terminals$`), "Terminals", Monitor, {
+			subPattern: new RegExp(`^/${tenantSlug}/terminals/([^/]+)$`),
+			excludeParams: true
+		}),
 		createRoutePattern(new RegExp(`^/${tenantSlug}/settings$`), "Settings", Settings),
 	];
 
@@ -77,6 +83,8 @@ export function useNavigationRoutes(): NavigationRoute[] {
 		`/${tenantSlug}/reports`,
 		`/${tenantSlug}/discounts`,
 		`/${tenantSlug}/audit`,
+		`/${tenantSlug}/terminals`,
+		`/${tenantSlug}/terminals/activate`,
 		`/${tenantSlug}/settings`
 	];
 

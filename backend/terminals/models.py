@@ -261,7 +261,24 @@ class TerminalRegistration(models.Model):
         max_digits=10,
         decimal_places=2,
         default=0,
-        help_text="Current offline exposure (total pending transaction value)"
+        help_text="Current offline card exposure (pending capture value)"
+    )
+
+    # Daily offline metrics (for ops visibility / reporting)
+    daily_offline_revenue = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Cumulative offline order revenue today (resets at midnight)"
+    )
+    daily_offline_order_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of offline orders synced today (resets at midnight)"
+    )
+    daily_offline_revenue_reset_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When daily offline metrics were last reset"
     )
 
     objects = TenantManager()
