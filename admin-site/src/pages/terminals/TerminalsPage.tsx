@@ -14,6 +14,7 @@ import {
 	Search,
 	Server,
 	Activity,
+	Power,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -34,36 +35,46 @@ import {
 // --- Components ---
 
 const StatusIndicator = ({ status }: { status: string }) => {
-	const isOnline = status === "online";
-	const isSyncing = status === "syncing";
-
-	if (isSyncing) {
-		return (
-			<span className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 rounded-full border border-blue-200 dark:border-blue-800">
-				<RefreshCw className="w-3 h-3 animate-spin" />
-				Syncing
-			</span>
-		);
-	}
-
-	if (isOnline) {
-		return (
-			<span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-				<span className="relative flex h-2 w-2">
-					<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-					<span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+	switch (status) {
+		case "shutdown":
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 px-2.5 py-1 rounded-full border border-slate-300 dark:border-slate-700">
+					<Power className="w-3 h-3" />
+					Shutdown
 				</span>
-				Online
-			</span>
-		);
+			);
+		case "syncing":
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 rounded-full border border-blue-200 dark:border-blue-800">
+					<RefreshCw className="w-3 h-3 animate-spin" />
+					Syncing
+				</span>
+			);
+		case "online":
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
+					<span className="relative flex h-2 w-2">
+						<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+						<span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+					</span>
+					Online
+				</span>
+			);
+		case "inactive":
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700">
+					<Monitor className="w-3 h-3" />
+					Inactive
+				</span>
+			);
+		default: // offline
+			return (
+				<span className="flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
+					<WifiOff className="w-3 h-3" />
+					Offline
+				</span>
+			);
 	}
-
-	return (
-		<span className="flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
-			<WifiOff className="w-3 h-3" />
-			Offline
-		</span>
-	);
 };
 
 const TerminalCard = ({ terminal }: { terminal: TerminalRegistration }) => {
@@ -212,7 +223,10 @@ export function TerminalsPage() {
 		const offlineCount = terminals.filter(
 			(t) => t.display_status === "offline"
 		).length;
-		return { offlineAmount, offlineCount };
+		const shutdownCount = terminals.filter(
+			(t) => t.display_status === "shutdown"
+		).length;
+		return { offlineAmount, offlineCount, shutdownCount };
 	}, [terminals]);
 
 	return (
@@ -283,6 +297,7 @@ export function TerminalsPage() {
 							<SelectItem value="online">Online</SelectItem>
 							<SelectItem value="offline">Offline</SelectItem>
 							<SelectItem value="syncing">Syncing</SelectItem>
+							<SelectItem value="shutdown">Shutdown</SelectItem>
 						</SelectContent>
 					</Select>
 					{locations.length > 0 && (
@@ -312,6 +327,12 @@ export function TerminalsPage() {
 							<WifiOff className="w-4 h-4" />
 							{stats.offlineCount} Terminal{stats.offlineCount !== 1 ? "s" : ""}{" "}
 							Offline
+						</div>
+					)}
+					{stats.shutdownCount > 0 && (
+						<div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 rounded-md border border-slate-300 dark:border-slate-700 text-sm font-medium">
+							<Power className="w-4 h-4" />
+							{stats.shutdownCount} Shutdown
 						</div>
 					)}
 					{stats.offlineAmount > 0 && (

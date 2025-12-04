@@ -281,6 +281,20 @@ class TerminalRegistration(models.Model):
         help_text="When daily offline metrics were last reset"
     )
 
+    # Parked/shutdown status (for alert suppression)
+    parked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When terminal was intentionally parked/shutdown. Cleared on next heartbeat."
+    )
+
+    # Offline alert tracking
+    offline_alert_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the offline alert email was sent. Reset on heartbeat."
+    )
+
     objects = TenantManager()
     all_objects = models.Manager()
 
@@ -322,10 +336,15 @@ class TerminalRegistration(models.Model):
         - 'online': Terminal is operational (heartbeat within 2 min)
         - 'syncing': Terminal is flushing offline queue
         - 'offline': Terminal was active today but is now unreachable
+        - 'shutdown': Terminal was intentionally shut down (parked)
         - 'inactive': Terminal hasn't been used today (not a concern)
 
         This replaces the confusing stale/offline distinction.
         """
+        # Intentionally parked/shutdown takes precedence
+        if self.is_parked:
+            return 'shutdown'
+
         # Never heartbeated or not active today = inactive
         if not self.last_heartbeat_at or not self.was_active_today:
             return 'inactive'
@@ -345,9 +364,24 @@ class TerminalRegistration(models.Model):
     def needs_attention(self):
         """
         Flag for UI to highlight terminals that may need attention.
-        True if terminal was active today but is now offline.
+        True if terminal was active today but is now offline (and not intentionally parked).
         """
+        # Parked terminals don't need attention - they're intentionally offline
+        if self.is_parked:
+            return False
         return self.was_active_today and self.is_stale
+
+    @property
+    def is_parked(self):
+        """
+        Terminal is intentionally offline (shouldn't trigger alerts).
+        Parked status is valid for the current business day only.
+        """
+        if not self.parked_at:
+            return False
+        # Consider parked if parked today
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        return self.parked_at >= today_start
 
     @property
     def effective_offline_since(self):

@@ -951,6 +951,12 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=5, minute=0, day_of_week=0),  # Every Sunday at 2:00 AM
         "options": {"expires": 7200},  # Task expires after 2 hours if not run
     },
+    # Terminal fleet management tasks
+    "check-offline-terminals": {
+        "task": "terminals.tasks.check_offline_terminals",
+        "schedule": 300.0,  # Every 5 minutes
+        "options": {"expires": 300},  # Expires if not run within 5 min
+    },
     # ========================================================================
     # COMPREHENSIVE CACHE WARMING TASKS
     # ========================================================================

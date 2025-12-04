@@ -8,6 +8,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status as http_status
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 import logging
 
 from sync.authentication import DeviceSignatureAuthentication
@@ -30,6 +32,17 @@ from terminals.models import TerminalRegistration
 logger = logging.getLogger(__name__)
 
 
+def _clear_parked_status(terminal):
+    """
+    Clear parked status when terminal shows activity.
+    Called by ingest views to unpark terminal on any sync request.
+    """
+    if terminal.parked_at:
+        logger.debug(f"Terminal {terminal.device_id} unparked via sync activity")
+        terminal.parked_at = None
+        terminal.save(update_fields=['parked_at'])
+
+
 class OfflineOrderIngestView(APIView):
     """
     Ingest offline orders.
@@ -47,6 +60,9 @@ class OfflineOrderIngestView(APIView):
 
     def post(self, request):
         terminal = request.auth
+
+        # Clear parked status - terminal is active
+        _clear_parked_status(terminal)
 
         logger.info(
             f"Offline order ingest request from terminal {terminal.device_id}"
@@ -106,6 +122,9 @@ class OfflineInventoryIngestView(APIView):
     def post(self, request):
         terminal = request.auth
 
+        # Clear parked status - terminal is active
+        _clear_parked_status(terminal)
+
         logger.info(
             f"Offline inventory ingest request from terminal {terminal.device_id}"
         )
@@ -152,6 +171,9 @@ class OfflineApprovalsIngestView(APIView):
 
     def post(self, request):
         terminal = request.auth
+
+        # Clear parked status - terminal is active
+        _clear_parked_status(terminal)
 
         logger.info(
             f"Offline approvals ingest request from terminal {terminal.device_id}"
@@ -249,6 +271,11 @@ class TerminalHeartbeatView(APIView):
             terminal.pending_operations_count = data['pending_operations']
             terminal.exposure_amount = data['exposure_amount']
 
+            # Clear parked status - terminal is active again
+            if terminal.parked_at:
+                logger.debug(f"Terminal {terminal.device_id} unparked via heartbeat")
+            terminal.parked_at = None
+
             # Track offline_since
             if not data['is_online']:
                 if not terminal.offline_since:
@@ -264,15 +291,20 @@ class TerminalHeartbeatView(APIView):
             if data.get('last_flush_success'):
                 terminal.last_flush_success_at = data['last_flush_success']
 
+            # Reset offline alert flag on heartbeat (terminal is back online)
+            terminal.offline_alert_sent_at = None
+
             terminal.save(update_fields=[
                 'last_heartbeat_at',
                 'sync_status',
                 'pending_orders_count',
                 'pending_operations_count',
                 'exposure_amount',
+                'parked_at',
                 'offline_since',
                 'last_sync_success_at',
                 'last_flush_success_at',
+                'offline_alert_sent_at',
                 'last_seen',  # auto_now field
             ])
 
@@ -309,3 +341,58 @@ class TerminalHeartbeatView(APIView):
             response_data['message'] = 'Pending orders detected, please flush'
 
         return Response(response_data, status=http_status.HTTP_200_OK)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TerminalParkView(APIView):
+    """
+    Park/shutdown endpoint for terminals.
+
+    POST /api/sync/park/
+
+    Called when a terminal app is intentionally shut down. Marks the terminal
+    as "parked" to suppress offline alerts until it comes back online.
+
+    The parked status is cleared automatically when:
+    - Terminal sends a heartbeat
+    - Terminal sends any sync/ingest request
+    - A new business day starts (parked_at is checked against today)
+
+    Note: CSRF exempt because this endpoint is called from Electron's main process
+    during app shutdown, which doesn't have access to session cookies or CSRF tokens.
+    Authentication is handled via DeviceSignatureAuthentication (HMAC).
+    """
+
+    authentication_classes = [DeviceSignatureAuthentication]
+    permission_classes = [IsAuthenticatedTerminal]
+
+    def post(self, request):
+        terminal = request.auth
+        now = timezone.now()
+
+        try:
+            terminal.parked_at = now
+            terminal.save(update_fields=['parked_at'])
+
+            logger.info(
+                f"Terminal {terminal.device_id} parked at {now.isoformat()}"
+            )
+
+            return Response(
+                {
+                    'status': 'parked',
+                    'parked_at': now,
+                    'message': 'Terminal marked as parked. Offline alerts suppressed.'
+                },
+                status=http_status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to park terminal {terminal.device_id}: {e}")
+            return Response(
+                {
+                    'status': 'error',
+                    'message': 'Failed to park terminal'
+                },
+                status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

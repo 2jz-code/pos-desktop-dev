@@ -3,16 +3,21 @@ Celery tasks for terminal fleet management.
 
 Tasks:
 - daily_offline_revenue_summary: Sends email summary and resets daily counters
+- check_offline_terminals: Checks for terminals offline > 10 min and sends alerts
 """
 from celery import shared_task
 from django.utils import timezone
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
+from datetime import timedelta
 from decimal import Decimal
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+OFFLINE_ALERT_THRESHOLD_MINUTES = 10
 
 
 @shared_task
@@ -197,4 +202,153 @@ def _send_offline_summary_email(tenant, terminals, total_revenue, total_orders):
 
     except Exception as e:
         logger.error(f"Failed to send offline summary email for tenant {tenant.slug}: {e}")
+        return False
+
+
+@shared_task
+def check_offline_terminals():
+    """
+    Periodic task to check for terminals that have been offline > 10 minutes.
+
+    Sends a single alert email to owners when a terminal goes offline.
+    The alert flag is reset when the terminal sends a heartbeat again.
+
+    Run every 2-5 minutes via Celery Beat.
+    """
+    from tenant.models import Tenant
+    from tenant.managers import set_current_tenant
+    from .models import TerminalRegistration
+    from users.models import User
+
+    now = timezone.now()
+    offline_threshold = now - timedelta(minutes=OFFLINE_ALERT_THRESHOLD_MINUTES)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    alerts_sent = 0
+    terminals_checked = 0
+
+    try:
+        for tenant in Tenant.objects.filter(is_active=True):
+            try:
+                set_current_tenant(tenant)
+
+                # Find terminals that:
+                # 1. Were active today (heartbeat today)
+                # 2. Last heartbeat > 10 minutes ago (offline)
+                # 3. Not intentionally parked (parked_at is null or before today)
+                # 4. Haven't been alerted yet (offline_alert_sent_at is null)
+                offline_terminals = TerminalRegistration.objects.filter(
+                    is_active=True,
+                    last_heartbeat_at__gte=today_start,  # Active today
+                    last_heartbeat_at__lt=offline_threshold,  # Offline > threshold
+                    offline_alert_sent_at__isnull=True,  # Not yet alerted
+                ).exclude(
+                    parked_at__gte=today_start  # Exclude parked terminals
+                ).select_related('store_location')
+
+                if not offline_terminals.exists():
+                    continue
+
+                # Get recipients for this tenant
+                recipients = list(
+                    User.objects.filter(
+                        tenant=tenant,
+                        role__in=['OWNER', 'ADMIN'],
+                        is_active=True,
+                        email__isnull=False
+                    ).exclude(email='').values_list('email', flat=True)
+                )
+
+                if not recipients:
+                    logger.warning(f"No recipients for offline alerts in tenant {tenant.slug}")
+                    continue
+
+                for terminal in offline_terminals:
+                    terminals_checked += 1
+
+                    # Send alert
+                    success = _send_terminal_offline_alert(
+                        tenant=tenant,
+                        terminal=terminal,
+                        recipients=recipients,
+                        offline_since=terminal.last_heartbeat_at
+                    )
+
+                    if success:
+                        # Mark as alerted
+                        terminal.offline_alert_sent_at = now
+                        terminal.save(update_fields=['offline_alert_sent_at'])
+                        alerts_sent += 1
+                        logger.info(
+                            f"Offline alert sent for terminal {terminal.nickname or terminal.device_id} "
+                            f"in tenant {tenant.slug}"
+                        )
+
+            except Exception as tenant_exc:
+                logger.error(f"Error checking offline terminals for tenant {tenant.slug}: {tenant_exc}")
+                continue
+            finally:
+                set_current_tenant(None)
+
+        logger.info(f"Offline terminal check completed: {terminals_checked} checked, {alerts_sent} alerts sent")
+        return {"terminals_checked": terminals_checked, "alerts_sent": alerts_sent}
+
+    except Exception as exc:
+        logger.error(f"Error in check_offline_terminals: {exc}")
+        return {"status": "failed", "error": str(exc)}
+
+
+def _send_terminal_offline_alert(tenant, terminal, recipients, offline_since):
+    """
+    Send an alert email when a terminal goes offline.
+
+    Args:
+        tenant: Tenant instance
+        terminal: TerminalRegistration instance
+        recipients: List of email addresses
+        offline_since: DateTime when terminal went offline
+
+    Returns:
+        bool: True if email sent successfully
+    """
+    from settings.models import GlobalSettings
+
+    try:
+        # Get store/brand info
+        try:
+            global_settings = GlobalSettings.objects.get(tenant=tenant)
+            brand_name = global_settings.brand_name or tenant.name
+        except GlobalSettings.DoesNotExist:
+            brand_name = tenant.name
+
+        # Calculate offline duration
+        offline_duration = timezone.now() - offline_since
+        offline_minutes = int(offline_duration.total_seconds() / 60)
+
+        context = {
+            'terminal_name': terminal.nickname or f"Terminal {terminal.device_id[:8]}",
+            'location_name': terminal.store_location.name if terminal.store_location else 'Unassigned',
+            'offline_since': offline_since.strftime('%I:%M %p'),
+            'offline_minutes': offline_minutes,
+            'brand_name': brand_name,
+        }
+
+        html_content = render_to_string('emails/terminal_offline_alert.html', context)
+
+        subject = f"⚠️ Terminal Offline: {context['terminal_name']}"
+        from_email = settings.DEFAULT_FROM_EMAIL
+
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=f"Your terminal '{context['terminal_name']}' at {context['location_name']} has been offline since {context['offline_since']} ({offline_minutes} minutes).",
+            from_email=from_email,
+            to=recipients
+        )
+        email.attach_alternative(html_content, "text/html")
+        email.send()
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send terminal offline alert: {e}")
         return False

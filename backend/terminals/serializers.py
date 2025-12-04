@@ -81,6 +81,7 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
     # Fleet monitoring status fields (computed properties)
     display_status = serializers.CharField(read_only=True)
     needs_attention = serializers.BooleanField(read_only=True)
+    is_parked = serializers.BooleanField(read_only=True)
     offline_duration_seconds = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -113,6 +114,9 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             # Daily offline metrics
             'daily_offline_revenue',
             'daily_offline_order_count',
+            # Parked/shutdown status
+            'parked_at',
+            'is_parked',
             # Computed status fields
             'display_status',
             'needs_attention',
@@ -136,6 +140,7 @@ class TerminalRegistrationSerializer(serializers.ModelSerializer):
             'exposure_amount',
             'daily_offline_revenue',
             'daily_offline_order_count',
+            'parked_at',
         ]
 
     def get_offline_duration_seconds(self, obj):

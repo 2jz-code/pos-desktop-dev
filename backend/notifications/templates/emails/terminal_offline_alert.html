@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Terminal Offline Alert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            margin: -30px -30px 20px -30px;
+        }
+        .alert-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        .terminal-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #dc3545;
+        }
+        .offline-duration {
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .action-note {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 12px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="alert-icon">⚠️</span>Terminal Offline</h1>
+        </div>
+
+        <p>Hello,</p>
+
+        <p>One of your POS terminals has gone offline and may require attention.</p>
+
+        <div class="terminal-info">
+            <h3>Terminal Details:</h3>
+            <p><strong>Terminal:</strong> {{ terminal_name }}</p>
+            <p><strong>Location:</strong> {{ location_name }}</p>
+            <p><strong>Last Seen:</strong> {{ offline_since }}</p>
+            <p class="offline-duration"><strong>Offline Duration:</strong> {{ offline_minutes }} minutes</p>
+        </div>
+
+        <div class="action-note">
+            <strong>Note:</strong> If this terminal was intentionally shut down, you can ignore this alert.
+            The terminal will automatically resume normal operation when powered back on.
+        </div>
+
+        <p><strong>Possible Causes:</strong></p>
+        <ul>
+            <li>Terminal was powered off or restarted</li>
+            <li>Network connectivity issue</li>
+            <li>Software crash or freeze</li>
+        </ul>
+
+        <p><strong>Recommended Actions:</strong></p>
+        <ul>
+            <li>Check if the terminal is powered on</li>
+            <li>Verify network/internet connection at the location</li>
+            <li>Restart the terminal application if needed</li>
+        </ul>
+
+        <div class="footer">
+            <p>This alert was sent from your {{ brand_name }} POS system.</p>
+            <p><em>You will only receive one alert per offline event. When the terminal comes back online, the alert will reset.</em></p>
+        </div>
+    </div>
+</body>
+</html>

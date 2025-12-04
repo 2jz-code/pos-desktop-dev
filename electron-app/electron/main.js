@@ -1,6 +1,9 @@
 import { app, BrowserWindow, session, ipcMain, screen } from "electron";
 import path from "node:path";
 import process from "node:process";
+import crypto from "node:crypto";
+import https from "node:https";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import nodeMachineId from "node-machine-id";
@@ -128,6 +131,153 @@ let lastPongTimestamp = Date.now();
 let waitingForPong = false;
 let consecutiveFailures = 0; // Track failures for graduated recovery
 let lastRecoveryAttemptTime = 0;
+
+// ============================================================================
+// Terminal Park Signal (Shutdown Notification)
+// ============================================================================
+
+/**
+ * Recursively sort object keys for canonical JSON serialization.
+ * Matches Python's json.dumps(sort_keys=True)
+ */
+function sortKeysDeep(obj) {
+	if (obj === null || typeof obj !== "object") {
+		return obj;
+	}
+	if (Array.isArray(obj)) {
+		return obj.map(sortKeysDeep);
+	}
+	return Object.keys(obj)
+		.sort()
+		.reduce((result, key) => {
+			result[key] = sortKeysDeep(obj[key]);
+			return result;
+		}, {});
+}
+
+/**
+ * Generate HMAC-SHA256 signature for device authentication.
+ * Matches backend SignatureService.compute_signature() exactly.
+ */
+function generateDeviceSignature(payload, nonce, signingSecret) {
+	// Serialize payload to canonical JSON (matches Python's json.dumps(sort_keys=True, separators=(',', ':')))
+	const sortedPayload = sortKeysDeep(payload);
+	const payloadJson = JSON.stringify(sortedPayload);
+
+	// Create message: payload + nonce
+	const message = payloadJson + nonce;
+
+	// Compute HMAC-SHA256
+	const hmac = crypto.createHmac("sha256", Buffer.from(signingSecret, "hex"));
+	hmac.update(message, "utf8");
+	return hmac.digest("hex");
+}
+
+/**
+ * Send park signal to backend to indicate intentional shutdown.
+ * This suppresses offline alerts for the terminal.
+ *
+ * Best-effort with short timeout - should not block app shutdown.
+ */
+async function sendParkSignal() {
+	const PARK_TIMEOUT_MS = 3000; // 3 second timeout
+
+	try {
+		const db = getDatabase();
+		if (!db || !isPaired(db)) {
+			console.log("[Park] Terminal not paired, skipping park signal");
+			return;
+		}
+
+		const pairingInfo = getPairingInfo(db);
+		if (!pairingInfo || !pairingInfo.signing_secret) {
+			console.log("[Park] No signing secret, skipping park signal");
+			return;
+		}
+
+		// Build payload
+		const nonce = crypto.randomUUID();
+		const created_at = new Date().toISOString();
+		const payload = {
+			device_id: pairingInfo.terminal_id,
+			nonce,
+			created_at,
+		};
+
+		// Generate signature
+		const signature = generateDeviceSignature(
+			payload,
+			nonce,
+			pairingInfo.signing_secret
+		);
+
+		// Determine API URL
+		// Ensure base URL ends with / so relative path appends correctly
+		const apiBaseUrl =
+			process.env.VITE_API_BASE_URL || "https://localhost:8001/api";
+		const baseWithSlash = apiBaseUrl.endsWith("/") ? apiBaseUrl : apiBaseUrl + "/";
+		const parkUrl = new URL("sync/park/", baseWithSlash);
+
+		// Choose http or https module
+		const httpModule = parkUrl.protocol === "https:" ? https : http;
+
+		// Make request with timeout
+		const requestPromise = new Promise((resolve, reject) => {
+			const requestBody = JSON.stringify(payload);
+
+			const options = {
+				hostname: parkUrl.hostname,
+				port: parkUrl.port || (parkUrl.protocol === "https:" ? 443 : 80),
+				path: parkUrl.pathname,
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"Content-Length": Buffer.byteLength(requestBody),
+					"X-Device-ID": pairingInfo.terminal_id,
+					"X-Device-Nonce": nonce,
+					"X-Device-Signature": signature,
+					"X-Client-Type": "electron-pos",
+					"X-Tenant": pairingInfo.tenant_slug, // Required for tenant-scoped queries
+				},
+				timeout: PARK_TIMEOUT_MS,
+				// Allow self-signed certs in development
+				rejectUnauthorized: !isDev,
+			};
+
+			const req = httpModule.request(options, (res) => {
+				let data = "";
+				res.on("data", (chunk) => (data += chunk));
+				res.on("end", () => {
+					if (res.statusCode >= 200 && res.statusCode < 300) {
+						resolve({ status: res.statusCode, data });
+					} else {
+						reject(new Error(`Park request failed: ${res.statusCode} ${data}`));
+					}
+				});
+			});
+
+			req.on("error", reject);
+			req.on("timeout", () => {
+				req.destroy();
+				reject(new Error("Park request timed out"));
+			});
+
+			req.write(requestBody);
+			req.end();
+		});
+
+		// Race against timeout
+		const timeoutPromise = new Promise((_, reject) =>
+			setTimeout(() => reject(new Error("Park signal timeout")), PARK_TIMEOUT_MS)
+		);
+
+		await Promise.race([requestPromise, timeoutPromise]);
+		console.log("[Park] Terminal parked successfully");
+	} catch (error) {
+		// Best-effort - log but don't throw
+		console.warn("[Park] Failed to send park signal:", error.message);
+	}
+}
 
 function createMainWindow() {
 	const primaryDisplay = screen.getPrimaryDisplay();
@@ -1393,7 +1543,16 @@ ipcMain.handle("get-device-fingerprint", () => {
 	return machineIdSync({ original: true });
 });
 
-ipcMain.on("shutdown-app", () => {
+// Track if we've already sent the park signal to prevent double-sending
+let parkSignalSent = false;
+
+ipcMain.on("shutdown-app", async () => {
+	// Send park signal before quitting
+	if (!parkSignalSent) {
+		parkSignalSent = true;
+		console.log("[Main Process] Shutdown requested, sending park signal...");
+		await sendParkSignal();
+	}
 	app.quit();
 });
 
@@ -1466,8 +1625,21 @@ app.on("window-all-closed", () => {
 });
 
 // Cleanup on app quit
-app.on("before-quit", () => {
+app.on("before-quit", async (event) => {
 	console.log("[Main Process] Application shutting down...");
+
+	// Send park signal if not already sent (handles Alt+F4, window X button, etc.)
+	if (!parkSignalSent) {
+		parkSignalSent = true;
+		event.preventDefault(); // Delay quit until park signal is sent
+
+		console.log("[Main Process] Sending park signal before quit...");
+		await sendParkSignal();
+
+		// Now actually quit
+		app.quit();
+		return;
+	}
 
 	// Stop network monitor
 	try {

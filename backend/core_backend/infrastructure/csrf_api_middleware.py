@@ -18,6 +18,7 @@ class CSRFApiMiddleware(MiddlewareMixin):
         "/api/health/",
         "/api/security/csrf/",
         "/api/payments/webhooks/",
+        "/api/sync/",  # Device signature auth (HMAC), not cookie-based
     )
 
     def process_request(self, request):

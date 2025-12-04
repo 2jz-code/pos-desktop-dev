@@ -16,6 +16,7 @@ from .ingest_views import (
     OfflineInventoryIngestView,
     OfflineApprovalsIngestView,
     TerminalHeartbeatView,
+    TerminalParkView,
 )
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     'OfflineOrderIngestView',
     'OfflineInventoryIngestView',
     'OfflineApprovalsIngestView',
-    # Heartbeat
+    # Terminal status
     'TerminalHeartbeatView',
+    'TerminalParkView',
 ]

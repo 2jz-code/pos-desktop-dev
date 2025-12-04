@@ -1,6 +1,9 @@
 import { app, ipcMain, BrowserWindow, screen, session } from "electron";
 import path from "node:path";
 import process$1 from "node:process";
+import crypto from "node:crypto";
+import https$1 from "node:https";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import nodeMachineId from "node-machine-id";
@@ -2449,6 +2452,104 @@ let healthCheckInterval = null;
 let lastPongTimestamp = Date.now();
 let waitingForPong = false;
 let consecutiveFailures = 0;
+function sortKeysDeep(obj) {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sortKeysDeep);
+  }
+  return Object.keys(obj).sort().reduce((result, key) => {
+    result[key] = sortKeysDeep(obj[key]);
+    return result;
+  }, {});
+}
+function generateDeviceSignature(payload, nonce, signingSecret) {
+  const sortedPayload = sortKeysDeep(payload);
+  const payloadJson = JSON.stringify(sortedPayload);
+  const message = payloadJson + nonce;
+  const hmac = crypto.createHmac("sha256", Buffer.from(signingSecret, "hex"));
+  hmac.update(message, "utf8");
+  return hmac.digest("hex");
+}
+async function sendParkSignal() {
+  const PARK_TIMEOUT_MS = 3e3;
+  try {
+    const db2 = getDatabase();
+    if (!db2 || !isPaired(db2)) {
+      console.log("[Park] Terminal not paired, skipping park signal");
+      return;
+    }
+    const pairingInfo = getPairingInfo(db2);
+    if (!pairingInfo || !pairingInfo.signing_secret) {
+      console.log("[Park] No signing secret, skipping park signal");
+      return;
+    }
+    const nonce = crypto.randomUUID();
+    const created_at = (/* @__PURE__ */ new Date()).toISOString();
+    const payload = {
+      device_id: pairingInfo.terminal_id,
+      nonce,
+      created_at
+    };
+    const signature = generateDeviceSignature(
+      payload,
+      nonce,
+      pairingInfo.signing_secret
+    );
+    const apiBaseUrl = process$1.env.VITE_API_BASE_URL || "https://localhost:8001/api";
+    const baseWithSlash = apiBaseUrl.endsWith("/") ? apiBaseUrl : apiBaseUrl + "/";
+    const parkUrl = new URL("sync/park/", baseWithSlash);
+    const httpModule = parkUrl.protocol === "https:" ? https$1 : http;
+    const requestPromise = new Promise((resolve, reject) => {
+      const requestBody = JSON.stringify(payload);
+      const options = {
+        hostname: parkUrl.hostname,
+        port: parkUrl.port || (parkUrl.protocol === "https:" ? 443 : 80),
+        path: parkUrl.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(requestBody),
+          "X-Device-ID": pairingInfo.terminal_id,
+          "X-Device-Nonce": nonce,
+          "X-Device-Signature": signature,
+          "X-Client-Type": "electron-pos",
+          "X-Tenant": pairingInfo.tenant_slug
+          // Required for tenant-scoped queries
+        },
+        timeout: PARK_TIMEOUT_MS,
+        // Allow self-signed certs in development
+        rejectUnauthorized: !isDev
+      };
+      const req = httpModule.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => data += chunk);
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ status: res.statusCode, data });
+          } else {
+            reject(new Error(`Park request failed: ${res.statusCode} ${data}`));
+          }
+        });
+      });
+      req.on("error", reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Park request timed out"));
+      });
+      req.write(requestBody);
+      req.end();
+    });
+    const timeoutPromise = new Promise(
+      (_, reject) => setTimeout(() => reject(new Error("Park signal timeout")), PARK_TIMEOUT_MS)
+    );
+    await Promise.race([requestPromise, timeoutPromise]);
+    console.log("[Park] Terminal parked successfully");
+  } catch (error) {
+    console.warn("[Park] Failed to send park signal:", error.message);
+  }
+}
 function createMainWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const persistentSession = session.defaultSession;
@@ -3476,7 +3577,13 @@ ipcMain.handle("get-machine-id", () => {
 ipcMain.handle("get-device-fingerprint", () => {
   return machineIdSync({ original: true });
 });
-ipcMain.on("shutdown-app", () => {
+let parkSignalSent = false;
+ipcMain.on("shutdown-app", async () => {
+  if (!parkSignalSent) {
+    parkSignalSent = true;
+    console.log("[Main Process] Shutdown requested, sending park signal...");
+    await sendParkSignal();
+  }
   app.quit();
 });
 app.whenReady().then(async () => {
@@ -3528,8 +3635,16 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
-app.on("before-quit", () => {
+app.on("before-quit", async (event) => {
   console.log("[Main Process] Application shutting down...");
+  if (!parkSignalSent) {
+    parkSignalSent = true;
+    event.preventDefault();
+    console.log("[Main Process] Sending park signal before quit...");
+    await sendParkSignal();
+    app.quit();
+    return;
+  }
   try {
     const networkMonitor = getNetworkMonitor();
     networkMonitor.stop();

@@ -51,7 +51,9 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         # Heartbeat status fields (read-only, updated by heartbeat endpoint)
         "last_heartbeat_at", "sync_status", "pending_orders_count",
         "pending_operations_count", "last_sync_success_at", "last_flush_success_at",
-        "exposure_amount", "status_display", "offline_duration_display"
+        "exposure_amount", "status_display", "offline_duration_display",
+        # Parked/shutdown and alert tracking
+        "parked_at", "offline_alert_sent_at",
     )
     autocomplete_fields = ["store_location", "pairing_code"]
     actions = ['unlock_terminals']
@@ -70,7 +72,8 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
             'fields': (
                 'status_display', 'last_heartbeat_at',
                 'pending_orders_count', 'pending_operations_count',
-                'exposure_amount', 'offline_duration_display'
+                'exposure_amount', 'offline_duration_display',
+                'parked_at', 'offline_alert_sent_at',
             ),
             'description': 'Real-time status reported by terminal heartbeats'
         }),
@@ -94,6 +97,7 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         - online: Terminal is operational
         - syncing: Terminal is flushing offline queue
         - offline: Terminal was active today but is now unreachable
+        - shutdown: Terminal was intentionally parked/shutdown
         - inactive: Terminal hasn't been used today
         """
         status = obj.display_status
@@ -101,6 +105,7 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
             'online': '🟢 Online',
             'syncing': '🔄 Syncing',
             'offline': '🔴 Offline',
+            'shutdown': '⏸️ Shutdown',
             'inactive': '⚪ Inactive',
         }
         result = icons.get(status, f'❓ {status}')
@@ -108,6 +113,10 @@ class TerminalRegistrationAdmin(TenantAdminMixin, admin.ModelAdmin):
         # Add warning if needs attention (was active today, now offline)
         if obj.needs_attention:
             result += ' ⚠️'
+
+        # Show alert sent indicator
+        if obj.offline_alert_sent_at:
+            result += ' 📧'
 
         return result
 

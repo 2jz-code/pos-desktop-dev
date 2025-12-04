@@ -7,7 +7,7 @@ import apiClient from "./client";
 
 // === Types ===
 
-export type TerminalDisplayStatus = "online" | "syncing" | "offline" | "inactive";
+export type TerminalDisplayStatus = "online" | "syncing" | "offline" | "shutdown" | "inactive";
 export type TerminalSyncStatus = "unknown" | "online" | "offline" | "syncing" | "error";
 
 export interface TerminalRegistration {
@@ -38,6 +38,9 @@ export interface TerminalRegistration {
 	// Daily offline metrics
 	daily_offline_revenue: string;
 	daily_offline_order_count: number;
+	// Parked/shutdown status
+	parked_at: string | null;
+	is_parked: boolean;
 	// Computed status fields
 	display_status: TerminalDisplayStatus;
 	needs_attention: boolean;
