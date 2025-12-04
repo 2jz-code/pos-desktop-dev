@@ -118,6 +118,12 @@ class OfflineOrderSerializer(serializers.Serializer):
 
     This represents an order that was created while the terminal was offline
     and is now being synced to the backend.
+
+    Supports two modes:
+    1. CREATE: local_order_id is provided (offline-created order)
+    2. UPDATE: server_order_id is provided (order created online, completed offline)
+
+    Only one of local_order_id or server_order_id should be provided.
     """
     # Operation metadata
     operation_id = serializers.UUIDField()
@@ -133,6 +139,12 @@ class OfflineOrderSerializer(serializers.Serializer):
         default=dict
     )
 
+    # Order identification - mutually exclusive
+    # local_order_id: Order was created entirely offline (CREATE mode)
+    local_order_id = serializers.CharField(max_length=255, required=False, allow_null=True)
+    # server_order_id: Order was created online but went offline mid-order (UPDATE mode)
+    server_order_id = serializers.UUIDField(required=False, allow_null=True)
+
     # Order details
     order = serializers.DictField()  # Will be validated separately
 
@@ -144,6 +156,22 @@ class OfflineOrderSerializer(serializers.Serializer):
 
     # Approvals
     approvals = OfflineApprovalSerializer(many=True, required=False, default=list)
+
+    def validate(self, data):
+        """Validate that exactly one of local_order_id or server_order_id is provided."""
+        local_id = data.get('local_order_id')
+        server_id = data.get('server_order_id')
+
+        # At least one must be provided for identification
+        if not local_id and not server_id:
+            # For backwards compatibility, allow neither (will create new order)
+            pass
+        elif local_id and server_id:
+            raise serializers.ValidationError(
+                "Only one of 'local_order_id' or 'server_order_id' should be provided, not both."
+            )
+
+        return data
 
     def validate_order(self, value):
         """Validate nested order object"""
@@ -244,6 +272,18 @@ class OfflineOrderIngestResponseSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['SUCCESS', 'CONFLICT', 'ERROR'])
     order_number = serializers.CharField(required=False, allow_null=True)
     order_id = serializers.UUIDField(required=False, allow_null=True)
+    # Mode indicates whether order was created or updated
+    mode = serializers.ChoiceField(
+        choices=['CREATE', 'UPDATE'],
+        required=False,
+        allow_null=True
+    )
+    # Warnings are informational only (deleted products, expired discounts)
+    warnings = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list
+    )
     conflicts = ConflictDetailSerializer(many=True, required=False, default=list)
     errors = serializers.ListField(
         child=serializers.CharField(),

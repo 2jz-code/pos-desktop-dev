@@ -79,6 +79,10 @@ class OfflineOrderIngestService:
         """
         Ingest an offline order.
 
+        Supports two modes:
+        1. CREATE: local_order_id provided - creates new order (offline-created order)
+        2. UPDATE: server_order_id provided - updates existing order (online order completed offline)
+
         Following industry standard (Square, Toast, Clover), offline orders are
         always accepted since the transaction already happened in the real world.
         Any issues (deleted products, expired discounts) are logged for informational
@@ -94,10 +98,15 @@ class OfflineOrderIngestService:
                 'order_number': str,
                 'order_id': uuid,
                 'warnings': list,  # Informational only, doesn't block
-                'errors': list
+                'errors': list,
+                'mode': 'CREATE'|'UPDATE'  # Which mode was used
             }
         """
         from django.db import IntegrityError
+
+        # Determine mode: UPDATE if server_order_id provided, else CREATE
+        server_order_id = payload.get('server_order_id')
+        is_update_mode = server_order_id is not None
 
         try:
             # Check for issues (informational only - logged for internal tracking)
@@ -112,15 +121,9 @@ class OfflineOrderIngestService:
                     f"has warnings: {'; '.join([w['message'] for w in warnings])}"
                 )
 
-            # Create order atomically with idempotency protection
-            # The atomic block ensures:
-            # 1. If ProcessedOperation exists, we return early (no order created)
-            # 2. If ProcessedOperation creation fails (race), transaction rolls back
-            # 3. Order number allocation uses SELECT FOR UPDATE to prevent collisions
+            # Create/update order atomically with idempotency protection
             with transaction.atomic():
                 # Idempotency check INSIDE the atomic block
-                # This ensures we don't allocate an order number if the operation
-                # was already processed by a concurrent request
                 existing = ProcessedOperation.objects.filter(
                     tenant=terminal.tenant,
                     terminal=terminal,
@@ -134,7 +137,16 @@ class OfflineOrderIngestService:
                     )
                     return existing.result_data
 
-                order = OfflineOrderIngestService._create_order(payload, terminal)
+                if is_update_mode:
+                    # UPDATE MODE: Update existing server order
+                    order = OfflineOrderIngestService._update_order(payload, terminal, server_order_id)
+                    mode = 'UPDATE'
+                else:
+                    # CREATE MODE: Create new order
+                    order = OfflineOrderIngestService._create_order(payload, terminal)
+                    mode = 'CREATE'
+
+                # Handle payments (idempotent - won't duplicate)
                 payments = OfflineOrderIngestService._create_payments(payload, order, terminal)
                 OfflineOrderIngestService._process_inventory_deltas(payload, terminal)
 
@@ -147,18 +159,17 @@ class OfflineOrderIngestService:
                     'status': 'SUCCESS',
                     'order_number': order.order_number,
                     'order_id': str(order.id),
-                    'warnings': warnings,  # Returned for logging, not displayed to user
-                    'errors': []
+                    'warnings': warnings,
+                    'errors': [],
+                    'mode': mode
                 }
 
-                # Store for idempotency (within same transaction)
-                # If another request created this first, IntegrityError is raised
-                # and the entire transaction (including order) is rolled back
+                # Store for idempotency
                 ProcessedOperation.objects.create(
                     tenant=terminal.tenant,
                     terminal=terminal,
                     operation_id=payload['operation_id'],
-                    operation_type='OFFLINE_ORDER',
+                    operation_type='OFFLINE_ORDER_UPDATE' if is_update_mode else 'OFFLINE_ORDER',
                     result_data=result,
                     order_id=order.id
                 )
@@ -167,8 +178,8 @@ class OfflineOrderIngestService:
                 OfflineOrderIngestService._update_daily_offline_metrics(terminal, order)
 
             logger.info(
-                f"Offline order ingested successfully: {order.order_number} "
-                f"from terminal {terminal.device_id}"
+                f"Offline order {'updated' if is_update_mode else 'created'} successfully: "
+                f"{order.order_number} from terminal {terminal.device_id}"
                 f"{' (with warnings)' if warnings else ''}"
             )
 
@@ -351,6 +362,183 @@ class OfflineOrderIngestService:
             OfflineOrderIngestService._create_adjustment(
                 order, adj_data, terminal, cashier, order_item=None
             )
+
+        return order
+
+    @staticmethod
+    def _update_order(payload, terminal, server_order_id):
+        """
+        Update an existing order that was created online but completed offline.
+
+        This handles the mid-order offline scenario where:
+        1. Terminal creates order online (gets real order ID)
+        2. Connection drops mid-order
+        3. Customer continues shopping, pays offline
+        4. Terminal syncs back - updates existing order with final state
+
+        Strategy: Replace (not merge) all items, adjustments, discounts, totals.
+        The offline payload represents the final state of the order.
+
+        Args:
+            payload: Validated offline order payload
+            terminal: TerminalRegistration instance
+            server_order_id: UUID of the existing order to update
+
+        Returns:
+            Order: Updated order instance
+
+        Raises:
+            ValidationError: If order not found, wrong tenant, or wrong status
+        """
+        from django.utils.dateparse import parse_datetime
+        from users.models import User
+
+        order_data = payload['order']
+
+        # Fetch existing order with validation
+        try:
+            order = Order.objects.get(
+                id=server_order_id,
+                tenant=terminal.tenant
+            )
+        except Order.DoesNotExist:
+            raise ValidationError(
+                f"Order {server_order_id} not found for tenant {terminal.tenant.id}"
+            )
+
+        # Validate order status - can only update orders that aren't already completed
+        # DRAFT: New order with no items yet
+        # IN_PROGRESS: Order has items, customer is shopping
+        # PENDING: Order submitted but not processed (web orders)
+        allowed_statuses = ['DRAFT', 'IN_PROGRESS', 'PENDING']
+        if order.status not in allowed_statuses:
+            raise ValidationError(
+                f"Cannot update order {order.order_number} - status is {order.status}. "
+                f"Only orders in {allowed_statuses} can be updated."
+            )
+
+        # Validate location matches (order should be from same terminal's location)
+        if order.store_location_id != terminal.store_location_id:
+            logger.warning(
+                f"Order {order.order_number} location ({order.store_location_id}) "
+                f"differs from terminal location ({terminal.store_location_id}). "
+                f"Proceeding with update anyway - terminal may have moved."
+            )
+
+        logger.info(
+            f"Updating existing order {order.order_number} (status: {order.status}) "
+            f"with offline payload from terminal {terminal.device_id}"
+        )
+
+        # Parse offline timestamp
+        offline_timestamp = payload.get('offline_created_at') or payload.get('created_at')
+        if isinstance(offline_timestamp, str):
+            completed_at = parse_datetime(offline_timestamp) or timezone.now()
+        elif hasattr(offline_timestamp, 'tzinfo'):
+            completed_at = offline_timestamp
+        else:
+            completed_at = timezone.now()
+
+        # Get cashier for adjustments
+        cashier_id = order_data.get('cashier_id')
+        cashier = None
+        if cashier_id:
+            try:
+                cashier = User.objects.get(id=cashier_id, tenant=terminal.tenant)
+            except User.DoesNotExist:
+                logger.warning(f"Cashier {cashier_id} not found for order update")
+
+        # === REPLACE STRATEGY: Delete existing items, adjustments, discounts ===
+
+        # Delete existing order items (cascade deletes modifiers)
+        deleted_items = order.items.all().delete()
+        logger.debug(f"Deleted {deleted_items[0]} existing items from order {order.order_number}")
+
+        # Delete existing adjustments
+        deleted_adjustments = order.adjustments.all().delete()
+        logger.debug(f"Deleted {deleted_adjustments[0]} existing adjustments")
+
+        # Delete existing discounts (OrderDiscount through model)
+        deleted_discounts = OrderDiscount.objects.filter(order=order).delete()
+        logger.debug(f"Deleted {deleted_discounts[0]} existing discounts")
+
+        # === CREATE NEW ITEMS FROM PAYLOAD ===
+
+        for item_data in order_data['items']:
+            order_item = OrderItem.objects.create(
+                tenant=terminal.tenant,
+                order=order,
+                product_id=item_data['product_id'],
+                quantity=item_data['quantity'],
+                price_at_sale=Decimal(str(item_data['price_at_sale'])),
+                notes=item_data.get('notes', ''),
+                status='COMPLETED'
+            )
+
+            # Create modifier snapshots
+            for mod_data in item_data.get('modifiers', []):
+                OfflineOrderIngestService._create_item_modifier(
+                    order_item, mod_data, terminal
+                )
+
+            # Create item-level adjustments
+            for adj_data in item_data.get('adjustments', []):
+                OfflineOrderIngestService._create_adjustment(
+                    order, adj_data, terminal, cashier, order_item=order_item
+                )
+
+        # Create promotional/code discounts
+        for discount_data in order_data.get('discounts', []):
+            OfflineOrderIngestService._create_order_discount(
+                order, discount_data, terminal
+            )
+
+        # Create order-level adjustments
+        for adj_data in order_data.get('adjustments', []):
+            OfflineOrderIngestService._create_adjustment(
+                order, adj_data, terminal, cashier, order_item=None
+            )
+
+        # === UPDATE ORDER FIELDS ===
+
+        order.order_type = order_data['order_type']
+        order.status = 'COMPLETED'  # Offline orders are completed
+        order.payment_status = 'PAID'  # Offline orders are paid
+        order.dining_preference = order_data.get('dining_preference', 'TAKE_OUT')
+
+        # Update customer info if provided
+        if cashier_id:
+            order.cashier_id = cashier_id
+        if order_data.get('customer_id'):
+            order.customer_id = order_data['customer_id']
+        if order_data.get('guest_first_name'):
+            order.guest_first_name = order_data['guest_first_name']
+        if order_data.get('guest_email'):
+            order.guest_email = order_data['guest_email']
+        if order_data.get('guest_phone'):
+            order.guest_phone = order_data['guest_phone']
+
+        # Update financial totals
+        order.subtotal = Decimal(str(order_data['subtotal']))
+        order.tax_total = Decimal(str(order_data['tax']))
+        order.surcharges_total = Decimal(str(order_data.get('surcharge', 0)))
+        order.total_discounts_amount = Decimal(str(order_data.get('discount_total', 0)))
+        order.grand_total = Decimal(str(order_data['total']))
+
+        # Update timestamps
+        order.completed_at = completed_at
+
+        # Mark as offline-completed (was online, finished offline)
+        order.is_offline_order = True
+        order.offline_created_at = completed_at
+        order.offline_terminal_id = terminal.device_id
+
+        order.save()
+
+        logger.info(
+            f"Successfully updated order {order.order_number} with offline data. "
+            f"Items: {order.items.count()}, Total: ${order.grand_total}"
+        )
 
         return order
 
@@ -544,40 +732,128 @@ class OfflineOrderIngestService:
         """
         Create Payment and PaymentTransaction records.
 
+        Handles three scenarios:
+        1. No existing payment → create new payment with offline transactions
+        2. Existing PARTIALLY_PAID → append offline transactions (mid-split scenario)
+        3. Existing PAID with matching total → skip (idempotent replay)
+        4. Existing incomplete (PENDING, etc.) → replace with offline data
+
+        The mid-split scenario occurs when:
+        - Order starts online, partial card payment succeeds
+        - Connection drops, remaining amount paid offline (cash)
+        - Offline payload contains only the offline tender, not the card
+
         Calculates totals from actual tender data and validates against order total.
         """
         payment_list = payload.get('payments', [])
 
-        # Calculate actual totals from tender data
-        amount_paid = sum(Decimal(str(p['amount'])) for p in payment_list)
-        tips = sum(Decimal(str(p.get('tip', 0))) for p in payment_list)
-        surcharges = sum(Decimal(str(p.get('surcharge', 0))) for p in payment_list)
+        # Calculate totals from offline payload
+        offline_amount = sum(Decimal(str(p['amount'])) for p in payment_list)
+        offline_tips = sum(Decimal(str(p.get('tip', 0))) for p in payment_list)
+        offline_surcharges = sum(Decimal(str(p.get('surcharge', 0))) for p in payment_list)
 
-        # Validate: amount_paid should equal order.grand_total
-        # Allow small rounding differences (within 0.01)
-        if abs(amount_paid - order.grand_total) > Decimal('0.01'):
+        # Check for existing payment
+        existing_payment = Payment.objects.filter(order=order).first()
+
+        if existing_payment:
+            if existing_payment.status == 'PAID':
+                # Fully paid - check if this is an idempotent replay
+                total_existing = existing_payment.amount_paid
+                if abs(total_existing - order.grand_total) <= Decimal('0.01'):
+                    logger.info(
+                        f"Order {order.order_number} already fully paid (${total_existing}). "
+                        f"Skipping payment creation for idempotency."
+                    )
+                    return existing_payment
+                else:
+                    # Paid but amounts don't match - unusual, log and skip
+                    logger.warning(
+                        f"Order {order.order_number} marked PAID but amount ${total_existing} "
+                        f"doesn't match order total ${order.grand_total}. Skipping offline tender."
+                    )
+                    return existing_payment
+
+            elif existing_payment.status == 'PARTIALLY_PAID':
+                # Mid-split scenario: append offline transactions to existing payment
+                logger.info(
+                    f"Order {order.order_number} has partial payment (${existing_payment.amount_paid}). "
+                    f"Appending offline tender (${offline_amount})."
+                )
+
+                # Add new transactions from offline payload
+                for payment_data in payment_list:
+                    raw_status = payment_data.get('status', 'COMPLETED')
+                    tx_status = 'SUCCESSFUL' if raw_status in ('COMPLETED', 'SUCCESSFUL') else raw_status
+
+                    PaymentTransaction.objects.create(
+                        tenant=terminal.tenant,
+                        payment=existing_payment,
+                        amount=Decimal(str(payment_data['amount'])),
+                        tip=Decimal(str(payment_data.get('tip', 0))),
+                        surcharge=Decimal(str(payment_data.get('surcharge', 0))),
+                        method=payment_data['method'],
+                        status=tx_status,
+                        transaction_id=payment_data.get('transaction_id'),
+                        provider_response=payment_data.get('provider_response', {})
+                    )
+
+                # Update payment totals
+                new_amount_paid = existing_payment.amount_paid + offline_amount
+                new_tips = existing_payment.total_tips + offline_tips
+                new_surcharges = existing_payment.total_surcharges + offline_surcharges
+
+                existing_payment.amount_paid = new_amount_paid
+                existing_payment.total_tips = new_tips
+                existing_payment.total_surcharges = new_surcharges
+                existing_payment.total_collected = new_amount_paid + new_tips + new_surcharges
+
+                # Update status based on new total
+                if new_amount_paid >= order.grand_total:
+                    existing_payment.status = 'PAID'
+
+                existing_payment.save()
+
+                logger.info(
+                    f"Order {order.order_number} payment updated: "
+                    f"${new_amount_paid} total, status={existing_payment.status}"
+                )
+
+                return existing_payment
+
+            else:
+                # Payment exists but incomplete (PENDING, FAILED, etc.) - replace
+                logger.info(
+                    f"Order {order.order_number} has incomplete payment (status: {existing_payment.status}). "
+                    f"Replacing with offline payment data."
+                )
+                existing_payment.transactions.all().delete()
+                existing_payment.delete()
+
+        # No existing payment (or was deleted) - create new one
+
+        # Validate: amount should cover order total
+        if abs(offline_amount - order.grand_total) > Decimal('0.01'):
             logger.warning(
                 f"Payment amount mismatch for offline order: "
-                f"amount_paid={amount_paid}, order.grand_total={order.grand_total}. "
+                f"amount_paid={offline_amount}, order.grand_total={order.grand_total}. "
                 f"Using actual tender data."
             )
 
-        # Create payment record with actual tender totals
+        # Create payment record
         payment = Payment.objects.create(
             tenant=terminal.tenant,
             order=order,
             store_location=terminal.store_location,
-            status='PAID' if amount_paid >= order.grand_total else 'PARTIALLY_PAID',
+            status='PAID' if offline_amount >= order.grand_total else 'PARTIALLY_PAID',
             total_amount_due=order.grand_total,
-            amount_paid=amount_paid,  # Use actual tender total
-            total_tips=tips,
-            total_surcharges=surcharges,
-            total_collected=amount_paid + tips + surcharges
+            amount_paid=offline_amount,
+            total_tips=offline_tips,
+            total_surcharges=offline_surcharges,
+            total_collected=offline_amount + offline_tips + offline_surcharges
         )
 
         # Create transaction records
         for payment_data in payment_list:
-            # Map status to valid TransactionStatus choices
             raw_status = payment_data.get('status', 'COMPLETED')
             tx_status = 'SUCCESSFUL' if raw_status in ('COMPLETED', 'SUCCESSFUL') else raw_status
 

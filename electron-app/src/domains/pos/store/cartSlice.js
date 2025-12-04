@@ -45,6 +45,73 @@ const buildOperationId = (prefix, identifier) => {
 	return `${prefix}-${identifier}-${suffix}`;
 };
 
+/**
+ * Drift threshold for comparing local vs server totals (in dollars)
+ * Small differences due to rounding are expected and ignored
+ */
+const DRIFT_THRESHOLD = 0.02;
+
+/**
+ * Detect drift between local cart state and server response
+ * Used for reconciliation logging and debugging calculator alignment
+ *
+ * @param {Object} localState - Current local cart state
+ * @param {Object} serverData - Server response from WebSocket
+ * @returns {Object|null} - Drift details if any, null if no drift
+ */
+const detectDrift = (localState, serverData) => {
+	const drifts = {};
+	let hasDrift = false;
+
+	// Compare totals
+	const comparisons = [
+		{ field: 'subtotal', local: localState.subtotal, server: safeParseFloat(serverData.subtotal) },
+		{ field: 'taxAmount', local: localState.taxAmount, server: safeParseFloat(serverData.tax_total) },
+		{ field: 'total', local: localState.total, server: safeParseFloat(serverData.grand_total) },
+		{ field: 'totalDiscountsAmount', local: localState.totalDiscountsAmount, server: safeParseFloat(serverData.total_discounts_amount) },
+		{ field: 'totalAdjustmentsAmount', local: localState.totalAdjustmentsAmount, server: safeParseFloat(serverData.total_adjustments_amount) },
+	];
+
+	for (const { field, local, server } of comparisons) {
+		const diff = Math.abs(local - server);
+		if (diff > DRIFT_THRESHOLD) {
+			drifts[field] = { local, server, diff };
+			hasDrift = true;
+		}
+	}
+
+	// Compare items - check count and content
+	const localItems = localState.items || [];
+	const serverItems = serverData.items || [];
+
+	if (localItems.length !== serverItems.length) {
+		drifts.itemCount = { local: localItems.length, server: serverItems.length };
+		hasDrift = true;
+	} else {
+		// Same count - compare item IDs and quantities
+		const localItemMap = new Map(localItems.map(item => [item.id, item.quantity]));
+		const serverItemMap = new Map(serverItems.map(item => [item.id, item.quantity]));
+
+		// Check for mismatched items
+		for (const [id, qty] of localItemMap) {
+			if (!serverItemMap.has(id) || serverItemMap.get(id) !== qty) {
+				drifts.itemContent = { message: 'Item IDs or quantities mismatch' };
+				drifts.itemCount = { local: localItems.length, server: serverItems.length }; // Trigger full sync
+				hasDrift = true;
+				break;
+			}
+		}
+	}
+
+	if (!hasDrift) return null;
+
+	return {
+		timestamp: new Date().toISOString(),
+		orderId: serverData.id,
+		drifts,
+	};
+};
+
 // Cache for calculation settings (loaded once from offline DB)
 let cachedCalculationSettings = null;
 
@@ -206,6 +273,7 @@ export const defaultCartState = {
 	customerFirstName: "",
 	diningPreference: "TAKE_OUT", // Default to take-out
 	pendingOperations: new Set(), // Track pending WebSocket operations
+	lastServerAdjustment: null, // Timestamp of last server-side reconciliation (for UI indicator)
 	stockOverrideDialog: {
 		show: false,
 		productId: null,
@@ -341,124 +409,132 @@ export const createCartSlice = (set, get) => {
 			const originalSubtotal = get().subtotal;
 			const originalTotal = get().total;
 
-			try {
-				let orderId = get().orderId;
-				let isOfflineOrder = get().isOfflineOrder;
+			// LOCAL-FIRST: Do optimistic update IMMEDIATELY before any async work
+			// This gives instant UI feedback regardless of network latency
+			const isOffline = get().isOfflineOrder;
+			const existingItemIndex = get().items.findIndex(
+				(item) =>
+					item.product && product && item.product.id === product.id &&
+					// Don't merge items that have modifiers (they're unique variations)
+					(!item.selected_modifiers_snapshot || item.selected_modifiers_snapshot.length === 0) &&
+					// In online mode, skip temp items (they'll be replaced by server)
+					// In offline mode, merge temp items too
+					(isOffline || !item.id.toString().startsWith("temp-"))
+			);
+			let optimisticItems = [...get().items];
 
-				// Create order through CartGateway (handles online/offline routing)
-				if (!orderId) {
-					const orderData = {
-						order_type: "POS",
-						dining_preference: get().diningPreference,
-						store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
-					};
-
-					// Include customer name if provided
-					const { customerFirstName } = get();
-					if (customerFirstName) {
-						orderData.guest_first_name = customerFirstName;
-					}
-
-					// Use CartGateway to create order (routes online/offline)
-					const { orderId: newOrderId, isLocal } = await cartGateway.getOrCreateOrderId(
-						orderData,
-						orderService.createOrder
-					);
-
-					orderId = newOrderId;
-					isOfflineOrder = isLocal;
-
-					set({
-						orderId: orderId,
-						orderStatus: "DRAFT",
-						orderNumber: isLocal ? `OFFLINE-${orderId.substring(6, 14)}` : null,
-						isOfflineOrder: isLocal,
-					});
-
-					// Only connect WebSocket if online order
-					if (!isLocal) {
-						console.log(`⏱️ [TIMING] Order created: ${orderId.substring(0, 8)}, connecting socket...`);
-						await cartGateway.initializeConnection(orderId);
-						console.log(`⏱️ [TIMING] Socket ready, sending item`);
-					} else {
-						console.log(`📡 [CartSlice] Offline order created: ${orderId.substring(0, 14)}`);
-					}
-
-					get().showToast({
-						title: isLocal ? "Offline Order Started" : "New Order Started",
-						description: isLocal ? "Order will sync when online" : `Order #${orderId.substring(0, 4)}...`,
-					});
-				}
-
-				// Always do optimistic update for local state
-				// For items without modifiers, we can merge with existing items of the same product
-				// In offline mode, we also merge temp items since they won't be replaced by server response
-				const isOffline = get().isOfflineOrder;
-				const existingItemIndex = get().items.findIndex(
-					(item) =>
-						item.product && product && item.product.id === product.id &&
-						// Don't merge items that have modifiers (they're unique variations)
-						(!item.selected_modifiers_snapshot || item.selected_modifiers_snapshot.length === 0) &&
-						// In online mode, skip temp items (they'll be replaced by server)
-						// In offline mode, merge temp items too
-						(isOffline || !item.id.toString().startsWith("temp-"))
-				);
-				let optimisticItems = [...get().items];
-
-				if (existingItemIndex > -1) {
-					optimisticItems[existingItemIndex] = {
-						...optimisticItems[existingItemIndex],
-						quantity: optimisticItems[existingItemIndex].quantity + 1,
-					};
-				} else {
-					optimisticItems.push({
-						id: `temp-${product.id}-${Date.now()}`,
-						product: product,
-						quantity: 1,
-						price_at_sale: product.price,
-					});
-				}
-
-				const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
-				set({ items: optimisticItems, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
-
-				const payload = { product_id: product.id, quantity: 1 };
-				const operationId = buildOperationId("add", product.id);
-
-				// Track this operation as pending
-				get().addPendingOperation(operationId);
-
-				// Store the payload in case we need to retry with force_add
-				set({
-					stockOverrideDialog: {
-						...get().stockOverrideDialog,
-						lastPayload: payload,
-					},
+			if (existingItemIndex > -1) {
+				optimisticItems[existingItemIndex] = {
+					...optimisticItems[existingItemIndex],
+					quantity: optimisticItems[existingItemIndex].quantity + 1,
+				};
+			} else {
+				optimisticItems.push({
+					id: `temp-${product.id}-${Date.now()}`,
+					product: product,
+					quantity: 1,
+					price_at_sale: product.price,
 				});
-
-				// Send operation through CartGateway (routes online/offline)
-				await cartGateway.sendCartOperation({
-					type: "add_item",
-					operationId: operationId,
-					payload: payload,
-				});
-			} catch (error) {
-				console.error("Error during cart sync:", error);
-				// Rollback optimistic update
-				set({
-					items: originalItems,
-					subtotal: originalSubtotal,
-					total: originalTotal,
-				});
-				get().showToast({
-					title: "Failed to Sync Item",
-					description:
-						error.response?.data?.detail || "An unexpected error occurred.",
-					variant: "destructive",
-				});
-			} finally {
-				set({ addingItemId: null });
 			}
+
+			const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
+			set({
+				items: optimisticItems,
+				subtotal: totals.subtotal,
+				total: totals.total,
+				taxAmount: totals.taxAmount,
+				addingItemId: null, // Clear immediately - UI is already updated
+			});
+
+			// Background: Create order if needed, then queue operation
+			// This runs async - UI is already updated above
+			(async () => {
+				try {
+					let orderId = get().orderId;
+					let isOfflineOrder = get().isOfflineOrder;
+
+					// Create order through CartGateway (handles online/offline routing)
+					if (!orderId) {
+						const orderData = {
+							order_type: "POS",
+							dining_preference: get().diningPreference,
+							store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
+						};
+
+						// Include customer name if provided
+						const { customerFirstName } = get();
+						if (customerFirstName) {
+							orderData.guest_first_name = customerFirstName;
+						}
+
+						// Use CartGateway to create order (routes online/offline)
+						const { orderId: newOrderId, isLocal } = await cartGateway.getOrCreateOrderId(
+							orderData,
+							orderService.createOrder
+						);
+
+						orderId = newOrderId;
+						isOfflineOrder = isLocal;
+
+						set({
+							orderId: orderId,
+							orderStatus: "DRAFT",
+							orderNumber: isLocal ? `OFFLINE-${orderId.substring(6, 14)}` : null,
+							isOfflineOrder: isLocal,
+						});
+
+						// Connect WebSocket in background (non-blocking) if online order
+						if (!isLocal) {
+							console.log(`⏱️ [TIMING] Order created: ${orderId.substring(0, 8)}, connecting socket in background...`);
+							cartGateway.initializeConnection(orderId).catch(err => {
+								console.warn('⚠️ [CartSlice] WebSocket connection failed, will retry:', err);
+							});
+						} else {
+							console.log(`📡 [CartSlice] Offline order created: ${orderId.substring(0, 14)}`);
+						}
+
+						get().showToast({
+							title: isLocal ? "Offline Order Started" : "New Order Started",
+							description: isLocal ? "Order will sync when online" : `Order #${orderId.substring(0, 4)}...`,
+						});
+					}
+
+					const payload = { product_id: product.id, quantity: 1 };
+					const operationId = buildOperationId("add", product.id);
+
+					// Track this operation as pending
+					get().addPendingOperation(operationId);
+
+					// Store the payload in case we need to retry with force_add
+					set({
+						stockOverrideDialog: {
+							...get().stockOverrideDialog,
+							lastPayload: payload,
+						},
+					});
+
+					// Queue operation for background sync
+					await cartGateway.sendCartOperation({
+						type: "add_item",
+						operationId: operationId,
+						payload: payload,
+					});
+				} catch (error) {
+					console.error("Error during background cart sync:", error);
+					// Rollback optimistic update on background failure
+					set({
+						items: originalItems,
+						subtotal: originalSubtotal,
+						total: originalTotal,
+					});
+					get().showToast({
+						title: "Failed to Sync Item",
+						description:
+							error.response?.data?.detail || "An unexpected error occurred.",
+						variant: "destructive",
+					});
+				}
+			})();
 		},
 
 		addItemWithModifiers: async (itemData) => {
@@ -479,134 +555,132 @@ export const createCartSlice = (set, get) => {
 				return;
 			}
 
-			try {
-				let orderId = get().orderId;
-				let isOfflineOrder = get().isOfflineOrder;
+			// LOCAL-FIRST: Do optimistic update IMMEDIATELY before any async work
+			let totalModifierPrice = 0;
+			if (selected_modifiers) {
+				selected_modifiers.forEach(modifier => {
+					const priceDelta = modifier.price_delta ?? findModifierOptionById(product, modifier.option_id)?.price_delta ?? 0;
+					totalModifierPrice += parseFloat(priceDelta) * (modifier.quantity || 1);
+				});
+			}
 
-				// Create order through CartGateway (handles online/offline routing)
-				if (!orderId) {
-					const orderData = {
-						order_type: "POS",
-						dining_preference: get().diningPreference,
-						store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
+			const optimisticItem = {
+				id: `temp-${product_id}-${Date.now()}`,
+				product: product,
+				quantity: quantity,
+				price_at_sale: parseFloat(product.price) + totalModifierPrice,
+				selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
+					const option = findModifierOptionById(product, modifier.option_id);
+					return {
+						modifier_set_id: modifier.modifier_set_id || option?.modifier_set?.id,
+						modifier_set_name: modifier.modifier_set_name || option?.modifier_set?.name || "Unknown",
+						modifier_option_id: modifier.option_id,
+						option_name: modifier.option_name || option?.name || "Unknown",
+						price_at_sale: parseFloat(modifier.price_delta ?? option?.price_delta ?? 0),
+						quantity: modifier.quantity || 1
 					};
+				}).filter(mod => mod.modifier_set_id && mod.modifier_option_id) || [],
+				total_modifier_price: totalModifierPrice,
+				notes: notes || ""
+			};
 
-					// Include customer name if provided
-					const { customerFirstName } = get();
-					if (customerFirstName) {
-						orderData.guest_first_name = customerFirstName;
+			const optimisticItems = [...get().items, optimisticItem];
+			const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
+			set({
+				items: optimisticItems,
+				subtotal: totals.subtotal,
+				total: totals.total,
+				taxAmount: totals.taxAmount,
+				addingItemId: null, // Clear immediately - UI is already updated
+			});
+
+			// Background: Create order if needed, then queue operation
+			(async () => {
+				try {
+					let orderId = get().orderId;
+					let isOfflineOrder = get().isOfflineOrder;
+
+					// Create order through CartGateway (handles online/offline routing)
+					if (!orderId) {
+						const orderData = {
+							order_type: "POS",
+							dining_preference: get().diningPreference,
+							store_location: terminalRegistrationService.getTerminalConfig()?.location_id,
+						};
+
+						const { customerFirstName } = get();
+						if (customerFirstName) {
+							orderData.guest_first_name = customerFirstName;
+						}
+
+						const { orderId: newOrderId, isLocal } = await cartGateway.getOrCreateOrderId(
+							orderData,
+							orderService.createOrder
+						);
+
+						orderId = newOrderId;
+						isOfflineOrder = isLocal;
+
+						set({
+							orderId: orderId,
+							orderStatus: "DRAFT",
+							orderNumber: isLocal ? `OFFLINE-${orderId.substring(6, 14)}` : null,
+							isOfflineOrder: isLocal,
+						});
+
+						// Connect WebSocket in background if online order
+						if (!isLocal) {
+							console.log(`⏱️ [TIMING] Order created (with modifiers): ${orderId.substring(0, 8)}, connecting socket in background...`);
+							cartGateway.initializeConnection(orderId).catch(err => {
+								console.warn('⚠️ [CartSlice] WebSocket connection failed, will retry:', err);
+							});
+						} else {
+							console.log(`📡 [CartSlice] Offline order created: ${orderId.substring(0, 14)}`);
+						}
+
+						get().showToast({
+							title: isLocal ? "Offline Order Started" : "New Order Started",
+							description: isLocal ? "Order will sync when online" : `Order #${orderId.substring(0, 4)}...`,
+						});
 					}
 
-					// Use CartGateway to create order (routes online/offline)
-					const { orderId: newOrderId, isLocal } = await cartGateway.getOrCreateOrderId(
-						orderData,
-						orderService.createOrder
-					);
+					const payload = {
+						product_id: product_id,
+						quantity: quantity,
+						selected_modifiers: selected_modifiers || [],
+						notes: notes || ""
+					};
+					const operationId = buildOperationId("add", product_id);
 
-					orderId = newOrderId;
-					isOfflineOrder = isLocal;
+					get().addPendingOperation(operationId);
 
 					set({
-						orderId: orderId,
-						orderStatus: "DRAFT",
-						orderNumber: isLocal ? `OFFLINE-${orderId.substring(6, 14)}` : null,
-						isOfflineOrder: isLocal,
+						stockOverrideDialog: {
+							...get().stockOverrideDialog,
+							lastPayload: payload,
+						},
 					});
 
-					// Only connect WebSocket if online order
-					if (!isLocal) {
-						console.log(`⏱️ [TIMING] Order created (with modifiers): ${orderId.substring(0, 8)}, connecting socket...`);
-						await cartGateway.initializeConnection(orderId);
-						console.log(`⏱️ [TIMING] Socket ready, sending item with modifiers`);
-					} else {
-						console.log(`📡 [CartSlice] Offline order created: ${orderId.substring(0, 14)}`);
-					}
-
+					await cartGateway.sendCartOperation({
+						type: "add_item",
+						operationId: operationId,
+						payload: payload,
+					});
+				} catch (error) {
+					console.error("Error during background cart sync:", error);
+					set({
+						items: originalItems,
+						subtotal: originalSubtotal,
+						total: originalTotal,
+					});
 					get().showToast({
-						title: isLocal ? "Offline Order Started" : "New Order Started",
-						description: isLocal ? "Order will sync when online" : `Order #${orderId.substring(0, 4)}...`,
+						title: "Failed to Sync Item",
+						description:
+							error.response?.data?.detail || "An unexpected error occurred.",
+						variant: "destructive",
 					});
 				}
-
-				// Always do optimistic update for local state
-				let totalModifierPrice = 0;
-				if (selected_modifiers) {
-					selected_modifiers.forEach(modifier => {
-						// New structure includes price_delta directly, fallback to looking it up
-						const priceDelta = modifier.price_delta ?? findModifierOptionById(product, modifier.option_id)?.price_delta ?? 0;
-						totalModifierPrice += parseFloat(priceDelta) * (modifier.quantity || 1);
-					});
-				}
-
-				const optimisticItem = {
-					id: `temp-${product_id}-${Date.now()}`,
-					product: product,
-					quantity: quantity,
-					price_at_sale: parseFloat(product.price) + totalModifierPrice,
-					// Store full modifier data including IDs for offline ingest
-					selected_modifiers_snapshot: selected_modifiers?.map(modifier => {
-						// New structure from ProductModifierSelector includes all data
-						// Fallback to looking up option for backward compatibility
-						const option = findModifierOptionById(product, modifier.option_id);
-						return {
-							modifier_set_id: modifier.modifier_set_id || option?.modifier_set?.id,
-							modifier_set_name: modifier.modifier_set_name || option?.modifier_set?.name || "Unknown",
-							modifier_option_id: modifier.option_id,
-							option_name: modifier.option_name || option?.name || "Unknown",
-							price_at_sale: parseFloat(modifier.price_delta ?? option?.price_delta ?? 0),
-							quantity: modifier.quantity || 1
-						};
-					}).filter(mod => mod.modifier_set_id && mod.modifier_option_id) || [],
-					total_modifier_price: totalModifierPrice,
-					notes: notes || ""
-				};
-
-				const optimisticItems = [...get().items, optimisticItem];
-				const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
-				set({ items: optimisticItems, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
-
-				const payload = {
-					product_id: product_id,
-					quantity: quantity,
-					selected_modifiers: selected_modifiers || [],
-					notes: notes || ""
-				};
-				const operationId = buildOperationId("add", product_id);
-
-				// Track this operation as pending
-				get().addPendingOperation(operationId);
-
-				// Store the payload in case we need to retry with force_add
-				set({
-					stockOverrideDialog: {
-						...get().stockOverrideDialog,
-						lastPayload: payload,
-					},
-				});
-
-				// Send operation through CartGateway (routes online/offline)
-				await cartGateway.sendCartOperation({
-					type: "add_item",
-					operationId: operationId,
-					payload: payload,
-				});
-			} catch (error) {
-				console.error("Error during cart sync:", error);
-				// Rollback optimistic update
-				set({
-					items: originalItems,
-					subtotal: originalSubtotal,
-					total: originalTotal,
-				});
-				get().showToast({
-					title: "Failed to Sync Item",
-					description:
-						error.response?.data?.detail || "An unexpected error occurred.",
-					variant: "destructive",
-				});
-			} finally {
-				set({ addingItemId: null });
-			}
+			})();
 		},
 
 		// Add method to handle rollback from WebSocket errors
@@ -741,25 +815,72 @@ export const createCartSlice = (set, get) => {
 		},
 
 		setCartFromSocket: (orderData) => {
-			console.log(`⏱️ [TIMING] WebSocket update received, reconciling cart state (${orderData.items?.length || 0} items)`);
-			console.log('📊 Adjustments from backend:', orderData.adjustments);
-			console.log('📊 Total adjustments amount:', orderData.total_adjustments_amount);
-			set({
-				items: orderData.items || [],
-				orderId: orderData.id,
-				orderNumber: orderData.order_number,
-				orderStatus: orderData.status,
-				total: safeParseFloat(orderData.grand_total),
-				subtotal: safeParseFloat(orderData.subtotal),
-				taxAmount: safeParseFloat(orderData.tax_total),
-				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
-				totalAdjustmentsAmount: safeParseFloat(orderData.total_adjustments_amount),
-				appliedDiscounts: orderData.applied_discounts || [],
-				adjustments: orderData.adjustments || [],
+			const currentState = get();
+			console.log(`⏱️ [TIMING] WebSocket update received (${orderData.items?.length || 0} items)`);
+
+			// Detect drift between local state and server response
+			const drift = detectDrift(currentState, orderData);
+
+			// LOCAL-FIRST RECONCILIATION:
+			// - If no drift: local state is correct, only clear loading states
+			// - If drift: server wins on conflicts, update drifted fields
+			if (!drift) {
+				// No drift - local state matches server, just clear loading states
+				console.log('✅ [LOCAL-FIRST] No drift detected, keeping local state');
+				set({
+					addingItemId: null,
+					updatingItems: [],
+					isSyncing: false,
+				});
+				return;
+			}
+
+			// Drift detected - server wins on conflicts
+			console.warn('🔄 [DRIFT] Local/server mismatch detected, reconciling:', drift);
+
+			// Log drift sample for debugging calculator alignment
+			if (window.offlineAPI?.logDrift) {
+				window.offlineAPI.logDrift(drift).catch(() => {});
+			}
+
+			// Build selective update - only update fields that drifted
+			const updates = {
 				addingItemId: null,
 				updatingItems: [],
 				isSyncing: false,
-			});
+				lastServerAdjustment: drift.timestamp,
+			};
+
+			// Always sync these core identifiers if present
+			if (orderData.id) updates.orderId = orderData.id;
+			if (orderData.order_number) updates.orderNumber = orderData.order_number;
+			if (orderData.status) updates.orderStatus = orderData.status;
+
+			// Update drifted totals
+			if (drift.drifts.subtotal) {
+				updates.subtotal = safeParseFloat(orderData.subtotal);
+			}
+			if (drift.drifts.taxAmount) {
+				updates.taxAmount = safeParseFloat(orderData.tax_total);
+			}
+			if (drift.drifts.total) {
+				updates.total = safeParseFloat(orderData.grand_total);
+			}
+			if (drift.drifts.totalDiscountsAmount) {
+				updates.totalDiscountsAmount = safeParseFloat(orderData.total_discounts_amount);
+			}
+			if (drift.drifts.totalAdjustmentsAmount) {
+				updates.totalAdjustmentsAmount = safeParseFloat(orderData.total_adjustments_amount);
+			}
+
+			// If item count drifted, sync items (server is authoritative for item state)
+			if (drift.drifts.itemCount) {
+				updates.items = orderData.items || [];
+				updates.appliedDiscounts = orderData.applied_discounts || [];
+				updates.adjustments = orderData.adjustments || [];
+			}
+
+			set(updates);
 		},
 
 		updateItemQuantityViaSocket: async (itemId, quantity) => {

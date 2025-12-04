@@ -709,6 +709,18 @@ class OfflineSyncService {
 		const authTimestamp = new Date().toISOString();
 		const originalOfflineTimestamp = payload.created_offline_at || order.created_at;
 
+		// Determine order identification mode:
+		// - server_order_id: Order was created online but completed offline (UPDATE mode)
+		// - local_order_id: Order was created entirely offline (CREATE mode)
+		// Only one should be present; backend validates mutual exclusivity
+		const orderIdentification = {};
+		if (payload.server_order_id) {
+			orderIdentification.server_order_id = payload.server_order_id;
+		} else if (payload.local_order_id) {
+			orderIdentification.local_order_id = payload.local_order_id;
+		}
+		// If neither is present, backend falls back to CREATE mode (backwards compat)
+
 		return {
 			// Operation metadata
 			operation_id: operationId,
@@ -717,6 +729,9 @@ class OfflineSyncService {
 			created_at: authTimestamp,  // For auth (must be fresh)
 			offline_created_at: originalOfflineTimestamp,  // For order creation time
 			dataset_versions: datasetVersions,
+
+			// Order identification (server_order_id for UPDATE, local_order_id for CREATE)
+			...orderIdentification,
 
 			// Order details
 			order: {

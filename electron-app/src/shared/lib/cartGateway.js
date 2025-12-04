@@ -23,6 +23,11 @@ let _store = null;
 let _isOfflineMode = false;
 let _localOrderId = null; // Used when offline - temporary local UUID
 
+// Local-first sync state
+let _operationQueue = []; // Queue of pending operations to sync
+let _syncTimeout = null; // Throttle timer for background sync
+const SYNC_THROTTLE_MS = 100; // Throttle background sync to 100ms
+
 /**
  * Check if device is currently online
  * Uses navigator.onLine as primary check
@@ -214,17 +219,55 @@ export async function initializeConnection(orderId) {
 }
 
 /**
- * Send a cart operation message
+ * Flush operation queue to server via WebSocket
+ * Called by throttled timer - sends all queued operations
+ */
+function flushOperationQueue() {
+  if (_operationQueue.length === 0) return;
+  if (isOfflineMode()) {
+    console.log(`📡 [CartGateway] Skipping flush - offline mode`);
+    return;
+  }
+
+  const operations = [..._operationQueue];
+  _operationQueue = [];
+
+  console.log(`🔄 [CartGateway] Flushing ${operations.length} operations to server`);
+
+  // Send each operation via WebSocket
+  // Could batch into single message if backend supports it
+  for (const op of operations) {
+    cartSocket.sendMessage(op);
+  }
+}
+
+/**
+ * Schedule a throttled flush of the operation queue
+ * Ensures operations are batched and not sent individually
+ */
+function scheduleSync() {
+  // If already scheduled, don't reschedule
+  if (_syncTimeout) return;
+
+  _syncTimeout = setTimeout(() => {
+    _syncTimeout = null;
+    flushOperationQueue();
+  }, SYNC_THROTTLE_MS);
+}
+
+/**
+ * Queue a cart operation for background sync
  *
- * Online: Sends via WebSocket
- * Offline: Operations are handled locally in cartSlice - NOT queued for sync
+ * LOCAL-FIRST APPROACH:
+ * - Cart mutations update local state immediately (in cartSlice)
+ * - Operations are queued here for background sync to server
+ * - Throttled sync sends batched operations every SYNC_THROTTLE_MS
+ * - Server broadcasts for admin visibility, reconciles on drift
  *
- * Individual cart operations (ADD_ITEM, REMOVE_ITEM, etc.) are NOT queued
- * for later sync - only complete orders are queued at checkout time via
- * queueOfflineOrder(). Cart state is ephemeral and managed locally.
+ * Offline: Operations stay local, only final order synced at checkout
  *
- * @param {object} message - The message to send
- * @param {object} options - Options (deprecated, ignored)
+ * @param {object} message - The operation message to queue
+ * @param {object} options - Options (immediate: true to bypass queue)
  * @returns {Promise<{sent: boolean, queued: boolean}>}
  */
 export async function sendCartOperation(message, options = {}) {
@@ -236,9 +279,20 @@ export async function sendCartOperation(message, options = {}) {
     return { sent: false, queued: false };
   }
 
-  // Online - send via WebSocket
-  cartSocket.sendMessage(message);
-  return { sent: true, queued: false };
+  // If immediate flag is set, send directly (for critical operations)
+  if (options.immediate) {
+    cartSocket.sendMessage(message);
+    return { sent: true, queued: false };
+  }
+
+  // Queue operation for background sync
+  _operationQueue.push(message);
+  console.log(`📥 [CartGateway] Queued operation: ${message.type} (queue size: ${_operationQueue.length})`);
+
+  // Schedule throttled sync
+  scheduleSync();
+
+  return { sent: false, queued: true };
 }
 
 /**
@@ -365,11 +419,28 @@ export async function processCheckout(checkoutData, handlers = {}) {
 
 /**
  * Build offline order payload for queueing
+ *
+ * Supports two modes based on order ID type:
+ * 1. local_order_id: Order created entirely offline (local-xxx ID)
+ * 2. server_order_id: Order created online, then went offline mid-order (real UUID)
+ *
+ * The backend ingest service handles both:
+ * - local_order_id → CREATE new order
+ * - server_order_id → UPDATE existing order
  */
 function buildOfflineOrderPayload(state, checkoutData) {
+  // Determine if this is a server order (real UUID) or local order (local-xxx)
+  const isServerOrder = !isLocalOrderId(state.orderId);
+
   return {
+    // Order identification - mutually exclusive
+    // server_order_id: Order was created online but went offline mid-order (UPDATE mode)
+    // local_order_id: Order was created entirely offline (CREATE mode)
+    ...(isServerOrder
+      ? { server_order_id: state.orderId }
+      : { local_order_id: state.orderId }),
+
     // Order metadata
-    local_order_id: state.orderId,
     order_type: 'POS',
     dining_preference: state.diningPreference || 'TAKE_OUT',
     store_location: checkoutData.storeLocation,
@@ -389,7 +460,7 @@ function buildOfflineOrderPayload(state, checkoutData) {
 
     // Discounts
     discounts: state.appliedDiscounts?.map(d => ({
-      discount_id: d.id,
+      discount_id: d.discount?.id || d.id,
       amount: d.amount,
     })) || [],
 
@@ -412,6 +483,9 @@ function buildOfflineOrderPayload(state, checkoutData) {
 
     // Timestamp
     created_offline_at: new Date().toISOString(),
+
+    // Debug info
+    _mode: isServerOrder ? 'UPDATE' : 'CREATE',
   };
 }
 
@@ -461,6 +535,13 @@ export function disconnectCartGateway() {
   cartSocket.disconnect();
   clearLocalOrderId();
   _isOfflineMode = false;
+
+  // Clear sync state
+  _operationQueue = [];
+  if (_syncTimeout) {
+    clearTimeout(_syncTimeout);
+    _syncTimeout = null;
+  }
 
   if (typeof window !== 'undefined') {
     window.removeEventListener('online', handleOnline);
