@@ -11,6 +11,7 @@ import { printKitchenTicket } from "@/shared/lib/hardware/printerService";
 import { useKitchenZones } from "@/domains/settings/hooks/useKitchenZones";
 import { markSentToKitchen } from "@/domains/orders/services/orderService";
 import { cartGateway } from "@/shared/lib/cartGateway";
+import { useOnlineStatus } from "@/shared/hooks";
 
 const safeFormatCurrency = (value) => {
 	const number = Number(value);
@@ -94,6 +95,10 @@ const CartSummary = () => {
 
 	// Get kitchen zones from cloud configuration (includes printer info)
 	const { data: kitchenZones = [] } = useKitchenZones();
+
+	// Check CURRENT network state for UI display
+	const isOnline = useOnlineStatus();
+	const isCurrentlyOffline = !isOnline;
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSendingToKitchen, setIsSendingToKitchen] = useState(false);
@@ -509,7 +514,7 @@ const CartSummary = () => {
 
 					<Button
 						className={`h-12 font-semibold ${
-							isOfflineOrder
+							isCurrentlyOffline
 								? "bg-orange-600 hover:bg-orange-700 text-white"
 								: "bg-primary hover:bg-primary/90 text-primary-foreground"
 						}`}
@@ -518,12 +523,12 @@ const CartSummary = () => {
 					>
 						{isLoading ? (
 							<Loader2 className="mr-2 h-5 w-5 animate-spin" />
-						) : isOfflineOrder ? (
+						) : isCurrentlyOffline ? (
 							<WifiOff className="mr-2 h-5 w-5" />
 						) : (
 							<CreditCard className="mr-2 h-5 w-5" />
 						)}
-						{isOfflineOrder ? "Cash Only" : "Charge"}
+						{isCurrentlyOffline ? "Cash Only" : "Charge"}
 					</Button>
 				</div>
 

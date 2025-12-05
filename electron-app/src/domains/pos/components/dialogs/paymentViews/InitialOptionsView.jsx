@@ -1,5 +1,6 @@
 import { Button } from "@/shared/components/ui/button";
 import { usePosStore } from "@/domains/pos/store/posStore";
+import { useOnlineStatus } from "@/shared/hooks";
 import { CreditCard, DollarSign, Gift, Truck, WifiOff } from "lucide-react";
 import { shallow } from "zustand/shallow";
 
@@ -15,16 +16,17 @@ import { shallow } from "zustand/shallow";
  */
 const InitialOptionsView = ({ onSelect }) => {
 	// We only get `selectPaymentMethod` from the store to handle the split payment case.
-	const { selectPaymentMethod, order } = usePosStore(
+	const { selectPaymentMethod } = usePosStore(
 		(state) => ({
 			selectPaymentMethod: state.selectPaymentMethod,
-			order: state.order,
 		}),
 		shallow
 	);
 
-	// Check if this is an offline order
-	const isOfflineOrder = order?._isOfflineOrder || false;
+	// Check CURRENT network state, not whether order was created offline
+	// This allows card payments when connection is restored mid-order
+	const isOnline = useOnlineStatus();
+	const isCurrentlyOffline = !isOnline;
 
 	const handleSelect = (method) => {
 		// Use the `onSelect` prop for standard payment methods.
@@ -38,8 +40,8 @@ const InitialOptionsView = ({ onSelect }) => {
 		selectPaymentMethod("SPLIT");
 	};
 
-	// For offline orders, show only the Cash option prominently
-	if (isOfflineOrder) {
+	// When currently offline, show only the Cash option prominently
+	if (isCurrentlyOffline) {
 		return (
 			<div className="flex flex-col space-y-4">
 				{/* Offline notice */}
