@@ -71,9 +71,8 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   printer.println("");
   printer.alignLeft();
   const orderId = order.order_number || order.id || "N/A";
-  const orderDate = new Date(order.created_at).toLocaleString("en-US", {
-    timeZone: "America/Chicago"
-  });
+  const createdAt = order.created_at ? new Date(order.created_at) : /* @__PURE__ */ new Date();
+  const orderDate = isNaN(createdAt.getTime()) ? (/* @__PURE__ */ new Date()).toLocaleString("en-US", { timeZone: "America/Chicago" }) : createdAt.toLocaleString("en-US", { timeZone: "America/Chicago" });
   const customerName = order.customer_display_name || order.guest_first_name || ((_a = order.payment_details) == null ? void 0 : _a.customer_name) || ((_b = order.customer) == null ? void 0 : _b.full_name);
   if (customerName) {
     printer.println(`Customer: ${customerName}`);
@@ -241,16 +240,18 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
       }
       if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
         if (!filterConfig.productTypes.includes("ALL")) {
-          const productTypeMatch = filterConfig.productTypes.includes(
-            (_a2 = product.product_type) == null ? void 0 : _a2.id
+          const productTypeId = String(((_a2 = product.product_type) == null ? void 0 : _a2.id) || product.product_type_id || "");
+          const productTypeMatch = filterConfig.productTypes.some(
+            (id) => String(id) === productTypeId
           );
           if (!productTypeMatch) return false;
         }
       }
       if (filterConfig.categories && filterConfig.categories.length > 0) {
         if (!filterConfig.categories.includes("ALL")) {
-          const categoryMatch = filterConfig.categories.includes(
-            (_b2 = product.category) == null ? void 0 : _b2.id
+          const categoryId = String(((_b2 = product.category) == null ? void 0 : _b2.id) || product.category_id || "");
+          const categoryMatch = filterConfig.categories.some(
+            (id) => String(id) === categoryId
           );
           if (!categoryMatch) return false;
         }
@@ -290,14 +291,9 @@ function formatKitchenTicket(order, zoneName = "KITCHEN", filterConfig = null) {
   if (customerName) {
     printer.println(`Customer: ${customerName}`);
   }
-  const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-    timeZone: "America/Chicago"
-  });
-  printer.println(`Time: ${orderDate}`);
+  const createdAt = order.created_at ? new Date(order.created_at) : /* @__PURE__ */ new Date();
+  const orderDate = isNaN(createdAt.getTime()) ? (/* @__PURE__ */ new Date()).toLocaleString("en-US", { timeZone: "America/Chicago" }) : createdAt.toLocaleString("en-US", { timeZone: "America/Chicago" });
+  printer.println(`Date: ${orderDate}`);
   const diningPreference = order.dining_preference || "TAKE_OUT";
   const diningLabel = diningPreference === "DINE_IN" ? "DINE IN" : "TAKE OUT";
   printer.bold(true);

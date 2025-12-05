@@ -90,9 +90,11 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 	printer.alignLeft();
 	// Use user-friendly order number first, with fallback to UUID
 	const orderId = order.order_number || order.id || "N/A";
-	const orderDate = new Date(order.created_at).toLocaleString("en-US", {
-		timeZone: "America/Chicago",
-	});
+	// Handle missing/invalid created_at (common for offline orders)
+	const createdAt = order.created_at ? new Date(order.created_at) : new Date();
+	const orderDate = isNaN(createdAt.getTime())
+		? new Date().toLocaleString("en-US", { timeZone: "America/Chicago" })
+		: createdAt.toLocaleString("en-US", { timeZone: "America/Chicago" });
 	
 	// Customer name: attempt to get from order or payment details
 	const customerName = order.customer_display_name || 
@@ -335,20 +337,24 @@ export function formatKitchenTicket(
 			}
 
 			// Filter by product type
+			// Handle both nested object (product.product_type.id) and flat ID (product.product_type_id)
 			if (filterConfig.productTypes && filterConfig.productTypes.length > 0) {
 				if (!filterConfig.productTypes.includes("ALL")) {
-					const productTypeMatch = filterConfig.productTypes.includes(
-						product.product_type?.id
+					const productTypeId = String(product.product_type?.id || product.product_type_id || "");
+					const productTypeMatch = filterConfig.productTypes.some(
+						(id) => String(id) === productTypeId
 					);
 					if (!productTypeMatch) return false;
 				}
 			}
 
 			// Filter by category
+			// Handle both nested object (product.category.id) and flat ID (product.category_id)
 			if (filterConfig.categories && filterConfig.categories.length > 0) {
 				if (!filterConfig.categories.includes("ALL")) {
-					const categoryMatch = filterConfig.categories.includes(
-						product.category?.id
+					const categoryId = String(product.category?.id || product.category_id || "");
+					const categoryMatch = filterConfig.categories.some(
+						(id) => String(id) === categoryId
 					);
 					if (!categoryMatch) return false;
 				}
@@ -406,14 +412,12 @@ export function formatKitchenTicket(
 		printer.println(`Customer: ${customerName}`);
 	}
 
-	const orderDate = new Date(order.created_at).toLocaleTimeString("en-US", {
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-		hour12: true,
-		timeZone: "America/Chicago",
-	});
-	printer.println(`Time: ${orderDate}`);
+	// Handle missing/invalid created_at (common for offline orders)
+	const createdAt = order.created_at ? new Date(order.created_at) : new Date();
+	const orderDate = isNaN(createdAt.getTime())
+		? new Date().toLocaleString("en-US", { timeZone: "America/Chicago" })
+		: createdAt.toLocaleString("en-US", { timeZone: "America/Chicago" });
+	printer.println(`Date: ${orderDate}`);
 	
 	// Show dining preference on kitchen ticket - important for service
 	const diningPreference = order.dining_preference || "TAKE_OUT";

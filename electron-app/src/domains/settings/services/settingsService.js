@@ -154,7 +154,36 @@ export const getSettingsSummary = async () => {
 };
 
 // Receipt Format Data - for dynamic receipt generation
+// Uses cache-first pattern for offline support
 export const getReceiptFormatData = async () => {
+	// Try offline cache first
+	try {
+		if (window.offlineAPI?.getCachedSettings) {
+			const cachedSettings = await window.offlineAPI.getCachedSettings();
+			if (cachedSettings && (cachedSettings.global_settings || cachedSettings.store_location)) {
+				const global = cachedSettings.global_settings || {};
+				const location = cachedSettings.store_location || {};
+
+				console.log("[settingsService] Using cached receipt format data");
+				return {
+					// Store Information - prefer location-specific, fallback to global
+					store_name: location.name || global.store_name || global.brand_name || "",
+					store_address: location.address_line1
+						? `${location.address_line1}${location.city ? `, ${location.city}` : ""}${location.state ? `, ${location.state}` : ""} ${location.zip_code || ""}`
+						: global.store_address || "",
+					store_phone: location.phone || global.store_phone || "",
+					store_email: location.email || global.store_email || "",
+					// Receipt Configuration - prefer location-specific, fallback to global
+					receipt_header: location.receipt_header || global.brand_receipt_header || global.receipt_header || "",
+					receipt_footer: location.receipt_footer || global.brand_receipt_footer || global.receipt_footer || "",
+				};
+			}
+		}
+	} catch (cacheError) {
+		console.warn("[settingsService] Cache read failed, falling back to API:", cacheError);
+	}
+
+	// Fallback to API
 	const response = await apiClient.get(
 		"/settings/global-settings/receipt-format-data/"
 	);

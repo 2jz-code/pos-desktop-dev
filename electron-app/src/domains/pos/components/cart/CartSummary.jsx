@@ -133,6 +133,8 @@ const CartSummary = () => {
 						amount_paid: 0,
 						transactions: [],
 					},
+					// Timestamp for receipts
+					created_at: new Date().toISOString(),
 					// Mark this as an offline order for payment handling
 					_isOfflineOrder: true,
 				};
