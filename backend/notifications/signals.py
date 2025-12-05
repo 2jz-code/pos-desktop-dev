@@ -87,6 +87,7 @@ def handle_web_order_notification(sender, **kwargs):
     This keeps the notifications app decoupled from order business logic.
 
     Uses location-specific web order settings with fallback to tenant defaults.
+    If no terminals are online (stale heartbeat), sends email fallback to owners/managers.
     """
     order_data = kwargs.get("order_data")
     order_id = kwargs.get("order_id")
@@ -122,6 +123,22 @@ def handle_web_order_notification(sender, **kwargs):
 
         if not selected_terminals.exists():
             logger.info(f"No terminals selected for web order notifications at location {store_location.name}")
+            # Send email fallback since no terminals are configured
+            _send_email_fallback_for_order(order_id, order_number, store_location)
+            return
+
+        # Check which terminals are actually online (have recent heartbeat)
+        # 'online' or 'syncing' means terminal is connected and can receive notifications
+        online_terminals = [t for t in selected_terminals if t.display_status in ('online', 'syncing')]
+
+        if not online_terminals:
+            # Log status of each terminal for debugging
+            terminal_statuses = [(t.device_id, t.display_status) for t in selected_terminals]
+            logger.warning(
+                f"No online terminals at location {store_location.name} for order {order_number}. "
+                f"Terminal statuses: {terminal_statuses}. Sending email fallback."
+            )
+            _send_email_fallback_for_order(order_id, order_number, store_location)
             return
 
         # Create notification payload with location-specific settings
@@ -139,8 +156,8 @@ def handle_web_order_notification(sender, **kwargs):
         # Ensure the entire payload is serializable before sending to channels
         serializable_payload = convert_payload_to_str(notification_payload)
 
-        # Send WebSocket notifications to selected terminals at this location
-        for terminal in selected_terminals:
+        # Send WebSocket notifications to online terminals only
+        for terminal in online_terminals:
             # Use tenant-scoped channel group
             terminal_group = f"tenant_{terminal.tenant.id}_terminal_{terminal.device_id}"
 
@@ -162,6 +179,57 @@ def handle_web_order_notification(sender, **kwargs):
             f"Error processing web order notification for order {order_number}: {e}"
         )
         # Don't raise the exception to avoid disrupting the order completion process
+
+
+def _send_email_fallback_for_order(order_id, order_number, store_location):
+    """
+    Send email alerts to owners and managers when no terminals are online.
+
+    Args:
+        order_id: UUID of the order
+        order_number: Order number string
+        store_location: StoreLocation instance
+    """
+    from orders.models import Order
+    from users.models import User
+    from .services import email_service
+
+    try:
+        # Get the order object
+        order = Order.objects.select_related('tenant', 'store_location').prefetch_related(
+            'items__product', 'items__selected_modifiers_snapshot'
+        ).get(id=order_id)
+
+        # Get all owners and managers for this tenant
+        recipient_users = User.objects.filter(
+            tenant=order.tenant,
+            is_active=True,
+            role__in=[User.Role.OWNER, User.Role.MANAGER],
+        ).exclude(
+            email__isnull=True
+        ).exclude(
+            email=""
+        )
+
+        recipient_emails = list(recipient_users.values_list("email", flat=True))
+
+        if not recipient_emails:
+            logger.warning(
+                f"No owner/manager emails found for tenant {order.tenant.id}. "
+                f"Cannot send email fallback for web order {order_number}."
+            )
+            return
+
+        logger.info(
+            f"Sending web order alert email to {len(recipient_emails)} recipients for order {order_number}"
+        )
+
+        email_service.send_web_order_alert(recipient_emails, order)
+
+    except Order.DoesNotExist:
+        logger.error(f"Order {order_id} not found for email fallback")
+    except Exception as e:
+        logger.error(f"Failed to send email fallback for order {order_number}: {e}")
 
 
 @receiver(post_save, sender="orders.Order")

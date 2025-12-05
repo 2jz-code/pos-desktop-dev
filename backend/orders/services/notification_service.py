@@ -7,6 +7,10 @@ class WebOrderNotificationService:
     """
     Singleton service for handling web order notifications, including sound alerts and auto-printing.
     This service is designed to be called from a signal when a web order is completed.
+
+    NOTE: This service is currently NOT used. Web order notifications are handled directly
+    in notifications/signals.py via the web_order_ready_for_notification signal.
+    This class is kept for potential future use or refactoring.
     """
 
     _instance = None

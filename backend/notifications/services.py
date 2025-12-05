@@ -396,7 +396,7 @@ class EmailService:
     def send_email_verification(self, customer, token):
         """
         Send email verification email to customer.
-        
+
         Args:
             customer: Customer instance
             token: Email verification token string
@@ -404,18 +404,18 @@ class EmailService:
         try:
             from django.conf import settings
             import datetime
-            
+
             # Build verification URL
             customer_site_url = getattr(settings, 'CUSTOMER_SITE_URL', 'http://localhost:3000')
             verification_url = f"{customer_site_url}/verify-email?token={token}"
-            
+
             context = {
                 'customer_name': customer.get_short_name(),
                 'customer_email': customer.email,
                 'verification_url': verification_url,
                 'current_year': datetime.datetime.now().year,
             }
-            
+
             subject = "Welcome to Ajeen Fresh - Please Verify Your Email"
             self.send_email(
                 recipient_list=[customer.email],
@@ -423,12 +423,92 @@ class EmailService:
                 template_name="emails/email-verification.html",
                 context=context,
             )
-            
+
             logger.info(f"Email verification sent to customer {customer.id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send email verification to customer {customer.id}: {e}")
+            return False
+
+    def send_web_order_alert(self, recipient_emails, order):
+        """
+        Send web order alert email to owners/managers when no terminals are online.
+
+        Args:
+            recipient_emails: List of email addresses to send alerts to
+            order: Order instance
+        """
+        try:
+            if not recipient_emails:
+                logger.warning(f"No recipient emails provided for web order alert (order {order.order_number})")
+                return False
+
+            # Get brand name and store info
+            brand_name = self._get_brand_name(order.tenant)
+            location_name = order.store_location.name if order.store_location else "Unknown Location"
+
+            # Convert order time to local timezone
+            try:
+                location_timezone = order.store_location.timezone if order.store_location else "America/Chicago"
+                local_tz = pytz.timezone(location_timezone)
+                local_order_time = order.created_at.astimezone(local_tz)
+                order_time_str = local_order_time.strftime("%I:%M %p on %B %d, %Y")
+            except pytz.UnknownTimeZoneError:
+                order_time_str = order.created_at.strftime("%I:%M %p on %B %d, %Y")
+
+            # Build items list with modifiers
+            items_data = []
+            for item in order.items.select_related('product').prefetch_related('selected_modifiers_snapshot').all():
+                # Format modifiers if present
+                modifiers_str = ""
+                if hasattr(item, 'selected_modifiers_snapshot') and item.selected_modifiers_snapshot.exists():
+                    modifier_names = [m.option_name for m in item.selected_modifiers_snapshot.all()]
+                    modifiers_str = ", ".join(modifier_names)
+
+                items_data.append({
+                    "name": item.product.name if item.product else "Unknown Item",
+                    "quantity": item.quantity,
+                    "total": f"{float(item.total_price):.2f}",
+                    "modifiers": modifiers_str,
+                    "notes": item.notes or "",
+                })
+
+            context = {
+                "brand_name": brand_name,
+                "order_number": order.order_number,
+                "customer_name": order.customer_display_name or "Guest",
+                "customer_email": order.customer_email or "",
+                "customer_phone": order.customer_phone or "",
+                "order_type": order.get_order_type_display(),
+                "location_name": location_name,
+                "order_time": order_time_str,
+                "items": items_data,
+                "subtotal": f"{float(order.subtotal):.2f}",
+                "discount_amount": f"{float(order.total_discounts_amount):.2f}" if order.total_discounts_amount else None,
+                "tax_amount": f"{float(order.tax_total):.2f}" if order.tax_total else None,
+                "tip_amount": f"{float(order.total_tips):.2f}" if order.total_tips else None,
+                "total": f"{float(order.total_collected):.2f}",
+            }
+
+            subject = f"[ACTION REQUIRED] New Web Order #{order.order_number} - No Terminals Online"
+
+            self.send_email(
+                recipient_list=recipient_emails,
+                subject=subject,
+                template_name="emails/web_order_alert.html",
+                context=context,
+            )
+
+            logger.info(
+                f"Web order alert sent to {len(recipient_emails)} recipients for order {order.order_number}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to send web order alert for order {order.order_number}: {e}"
+            )
             return False
 
 
