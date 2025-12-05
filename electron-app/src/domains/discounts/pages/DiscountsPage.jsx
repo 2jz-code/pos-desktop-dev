@@ -27,6 +27,7 @@ import { useToast } from "@/shared/components/ui/use-toast";
 import { useConfirmation } from "@/shared/components/ui/confirmation-dialog";
 import { StandardTable } from "@/shared/components/layout";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import { useOfflineDiscounts, useOnlineStatus, useOfflineGuard } from "@/shared/hooks";
 import {
 	createDiscount,
@@ -357,6 +358,8 @@ export default function DiscountsPage() {
 					actions={headerActions}
 					className="shrink-0"
 				/>
+
+				<OfflineBanner dataType="discounts" />
 
 				{/* Search and Filters */}
 				<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">

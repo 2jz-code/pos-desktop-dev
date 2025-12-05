@@ -26,9 +26,9 @@ import {
   Package,
   LayoutGrid,
   List,
-  WifiOff,
   CloudOff,
 } from "lucide-react";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import {
   getStatusConfig as getSharedStatusConfig,
   getPaymentStatusConfig as getSharedPaymentStatusConfig,
@@ -399,15 +399,7 @@ export default function OrdersPage() {
         className="shrink-0"
       />
 
-      {/* Offline Banner */}
-      {!isOnline && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
-          <CloudOff className="h-4 w-4 text-amber-600" />
-          <span className="text-sm text-amber-800">
-            Offline Mode - Showing orders from this session only. Some actions are unavailable.
-          </span>
-        </div>
-      )}
+      <OfflineBanner dataType="orders" />
 
       {/* Search and Filters */}
       <div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">

@@ -13,6 +13,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Bell, Building2, Palette, CreditCard, RefreshCw, AlertCircle } from "lucide-react";
 import { useOfflineSettings } from "@/shared/hooks/useOfflineSettings";
 import { useOnlineStatus } from "@/shared/hooks";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 import { FinancialSettings } from "../components/FinancialSettings";
@@ -124,6 +125,7 @@ export function SettingsPage() {
 	return (
 		<>
 			<Toaster />
+			<OfflineBanner dataType="settings" />
 			<div className="p-4 md:p-8 space-y-8">
 				{/* Header */}
 				<h2 className="text-3xl font-bold tracking-tight">Settings</h2>

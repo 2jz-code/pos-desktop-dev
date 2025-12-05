@@ -52,6 +52,7 @@ import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { useDebounce, useScrollToScannedItem } from "@ajeen/ui";
 import { formatCurrency } from "@ajeen/ui";
 import { PaginationControls } from "@/shared/components/ui/PaginationControls";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 
 // Import dialog components
 import StockAdjustmentDialog from "@/domains/inventory/components/StockAdjustmentDialog";
@@ -62,7 +63,6 @@ import { StockMetadataEditDialog } from "@/domains/inventory/components/dialogs/
 // Import services
 import {
 	getDashboardData,
-	getAllStock,
 	deleteLocation,
 } from "@/domains/inventory/services/inventoryService";
 import { useToast } from "@/shared/components/ui/use-toast";
@@ -205,7 +205,7 @@ const InventoryPage = () => {
 		}
 	}, [activeTab, scannedProductId, scrollToItem]);
 
-	// Data fetching - stock from offline cache, dashboard only when online
+	// Data fetching - LOCAL-FIRST: Always use cache, API is for sync only
 	const {
 		data: cachedStock,
 		loading: cachedStockLoading,
@@ -218,56 +218,96 @@ const InventoryPage = () => {
 		enabled: isOnline,
 	});
 
-	const stockQueryFilters = useMemo(
-		() => ({
-			location: selectedLocation,
-			search: debouncedSearchQuery,
-			is_low_stock: stockFilter === "low_stock" ? "true" : undefined,
-			is_expiring_soon: stockFilter === "expiring_soon" ? "true" : undefined,
-			page: stockPage,
-		}),
-		[selectedLocation, debouncedSearchQuery, stockFilter, stockPage]
-	);
-
-	// Use API for filtered/paginated stock when online
-	const { data: stockResponse, isLoading: apiStockLoading } = useQuery({
-		queryKey: ["inventory-stock", stockQueryFilters],
-		queryFn: () => getAllStock(stockQueryFilters, null),
-		enabled: isOnline,
-	});
-
-	// When online use API response, when offline use cached data
-	const stockData = isOnline ? (stockResponse?.results || []) : (cachedStock || []);
-	const stockLoading = isOnline ? apiStockLoading : cachedStockLoading;
-	const stockNextUrl = isOnline ? (stockResponse?.next || null) : null;
-	const stockPrevUrl = isOnline ? (stockResponse?.previous || null) : null;
-	const stockCount = isOnline ? (stockResponse?.count || 0) : (cachedStock?.length || 0);
-
-	// Compute offline dashboard data from cached stock
-	const offlineDashboardData = useMemo(() => {
-		if (isOnline || !cachedStock || cachedStock.length === 0) return null;
+	// Compute low stock and expiring indicators locally
+	const enrichedStock = useMemo(() => {
+		if (!cachedStock || cachedStock.length === 0) return [];
 
 		const now = new Date();
 		const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-		// Get unique products
-		const uniqueProductIds = new Set(cachedStock.map(s => s.product?.id));
+		return cachedStock.map(item => {
+			const quantity = Number(item.quantity) || 0;
+			const threshold = item.low_stock_threshold || 10;
 
-		// Calculate stats
-		const outOfStockItems = cachedStock.filter(s => Number(s.quantity) <= 0);
-		const lowStockItems = cachedStock.filter(s => {
-			const qty = Number(s.quantity);
-			const threshold = s.low_stock_threshold || 10;
-			return qty > 0 && qty <= threshold;
+			// Compute is_low_stock locally
+			const is_low_stock = quantity > 0 && quantity <= threshold;
+
+			// Compute is_expiring_soon locally (within 7 days)
+			let is_expiring_soon = false;
+			if (item.expiration_date) {
+				const expDate = new Date(item.expiration_date);
+				is_expiring_soon = expDate > now && expDate <= sevenDaysFromNow;
+			}
+
+			return {
+				...item,
+				is_low_stock: item.is_low_stock ?? is_low_stock,
+				is_expiring_soon: item.is_expiring_soon ?? is_expiring_soon,
+			};
 		});
-		const expiringItems = cachedStock.filter(s => {
-			if (!s.expiration_date) return false;
-			const expDate = new Date(s.expiration_date);
-			return expDate > now && expDate <= sevenDaysFromNow;
-		});
+	}, [cachedStock]);
+
+	// Apply local filtering
+	const filteredStock = useMemo(() => {
+		let result = enrichedStock;
+
+		// Filter by location
+		if (selectedLocation) {
+			result = result.filter(item =>
+				String(item.location?.id) === String(selectedLocation) ||
+				String(item.location_id) === String(selectedLocation)
+			);
+		}
+
+		// Filter by search query
+		if (debouncedSearchQuery) {
+			const query = debouncedSearchQuery.toLowerCase();
+			result = result.filter(item =>
+				item.product?.name?.toLowerCase().includes(query) ||
+				item.product?.barcode?.toLowerCase().includes(query)
+			);
+		}
+
+		// Filter by stock status
+		if (stockFilter === "low_stock") {
+			result = result.filter(item => item.is_low_stock);
+		} else if (stockFilter === "expiring_soon") {
+			result = result.filter(item => item.is_expiring_soon);
+		}
+
+		return result;
+	}, [enrichedStock, selectedLocation, debouncedSearchQuery, stockFilter]);
+
+	// Paginate locally
+	const paginatedStock = useMemo(() => {
+		const startIdx = (stockPage - 1) * stockPageSize;
+		const endIdx = startIdx + stockPageSize;
+		return filteredStock.slice(startIdx, endIdx);
+	}, [filteredStock, stockPage, stockPageSize]);
+
+	// Stock data and pagination
+	const stockData = paginatedStock;
+	const stockLoading = cachedStockLoading;
+	const stockCount = filteredStock.length;
+	const totalPages = Math.ceil(stockCount / stockPageSize);
+	const stockNextUrl = stockPage < totalPages ? `?page=${stockPage + 1}` : null;
+	const stockPrevUrl = stockPage > 1 ? `?page=${stockPage - 1}` : null;
+
+	// Compute dashboard data from enriched stock (local-first)
+	// Use enrichedStock which already has is_low_stock and is_expiring_soon computed
+	const localDashboardData = useMemo(() => {
+		if (!enrichedStock || enrichedStock.length === 0) return null;
+
+		// Get unique products
+		const uniqueProductIds = new Set(enrichedStock.map(s => s.product?.id));
+
+		// Calculate stats using pre-computed flags
+		const outOfStockItems = enrichedStock.filter(s => Number(s.quantity) <= 0);
+		const lowStockItems = enrichedStock.filter(s => s.is_low_stock);
+		const expiringItems = enrichedStock.filter(s => s.is_expiring_soon);
 
 		// Calculate total value
-		const totalValue = cachedStock.reduce((sum, s) => {
+		const totalValue = enrichedStock.reduce((sum, s) => {
 			const qty = Number(s.quantity) || 0;
 			const price = Number(s.product?.price) || 0;
 			return sum + (qty * price);
@@ -293,22 +333,32 @@ const InventoryPage = () => {
 				expiration_date: s.expiration_date,
 			})),
 		};
-	}, [isOnline, cachedStock]);
+	}, [enrichedStock]);
 
-	// Use API dashboard when online, computed data when offline
-	const effectiveDashboardData = isOnline ? dashboardData : offlineDashboardData;
+	// LOCAL-FIRST: Use locally computed dashboard data, API data is enhancement only
+	// Local data is always available from cache; API data may provide more accurate counts
+	const effectiveDashboardData = localDashboardData || dashboardData;
 
 	// Reset page to 1 when filters change
 	React.useEffect(() => {
 		setStockPage(1);
 	}, [selectedLocation, debouncedSearchQuery, stockFilter]);
 
-	// Handle pagination navigation
+	// Handle pagination navigation (works with both full URLs and local query strings)
 	const handleStockNavigate = async (url) => {
 		try {
-			// Extract page from URL
-			const urlObj = new URL(url);
-			const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+			let page = 1;
+
+			// Handle simple query string format (local pagination: "?page=2")
+			if (url.startsWith('?')) {
+				const params = new URLSearchParams(url);
+				page = parseInt(params.get("page") || "1", 10);
+			} else {
+				// Handle full URL format (API pagination)
+				const urlObj = new URL(url);
+				page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+			}
+
 			setStockPage(page);
 		} catch (e) {
 			console.error("Error parsing pagination URL:", e);
@@ -578,6 +628,8 @@ const InventoryPage = () => {
 				actions={headerActions}
 				className="shrink-0"
 			/>
+
+			<OfflineBanner dataType="inventory" />
 
 			{/* Dashboard Cards */}
 			<div className="border-b bg-background/95 backdrop-blur-sm p-4">

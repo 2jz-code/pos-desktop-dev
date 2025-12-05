@@ -411,15 +411,17 @@ export const createCartSlice = (set, get) => {
 
 			// LOCAL-FIRST: Do optimistic update IMMEDIATELY before any async work
 			// This gives instant UI feedback regardless of network latency
-			const isOffline = get().isOfflineOrder;
+			// Check CURRENT network state, not just whether order was created offline
+			// This handles mid-order offline transitions correctly
+			const isCurrentlyOffline = cartGateway.isOfflineMode();
 			const existingItemIndex = get().items.findIndex(
 				(item) =>
 					item.product && product && item.product.id === product.id &&
 					// Don't merge items that have modifiers (they're unique variations)
 					(!item.selected_modifiers_snapshot || item.selected_modifiers_snapshot.length === 0) &&
 					// In online mode, skip temp items (they'll be replaced by server)
-					// In offline mode, merge temp items too
-					(isOffline || !item.id.toString().startsWith("temp-"))
+					// In offline mode (or mid-order offline), merge temp items too
+					(isCurrentlyOffline || !item.id.toString().startsWith("temp-"))
 			);
 			let optimisticItems = [...get().items];
 
@@ -1090,56 +1092,44 @@ export const createCartSlice = (set, get) => {
 			const operationId = buildOperationId("apply-code", code);
 			get().addPendingOperation(operationId);
 
-			// Check if offline - need to handle locally
-			if (cartGateway.isOfflineMode()) {
-				try {
-					// Look up the discount by code from cache
-					const cachedDiscounts = await window.offlineAPI?.getCachedDiscounts();
-					const discount = cachedDiscounts?.find(d => d.code?.toLowerCase() === code.toLowerCase());
+			// LOCAL-FIRST: Always validate code locally first from cache
+			// Returns { success, error } so caller can handle UI
+			try {
+				const cachedDiscounts = await window.offlineAPI?.getCachedDiscounts();
+				const discount = cachedDiscounts?.find(d => d.code?.toLowerCase() === code.toLowerCase());
 
-					if (!discount) {
-						toast({
-							title: "Invalid Code",
-							description: "Discount code not found.",
-							variant: "destructive",
-						});
-						get().removePendingOperation(operationId);
-						return;
-					}
-
-					// Check if active (using static import from top)
-					if (!isDiscountActive(discount)) {
-						toast({
-							title: "Discount Inactive",
-							description: "This discount is not currently active.",
-							variant: "destructive",
-						});
-						get().removePendingOperation(operationId);
-						return;
-					}
-
-					// Apply using the same logic as applyDiscountViaSocket
+				if (!discount) {
 					get().removePendingOperation(operationId);
-					await get().applyDiscountViaSocket(discount.id);
-					return;
-				} catch (error) {
-					console.error('❌ [CartSlice] Failed to apply discount code offline:', error);
-					toast({
-						title: "Error",
-						description: "Failed to apply discount code.",
-						variant: "destructive",
-					});
+					return { success: false, error: "Discount code not found." };
 				}
+
+				// Check if active
+				if (!isDiscountActive(discount)) {
+					get().removePendingOperation(operationId);
+					return { success: false, error: "This discount is not currently active." };
+				}
+
+				// Valid code found - apply the discount using the standard flow
+				// This handles optimistic update and background sync
 				get().removePendingOperation(operationId);
-				return;
+				await get().applyDiscountViaSocket(discount.id);
+				return { success: true, discount };
+			} catch (error) {
+				console.error('❌ [CartSlice] Failed to validate discount code locally:', error);
 			}
 
-			// Online - Send through CartGateway via WebSocket
-			await cartGateway.sendCartOperation({
-				type: "apply_discount_code",
-				operationId: operationId,
-				payload: { code },
-			});
+			// Fallback: If cache lookup failed and we're online, try via server
+			if (!cartGateway.isOfflineMode()) {
+				await cartGateway.sendCartOperation({
+					type: "apply_discount_code",
+					operationId: operationId,
+					payload: { code },
+				});
+				return { success: true, pending: true }; // Server will validate
+			} else {
+				get().removePendingOperation(operationId);
+				return { success: false, error: "Failed to apply discount code." };
+			}
 		},
 
 		removeDiscountViaSocket: async (discountId) => {

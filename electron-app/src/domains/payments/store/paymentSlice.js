@@ -9,7 +9,7 @@ import {
 import useTerminalStore from "@/domains/pos/store/terminalStore";
 import { openCashDrawer } from "@/shared/lib/hardware";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
-import { cartGateway } from "@/shared/lib/cartGateway";
+import { cartGateway, isLocalOrderId } from "@/shared/lib/cartGateway";
 import terminalRegistrationService from "@/services/TerminalRegistrationService";
 
 export const createPaymentSlice = (set, get) => ({
@@ -217,7 +217,8 @@ export const createPaymentSlice = (set, get) => ({
 
 		if (isOfflineOrder) {
 			// OFFLINE FLOW: Queue the complete order for sync
-			console.log("📡 [PaymentSlice] Processing offline cash payment...");
+			const willUpdate = !isLocalOrderId(state.orderId);
+			console.log(`📡 [PaymentSlice] Processing offline cash payment... (mode: ${willUpdate ? 'UPDATE' : 'CREATE'}, orderId: ${state.orderId})`);
 
 			try {
 				// Separate order-level and item-level adjustments
@@ -242,10 +243,17 @@ export const createPaymentSlice = (set, get) => ({
 					console.warn('[Offline Payment] Failed to get cashier from cache:', error);
 				}
 
+				// Determine if this is a server order (real UUID) or local order (local-xxx)
+				// server_order_id: Order was created online but went offline mid-order (UPDATE mode)
+				// local_order_id: Order was created entirely offline (CREATE mode)
+				const isServerOrder = !isLocalOrderId(state.orderId);
+
 				// Build the complete order payload for offline queueing
 				const orderPayload = {
-					// Order metadata
-					local_order_id: state.orderId,
+					// Order identification - mutually exclusive
+					...(isServerOrder
+						? { server_order_id: state.orderId }
+						: { local_order_id: state.orderId }),
 					order_type: "POS",
 					dining_preference: state.order.dining_preference || "TAKE_OUT",
 					store_location: terminalRegistrationService.getTerminalConfig()?.location_id,

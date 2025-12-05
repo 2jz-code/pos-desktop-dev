@@ -47,6 +47,7 @@ import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { useOfflineModifiers, useOnlineStatus } from "@/shared/hooks";
 import { OfflineOverlay } from "@/shared/components/ui/OfflineOverlay";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import * as modifierService from "@/domains/products/services/modifierService";
 import ModifierQuickCreate from "@/domains/products/components/modifiers/ModifierQuickCreate";
 import UsageAnalytics from "@/domains/products/components/modifiers/UsageAnalytics";
@@ -212,6 +213,8 @@ const ModifierManagementPage = () => {
 				actions={headerActions}
 				className="shrink-0"
 			/>
+
+			<OfflineBanner dataType="modifiers" />
 
 			{/* Main Content */}
 			<div className="flex-1 min-h-0 p-4">

@@ -48,6 +48,7 @@ import {
 } from "@/shared/components/ui/dropdown-menu";
 import { StandardTable } from "@/shared/components/layout";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { useAuth } from "@/context/AuthContext";
 import { useOfflineUsers, useOfflineGuard, useOnlineStatus } from "@/shared/hooks";
@@ -527,6 +528,8 @@ export function UsersPage() {
 					actions={headerActions}
 					className="shrink-0"
 				/>
+
+				<OfflineBanner dataType="users" />
 
 				{/* Search and Filters */}
 				<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">

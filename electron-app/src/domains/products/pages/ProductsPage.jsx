@@ -60,6 +60,7 @@ import { CategoryManagementDialog } from "@/domains/products/components/dialogs/
 import { ProductTypeManagementDialog } from "@/domains/products/components/dialogs/ProductTypeManagementDialog";
 import { ProductsTableView } from "@/domains/products/components/ProductsTableView";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 
 const ProductsPage = () => {
 	// REMOVED: products, allProducts, loading, error - now come from hook
@@ -996,6 +997,8 @@ const ProductsPage = () => {
 				actions={headerActions}
 				className="shrink-0"
 			/>
+
+			<OfflineBanner dataType="products" />
 
 			{/* Search and Filters */}
 			<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">

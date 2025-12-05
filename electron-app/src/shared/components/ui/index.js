@@ -22,3 +22,4 @@ export * from "./tooltip";
 export * from "./use-toast";
 export * from "./OnlineOnlyButton";
 export * from "./OfflineOverlay";
+export * from "./OfflineBanner";

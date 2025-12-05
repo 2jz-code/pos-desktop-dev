@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import { formatCurrency } from "@ajeen/ui";
 import { PageHeader } from "@/shared/components/layout/PageHeader";
 import { PaginationControls } from "@/shared/components/ui/PaginationControls";
+import { OfflineBanner } from "@/shared/components/ui/OfflineBanner";
 import { FilterPill } from "@/domains/orders/components/FilterPill";
 import { PaymentsTableView } from "../components/PaymentsTableView";
 
@@ -391,15 +392,7 @@ export default function PaymentsPage() {
 				className="shrink-0"
 			/>
 
-			{/* Offline Banner */}
-			{!isOnline && (
-				<div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
-					<CloudOff className="h-4 w-4 text-amber-600" />
-					<span className="text-sm text-amber-800">
-						Offline Mode - Showing payments from this session only. Some actions are unavailable.
-					</span>
-				</div>
-			)}
+			<OfflineBanner dataType="payments" />
 
 			{/* Search and Filters */}
 			<div className="border-b bg-background/95 backdrop-blur-sm p-4 space-y-4">

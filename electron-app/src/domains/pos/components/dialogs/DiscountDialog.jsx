@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getAvailableDiscounts } from "@/domains/discounts/services/discountService";
 import { usePosStore } from "@/domains/pos/store/posStore";
-import { Loader2, WifiOff } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { shallow } from "zustand/shallow";
 
 /**
@@ -47,18 +47,22 @@ const DiscountDialog = () => {
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState(null);
 	const [discountCodeInput, setDiscountCodeInput] = useState("");
-	const [isFromCache, setIsFromCache] = useState(false);
+	const [codeError, setCodeError] = useState(null);
+	const [isApplyingCode, setIsApplyingCode] = useState(false);
 
 	useEffect(() => {
 		if (isDiscountDialogOpen) {
+			// Reset state when dialog opens
+			setCodeError(null);
+			setDiscountCodeInput("");
+
 			const fetchDiscounts = async () => {
 				setIsLoading(true);
 				setError(null);
-				setIsFromCache(false);
 
 				let discounts = null;
 
-				// Step 1: Try offline cache first
+				// Step 1: Try local cache first (local-first approach)
 				if (window.offlineAPI?.getCachedDiscounts) {
 					try {
 						console.log("📦 [DiscountDialog] Trying discounts cache first...");
@@ -67,7 +71,6 @@ const DiscountDialog = () => {
 						if (Array.isArray(cachedDiscounts) && cachedDiscounts.length > 0) {
 							// Filter for promotional discounts (no code, is_active)
 							discounts = cachedDiscounts.filter((d) => !d.code && d.is_active);
-							setIsFromCache(true);
 							console.log(`✅ [DiscountDialog] Loaded ${discounts.length} promotional discounts from cache`);
 						}
 					} catch (cacheError) {
@@ -112,11 +115,22 @@ const DiscountDialog = () => {
 		setIsDiscountDialogOpen(false);
 	};
 
-	const handleApplyCode = () => {
+	const handleApplyCode = async () => {
 		if (!discountCodeInput.trim()) return;
-		applyDiscountCode(discountCodeInput);
-		setDiscountCodeInput("");
-		setIsDiscountDialogOpen(false);
+
+		setCodeError(null);
+		setIsApplyingCode(true);
+
+		const result = await applyDiscountCode(discountCodeInput);
+
+		setIsApplyingCode(false);
+
+		if (result?.success) {
+			setDiscountCodeInput("");
+			setIsDiscountDialogOpen(false);
+		} else {
+			setCodeError(result?.error || "Invalid discount code.");
+		}
 	};
 
 	return (
@@ -126,14 +140,8 @@ const DiscountDialog = () => {
 		>
 			<DialogContent className="sm:max-w-[425px]">
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
+					<DialogTitle>
 						Apply a Discount
-						{isFromCache && (
-							<span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
-								<WifiOff className="h-3 w-3" />
-								offline
-							</span>
-						)}
 					</DialogTitle>
 					<DialogDescription>
 						Select a promotion or enter a code to apply a discount.
@@ -199,13 +207,31 @@ const DiscountDialog = () => {
 									id="discount-code"
 									placeholder="Enter code, e.g., SUMMER20"
 									value={discountCodeInput}
-									onChange={(e) => setDiscountCodeInput(e.target.value)}
+									onChange={(e) => {
+										setDiscountCodeInput(e.target.value);
+										setCodeError(null); // Clear error when typing
+									}}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") handleApplyCode();
+									}}
+									className={codeError ? "border-red-500" : ""}
 								/>
+								{codeError && (
+									<p className="text-sm text-red-500">{codeError}</p>
+								)}
 								<Button
 									onClick={handleApplyCode}
 									className="w-full"
+									disabled={isApplyingCode || !discountCodeInput.trim()}
 								>
-									Apply Code
+									{isApplyingCode ? (
+										<>
+											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+											Checking...
+										</>
+									) : (
+										"Apply Code"
+									)}
 								</Button>
 							</div>
 						</div>
