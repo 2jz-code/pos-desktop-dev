@@ -17,6 +17,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { cartSocket } from './cartSocket';
+import apiClient from '@/shared/lib/apiClient';
 
 // Gateway state
 let _store = null;
@@ -27,6 +28,7 @@ let _localOrderId = null; // Used when offline - temporary local UUID
 let _operationQueue = []; // Queue of pending operations to sync
 let _syncTimeout = null; // Throttle timer for background sync
 const SYNC_THROTTLE_MS = 100; // Throttle background sync to 100ms
+let _promotionInFlight = false;
 
 /**
  * Check if device is currently online
@@ -80,6 +82,13 @@ async function handleOnline() {
     }
   } catch (error) {
     console.error('❌ [CartGateway] Failed to auto-flush on reconnect:', error);
+  }
+
+  // Try to promote any in-progress local order to a server order
+  try {
+    await promoteLocalOrderIfNeeded();
+  } catch (error) {
+    console.error('❌ [CartGateway] Failed to promote local order on reconnect:', error);
   }
 }
 
@@ -293,6 +302,92 @@ export async function sendCartOperation(message, options = {}) {
   scheduleSync();
 
   return { sent: false, queued: true };
+}
+
+/**
+ * Promote a local (offline) in-progress order to a server order on reconnect.
+ * This lets the terminal continue online (e.g., accept card) without user input.
+ */
+async function promoteLocalOrderIfNeeded() {
+  if (_promotionInFlight) return;
+  if (!_store) return;
+  if (isOfflineMode()) return;
+
+  const state = _store.getState?.() || {};
+  const orderId = state.orderId;
+
+  // Only promote in-progress local orders with items
+  if (!orderId || !isLocalOrderId(orderId)) return;
+  if (!state.items || state.items.length === 0) return;
+
+  _promotionInFlight = true;
+  try {
+    // Pairing info gives us the store_location_id
+    const pairingInfo = await window.offlineAPI?.getPairingInfo();
+    if (!pairingInfo?.location_id) {
+      console.warn('[CartGateway] Cannot promote - missing pairing location_id');
+      return;
+    }
+
+    const opId = (orderId.startsWith('local-') ? orderId.replace('local-', '') : orderId);
+
+    const payload = {
+      operation_id: opId,
+      local_order_id: orderId,
+      order: {
+        order_type: 'POS',
+        status: 'PENDING',
+        payment_status: 'UNPAID',
+        store_location_id: pairingInfo.location_id,
+        dining_preference: state.diningPreference || 'TAKE_OUT',
+        cashier_id: state.cashierId || null,
+        guest_first_name: state.customerFirstName || '',
+        subtotal: state.subtotal || 0,
+        tax: state.taxAmount || 0,
+        total: state.total || 0,
+        discounts: state.appliedDiscounts?.map(d => ({
+          discount_id: d.discount?.id || d.id,
+          amount: d.amount,
+        })) || [],
+        adjustments: state.adjustments || [],
+        items: state.items.map(item => ({
+          product_id: item.product?.id || item.product_id,
+          quantity: item.quantity,
+          price_at_sale: item.price_at_sale,
+          notes: item.notes || '',
+          modifiers: (item.selected_modifiers_snapshot || item.modifiers || [])
+            .filter(mod => (mod.modifier_set_id || mod.set_id) && (mod.modifier_option_id || mod.option_id || mod.id))
+            .map(mod => ({
+              modifier_set_id: String(mod.modifier_set_id || mod.set_id),
+              modifier_option_id: String(mod.modifier_option_id || mod.option_id || mod.id),
+              price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
+            })),
+          adjustments: item.adjustments || [],
+        })),
+      },
+    };
+
+    const response = await apiClient.post('/sync/promote-order/', payload);
+    const newOrderId = response.data?.order_id;
+    const newOrderNumber = response.data?.order_number;
+
+    if (newOrderId) {
+      // Swap to server order ID in state and mark as online
+      _store.setState?.({
+        orderId: newOrderId,
+        orderNumber: newOrderNumber || null,
+        isOfflineOrder: false,
+        orderStatus: 'PENDING',
+      });
+
+      // Connect socket for the new order
+      await initializeConnection(newOrderId);
+    }
+  } catch (error) {
+    console.warn('[CartGateway] Promotion attempt failed:', error.message || error);
+  } finally {
+    _promotionInFlight = false;
+  }
 }
 
 /**

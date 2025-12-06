@@ -52,6 +52,26 @@ const buildOperationId = (prefix, identifier) => {
 const DRIFT_THRESHOLD = 0.02;
 
 /**
+ * Hydrate server items with local product data so tax/lookups keep product_type/tax config.
+ * Falls back to server item when no local match is found.
+ */
+const hydrateItemsWithLocalProduct = (serverItems = [], localItems = []) => {
+	const productMap = new Map();
+	for (const item of localItems) {
+		const productId = item.product?.id || item.product_id;
+		if (productId && item.product) {
+			productMap.set(productId, item.product);
+		}
+	}
+
+	return serverItems.map((item) => {
+		const productId = item.product?.id || item.product_id;
+		const product = productMap.get(productId);
+		return product ? { ...item, product } : item;
+	});
+};
+
+/**
  * Detect drift between local cart state and server response
  * Used for reconciliation logging and debugging calculator alignment
  *
@@ -877,7 +897,9 @@ export const createCartSlice = (set, get) => {
 
 			// If item count drifted, sync items (server is authoritative for item state)
 			if (drift.drifts.itemCount || drift.drifts.itemContent) {
-				updates.items = orderData.items || [];
+				// Preserve local product metadata (product_type/taxes) when replacing items,
+				// so local calculations keep tax-free items tax-free.
+				updates.items = hydrateItemsWithLocalProduct(orderData.items || [], currentState.items || []);
 				updates.appliedDiscounts = orderData.applied_discounts || [];
 				updates.adjustments = orderData.adjustments || [];
 			}

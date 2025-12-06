@@ -301,12 +301,17 @@ class OfflineOrderIngestService:
             except User.DoesNotExist:
                 logger.warning(f"Cashier {cashier_id} not found for offline order")
 
-        # Create order - offline orders are already paid/completed
+        # Determine order status/payment status (defaults preserve previous behavior)
+        status = order_data.get('status', 'COMPLETED')
+        payment_status = order_data.get('payment_status', 'PAID' if status == 'COMPLETED' else 'UNPAID')
+        is_offline_order = order_data.get('is_offline_order', True)
+
+        # Create order - status may be draft/pending for promotion flows
         order = Order.objects.create(
             tenant=terminal.tenant,
             order_type=order_data['order_type'],
-            status='COMPLETED',  # Offline orders are always completed
-            payment_status='PAID',  # Offline orders are already paid
+            status=status,
+            payment_status=payment_status,
             store_location=terminal.store_location,
             cashier_id=cashier_id,
             customer_id=order_data.get('customer_id'),
@@ -320,11 +325,11 @@ class OfflineOrderIngestService:
             total_discounts_amount=Decimal(str(order_data.get('discount_total', 0))),
             grand_total=Decimal(str(order_data['total'])),
             created_at=created_at,
-            completed_at=created_at,  # Use offline timestamp as completion time
+            completed_at=created_at if status == 'COMPLETED' else None,
             # Offline tracking fields
-            is_offline_order=True,
-            offline_created_at=created_at,
-            offline_terminal_id=terminal.device_id,
+            is_offline_order=is_offline_order,
+            offline_created_at=created_at if is_offline_order else None,
+            offline_terminal_id=terminal.device_id if is_offline_order else None,
         )
 
         # Create order items with modifiers and adjustments
@@ -336,7 +341,7 @@ class OfflineOrderIngestService:
                 quantity=item_data['quantity'],
                 price_at_sale=Decimal(str(item_data['price_at_sale'])),
                 notes=item_data.get('notes', ''),
-                status='COMPLETED'
+                status=order.status if status != 'COMPLETED' else 'COMPLETED'
             )
 
             # Create modifier snapshots for this item

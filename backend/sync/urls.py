@@ -20,6 +20,7 @@ from .views import (
     OfflineOrderIngestView,
     OfflineInventoryIngestView,
     OfflineApprovalsIngestView,
+    PromoteOrderView,
     # Terminal status
     TerminalHeartbeatView,
     TerminalParkView,
@@ -44,6 +45,7 @@ urlpatterns = [
     path('offline-orders/', OfflineOrderIngestView.as_view(), name='offline-orders-ingest'),
     path('offline-inventory/', OfflineInventoryIngestView.as_view(), name='offline-inventory-ingest'),
     path('offline-approvals/', OfflineApprovalsIngestView.as_view(), name='offline-approvals-ingest'),
+    path('promote-order/', PromoteOrderView.as_view(), name='promote-order'),
 
     # Terminal status
     path('heartbeat/', TerminalHeartbeatView.as_view(), name='terminal-heartbeat'),

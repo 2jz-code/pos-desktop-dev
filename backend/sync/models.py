@@ -47,6 +47,7 @@ class ProcessedOperation(models.Model):
             ('OFFLINE_ORDER', 'Offline Order'),
             ('OFFLINE_INVENTORY', 'Offline Inventory'),
             ('OFFLINE_APPROVALS', 'Offline Approvals'),
+            ('PROMOTED_ORDER', 'Promoted Order'),
         ],
         help_text=_("Type of operation that was processed")
     )

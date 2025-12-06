@@ -222,6 +222,53 @@ class OfflineOrderSerializer(serializers.Serializer):
         return value
 
 
+class PromoteOrderSerializer(serializers.Serializer):
+    """
+    Payload to promote a local (offline) cart to a server order when reconnecting.
+
+    This creates a draft/pending order on the backend so the terminal can
+    continue online (e.g., accept card payments) without losing the local cart.
+    """
+    operation_id = serializers.UUIDField()
+    local_order_id = serializers.CharField(max_length=255)
+    # Optional server order type/dining preference
+    order = serializers.DictField()
+
+    def validate_order(self, value):
+        """
+        Reuse offline order item/discount/adjustment validation but allow draft statuses.
+        """
+        # Required fields
+        required = ['order_type', 'store_location_id', 'items', 'subtotal', 'tax', 'total']
+        for field in required:
+            if field not in value:
+                raise serializers.ValidationError(f"Missing required field: {field}")
+
+        # Status can be draft/in progress/pending (not completed for promotion)
+        status = value.get('status', 'PENDING')
+        if status not in ['PENDING', 'IN_PROGRESS', 'DRAFT']:
+            raise serializers.ValidationError(f"Invalid status: {status}. Must be one of ['PENDING', 'IN_PROGRESS', 'DRAFT']")
+
+        # Validate items
+        items_serializer = OfflineOrderItemSerializer(data=value['items'], many=True)
+        if not items_serializer.is_valid():
+            raise serializers.ValidationError({'items': items_serializer.errors})
+
+        # Validate discounts if present
+        if 'discounts' in value and value['discounts']:
+            discounts_serializer = OfflineDiscountSerializer(data=value['discounts'], many=True)
+            if not discounts_serializer.is_valid():
+                raise serializers.ValidationError({'discounts': discounts_serializer.errors})
+
+        # Validate adjustments if present
+        if 'adjustments' in value and value['adjustments']:
+            adjustments_serializer = OfflineOrderAdjustmentSerializer(data=value['adjustments'], many=True)
+            if not adjustments_serializer.is_valid():
+                raise serializers.ValidationError({'adjustments': adjustments_serializer.errors})
+
+        return value
+
+
 class OfflineInventoryIngestSerializer(serializers.Serializer):
     """
     Inventory deltas payload.

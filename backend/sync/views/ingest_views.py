@@ -10,6 +10,7 @@ from rest_framework import status as http_status
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
 import logging
 
 from sync.authentication import DeviceSignatureAuthentication
@@ -21,12 +22,14 @@ from sync.serializers import (
     OfflineOrderIngestResponseSerializer,
     TerminalHeartbeatSerializer,
     TerminalHeartbeatResponseSerializer,
+    PromoteOrderSerializer,
 )
 from sync.services import (
     OfflineOrderIngestService,
     OfflineInventoryIngestService,
     OfflineApprovalsIngestService,
 )
+from sync.models import ProcessedOperation
 from terminals.models import TerminalRegistration
 
 logger = logging.getLogger(__name__)
@@ -205,6 +208,78 @@ class OfflineApprovalsIngestView(APIView):
             return Response(result, status=http_status.HTTP_200_OK)
         else:
             return Response(result, status=http_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PromoteOrderView(APIView):
+    """
+    Promote a local (offline) cart to a server order when the terminal reconnects.
+
+    POST /api/sync/promote-order/
+
+    - Creates a draft/pending order on the backend using the local cart snapshot
+    - Idempotent via operation_id (use local_order_id)
+    - Does NOT create payments or deduct inventory (order is still in progress)
+    """
+
+    authentication_classes = [DeviceSignatureAuthentication]
+    permission_classes = [IsAuthenticatedTerminal]
+
+    def post(self, request):
+        terminal = request.auth
+        _clear_parked_status(terminal)
+
+        serializer = PromoteOrderSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'status': 'ERROR', 'errors': serializer.errors},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
+        operation_id = data['operation_id']
+
+        with transaction.atomic():
+            existing = ProcessedOperation.objects.filter(
+                tenant=terminal.tenant,
+                terminal=terminal,
+                operation_id=operation_id
+            ).first()
+            if existing:
+                return Response(existing.result_data, status=http_status.HTTP_200_OK)
+
+            order_data = data['order'].copy()
+            order_data['status'] = order_data.get('status', 'PENDING')
+            order_data['payment_status'] = order_data.get('payment_status', 'UNPAID')
+            order_data['is_offline_order'] = False
+            order_data['store_location_id'] = terminal.store_location_id
+
+            payload = {
+                'order': order_data,
+                'created_at': timezone.now(),
+                'offline_created_at': data['order'].get('offline_created_at'),
+            }
+
+            order = OfflineOrderIngestService._create_order(payload, terminal)
+
+            result = {
+                'status': 'SUCCESS',
+                'order_number': order.order_number,
+                'order_id': str(order.id),
+                'mode': 'PROMOTED',
+                'warnings': [],
+                'errors': [],
+            }
+
+            ProcessedOperation.objects.create(
+                tenant=terminal.tenant,
+                terminal=terminal,
+                operation_id=operation_id,
+                operation_type='PROMOTED_ORDER',
+                result_data=result,
+                order_id=order.id
+            )
+
+            return Response(result, status=http_status.HTTP_201_CREATED)
 
 
 class TerminalHeartbeatView(APIView):
