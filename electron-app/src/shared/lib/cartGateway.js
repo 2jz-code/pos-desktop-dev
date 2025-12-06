@@ -440,11 +440,13 @@ function buildOfflineOrderPayload(state, checkoutData) {
       ? { server_order_id: state.orderId }
       : { local_order_id: state.orderId }),
 
-    // Order metadata
-    order_type: 'POS',
-    dining_preference: state.diningPreference || 'TAKE_OUT',
-    store_location: checkoutData.storeLocation,
-    cashier_id: checkoutData.cashierId,
+	    // Order metadata
+	    order_type: 'POS',
+	    dining_preference: state.diningPreference || 'TAKE_OUT',
+	    store_location: checkoutData.storeLocation,
+	    // Optional: pass through default inventory location to aid inventory deltas
+	    default_inventory_location_id: checkoutData.defaultInventoryLocationId || null,
+	    cashier_id: checkoutData.cashierId,
 
     // Customer info
     guest_first_name: state.customerFirstName,

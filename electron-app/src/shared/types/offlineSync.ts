@@ -61,6 +61,7 @@ export interface IngestModifier {
   modifier_set_id: string;
   modifier_option_id: string;
   price_delta: number;
+  quantity?: number; // defaults to 1 if omitted
 }
 
 // =============================================================================
@@ -232,6 +233,7 @@ export interface StoredOfflineOrderPayload {
   dining_preference: 'DINE_IN' | 'TAKE_OUT';
   store_location: IntegerId; // StoreLocation uses integer PK
   cashier_id: UUID;
+  default_inventory_location_id?: IntegerId | null;
 
   // Customer info
   guest_first_name?: string;

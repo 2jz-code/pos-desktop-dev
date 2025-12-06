@@ -24,6 +24,8 @@ class OfflineModifierSerializer(serializers.Serializer):
     modifier_set_id = serializers.CharField(max_length=50)
     modifier_option_id = serializers.CharField(max_length=50)
     price_delta = serializers.DecimalField(max_digits=10, decimal_places=2)
+    # Allow multi-quantity selections (defaults to 1 if omitted)
+    quantity = serializers.IntegerField(required=False, min_value=1, default=1)
 
 
 class OfflineItemAdjustmentSerializer(serializers.Serializer):

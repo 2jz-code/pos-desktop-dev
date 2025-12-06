@@ -700,6 +700,17 @@ class OfflineSyncService {
 	buildIngestPayload(order, pairingInfo, datasetVersions) {
 		const payload = order.payload;
 
+		// Compute inventory deltas from items (simple decrement per quantity)
+		// Use store default inventory location if available; otherwise send store_location for backend fallback.
+		const defaultInventoryLocationId = payload.default_inventory_location_id
+			|| payload.store_location_default_inventory_location_id;
+		const inventoryDeltas = (payload.items || []).map(item => ({
+			product_id: item.product_id,
+			location_id: defaultInventoryLocationId || payload.store_location,
+			quantity_change: -Math.abs(item.quantity || 0),
+			reason: 'ORDER_DEDUCTION',
+		}));
+
 		// Use stable operation_id from order.local_id for idempotency
 		// This ensures retries return cached results instead of creating duplicates
 		const operationId = order.local_id || uuidv4();
@@ -754,6 +765,7 @@ class OfflineSyncService {
 							modifier_set_id: String(mod.modifier_set_id || mod.set_id),
 							modifier_option_id: String(mod.modifier_option_id || mod.option_id || mod.id),
 							price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
+							quantity: mod.quantity || 1,
 						})),
 					adjustments: (item.adjustments || [])
 						.filter(adj => ['PRICE_OVERRIDE', 'TAX_EXEMPT', 'ONE_OFF_DISCOUNT', 'FEE_EXEMPT'].includes(adj.adjustment_type))
@@ -807,7 +819,10 @@ class OfflineSyncService {
 			}],
 
 			// Inventory deltas - backend computes from items
-			inventory_deltas: [],
+			inventory_deltas: inventoryDeltas,
+
+			// Approvals (if any were captured offline)
+			approvals: payload.approvals || [],
 		};
 	}
 

@@ -876,7 +876,7 @@ export const createCartSlice = (set, get) => {
 			}
 
 			// If item count drifted, sync items (server is authoritative for item state)
-			if (drift.drifts.itemCount) {
+			if (drift.drifts.itemCount || drift.drifts.itemContent) {
 				updates.items = orderData.items || [];
 				updates.appliedDiscounts = orderData.applied_discounts || [];
 				updates.adjustments = orderData.adjustments || [];

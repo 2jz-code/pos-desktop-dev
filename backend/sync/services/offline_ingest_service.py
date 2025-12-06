@@ -876,15 +876,23 @@ class OfflineOrderIngestService:
         """Apply inventory deltas (stock deductions)"""
         for delta in payload.get('inventory_deltas', []):
             try:
-                stock = InventoryStock.objects.get(
+                stock = InventoryStock.objects.filter(
                     tenant=terminal.tenant,
                     product_id=delta['product_id'],
-                    location_id=delta['location_id']
-                )
+                    location_id=delta.get('location_id')
+                ).first()
+
+                # Fallback: try matching by store_location if no inventory location match
+                if not stock and delta.get('location_id') is not None:
+                    stock = InventoryStock.objects.filter(
+                        tenant=terminal.tenant,
+                        product_id=delta['product_id'],
+                        store_location=terminal.store_location
+                    ).first()
 
                 # Apply delta
                 stock.quantity += Decimal(str(delta['quantity_change']))
-                stock.save(update_fields=['quantity'])
+                stock.save(update_fields=['quantity', 'updated_at'])
 
             except InventoryStock.DoesNotExist:
                 logger.warning(
@@ -965,7 +973,7 @@ class OfflineInventoryIngestService:
                             )
 
                         stock.quantity = new_quantity
-                        stock.save(update_fields=['quantity'])
+                        stock.save(update_fields=['quantity', 'updated_at'])
 
                     except InventoryStock.DoesNotExist:
                         logger.error(
