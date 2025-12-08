@@ -101,7 +101,18 @@ export default function GroupedCartItem({ baseProduct, items }) {
 		) || [];
 
 		// Calculate total item-level discount amount
-		const totalItemDiscount = itemDiscounts.reduce((sum, disc) => sum + parseFloat(disc.amount || 0), 0);
+		// For percentage discounts, recalculate based on current line total
+		const lineTotal = parseFloat(item.price_at_sale) * item.quantity;
+		const totalItemDiscount = itemDiscounts.reduce((sum, disc) => {
+			if (disc.discount_type === 'PERCENTAGE') {
+				// Recalculate percentage based on current line total
+				const percentage = parseFloat(disc.discount_value ?? disc.value ?? 0);
+				return sum - (lineTotal * percentage / 100); // Return negative value
+			} else {
+				// Fixed amount - use stored value
+				return sum + parseFloat(disc.amount || 0);
+			}
+		}, 0);
 		const hasItemDiscount = itemDiscounts.length > 0;
 
 		// Find tax exemption for this specific item

@@ -232,9 +232,19 @@ export function calculateCartTotals({
     const discounts = itemDiscounts.get(item.id) || [];
     let lineDiscountMinor = 0;
     discounts.forEach(disc => {
-      // Discount amount is stored as negative value
-      const discountAmount = Math.abs(parseFloat(disc.amount || 0));
-      lineDiscountMinor += toMinor(discountAmount, currency);
+      let discountAmountMinor;
+
+      if (disc.discount_type === 'PERCENTAGE') {
+        // Recalculate percentage based on current line total
+        const percentage = parseFloat(disc.discount_value ?? disc.value ?? 0);
+        discountAmountMinor = Math.round(lineTotalMinor * percentage / 100);
+      } else {
+        // Fixed amount - use stored value
+        const discountAmount = Math.abs(parseFloat(disc.amount || disc.value || 0));
+        discountAmountMinor = toMinor(discountAmount, currency);
+      }
+
+      lineDiscountMinor += discountAmountMinor;
     });
     itemDiscountTotalMinor += lineDiscountMinor;
 
@@ -290,10 +300,25 @@ export function calculateCartTotals({
   // ============================================================================
   // ONE-OFF ORDER-LEVEL DISCOUNTS (from adjustments)
   // ============================================================================
+  // Server calculates order-level percentage discounts on subtotal directly (not post-item-discounts)
+  // See backend/orders/services/calculation_service.py line 167:
+  //   new_amount = -(order.subtotal * (adjustment.discount_value / Decimal('100.00')))
+
   let orderDiscountTotalMinor = 0;
   orderLevelDiscounts.forEach(disc => {
-    const discountAmount = Math.abs(parseFloat(disc.amount || 0));
-    orderDiscountTotalMinor += toMinor(discountAmount, currency);
+    let discountAmountMinor;
+
+    if (disc.discount_type === 'PERCENTAGE') {
+      // Recalculate percentage based on subtotal (matches server behavior)
+      const percentage = parseFloat(disc.discount_value ?? disc.value ?? 0);
+      discountAmountMinor = Math.round(subtotalMinor * percentage / 100);
+    } else {
+      // Fixed amount - use stored value
+      const discountAmount = Math.abs(parseFloat(disc.amount || 0));
+      discountAmountMinor = toMinor(discountAmount, currency);
+    }
+
+    orderDiscountTotalMinor += discountAmountMinor;
   });
 
   // ============================================================================

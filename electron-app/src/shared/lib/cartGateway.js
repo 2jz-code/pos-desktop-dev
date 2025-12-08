@@ -30,6 +30,37 @@ let _syncTimeout = null; // Throttle timer for background sync
 const SYNC_THROTTLE_MS = 100; // Throttle background sync to 100ms
 let _promotionInFlight = false;
 
+// Valid adjustment types accepted by backend
+const VALID_ADJUSTMENT_TYPES = ['PRICE_OVERRIDE', 'TAX_EXEMPT', 'ONE_OFF_DISCOUNT', 'FEE_EXEMPT'];
+
+// Helper to normalize adjustments for ingest/promotion
+function mapAdjustments(adjustments = []) {
+  return adjustments
+    .filter(adj => adj.adjustment_type && VALID_ADJUSTMENT_TYPES.includes(adj.adjustment_type))
+    .map(adj => {
+      // For ONE_OFF_DISCOUNT: use discount_value (the percentage or fixed amount entered)
+      // For PRICE_OVERRIDE: use new_price as the value
+      // Fallback to value or amount if neither is available
+      let rawValue;
+      if (adj.adjustment_type === 'ONE_OFF_DISCOUNT') {
+        rawValue = adj.discount_value ?? adj.discountValue ?? adj.value ?? 0;
+      } else if (adj.adjustment_type === 'PRICE_OVERRIDE') {
+        rawValue = adj.new_price ?? adj.value ?? 0;
+      } else {
+        rawValue = adj.value ?? adj.amount ?? 0;
+      }
+
+      return {
+        adjustment_type: adj.adjustment_type,
+        discount_type: adj.discount_type || adj.discountType || null,
+        // Clamp value to safe bound: 99999999.99 (8 digits + 2 decimal)
+        value: parseFloat(Math.min(Math.abs(parseFloat(rawValue)), 99999999.99).toFixed(2)),
+        notes: adj.notes || adj.reason || '',
+        approved_by_user_id: adj.approved_by_user_id || null,
+      };
+    });
+}
+
 /**
  * Check if device is currently online
  * Uses navigator.onLine as primary check
@@ -338,32 +369,44 @@ async function promoteLocalOrderIfNeeded() {
         order_type: 'POS',
         status: 'PENDING',
         payment_status: 'UNPAID',
-        store_location_id: pairingInfo.location_id,
+        store_location_id: parseInt(pairingInfo.location_id, 10),
         dining_preference: state.diningPreference || 'TAKE_OUT',
-        cashier_id: state.cashierId || null,
+        cashier_id: state.cashierId || state.currentUser?.id || null,
         guest_first_name: state.customerFirstName || '',
         subtotal: state.subtotal || 0,
         tax: state.taxAmount || 0,
+        discount_total: state.totalDiscountsAmount || 0,
+        surcharge: state.surcharge || 0,
         total: state.total || 0,
         discounts: state.appliedDiscounts?.map(d => ({
           discount_id: d.discount?.id || d.id,
           amount: d.amount,
         })) || [],
-        adjustments: state.adjustments || [],
-        items: state.items.map(item => ({
-          product_id: item.product?.id || item.product_id,
-          quantity: item.quantity,
-          price_at_sale: item.price_at_sale,
-          notes: item.notes || '',
-          modifiers: (item.selected_modifiers_snapshot || item.modifiers || [])
-            .filter(mod => (mod.modifier_set_id || mod.set_id) && (mod.modifier_option_id || mod.option_id || mod.id))
-            .map(mod => ({
-              modifier_set_id: String(mod.modifier_set_id || mod.set_id),
-              modifier_option_id: String(mod.modifier_option_id || mod.option_id || mod.id),
-              price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
-            })),
-          adjustments: item.adjustments || [],
-        })),
+        // Order-level adjustments only (no order_item)
+        adjustments: mapAdjustments(
+          (state.adjustments || []).filter(adj => !adj.order_item)
+        ),
+        items: state.items.map(item => {
+          // Extract item-level adjustments from state.adjustments
+          const itemAdjustments = (state.adjustments || []).filter(
+            adj => adj.order_item === item.id
+          );
+          return {
+            product_id: item.product?.id || item.product_id,
+            quantity: item.quantity,
+            price_at_sale: item.price_at_sale,
+            notes: item.notes || '',
+            modifiers: (item.selected_modifiers_snapshot || item.modifiers || [])
+              .filter(mod => (mod.modifier_set_id || mod.set_id) && (mod.modifier_option_id || mod.option_id || mod.id))
+              .map(mod => ({
+                modifier_set_id: String(mod.modifier_set_id || mod.set_id),
+                modifier_option_id: String(mod.modifier_option_id || mod.option_id || mod.id),
+                price_delta: parseFloat(mod.price_delta ?? mod.price_at_sale ?? mod.price ?? 0),
+              })),
+            // Include item-level adjustments from state.adjustments
+            adjustments: mapAdjustments(itemAdjustments),
+          };
+        }),
       },
     };
 
@@ -382,6 +425,17 @@ async function promoteLocalOrderIfNeeded() {
 
       // Connect socket for the new order
       await initializeConnection(newOrderId);
+
+      // Hydrate cart from server to ensure discounts/adjustments persist
+      try {
+        const orderResp = await apiClient.get(`/orders/${newOrderId}/`);
+        const setCart = _store.getState?.().setCartFromSocket;
+        if (setCart && orderResp?.data) {
+          setCart(orderResp.data);
+        }
+      } catch (err) {
+        console.warn('[CartGateway] Failed to hydrate cart after promotion:', err.message || err);
+      }
     }
   } catch (error) {
     console.warn('[CartGateway] Promotion attempt failed:', error.message || error);
@@ -562,7 +616,15 @@ function buildOfflineOrderPayload(state, checkoutData) {
     })) || [],
 
     // Adjustments
-    adjustments: state.adjustments || [],
+    adjustments: (state.adjustments || []).map(adj => ({
+      adjustment_type: adj.adjustment_type,
+      discount_type: adj.discount_type || adj.discountType || null,
+      discount_value: adj.discount_value ?? adj.discountValue ?? null,
+      value: adj.value ?? adj.amount ?? 0,
+      notes: adj.notes || adj.reason || '',
+      order_item: adj.order_item || adj.order_item_id || null,
+      approved_by_user_id: adj.approved_by_user_id || null,
+    })),
 
     // Totals (for verification on sync)
     subtotal: state.subtotal,
@@ -577,6 +639,9 @@ function buildOfflineOrderPayload(state, checkoutData) {
       amount: checkoutData.cashAmount,
       tip: checkoutData.tip || 0,
     },
+
+    // Approvals captured while offline
+    approvals: state.approvals || [],
 
     // Timestamp
     created_offline_at: new Date().toISOString(),

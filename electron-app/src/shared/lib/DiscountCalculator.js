@@ -38,7 +38,9 @@ export const DiscountScope = {
  * @returns {boolean} Whether discount is active
  */
 export function isDiscountActive(discount) {
-  if (!discount.is_active) return false;
+  // Only return false if is_active is EXPLICITLY false
+  // If undefined/null, assume active (discount was valid when applied to cart)
+  if (discount.is_active === false) return false;
 
   const now = new Date();
 
@@ -425,16 +427,41 @@ function getDiscountStrategy(type, scope) {
  * @returns {number} Discount amount in minor units
  */
 export function calculateDiscountAmount(discount, items, subtotalMinor, productTypeMap, currency = 'USD') {
-  // Check if discount is active
-  if (!isDiscountActive(discount)) return 0;
-
-  const strategy = getDiscountStrategy(discount.type, discount.scope);
-  if (!strategy) {
-    console.warn(`Unknown discount strategy: ${discount.scope}_${discount.type}`);
+  // Validate discount has required fields
+  if (!discount || !discount.type || !discount.scope) {
+    console.warn('[DiscountCalculator] Discount missing required fields (type/scope):', {
+      hasDiscount: !!discount,
+      type: discount?.type,
+      scope: discount?.scope,
+      value: discount?.value,
+      name: discount?.name,
+    });
     return 0;
   }
 
-  return strategy(discount, items, subtotalMinor, productTypeMap, currency);
+  // Check if discount is active
+  if (!isDiscountActive(discount)) {
+    console.log('[DiscountCalculator] Discount not active:', discount.name || discount.id);
+    return 0;
+  }
+
+  const strategy = getDiscountStrategy(discount.type, discount.scope);
+  if (!strategy) {
+    console.warn(`[DiscountCalculator] Unknown discount strategy: ${discount.scope}_${discount.type}`);
+    return 0;
+  }
+
+  const result = strategy(discount, items, subtotalMinor, productTypeMap, currency);
+  console.log('[DiscountCalculator] Calculated discount:', {
+    name: discount.name,
+    type: discount.type,
+    scope: discount.scope,
+    value: discount.value,
+    subtotalMinor,
+    resultMinor: result,
+  });
+
+  return result;
 }
 
 /**
@@ -454,11 +481,28 @@ export function calculateAllDiscounts(appliedDiscounts, items, subtotalMinor, pr
   const breakdown = [];
   let totalMinor = 0;
 
-  appliedDiscounts.forEach(entry => {
+  console.log('[DiscountCalculator] calculateAllDiscounts called:', {
+    appliedDiscountsCount: appliedDiscounts?.length || 0,
+    itemsCount: items?.length || 0,
+    subtotalMinor,
+  });
+
+  appliedDiscounts.forEach((entry, index) => {
     // Handle both formats: direct discount object OR wrapper with nested discount
     // Backend sends: { id, discount: { ... }, amount }
     // Direct would be: { id, type, scope, value, ... }
     const discount = entry.discount || entry;
+
+    console.log(`[DiscountCalculator] Processing entry ${index}:`, {
+      hasNestedDiscount: !!entry.discount,
+      storedAmount: entry.amount,
+      discountId: discount?.id,
+      discountName: discount?.name,
+      discountType: discount?.type,
+      discountScope: discount?.scope,
+      discountValue: discount?.value,
+      isActive: discount?.is_active,
+    });
 
     const amountMinor = calculateDiscountAmount(discount, items, subtotalMinor, productTypeMap, currency);
     if (amountMinor > 0) {
@@ -470,6 +514,8 @@ export function calculateAllDiscounts(appliedDiscounts, items, subtotalMinor, pr
       totalMinor += amountMinor;
     }
   });
+
+  console.log('[DiscountCalculator] Total calculated:', { totalMinor, total: fromMinor(totalMinor, currency) });
 
   return {
     totalMinor,

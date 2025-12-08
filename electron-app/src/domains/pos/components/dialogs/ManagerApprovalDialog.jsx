@@ -53,6 +53,27 @@ const ManagerApprovalDialog = () => {
 		setError("");
 
 		try {
+			// Offline approval flow (no API call)
+			if (approvalRequest.offline) {
+				if (!window.offlineAPI?.authenticate) {
+					throw new Error("Offline approval is not available on this device");
+				}
+				const result = await window.offlineAPI.authenticate(username, pin);
+				if (!result.success) {
+					throw new Error(result.error || "Invalid manager credentials");
+				}
+				// Invoke callback if provided
+				await approvalRequest.onApproved?.(result.user);
+				showToast({
+					title: "Approved",
+					description: `${approvalRequest.actionType || "Action"} approved by manager`,
+					variant: "default",
+				});
+				handleClose();
+				return;
+			}
+
+			// Online approval flow
 			const response = await approvalsService.approveRequest(
 				approvalRequest.approvalRequestId,
 				username,
@@ -81,6 +102,7 @@ const ManagerApprovalDialog = () => {
 			const errorMessage =
 				err.response?.data?.error ||
 				err.response?.data?.message ||
+				err.message ||
 				"Failed to approve request";
 			setError(errorMessage);
 		} finally {
@@ -103,6 +125,12 @@ const ManagerApprovalDialog = () => {
 		setError("");
 
 		try {
+			if (approvalRequest.offline) {
+				await approvalRequest.onDenied?.();
+				handleClose();
+				return;
+			}
+
 			const response = await approvalsService.denyRequest(
 				approvalRequest.approvalRequestId,
 				username,
@@ -126,6 +154,7 @@ const ManagerApprovalDialog = () => {
 			const errorMessage =
 				err.response?.data?.error ||
 				err.response?.data?.message ||
+				err.message ||
 				"Failed to deny request";
 			setError(errorMessage);
 		} finally {
@@ -137,6 +166,11 @@ const ManagerApprovalDialog = () => {
 		setUsername("");
 		setPin("");
 		setError("");
+		// For offline approval, call onDenied to reject the promise so calling code can clean up
+		// This prevents the calling dialog's loading state from getting stuck
+		if (approvalRequest.offline && approvalRequest.onDenied) {
+			approvalRequest.onDenied();
+		}
 		cancelApprovalRequest();
 	};
 

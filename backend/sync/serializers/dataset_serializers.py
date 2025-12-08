@@ -303,6 +303,7 @@ class SyncStoreLocationSerializer(serializers.ModelSerializer):
     """Store location serializer for offline sync - extended for full operations"""
 
     updated_at = serializers.DateTimeField(format='iso-8601')
+    approval_policy = serializers.SerializerMethodField()
     # Include web order settings for display
     web_order_settings = serializers.SerializerMethodField()
 
@@ -323,6 +324,7 @@ class SyncStoreLocationSerializer(serializers.ModelSerializer):
             'tax_rate',
             'accepts_web_orders',
             'manager_approvals_enabled',
+            'approval_policy',
             'low_stock_threshold',
             'default_inventory_location_id',
             # Receipt customization
@@ -348,6 +350,21 @@ class SyncStoreLocationSerializer(serializers.ModelSerializer):
                 'auto_print_web_receipt': obj.auto_print_web_receipt,
                 'auto_print_web_kitchen': obj.auto_print_web_kitchen,
             }
+        }
+
+    def get_approval_policy(self, obj):
+        """Embed approval policy thresholds for offline enforcement."""
+        policy = getattr(obj, 'approval_policy', None)
+        if not policy:
+            return None
+        return {
+            'max_discount_percent': policy.max_discount_percent,
+            'max_fixed_discount_amount': policy.max_fixed_discount_amount,
+            'max_refund_amount': policy.max_refund_amount,
+            'max_price_override_amount': policy.max_price_override_amount,
+            'max_void_order_amount': policy.max_void_order_amount,
+            'always_require_approval_for': policy.always_require_approval_for,
+            'allow_self_approval': policy.allow_self_approval,
         }
 
 

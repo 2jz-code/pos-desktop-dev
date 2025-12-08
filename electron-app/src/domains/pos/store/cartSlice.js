@@ -166,6 +166,10 @@ const getCalculationSettingsFromCache = async () => {
 
 			// Build calculation settings with tax lookup maps
 			cachedCalculationSettings = getCalculationSettings(settings, taxes, productTypes);
+			// Attach raw store location + approval policy for approvals checks
+			cachedCalculationSettings.store_location = settings?.store_location || null;
+			cachedCalculationSettings.manager_approvals_enabled = settings?.store_location?.manager_approvals_enabled || false;
+			cachedCalculationSettings.approval_policy = settings?.store_location?.approval_policy || null;
 			return cachedCalculationSettings;
 		}
 	} catch (error) {
@@ -259,7 +263,9 @@ const calculateLocalTotals = (items, adjustments = [], appliedDiscounts = [], pa
 	return {
 		subtotal: result.subtotal,
 		taxAmount: result.tax,
-		totalDiscountsAmount: result.discountTotal,
+		// Match server's separation: predefined discounts vs adjustments (one-off discounts)
+		totalDiscountsAmount: result.predefinedDiscountTotal, // Predefined catalog discounts only
+		totalAdjustmentsAmount: -result.oneOffDiscountTotal,  // One-off discounts (stored as negative)
 		predefinedDiscountTotal: result.predefinedDiscountTotal,
 		oneOffDiscountTotal: result.oneOffDiscountTotal,
 		total: result.total,
@@ -311,7 +317,11 @@ export const defaultCartState = {
 		actionType: null, // DISCOUNT, REFUND, VOID, etc.
 		discountName: null,
 		discountValue: null,
+		offline: false,
+		onApproved: null,
+		onDenied: null,
 	},
+	approvals: [], // offline-captured approvals for audit/ingest
 };
 
 const loadInitialCartState = () => {
@@ -349,7 +359,7 @@ export const createCartSlice = (set, get) => {
 
 			const optimisticItems = [...get().items, tempCustomItem];
 			const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
-			set({ items: optimisticItems, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
+			set({ items: optimisticItems, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount, totalDiscountsAmount: totals.totalDiscountsAmount, totalAdjustmentsAmount: totals.totalAdjustmentsAmount });
 
 			try {
 				let orderId = get().orderId;
@@ -460,11 +470,27 @@ export const createCartSlice = (set, get) => {
 			}
 
 			const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
+
+			// Update appliedDiscounts with recalculated amounts from breakdown
+			// This ensures UI displays fresh amounts, not stale cached ones
+			const updatedAppliedDiscounts = get().appliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
 			set({
 				items: optimisticItems,
 				subtotal: totals.subtotal,
 				total: totals.total,
 				taxAmount: totals.taxAmount,
+				totalDiscountsAmount: totals.totalDiscountsAmount,
+				totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+				appliedDiscounts: updatedAppliedDiscounts,
 				addingItemId: null, // Clear immediately - UI is already updated
 			});
 
@@ -608,11 +634,26 @@ export const createCartSlice = (set, get) => {
 
 			const optimisticItems = [...get().items, optimisticItem];
 			const totals = calculateLocalTotals(optimisticItems, get().adjustments, get().appliedDiscounts);
+
+			// Update appliedDiscounts with recalculated amounts from breakdown
+			const updatedAppliedDiscounts = get().appliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
 			set({
 				items: optimisticItems,
 				subtotal: totals.subtotal,
 				total: totals.total,
 				taxAmount: totals.taxAmount,
+				totalDiscountsAmount: totals.totalDiscountsAmount,
+				totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+				appliedDiscounts: updatedAppliedDiscounts,
 				addingItemId: null, // Clear immediately - UI is already updated
 			});
 
@@ -790,7 +831,7 @@ export const createCartSlice = (set, get) => {
 					item.id === itemId ? { ...item, quantity: currentQuantity } : item
 				);
 				const totals = calculateLocalTotals(items, get().adjustments, get().appliedDiscounts);
-				set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
+				set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount, totalDiscountsAmount: totals.totalDiscountsAmount, totalAdjustmentsAmount: totals.totalAdjustmentsAmount });
 			} else if (lastPayload) {
 				// Rollback add item - remove optimistic add
 				const productId = lastPayload.product_id;
@@ -802,7 +843,7 @@ export const createCartSlice = (set, get) => {
 						)
 				);
 				const totals = calculateLocalTotals(items, get().adjustments, get().appliedDiscounts);
-				set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
+				set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount, totalDiscountsAmount: totals.totalDiscountsAmount, totalAdjustmentsAmount: totals.totalAdjustmentsAmount });
 			}
 
 			// Close the dialog
@@ -832,8 +873,82 @@ export const createCartSlice = (set, get) => {
 					actionType: null,
 					discountName: null,
 					discountValue: null,
+					offline: false,
+					onApproved: null,
+					onDenied: null,
 				},
 			});
+		},
+
+		addLocalApproval: (approval) => {
+			set((state) => ({
+				approvals: [...(state.approvals || []), approval],
+			}));
+		},
+
+		requestOfflineApproval: ({ action, reference, amount = 0, message = "" }) => {
+			return new Promise((resolve, reject) => {
+				set({
+					approvalRequest: {
+						show: true,
+						approvalRequestId: null,
+						message: message || "Manager approval required",
+						actionType: action,
+						discountName: null,
+						discountValue: amount,
+						offline: true,
+						onApproved: (user) => resolve(user),
+						onDenied: () => reject(new Error("Approval denied")),
+					},
+				});
+			});
+		},
+
+		shouldRequireApproval: (actionType, payload = {}) => {
+			// Use cached settings for policy + manager toggle; default to no approval if policy missing
+			const settings = cachedCalculationSettings;
+			const location = settings?.store_location;
+			if (!location?.manager_approvals_enabled) return false;
+			const policy = settings?.approval_policy || location?.approval_policy;
+			if (!policy) return false; // No policy → no offline approval gating
+
+			// Always require list
+			if ((policy.always_require_approval_for || []).includes(actionType)) return true;
+
+			switch (actionType) {
+				case 'PRICE_OVERRIDE': {
+					const delta = Math.abs(payload.amount || 0);
+					return delta > parseFloat(policy.max_price_override_amount || 0);
+				}
+				case 'DISCOUNT': {
+					const discountType = payload.discount_type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED';
+					const value = parseFloat(payload.value || 0);
+					const isItemLevel = payload.order_item_id || payload.orderItemId || payload.order_item || null;
+
+					// Cumulative check against existing adjustments to prevent threshold gaming
+					const adjustments = get().adjustments || [];
+					const existing = adjustments.filter(adj =>
+						adj.adjustment_type === "ONE_OFF_DISCOUNT" &&
+						(adj.discount_type || adj.discountType) === discountType &&
+						(isItemLevel ? adj.order_item === isItemLevel : !adj.order_item)
+					);
+					const cumulative = existing.reduce(
+						(sum, adj) => sum + parseFloat(adj.discount_value ?? adj.discountValue ?? 0),
+						0
+					) + value;
+
+					if (discountType === 'PERCENTAGE') {
+						return cumulative > parseFloat(policy.max_discount_percent || 0);
+					}
+					return cumulative > parseFloat(policy.max_fixed_discount_amount || 0);
+				}
+				case 'TAX_EXEMPT':
+				case 'FEE_EXEMPT':
+					// Only gate if always require includes it; otherwise allow offline without approval
+					return false;
+				default:
+					return true;
+			}
 		},
 
 		setCartFromSocket: (orderData) => {
@@ -865,7 +980,8 @@ export const createCartSlice = (set, get) => {
 				window.offlineAPI.logDrift(drift).catch(() => {});
 			}
 
-			// Build selective update - only update fields that drifted
+			// When drift is detected, sync ALL data from server
+			// Server is authoritative - always sync everything to prevent flip-flopping
 			const updates = {
 				addingItemId: null,
 				updatingItems: [],
@@ -873,36 +989,25 @@ export const createCartSlice = (set, get) => {
 				lastServerAdjustment: drift.timestamp,
 			};
 
-			// Always sync these core identifiers if present
+			// Always sync core identifiers
 			if (orderData.id) updates.orderId = orderData.id;
 			if (orderData.order_number) updates.orderNumber = orderData.order_number;
 			if (orderData.status) updates.orderStatus = orderData.status;
 
-			// Update drifted totals
-			if (drift.drifts.subtotal) {
-				updates.subtotal = safeParseFloat(orderData.subtotal);
-			}
-			if (drift.drifts.taxAmount) {
-				updates.taxAmount = safeParseFloat(orderData.tax_total);
-			}
-			if (drift.drifts.total) {
-				updates.total = safeParseFloat(orderData.grand_total);
-			}
-			if (drift.drifts.totalDiscountsAmount) {
-				updates.totalDiscountsAmount = safeParseFloat(orderData.total_discounts_amount);
-			}
-			if (drift.drifts.totalAdjustmentsAmount) {
-				updates.totalAdjustmentsAmount = safeParseFloat(orderData.total_adjustments_amount);
-			}
+			// Sync ALL totals from server
+			updates.subtotal = safeParseFloat(orderData.subtotal);
+			updates.taxAmount = safeParseFloat(orderData.tax_total);
+			updates.total = safeParseFloat(orderData.grand_total);
+			updates.totalDiscountsAmount = safeParseFloat(orderData.total_discounts_amount);
+			updates.totalAdjustmentsAmount = safeParseFloat(orderData.total_adjustments_amount);
 
-			// If item count drifted, sync items (server is authoritative for item state)
-			if (drift.drifts.itemCount || drift.drifts.itemContent) {
-				// Preserve local product metadata (product_type/taxes) when replacing items,
-				// so local calculations keep tax-free items tax-free.
-				updates.items = hydrateItemsWithLocalProduct(orderData.items || [], currentState.items || []);
-				updates.appliedDiscounts = orderData.applied_discounts || [];
-				updates.adjustments = orderData.adjustments || [];
-			}
+			// Sync relationships from server
+			updates.appliedDiscounts = orderData.applied_discounts || [];
+			updates.adjustments = orderData.adjustments || [];
+
+			// ALWAYS sync items from server to prevent ID mismatch loops
+			// (optimistic updates create local IDs, server has different IDs)
+			updates.items = hydrateItemsWithLocalProduct(orderData.items || [], currentState.items || []);
 
 			set(updates);
 		},
@@ -914,7 +1019,19 @@ export const createCartSlice = (set, get) => {
 				item.id === itemId ? { ...item, quantity } : item
 			);
 			const totals = calculateLocalTotals(items, get().adjustments, get().appliedDiscounts);
-			set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
+
+			// Update appliedDiscounts with recalculated amounts
+			const updatedAppliedDiscounts = get().appliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
+			set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount, totalDiscountsAmount: totals.totalDiscountsAmount, totalAdjustmentsAmount: totals.totalAdjustmentsAmount, appliedDiscounts: updatedAppliedDiscounts });
 
 			// Store for potential stock override
 			set({
@@ -1021,7 +1138,19 @@ export const createCartSlice = (set, get) => {
 			// Optimistic update
 			const items = get().items.filter((item) => item.id !== itemId);
 			const totals = calculateLocalTotals(items, get().adjustments, get().appliedDiscounts);
-			set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount });
+
+			// Update appliedDiscounts with recalculated amounts
+			const updatedAppliedDiscounts = get().appliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
+			set({ items, subtotal: totals.subtotal, total: totals.total, taxAmount: totals.taxAmount, totalDiscountsAmount: totals.totalDiscountsAmount, totalAdjustmentsAmount: totals.totalAdjustmentsAmount, appliedDiscounts: updatedAppliedDiscounts });
 
 			const operationId = buildOperationId("remove", itemId);
 			get().addPendingOperation(operationId);
@@ -1035,12 +1164,16 @@ export const createCartSlice = (set, get) => {
 		},
 
 		applyDiscountViaSocket: async (discountId) => {
+			const orderId = get().orderId;
 			const operationId = buildOperationId("apply-discount", discountId);
 			get().addPendingOperation(operationId);
 
 			// Check if offline - need to handle locally
 			if (cartGateway.isOfflineMode()) {
 				try {
+					// Ensure settings/policy cache is loaded
+					await getCalculationSettingsFromCache();
+
 					// Look up the discount from cache
 					const cachedDiscounts = await window.offlineAPI?.getCachedDiscounts();
 					const discount = cachedDiscounts?.find(d => d.id === discountId);
@@ -1051,18 +1184,38 @@ export const createCartSlice = (set, get) => {
 						return;
 					}
 
-					// Check if already applied
-					const existingDiscounts = get().appliedDiscounts || [];
-					if (existingDiscounts.some(d => d.discount?.id === discountId || d.id === discountId)) {
-						console.warn('⚠️ [CartSlice] Discount already applied:', discountId);
-						get().removePendingOperation(operationId);
-						return;
-					}
+						// Check if already applied
+						const existingDiscounts = get().appliedDiscounts || [];
+						if (existingDiscounts.some(d => d.discount?.id === discountId || d.id === discountId)) {
+							console.warn('⚠️ [CartSlice] Discount already applied:', discountId);
+							get().removePendingOperation(operationId);
+							return;
+						}
 
-					// Calculate the discount amount using DiscountCalculator (static import at top)
-					const items = get().items;
-					const subtotal = get().subtotal;
-					const settings = await getCalculationSettingsFromCache();
+						// Policy-based approval check for predefined discounts
+						let approver = null;
+						const discountType = discount.discount_type || discount.type || null;
+						const discountValue = parseFloat(discount.amount || discount.value || 0);
+						if (get().shouldRequireApproval("DISCOUNT", { discount_type: discountType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED', value: discountValue })) {
+							approver = await get().requestOfflineApproval({
+								action: "DISCOUNT",
+								reference: `order:${orderId}:discount:${discountId}`,
+								amount: discountValue,
+								message: "Manager approval required for discount",
+							});
+							get().addLocalApproval({
+								user_id: approver?.id,
+								action: "DISCOUNT",
+								reference: `order:${orderId}:discount:${discountId}`,
+								amount: discountValue,
+								timestamp: new Date().toISOString(),
+							});
+						}
+
+						// Calculate the discount amount using DiscountCalculator (static import at top)
+						const items = get().items;
+						const subtotal = get().subtotal;
+						const settings = await getCalculationSettingsFromCache();
 
 					const discountAmountMinor = calculateDiscountAmount(
 						discount,
@@ -1080,19 +1233,29 @@ export const createCartSlice = (set, get) => {
 						amount: discountAmount,
 					};
 
-					// Optimistically update state
+					// Optimistically update state with recalculated totals
 					const newAppliedDiscounts = [...existingDiscounts, appliedDiscount];
-					const totalDiscountsAmount = newAppliedDiscounts.reduce(
-						(sum, d) => sum + parseFloat(d.amount || 0), 0
-					);
+					const totals = calculateLocalTotals(get().items, get().adjustments, newAppliedDiscounts);
 
-					set({
-						appliedDiscounts: newAppliedDiscounts,
-						totalDiscountsAmount,
+					// Update all discounts with recalculated amounts
+					const updatedAppliedDiscounts = newAppliedDiscounts.map(ad => {
+						const recalculated = totals.discountBreakdown?.find(
+							b => (b.id === ad.discount?.id) || (b.id === ad.id)
+						);
+						if (recalculated) {
+							return { ...ad, amount: recalculated.amount };
+						}
+						return ad;
 					});
 
-					// Recalculate totals
-					await get().recalculateTotals();
+					set({
+						appliedDiscounts: updatedAppliedDiscounts,
+						subtotal: totals.subtotal,
+						total: totals.total,
+						taxAmount: totals.taxAmount,
+						totalDiscountsAmount: totals.totalDiscountsAmount,
+						totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+					});
 
 					console.log('✅ [CartSlice] Applied discount offline:', discount.name, 'Amount:', discountAmount);
 				} catch (error) {
@@ -1157,22 +1320,36 @@ export const createCartSlice = (set, get) => {
 		removeDiscountViaSocket: async (discountId) => {
 			// Optimistic update - remove from applied discounts
 			// Handle both discount.id and appliedDiscount.id matching
-			const appliedDiscounts = get().appliedDiscounts.filter(d => {
+			const newAppliedDiscounts = get().appliedDiscounts.filter(d => {
 				const dDiscountId = d.discount?.id || d.id;
 				return dDiscountId !== discountId;
 			});
 
-			const totalDiscountsAmount = appliedDiscounts.reduce(
-				(sum, d) => sum + parseFloat(d.amount || 0), 0
-			);
+			// Recalculate totals with remaining discounts
+			const totals = calculateLocalTotals(get().items, get().adjustments, newAppliedDiscounts);
 
-			set({ appliedDiscounts, totalDiscountsAmount });
+			// Update remaining discounts with recalculated amounts
+			const updatedAppliedDiscounts = newAppliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
+			set({
+				appliedDiscounts: updatedAppliedDiscounts,
+				subtotal: totals.subtotal,
+				total: totals.total,
+				taxAmount: totals.taxAmount,
+				totalDiscountsAmount: totals.totalDiscountsAmount,
+				totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+			});
 
 			const operationId = buildOperationId("remove-discount", discountId);
 			get().addPendingOperation(operationId);
-
-			// Recalculate totals
-			await get().recalculateTotals();
 
 			// If offline, we're done (queued for sync)
 			if (cartGateway.isOfflineMode()) {
@@ -1205,9 +1382,35 @@ export const createCartSlice = (set, get) => {
 			// Check if offline
 			if (cartGateway.isOfflineMode()) {
 				try {
+					// Ensure settings/policy cache is loaded
+					await getCalculationSettingsFromCache();
+
+					const items = get().items;
+					let approver = null;
+					if (get().shouldRequireApproval("DISCOUNT", { discount_type: discountType, value: discountValue })) {
+						const baseAmount = orderItemId
+							? (items.find(i => i.id === orderItemId)?.price_at_sale || 0) * (items.find(i => i.id === orderItemId)?.quantity || 1)
+							: get().subtotal || 0;
+							const approvalAmount = discountType === "PERCENTAGE"
+								? (baseAmount * discountValue) / 100
+								: discountValue;
+							approver = await get().requestOfflineApproval({
+								action: "DISCOUNT",
+								reference: `order:${orderId}:${orderItemId || 'order'}`,
+								amount: approvalAmount,
+								message: "Manager approval required for discount",
+							});
+							get().addLocalApproval({
+								user_id: approver?.id,
+								action: "DISCOUNT",
+								reference: `order:${orderId}:${orderItemId || 'order'}`,
+								amount: approvalAmount,
+								timestamp: new Date().toISOString(),
+							});
+						}
+
 					// Create local adjustment entry
 					const adjustmentId = `local-adj-${Date.now()}`;
-					const items = get().items;
 					const subtotal = get().subtotal;
 
 					// Calculate the actual discount amount
@@ -1239,6 +1442,7 @@ export const createCartSlice = (set, get) => {
 						reason: reason,
 						order_item: orderItemId,
 						created_at: new Date().toISOString(),
+						approved_by_user_id: approver?.id || null,
 					};
 
 					const currentAdjustments = get().adjustments || [];
@@ -1303,12 +1507,33 @@ export const createCartSlice = (set, get) => {
 			// Check if offline
 			if (cartGateway.isOfflineMode()) {
 				try {
+					// Ensure settings/policy cache is loaded
+					await getCalculationSettingsFromCache();
+
 					const items = get().items;
 					const item = items.find(i => i.id === orderItemId);
 					if (!item) throw new Error("Item not found");
 
-					const originalPrice = parseFloat(item.price_at_sale);
-					const priceDiff = newPrice - originalPrice;
+						let approver = null;
+						const deltaAmount = Math.abs((newPrice - parseFloat(item?.price_at_sale || 0)) * (item?.quantity || 1));
+						if (get().shouldRequireApproval("PRICE_OVERRIDE", { amount: deltaAmount })) {
+							approver = await get().requestOfflineApproval({
+								action: "PRICE_OVERRIDE",
+								reference: `order:${orderId}:item:${orderItemId}`,
+								amount: deltaAmount,
+								message: "Manager approval required for price override",
+							});
+							get().addLocalApproval({
+								user_id: approver?.id,
+								action: "PRICE_OVERRIDE",
+								reference: `order:${orderId}:item:${orderItemId}`,
+								amount: deltaAmount,
+								timestamp: new Date().toISOString(),
+							});
+						}
+
+						const originalPrice = parseFloat(item.price_at_sale);
+						const priceDiff = newPrice - originalPrice;
 
 					// Create adjustment entry for the price override
 					const adjustmentId = `local-adj-${Date.now()}`;
@@ -1321,6 +1546,7 @@ export const createCartSlice = (set, get) => {
 						original_price: originalPrice,
 						new_price: newPrice,
 						created_at: new Date().toISOString(),
+						approved_by_user_id: approver?.id || null,
 					};
 
 					// Update the item's price_at_sale
@@ -1386,6 +1612,24 @@ export const createCartSlice = (set, get) => {
 			// Check if offline
 			if (cartGateway.isOfflineMode()) {
 				try {
+					// Ensure settings/policy cache is loaded
+					await getCalculationSettingsFromCache();
+
+					let approver = null;
+					if (get().shouldRequireApproval("TAX_EXEMPT")) {
+						approver = await get().requestOfflineApproval({
+							action: "TAX_EXEMPT",
+							reference: `order:${orderId}`,
+							message: "Manager approval required for tax exemption",
+						});
+						get().addLocalApproval({
+							user_id: approver?.id,
+							action: "TAX_EXEMPT",
+							reference: `order:${orderId}`,
+							timestamp: new Date().toISOString(),
+						});
+					}
+
 					const taxAmount = get().taxAmount;
 
 					// Create adjustment entry for tax exemption
@@ -1397,6 +1641,7 @@ export const createCartSlice = (set, get) => {
 						reason: reason,
 						order_item: null,
 						created_at: new Date().toISOString(),
+						approved_by_user_id: approver?.id || null,
 					};
 
 					const currentAdjustments = get().adjustments || [];
@@ -1451,6 +1696,24 @@ export const createCartSlice = (set, get) => {
 			// Check if offline
 			if (cartGateway.isOfflineMode()) {
 				try {
+					// Ensure settings/policy cache is loaded
+					await getCalculationSettingsFromCache();
+
+					let approver = null;
+					if (get().shouldRequireApproval("FEE_EXEMPT")) {
+						approver = await get().requestOfflineApproval({
+							action: "FEE_EXEMPT",
+							reference: `order:${orderId}`,
+							message: "Manager approval required for fee exemption",
+						});
+						get().addLocalApproval({
+							user_id: approver?.id,
+							action: "FEE_EXEMPT",
+							reference: `order:${orderId}`,
+							timestamp: new Date().toISOString(),
+						});
+					}
+
 					// Create adjustment entry for fee exemption
 					const adjustmentId = `local-adj-${Date.now()}`;
 					const newAdjustment = {
@@ -1460,6 +1723,7 @@ export const createCartSlice = (set, get) => {
 						reason: reason || "Fee exemption requested",
 						order_item: null,
 						created_at: new Date().toISOString(),
+						approved_by_user_id: approver?.id || null,
 					};
 
 					const currentAdjustments = get().adjustments || [];
@@ -1569,13 +1833,67 @@ export const createCartSlice = (set, get) => {
 				}
 			}
 
-			// Online - use API
+			// Online - optimistic update then API call
+			const currentAdjustments = get().adjustments || [];
+			const adjustmentToRemove = currentAdjustments.find(a => a.id === adjustmentId);
+
+			if (adjustmentToRemove) {
+				// Optimistic update: remove adjustment and recalculate
+				const newAdjustments = currentAdjustments.filter(a => a.id !== adjustmentId);
+				const updates = { adjustments: newAdjustments };
+
+				// Handle special cases
+				if (adjustmentToRemove.adjustment_type === "TAX_EXEMPT") {
+					updates.isTaxExempt = false;
+				}
+				if (adjustmentToRemove.adjustment_type === "FEE_EXEMPT") {
+					updates.isFeeExempt = false;
+				}
+				if (adjustmentToRemove.adjustment_type === "PRICE_OVERRIDE" && adjustmentToRemove.order_item) {
+					const originalPrice = adjustmentToRemove.original_price;
+					if (originalPrice !== undefined) {
+						updates.items = get().items.map(i =>
+							i.id === adjustmentToRemove.order_item
+								? { ...i, price_at_sale: originalPrice.toString() }
+								: i
+						);
+					}
+				}
+
+				set(updates);
+
+				// Recalculate totals with new adjustments
+				const items = updates.items || get().items;
+				const totals = calculateLocalTotals(items, newAdjustments, get().appliedDiscounts);
+
+				// Update appliedDiscounts with recalculated amounts
+				const updatedAppliedDiscounts = get().appliedDiscounts.map(ad => {
+					const recalculated = totals.discountBreakdown?.find(
+						b => (b.id === ad.discount?.id) || (b.id === ad.id)
+					);
+					if (recalculated) {
+						return { ...ad, amount: recalculated.amount };
+					}
+					return ad;
+				});
+
+				set({
+					subtotal: totals.subtotal,
+					total: totals.total,
+					taxAmount: totals.taxAmount,
+					totalDiscountsAmount: totals.totalDiscountsAmount,
+					totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+					appliedDiscounts: updatedAppliedDiscounts,
+				});
+			}
+
 			const { removeAdjustment } = await import('@/domains/orders/services/orderService');
 			try {
 				const response = await removeAdjustment(orderId, adjustmentId);
 				get().removePendingOperation(operationId);
 				return response;
 			} catch (error) {
+				// Rollback on error - will be reconciled by next websocket update
 				get().removePendingOperation(operationId);
 				throw error;
 			}
@@ -1718,6 +2036,7 @@ export const createCartSlice = (set, get) => {
 				subtotal: safeParseFloat(orderData.subtotal),
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
+				totalAdjustmentsAmount: safeParseFloat(orderData.total_adjustments_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
 				adjustments: orderData.adjustments || [],
 				customerFirstName: orderData.guest_first_name || "",
@@ -1749,11 +2068,24 @@ export const createCartSlice = (set, get) => {
 
 			const totals = calculateLocalTotals(items, adjustments, appliedDiscounts);
 
+			// Update appliedDiscounts with recalculated amounts from breakdown
+			const updatedAppliedDiscounts = appliedDiscounts.map(ad => {
+				const recalculated = totals.discountBreakdown?.find(
+					b => (b.id === ad.discount?.id) || (b.id === ad.id)
+				);
+				if (recalculated) {
+					return { ...ad, amount: recalculated.amount };
+				}
+				return ad;
+			});
+
 			set({
 				subtotal: totals.subtotal,
 				total: totals.total,
 				taxAmount: totals.taxAmount,
 				totalDiscountsAmount: totals.totalDiscountsAmount,
+				totalAdjustmentsAmount: totals.totalAdjustmentsAmount,
+				appliedDiscounts: updatedAppliedDiscounts,
 			});
 
 			console.log('✅ [CartSlice] Totals recalculated:', {
@@ -1761,6 +2093,7 @@ export const createCartSlice = (set, get) => {
 				total: totals.total,
 				taxAmount: totals.taxAmount,
 				discountTotal: totals.totalDiscountsAmount,
+				adjustmentsTotal: totals.totalAdjustmentsAmount,
 			});
 		},
 

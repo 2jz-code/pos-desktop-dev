@@ -344,6 +344,15 @@ const CartSummary = () => {
 	const taxExemption = adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
 	const feeExemption = adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
 
+	// Helper to calculate adjustment amount (recalculates percentage discounts)
+	const calculateAdjustmentAmount = (adj, baseAmount) => {
+		if (adj.discount_type === 'PERCENTAGE') {
+			const percentage = parseFloat(adj.discount_value ?? adj.value ?? 0);
+			return -(baseAmount * percentage / 100); // Return negative value
+		}
+		return parseFloat(adj.amount || 0);
+	};
+
 	// Calculate effective subtotal (including item-level discounts in the item prices)
 	const effectiveSubtotal = items.reduce((sum, item) => {
 		// Find item-level one-off discounts for this item
@@ -351,13 +360,17 @@ const CartSummary = () => {
 			(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
 		) || [];
 
-		// Calculate total item-level discount amount
-		const totalItemDiscount = itemDiscounts.reduce((discSum, disc) => discSum + parseFloat(disc.amount || 0), 0);
+		// Calculate total item-level discount amount (recalculate percentages based on line total)
+		const lineTotal = parseFloat(item.price_at_sale) * item.quantity;
+		const totalItemDiscount = itemDiscounts.reduce(
+			(discSum, disc) => discSum + calculateAdjustmentAmount(disc, lineTotal),
+			0
+		);
 
 		// Calculate effective price per unit (including discounts)
 		const basePrice = parseFloat(item.price_at_sale);
 		const effectivePricePerUnit = itemDiscounts.length > 0
-			? basePrice + (totalItemDiscount / item.quantity)  // discount.amount is negative
+			? basePrice + (totalItemDiscount / item.quantity)  // discount amount is negative
 			: basePrice;
 
 		// Add this item's effective total to the sum
@@ -373,71 +386,52 @@ const CartSummary = () => {
 						label="Subtotal"
 						amount={effectiveSubtotal}
 					/>
-					{hasDiscounts && (
-						<>
-							{appliedDiscounts.map((appliedDiscount) => (
+					{/* Predefined Discounts */}
+					{hasDiscounts && appliedDiscounts.map((appliedDiscount) => (
+						<SummaryRow
+							key={appliedDiscount.id}
+							label={appliedDiscount.discount.name}
+							amount={-appliedDiscount.amount}
+							className="text-emerald-600 dark:text-emerald-400"
+							onRemove={() =>
+								removeDiscountViaSocket(appliedDiscount.discount.id)
+							}
+						/>
+					))}
+					{/* Order-level one-off discounts (item-level discounts show on items) */}
+					{hasAdjustments && adjustments
+						.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
+						.map((adjustment) => {
+							// Calculate the actual discount amount (recalculate for percentage)
+							// Order-level percentage discounts are based on subtotal (not effectiveSubtotal)
+							// See backend/orders/services/calculation_service.py line 167
+							const displayAmount = calculateAdjustmentAmount(adjustment, subtotal);
+							const label = adjustment.discount_type === "PERCENTAGE"
+								? `${adjustment.discount_value}% Discount`
+								: `$${adjustment.discount_value} Discount`;
+
+							return (
 								<SummaryRow
-									key={appliedDiscount.id}
-									label={appliedDiscount.discount.name}
-									amount={-appliedDiscount.amount}
+									key={adjustment.id}
+									label={label}
+									amount={displayAmount}
 									className="text-emerald-600 dark:text-emerald-400"
-									onRemove={() =>
-										removeDiscountViaSocket(appliedDiscount.discount.id)
-									}
+									onRemove={() => handleRemoveAdjustment(adjustment.id)}
 								/>
-							))}
-							{/* Show discounted subtotal for clarity */}
-							<SummaryRow
-								label="Discounted Subtotal"
-								amount={
-									effectiveSubtotal -
-									(appliedDiscounts?.reduce(
-										(sum, d) => sum + parseFloat(d.amount || 0),
-										0
-									) || 0)
-								}
-								className="border-t border-border/60 pt-2 font-medium text-foreground"
-							/>
-						</>
-					)}
-					{hasAdjustments && (
-						<>
-							{/* Show order-level one-off discounts only (item-level discounts show on items) */}
-							{adjustments
-								.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
-								.map((adjustment) => {
-									let label = "";
-									if (adjustment.discount_type === "PERCENTAGE") {
-										label = `${adjustment.discount_value}% Discount`;
-									} else {
-										label = `$${adjustment.discount_value} Discount`;
-									}
-
-									return (
-										<SummaryRow
-											key={adjustment.id}
-											label={label}
-											amount={adjustment.amount}
-											className="text-emerald-600 dark:text-emerald-400"
-											onRemove={() => handleRemoveAdjustment(adjustment.id)}
-										/>
-									);
-								})}
-
-							{/* Show discounted subtotal if there are order-level one-off discounts */}
-							{adjustments.some((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item) && (
-								<SummaryRow
-									label="Discounted Subtotal"
-									amount={
-										effectiveSubtotal +
-										adjustments
-											.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
-											.reduce((sum, adj) => sum + parseFloat(adj.amount || 0), 0)
-									}
-									className="border-t border-border/60 pt-2 font-medium text-foreground"
-								/>
-							)}
-						</>
+							);
+						})}
+					{/* Single Discounted Subtotal after ALL discounts (predefined + one-off) */}
+					{(hasDiscounts || adjustments?.some((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)) && (
+						<SummaryRow
+							label="Discounted Subtotal"
+							amount={
+								effectiveSubtotal -
+								(appliedDiscounts?.reduce((sum, d) => sum + parseFloat(d.amount || 0), 0) || 0) +
+								(adjustments?.filter((adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item)
+									.reduce((sum, adj) => sum + calculateAdjustmentAmount(adj, subtotal), 0) || 0)
+							}
+							className="border-t border-border/60 pt-2 font-medium text-foreground"
+						/>
 					)}
 					{/* Show either Taxes OR Tax Exemption (not both) */}
 					{taxExemption ? (
