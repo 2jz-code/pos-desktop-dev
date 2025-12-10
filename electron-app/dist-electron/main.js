@@ -112,19 +112,27 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
   printer.drawLine();
   printer.alignLeft();
   for (const item of order.items) {
-    const price = parseFloat(item.price_at_sale) * item.quantity;
+    const unitPrice = parseFloat(item.price_at_sale);
+    const lineTotal = unitPrice * item.quantity;
     const itemName = item.product ? item.product.name : item.custom_name || "Custom Item";
-    const itemText = `${item.quantity}x ${itemName}`;
-    printLine(printer, itemText, `$${price.toFixed(2)}`);
+    printLine(printer, itemName, `$${lineTotal.toFixed(2)}`);
+    if (item.quantity > 1) {
+      printer.println(`   ${item.quantity} x $${unitPrice.toFixed(2)}`);
+    }
     if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
       for (const modifier of item.selected_modifiers_snapshot) {
-        const modPrice = parseFloat(modifier.price_at_sale) * modifier.quantity * item.quantity;
+        const modUnitPrice = parseFloat(modifier.price_at_sale);
+        const modLineTotal = modUnitPrice * modifier.quantity * item.quantity;
         let modText = `   - ${modifier.option_name}`;
         if (modifier.quantity > 1) {
           modText += ` (${modifier.quantity}x)`;
         }
-        if (parseFloat(modifier.price_at_sale) !== 0) {
-          printLine(printer, modText, `$${modPrice.toFixed(2)}`);
+        if (modUnitPrice !== 0) {
+          printLine(printer, modText, `$${modLineTotal.toFixed(2)}`);
+          if (modifier.quantity > 1 || item.quantity > 1) {
+            const totalModQty = modifier.quantity * item.quantity;
+            printer.println(`      ${totalModQty} x $${modUnitPrice.toFixed(2)}`);
+          }
         } else {
           printer.println(modText);
         }
@@ -152,10 +160,22 @@ async function formatReceipt(order, storeSettings = null, isTransaction = false)
     printLine(printer, "Tip:", `$${parseFloat(order.total_tips).toFixed(2)}`);
   }
   printer.bold(true);
+  let displayTotal = parseFloat(order.total_collected || 0);
+  if (displayTotal === 0) {
+    displayTotal = parseFloat(order.total || order.grand_total || 0);
+    if (displayTotal === 0) {
+      const subtotal = parseFloat(order.subtotal || 0);
+      const tax = parseFloat(order.tax_total || 0);
+      const discounts = parseFloat(order.total_discounts_amount || 0);
+      const surcharges = parseFloat(order.total_surcharges || 0);
+      const adjustments = parseFloat(order.total_adjustments_amount || 0);
+      displayTotal = subtotal + tax + surcharges - discounts + adjustments;
+    }
+  }
   printLine(
     printer,
     "TOTAL:",
-    `$${parseFloat(order.total_collected || order.grand_total || 0).toFixed(2)}`
+    `$${displayTotal.toFixed(2)}`
   );
   printer.bold(false);
   printer.println("");

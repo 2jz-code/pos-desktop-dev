@@ -152,25 +152,36 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 
 	printer.alignLeft();
 	for (const item of order.items) {
-		const price = parseFloat(item.price_at_sale) * item.quantity;
+		const unitPrice = parseFloat(item.price_at_sale);
+		const lineTotal = unitPrice * item.quantity;
 		const itemName = item.product ? item.product.name : (item.custom_name || 'Custom Item');
-		const itemText = `${item.quantity}x ${itemName}`;
-		printLine(printer, itemText, `$${price.toFixed(2)}`);
-		
+		printLine(printer, itemName, `$${lineTotal.toFixed(2)}`);
+
+		// Show quantity x unit price breakdown only for multiple items
+		if (item.quantity > 1) {
+			printer.println(`   ${item.quantity} x $${unitPrice.toFixed(2)}`);
+		}
+
 		// Print modifiers if they exist
 		if (item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0) {
 			for (const modifier of item.selected_modifiers_snapshot) {
-				const modPrice = parseFloat(modifier.price_at_sale) * modifier.quantity * item.quantity;
+				const modUnitPrice = parseFloat(modifier.price_at_sale);
+				const modLineTotal = modUnitPrice * modifier.quantity * item.quantity;
 				let modText = `   - ${modifier.option_name}`;
-				
+
 				// Add quantity if > 1
 				if (modifier.quantity > 1) {
 					modText += ` (${modifier.quantity}x)`;
 				}
-				
+
 				// Only show price if not zero
-				if (parseFloat(modifier.price_at_sale) !== 0) {
-					printLine(printer, modText, `$${modPrice.toFixed(2)}`);
+				if (modUnitPrice !== 0) {
+					printLine(printer, modText, `$${modLineTotal.toFixed(2)}`);
+					// Show unit price breakdown for modifiers with quantity > 1
+					if (modifier.quantity > 1 || item.quantity > 1) {
+						const totalModQty = modifier.quantity * item.quantity;
+						printer.println(`      ${totalModQty} x $${modUnitPrice.toFixed(2)}`);
+					}
 				} else {
 					printer.println(modText);
 				}
@@ -202,10 +213,26 @@ export async function formatReceipt(order, storeSettings = null, isTransaction =
 	}
 
 	printer.bold(true);
+	// For transaction receipts (before payment), total_collected is 0
+	// Use order.total or grand_total, or calculate from subtotal + tax + surcharges - discounts
+	let displayTotal = parseFloat(order.total_collected || 0);
+	if (displayTotal === 0) {
+		// Fallback to other total fields or calculate
+		displayTotal = parseFloat(order.total || order.grand_total || 0);
+		if (displayTotal === 0) {
+			// Calculate from components
+			const subtotal = parseFloat(order.subtotal || 0);
+			const tax = parseFloat(order.tax_total || 0);
+			const discounts = parseFloat(order.total_discounts_amount || 0);
+			const surcharges = parseFloat(order.total_surcharges || 0);
+			const adjustments = parseFloat(order.total_adjustments_amount || 0);
+			displayTotal = subtotal + tax + surcharges - discounts + adjustments;
+		}
+	}
 	printLine(
 		printer,
 		"TOTAL:",
-		`$${parseFloat(order.total_collected || order.grand_total || 0).toFixed(2)}`
+		`$${displayTotal.toFixed(2)}`
 	);
 	printer.bold(false);
 	printer.println("");

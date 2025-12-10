@@ -229,10 +229,14 @@ class GlobalNotificationService extends EventEmitter {
 				}
 
 				if (receiptPrinter) {
-					const storeInfoRes = await apiClient.get(
-						"settings/global-settings/store-info/"
-					);
-					const storeSettings = storeInfoRes.data;
+					// Use cache-first pattern for store settings (works even if API is flaky)
+					let storeSettings = null;
+					try {
+						const { getReceiptFormatData } = await import("@/domains/settings/services/settingsService");
+						storeSettings = await getReceiptFormatData();
+					} catch (error) {
+						console.warn("Failed to fetch store settings, using fallback values:", error);
+					}
 
 					await printReceipt(receiptPrinter, order, storeSettings);
 

@@ -95,13 +95,18 @@ export default function OrdersPage() {
     getAllOrdersService: getAllOrders
   });
 
-  // Fetch offline orders when offline
+  // Fetch pending offline orders (PENDING status only)
+  // Always fetch these regardless of online status - users need to see pending orders
   const fetchOfflineOrders = useCallback(async () => {
     if (!window.offlineAPI?.listOfflineOrders) return;
 
     setOfflineLoading(true);
     try {
-      const orders = await window.offlineAPI.listOfflineOrders();
+      // When online, only fetch PENDING orders (not yet synced)
+      // When offline, fetch all offline orders
+      const statusFilter = isOnline ? 'PENDING' : null;
+      const orders = await window.offlineAPI.listOfflineOrders(statusFilter);
+
       // Transform offline orders to match expected format
       const transformed = orders.map(order => ({
         id: order.local_id,
@@ -127,20 +132,25 @@ export default function OrdersPage() {
     } finally {
       setOfflineLoading(false);
     }
-  }, []);
+  }, [isOnline]);
 
+  // Fetch offline orders on mount and when online status changes
   useEffect(() => {
-    if (!isOnline) {
-      fetchOfflineOrders();
-    }
-  }, [isOnline, fetchOfflineOrders]);
+    fetchOfflineOrders();
+  }, [fetchOfflineOrders]);
 
-  // Use offline or online orders based on connectivity
-  const orders = isOnline ? onlineOrders : offlineOrders;
-  const loading = isOnline ? onlineLoading : offlineLoading;
+  // Merge orders based on connectivity
+  // When online: Show pending offline orders at the top, then server orders
+  // When offline: Show only offline orders
+  const orders = isOnline
+    ? [...offlineOrders, ...onlineOrders] // Pending offline orders first, then server orders
+    : offlineOrders;
+  const loading = isOnline ? (onlineLoading || offlineLoading) : offlineLoading;
   const error = isOnline ? onlineError : null;
-  const count = isOnline ? onlineCount : offlineOrders.length;
-  const refetch = isOnline ? refetchOnline : fetchOfflineOrders;
+  const count = isOnline ? (onlineCount + offlineOrders.length) : offlineOrders.length;
+  const refetch = isOnline
+    ? () => { refetchOnline(); fetchOfflineOrders(); }
+    : fetchOfflineOrders;
 
   // Use shared order actions hook
   const { handleAction } = useOrderActions({
@@ -421,7 +431,9 @@ export default function OrdersPage() {
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
               {isOnline
-                ? `Displaying ${orders.length} of ${count} orders`
+                ? offlineOrders.length > 0
+                  ? `Displaying ${orders.length} orders (${offlineOrders.length} pending sync)`
+                  : `Displaying ${orders.length} of ${count} orders`
                 : `${orders.length} offline order${orders.length !== 1 ? 's' : ''}`
               }
             </span>

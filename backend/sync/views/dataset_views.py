@@ -201,12 +201,26 @@ class CatalogSyncView(BaseSyncView):
 
     def get_queryset(self, terminal):
         """Include prefetches to avoid N+1 queries"""
-        return super().get_queryset(terminal).select_related(
+        qs = super().get_queryset(terminal).select_related(
             'category', 'product_type'
         ).prefetch_related(
             'taxes',
             'product_modifier_sets__modifier_set__options'
         )
+        since = self.request.data.get('since') if hasattr(self.request, 'data') else None
+        if since:
+            try:
+                since_dt = date_parser.isoparse(since)
+                qs = qs.filter(
+                    Q(updated_at__gte=since_dt) |
+                    Q(taxes__updated_at__gte=since_dt) |
+                    Q(product_type__updated_at__gte=since_dt) |
+                    Q(product_modifier_sets__modifier_set__updated_at__gte=since_dt) |
+                    Q(product_modifier_sets__modifier_set__options__updated_at__gte=since_dt)
+                ).distinct()
+            except Exception:
+                pass
+        return qs
 
 
 class CategoriesSyncView(BaseSyncView):
@@ -258,7 +272,18 @@ class ModifierSetsSyncView(BaseSyncView):
 
     def get_queryset(self, terminal):
         """Include options prefetch"""
-        return super().get_queryset(terminal).prefetch_related('options')
+        qs = super().get_queryset(terminal).prefetch_related('options')
+        since = self.request.data.get('since') if hasattr(self.request, 'data') else None
+        if since:
+            try:
+                since_dt = date_parser.isoparse(since)
+                qs = qs.filter(
+                    Q(updated_at__gte=since_dt) |
+                    Q(options__updated_at__gte=since_dt)
+                ).distinct()
+            except Exception:
+                pass
+        return qs
 
 
 class DiscountsSyncView(BaseSyncView):
@@ -274,10 +299,22 @@ class DiscountsSyncView(BaseSyncView):
 
     def get_queryset(self, terminal):
         """Include applicable products/categories prefetch"""
-        return super().get_queryset(terminal).prefetch_related(
+        qs = super().get_queryset(terminal).prefetch_related(
             'applicable_products',
             'applicable_categories'
         )
+        since = self.request.data.get('since') if hasattr(self.request, 'data') else None
+        if since:
+            try:
+                since_dt = date_parser.isoparse(since)
+                qs = qs.filter(
+                    Q(updated_at__gte=since_dt) |
+                    Q(applicable_products__updated_at__gte=since_dt) |
+                    Q(applicable_categories__updated_at__gte=since_dt)
+                ).distinct()
+            except Exception:
+                pass
+        return qs
 
 
 class InventorySyncView(BaseSyncView):
@@ -389,15 +426,20 @@ class SettingsSyncView(APIView):
                 is_active=True
             ).prefetch_related('categories', 'printer')
             if since:
-                zones_qs = zones_qs.filter(updated_at__gte=since)
+                zones_qs = zones_qs.filter(
+                    Q(updated_at__gte=since) |
+                    Q(printer__updated_at__gte=since)
+                )
             kitchen_zones_data = SyncKitchenZoneSerializer(zones_qs, many=True).data
 
-            # Add zone timestamps
+            # Add zone and related timestamps
             for zone in KitchenZone.objects.filter(
                 tenant=terminal.tenant,
                 location=store_location
             ):
                 timestamps.append(zone.updated_at)
+                if zone.printer_id and zone.printer and zone.printer.updated_at:
+                    timestamps.append(zone.printer.updated_at)
 
         # Get this terminal's registration
         terminal_data = SyncTerminalRegistrationSerializer(terminal).data

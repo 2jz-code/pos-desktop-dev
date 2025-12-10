@@ -1,22 +1,28 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
+from django.utils import timezone
+
 from .models import Discount
-from core_backend.infrastructure.cache_utils import invalidate_cache_pattern
-import logging
 
-logger = logging.getLogger(__name__)
 
-@receiver([post_save, post_delete], sender=Discount)
-def handle_discount_changes(sender, instance=None, **kwargs):
-    """Invalidate discount-related caches when discounts change"""
-    try:
-        # Invalidate active discounts cache
-        invalidate_cache_pattern('get_active_discounts')
-        
-        # Invalidate discount eligibility cache patterns
-        invalidate_cache_pattern('get_discount_eligibility_for_order_type')
-        
-        logger.info(f"Invalidated discount caches after change to discount_id: {instance.id if instance else 'unknown'}")
-        
-    except Exception as e:
-        logger.error(f"Failed to invalidate discount caches: {e}")
+def _bump_discount_updated_at(pk_set):
+    """
+    Helper to bump updated_at on discounts when applicability M2M changes.
+    """
+    if not pk_set:
+        return
+    Discount.objects.filter(id__in=pk_set).update(updated_at=timezone.now())
+
+
+@receiver(m2m_changed, sender=Discount.applicable_products.through)
+def discount_applicable_products_changed(sender, instance, action, reverse, model, pk_set, **kwargs):
+    if action in ("post_add", "post_remove", "post_clear"):
+        instance.updated_at = timezone.now()
+        instance.save(update_fields=["updated_at"])
+
+
+@receiver(m2m_changed, sender=Discount.applicable_categories.through)
+def discount_applicable_categories_changed(sender, instance, action, reverse, model, pk_set, **kwargs):
+    if action in ("post_add", "post_remove", "post_clear"):
+        instance.updated_at = timezone.now()
+        instance.save(update_fields=["updated_at"])

@@ -20,30 +20,36 @@ export const useSettingsStore = create(
 			receiptPrinterId: null, // Selected printer for receipts
 
 			discoverAndSetPrinters: async () => {
+				// Always discover local USB printers first (works offline)
+				let formattedLocal = [];
 				try {
 					const localPrinters = await discoverPrinters();
-					const networkPrinters = await getNetworkReceiptPrinters(); // Fetch network printers
-
-					const formattedLocal = localPrinters.map((p) => ({
+					formattedLocal = localPrinters.map((p) => ({
 						id: p.name,
 						...p,
 						connectionType: "usb",
 					}));
+				} catch (error) {
+					console.warn("Failed to discover local USB printers:", error);
+				}
 
-					const formattedNetwork = networkPrinters.map((p) => ({
+				// Try to fetch network printers (uses cache-first pattern, will work offline if cached)
+				let formattedNetwork = [];
+				try {
+					const networkPrinters = await getNetworkReceiptPrinters();
+					formattedNetwork = networkPrinters.map((p) => ({
 						id: p.name,
 						...p,
 						connectionType: "network",
 					}));
-
-					const combinedPrinters = [...formattedLocal, ...formattedNetwork];
-					set({ printers: combinedPrinters });
-					return combinedPrinters;
 				} catch (error) {
-					console.error("Failed to discover and set printers:", error);
-					set({ printers: [] });
-					return [];
+					console.warn("Failed to fetch network printers:", error);
+					// Network printers unavailable, but USB printers still work
 				}
+
+				const combinedPrinters = [...formattedLocal, ...formattedNetwork];
+				set({ printers: combinedPrinters });
+				return combinedPrinters;
 			},
 
 			fetchSettings: async () => {

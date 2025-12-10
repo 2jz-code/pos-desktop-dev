@@ -7,5 +7,5 @@ class DiscountsConfig(AppConfig):
 
     def ready(self):
         # Import signals when the app is ready.
-        import discounts.signals
+        import discounts.signals  # noqa: F401
         # Note: Approval handlers are now registered in approvals/apps.py
