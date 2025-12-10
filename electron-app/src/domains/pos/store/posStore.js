@@ -33,8 +33,10 @@ export const usePosStore = createWithEqualityFn(
 				taxAmount: state.taxAmount,
 				surchargesAmount: state.surchargesAmount,
 				totalDiscountsAmount: state.totalDiscountsAmount,
+				totalAdjustmentsAmount: state.totalAdjustmentsAmount,
 				tip: state.tip,
 				appliedDiscounts: state.appliedDiscounts,
+				adjustments: state.adjustments,
 				currentUser: state.currentUser,
 				diningPreference: state.diningPreference, // Persist dining preference
 				// Persist payment state across sessions for order continuity

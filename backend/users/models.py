@@ -113,6 +113,17 @@ class User(SoftDeleteMixin, AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+    def get_full_name(self):
+        """
+        Return the first_name plus the last_name, with a space in between.
+        """
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name
+
+    def get_short_name(self):
+        """Return the short name for the user."""
+        return self.first_name
+
     def set_pin(self, raw_pin):
         self.pin = make_password(str(raw_pin)) if raw_pin else None
         self.save(update_fields=["pin"])

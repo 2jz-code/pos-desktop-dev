@@ -4,6 +4,7 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import * as orderService from "@/domains/orders/services/orderService";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/components/ui/hover-card";
 import { toast } from "@/shared/components/ui/use-toast";
 import FullScreenLoader from "@/shared/components/common/FullScreenLoader";
 import {
@@ -35,6 +36,7 @@ import {
 import { useRolePermissions } from "@/shared/hooks/useRolePermissions";
 import { useMutation } from "@tanstack/react-query";
 import { useSettingsStore } from "@/domains/settings/store/settingsStore";
+import { openCashDrawer } from "@/shared/lib/hardware";
 import { isDeliveryPlatform } from "@/domains/pos/constants/deliveryPlatforms";
 import { format } from "date-fns";
 import {
@@ -44,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { ItemCard } from "../components/ItemCard";
+import OrderApprovalDialog from "../components/OrderApprovalDialog";
 
 // Compact Transaction Detail Component
 const TransactionDetail = ({ transaction }) => {
@@ -132,6 +135,15 @@ const CustomerInfo = ({ customer_display_name, customer_email, customer_phone })
 
 // Compact Order Summary Component
 const OrderSummary = ({ order }) => {
+  // Find order-level one-off discounts (no specific order_item)
+  const orderLevelDiscounts = (order.adjustments || []).filter(
+    (adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item
+  );
+
+  // Check for ORDER-LEVEL exemptions only (item-level exemptions are already reflected in tax_total)
+  const taxExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
+  const feeExemption = (order.adjustments || []).find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
+
   return (
     <Card className="p-5 border border-border/60 bg-card/80">
       <div className="space-y-4">
@@ -152,22 +164,141 @@ const OrderSummary = ({ order }) => {
             <span className="text-foreground font-medium">{formatCurrency(order.subtotal)}</span>
           </div>
 
-          {order.total_discounts_amount > 0 && (
+          {/* Order-Level One-Off Discounts */}
+          {orderLevelDiscounts.map((discount) => {
+            let discountLabel = "One-Off Discount";
+            if (discount.discount_type === "PERCENTAGE") {
+              discountLabel = `${discount.discount_value}% Discount`;
+            } else if (discount.discount_value) {
+              discountLabel = `${formatCurrency(discount.discount_value)} Discount`;
+            }
+            return (
+              <div key={discount.id} className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-sm">{discountLabel}</span>
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 cursor-help"
+                      >
+                        {discount.discount_type === "PERCENTAGE" ? `${discount.discount_value}%` : formatCurrency(discount.discount_value)}
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{discount.reason}</p>
+                        </div>
+                        {discount.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {discount.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  -{formatCurrency(Math.abs(parseFloat(discount.amount || 0)))}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Applied code-based discounts */}
+          {order.total_discounts_amount > 0 && order.applied_discounts?.length > 0 && (
+            <>
+              {order.applied_discounts.map((orderDiscount) => (
+                <div key={orderDiscount.id} className="flex justify-between">
+                  <span className="text-muted-foreground">{orderDiscount.discount?.name || "Discount"}</span>
+                  <span className="text-destructive font-medium">-{formatCurrency(orderDiscount.amount)}</span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Show either Tax OR Tax Exemption */}
+          {taxExemption ? (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Tax Exemption</span>
+                {taxExemption.reason && (
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-help"
+                      >
+                        Info
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{taxExemption.reason}</p>
+                        </div>
+                        {taxExemption.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {taxExemption.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                )}
+              </div>
+              <span className="text-orange-600 dark:text-orange-400 font-medium">Applied</span>
+            </div>
+          ) : (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Discounts</span>
-              <span className="text-destructive font-medium">-{formatCurrency(order.total_discounts_amount)}</span>
+              <span className="text-muted-foreground">Tax</span>
+              <span className="text-foreground font-medium">{formatCurrency(order.tax_total)}</span>
             </div>
           )}
 
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Tax</span>
-            <span className="text-foreground font-medium">{formatCurrency(order.tax_total)}</span>
-          </div>
-
+          {/* Show surcharges if any */}
           {order.total_surcharges > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Surcharges</span>
               <span className="text-foreground font-medium">{formatCurrency(order.total_surcharges)}</span>
+            </div>
+          )}
+
+          {/* Show fee exemption if applied */}
+          {feeExemption && (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Fee Exemption</span>
+                {feeExemption.reason && (
+                  <HoverCard>
+                    <HoverCardTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-1.5 py-0 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 cursor-help"
+                      >
+                        Info
+                      </Badge>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80" side="top">
+                      <div className="space-y-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">Reason:</span>
+                          <p className="text-muted-foreground mt-1">{feeExemption.reason}</p>
+                        </div>
+                        {feeExemption.approved_by_name && (
+                          <div className="text-xs text-muted-foreground border-t pt-2">
+                            Approved by {feeExemption.approved_by_name}
+                          </div>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                )}
+              </div>
+              <span className="text-blue-600 dark:text-blue-400 font-medium">Applied</span>
             </div>
           )}
 
@@ -200,6 +331,8 @@ const OrderDetailsPage = () => {
   const navigate = useNavigate();
   const permissions = useRolePermissions();
   const [isPrinting, setIsPrinting] = useState(false);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState(null);
 
   const order = usePosStore((state) => state.selectedOrder);
   const fetchOrderById = usePosStore((state) => state.fetchOrderById);
@@ -211,6 +344,8 @@ const OrderDetailsPage = () => {
     (state) => state.getLocalReceiptPrinter
   );
   const settings = useSettingsStore((state) => state.settings);
+  const printers = useSettingsStore((state) => state.printers);
+  const receiptPrinterId = useSettingsStore((state) => state.receiptPrinterId);
 
   useEffect(() => {
     if (orderId) {
@@ -329,6 +464,76 @@ const OrderDetailsPage = () => {
     }
   };
 
+  const handleVoid = async () => {
+    try {
+      const response = await orderService.voidOrder(orderId);
+
+      // Check if approval is required (202 status)
+      if (response.status === 202) {
+        const data = response.data;
+        setApprovalRequest({
+          approvalRequestId: data.approval_request_id,
+          message: data.message,
+          actionType: "ORDER_VOID",
+          orderNumber: data.order_number,
+          orderTotal: data.order_total,
+        });
+        setApprovalDialogOpen(true);
+        return;
+      }
+
+      // Order voided successfully without approval
+      toast({
+        title: "Success",
+        description: "Order has been voided successfully.",
+      });
+
+      // Refresh the order
+      await fetchOrderById(orderId);
+    } catch (err) {
+      const description =
+        err?.response?.data?.error || "An unknown error occurred.";
+      toast({
+        title: "Operation Failed",
+        description,
+        variant: "destructive",
+      });
+      console.error(`Failed to void order ${orderId}:`, err);
+    }
+  };
+
+  const handleApprovalSuccess = async ({ approved }) => {
+    setApprovalDialogOpen(false);
+    setApprovalRequest(null);
+
+    if (approved) {
+      // Open cash drawer for refund
+      try {
+        const receiptPrinter = printers.find(p => p.id === receiptPrinterId);
+        if (receiptPrinter) {
+          await openCashDrawer(receiptPrinter);
+        }
+      } catch (error) {
+        console.error("Failed to open cash drawer:", error);
+        // Don't block the success flow if cash drawer fails
+      }
+
+      toast({
+        title: "Approved",
+        description: "Order void approved by manager. Order has been voided.",
+      });
+    } else {
+      toast({
+        title: "Denied",
+        description: "Order void request denied by manager.",
+        variant: "destructive",
+      });
+    }
+
+    // Refresh the order
+    await fetchOrderById(orderId);
+  };
+
   const resendEmailMutation = useMutation({
     mutationFn: () => orderService.resendConfirmationEmail(orderId),
     onSuccess: (data) => {
@@ -375,6 +580,8 @@ const OrderDetailsPage = () => {
   const paymentConfig = getPaymentStatusConfig(payment_status);
   const canResume = status === "HOLD" || status === "PENDING";
   const canCancel = (status === "PENDING" || status === "HOLD") && permissions?.canCancelOrders();
+  // Can void any order except already voided or cancelled
+  const canVoid = !["VOID", "CANCELLED"].includes(status);
 
   return (
     <div className="flex flex-col h-full">
@@ -439,7 +646,12 @@ const OrderDetailsPage = () => {
                   {/* Grid layout for items on larger screens for better space usage */}
                   <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
                     {order.items.map((item) => (
-                      <ItemCard key={item.id} item={item} compact={order.items.length > 2} />
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        adjustments={order.adjustments || []}
+                        compact={order.items.length > 2}
+                      />
                     ))}
                   </div>
                 </div>
@@ -606,7 +818,7 @@ const OrderDetailsPage = () => {
               )}
 
               {/* More Actions Menu */}
-              {canCancel && (
+              {(canCancel || canVoid) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="lg" className="min-h-[48px] px-3">
@@ -614,18 +826,29 @@ const OrderDetailsPage = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem
-                      className="h-12 px-4 text-destructive focus:text-destructive"
-                      onClick={() =>
-                        handleStatusChange(
-                          orderService.cancelOrder,
-                          "Order has been cancelled."
-                        )
-                      }
-                    >
-                      <XCircle className="mr-3 h-4 w-4" />
-                      Cancel Order
-                    </DropdownMenuItem>
+                    {canVoid && (
+                      <DropdownMenuItem
+                        className="h-12 px-4 text-destructive focus:text-destructive"
+                        onClick={handleVoid}
+                      >
+                        <XCircle className="mr-3 h-4 w-4" />
+                        Void Order
+                      </DropdownMenuItem>
+                    )}
+                    {canCancel && (
+                      <DropdownMenuItem
+                        className="h-12 px-4 text-destructive focus:text-destructive"
+                        onClick={() =>
+                          handleStatusChange(
+                            orderService.cancelOrder,
+                            "Order has been cancelled."
+                          )
+                        }
+                      >
+                        <XCircle className="mr-3 h-4 w-4" />
+                        Cancel Order
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -633,6 +856,14 @@ const OrderDetailsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Manager Approval Dialog */}
+      <OrderApprovalDialog
+        open={approvalDialogOpen}
+        onClose={() => setApprovalDialogOpen(false)}
+        approvalRequest={approvalRequest}
+        onSuccess={handleApprovalSuccess}
+      />
     </div>
   );
 };

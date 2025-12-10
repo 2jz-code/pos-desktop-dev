@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -43,6 +44,246 @@ class OrderDiscount(models.Model):
         indexes = [
             models.Index(fields=['tenant', 'order']),
         ]
+
+
+class OrderAdjustment(models.Model):
+    """
+    Captures ad-hoc adjustments to orders (one-off discounts, price overrides, etc.)
+
+    Provides full audit trail for all manual price modifications.
+    Separate from predefined discounts (OrderDiscount) to avoid sparse nullable fields.
+    """
+
+    class AdjustmentType(models.TextChoices):
+        ONE_OFF_DISCOUNT = 'ONE_OFF_DISCOUNT', _('One-Off Discount')
+        PRICE_OVERRIDE = 'PRICE_OVERRIDE', _('Price Override')
+        TAX_EXEMPT = 'TAX_EXEMPT', _('Tax Exempt')
+        FEE_EXEMPT = 'FEE_EXEMPT', _('Fee Exempt')
+        # Future extensibility: COMP, LOYALTY_CREDIT, DAMAGE_DISCOUNT, etc.
+
+    class DiscountType(models.TextChoices):
+        PERCENTAGE = 'PERCENTAGE', _('Percentage')
+        FIXED = 'FIXED', _('Fixed Amount')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    tenant = models.ForeignKey(
+        'tenant.Tenant',
+        on_delete=models.CASCADE,
+        related_name='order_adjustments'
+    )
+
+    order = models.ForeignKey(
+        'Order',
+        on_delete=models.CASCADE,
+        related_name='adjustments',
+        help_text=_("Order this adjustment applies to")
+    )
+
+    order_item = models.ForeignKey(
+        'OrderItem',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='adjustments',
+        help_text=_("Specific item (for price overrides). Null for order-level adjustments.")
+    )
+
+    adjustment_type = models.CharField(
+        max_length=50,
+        choices=AdjustmentType.choices,
+        help_text=_("Type of adjustment")
+    )
+
+    # For one-off discounts
+    discount_type = models.CharField(
+        max_length=20,
+        choices=DiscountType.choices,
+        null=True,
+        blank=True,
+        help_text=_("Type of discount (percentage or fixed amount)")
+    )
+
+    discount_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("Discount value (e.g., 15.00 for 15% or $15)")
+    )
+
+    # For price overrides
+    original_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("Original price before override")
+    )
+
+    new_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("New overridden price")
+    )
+
+    # Calculated amount (result of adjustment)
+    # Positive for increases, negative for decreases
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text=_("Calculated adjustment amount (negative for discounts, positive for increases)")
+    )
+
+    # Audit fields
+    reason = models.TextField(
+        help_text=_("Reason for this adjustment (for audit trail)")
+    )
+
+    applied_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.PROTECT,
+        related_name='applied_adjustments',
+        help_text=_("User who initiated this adjustment")
+    )
+
+    approved_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='approved_adjustments',
+        help_text=_("Manager who approved this adjustment (null if no approval needed)")
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        verbose_name = _("Order Adjustment")
+        verbose_name_plural = _("Order Adjustments")
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['tenant', 'order']),
+            models.Index(fields=['tenant', 'order_item']),
+            models.Index(fields=['tenant', 'adjustment_type']),
+            models.Index(fields=['tenant', 'applied_by']),
+        ]
+
+    def clean(self):
+        """
+        Validate adjustment data integrity and business rules.
+        """
+        from django.core.exceptions import ValidationError
+        errors = {}
+
+        # Field requirements per adjustment type
+        if self.adjustment_type == self.AdjustmentType.ONE_OFF_DISCOUNT:
+            if not self.discount_type:
+                errors['discount_type'] = _('Discount type is required for one-off discounts')
+            if self.discount_value is None:
+                errors['discount_value'] = _('Discount value is required for one-off discounts')
+            # order_item is optional - None for order-level, set for item-level discounts
+
+        elif self.adjustment_type == self.AdjustmentType.PRICE_OVERRIDE:
+            if not self.order_item:
+                errors['order_item'] = _('Order item is required for price overrides')
+            if self.original_price is None:
+                errors['original_price'] = _('Original price is required for price overrides')
+            if self.new_price is None:
+                errors['new_price'] = _('New price is required for price overrides')
+
+        # Tenant consistency validation
+        if self.order and self.tenant_id != self.order.tenant_id:
+            errors['tenant'] = _('Adjustment tenant must match order tenant')
+
+        if self.order_item:
+            if self.order_item.order_id != self.order_id:
+                errors['order_item'] = _('Order item must belong to the specified order')
+            if self.order_item.tenant_id != self.tenant_id:
+                errors['order_item'] = _('Order item tenant must match adjustment tenant')
+
+        # Amount sanity checks
+        if self.discount_type == self.DiscountType.PERCENTAGE:
+            if self.discount_value is not None:
+                if self.discount_value > 100:
+                    errors['discount_value'] = _('Percentage discount cannot exceed 100%')
+                if self.discount_value < 0:
+                    errors['discount_value'] = _('Percentage discount cannot be negative')
+
+        if self.discount_value is not None and self.discount_value < 0:
+            errors['discount_value'] = _('Discount value cannot be negative')
+
+        if self.original_price is not None and self.original_price < 0:
+            errors['original_price'] = _('Original price cannot be negative')
+
+        if self.new_price is not None and self.new_price < 0:
+            errors['new_price'] = _('New price cannot be negative')
+
+        # Validate amount matches calculated value (prevent arbitrary amounts)
+        if self.adjustment_type == self.AdjustmentType.PRICE_OVERRIDE:
+            if self.original_price is not None and self.new_price is not None and self.order_item:
+                # Calculate expected amount for price override
+                price_diff = self.new_price - self.original_price
+                expected_amount = price_diff * self.order_item.quantity
+                # Allow small rounding differences (0.01)
+                if abs(self.amount - expected_amount) > Decimal('0.01'):
+                    errors['amount'] = _(
+                        f'Amount {self.amount} does not match calculated value {expected_amount} '
+                        f'(new_price - original_price) * quantity'
+                    )
+
+        elif self.adjustment_type == self.AdjustmentType.ONE_OFF_DISCOUNT:
+            if self.discount_type and self.discount_value is not None:
+                # For percentage discounts, we can validate the amount is negative
+                if self.discount_type == self.DiscountType.PERCENTAGE:
+                    if self.amount >= 0:
+                        errors['amount'] = _('One-off discount amount must be negative')
+
+                    # Validate it's not more than 100% of applicable amount
+                    if self.order_item:
+                        # Item-level: Check against item total
+                        item_total = (self.order_item.price_at_sale * self.order_item.quantity) or Decimal('0.00')
+                        max_discount = -item_total
+                        if self.amount < max_discount:
+                            errors['amount'] = _(
+                                f'Discount amount {self.amount} exceeds item total {item_total}'
+                            )
+                    elif self.order:
+                        # Order-level: Check against order subtotal
+                        max_discount = -(self.order.subtotal or Decimal('0.00'))
+                        if self.amount < max_discount:
+                            errors['amount'] = _(
+                                f'Discount amount {self.amount} exceeds order subtotal {self.order.subtotal}'
+                            )
+                elif self.discount_type == self.DiscountType.FIXED:
+                    # Fixed discounts should also be negative
+                    if self.amount >= 0:
+                        errors['amount'] = _('One-off discount amount must be negative')
+                    # Validate it matches the discount value
+                    expected_amount = -self.discount_value
+                    if abs(self.amount - expected_amount) > Decimal('0.01'):
+                        errors['amount'] = _(
+                            f'Amount {self.amount} does not match discount value -{self.discount_value}'
+                        )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to call full_clean() and enforce validation.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.get_adjustment_type_display()} on Order {self.order.order_number} by {self.applied_by.email}"
 
 
 class Order(models.Model):
@@ -165,6 +406,12 @@ class Order(models.Model):
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_discounts_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00
+    )
+    total_adjustments_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        help_text=_("Total of all order adjustments (one-off discounts, price overrides). Can be positive or negative.")
     )
     surcharges_total = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00

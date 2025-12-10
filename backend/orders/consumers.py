@@ -7,7 +7,12 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import sync_to_async
 
 from .models import Order, OrderItem, Product
-from .services import OrderService
+from .services import (
+    OrderService,
+    OrderCalculationService,
+    OrderItemService,
+    OrderDiscountService,
+)
 from .serializers import UnifiedOrderSerializer
 
 # No longer need DjangoJSONEncoder if we pre-process the data
@@ -63,10 +68,16 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
 
         # Validate user has access to this tenant
-        user = self.scope.get('user')
-        if user and user.is_authenticated:
-            if hasattr(user, 'tenant') and user.tenant != self.tenant:
-                logging.warning(f"OrderConsumer: User tenant mismatch. User: {user.tenant}, Scope: {self.tenant}")
+        self.user = self.scope.get('user')
+        logging.info(
+            f"OrderConsumer: User in scope: {self.user}, "
+            f"Is authenticated: {getattr(self.user, 'is_authenticated', False)}, "
+            f"User type: {type(self.user).__name__}"
+        )
+        if self.user and self.user.is_authenticated:
+            # Compare tenant_id instead of tenant object to avoid async DB query
+            if hasattr(self.user, 'tenant_id') and self.user.tenant_id != self.tenant.id:
+                logging.warning(f"OrderConsumer: User tenant mismatch. User tenant_id: {self.user.tenant_id}, Scope tenant_id: {self.tenant.id}")
                 await self.close(code=4003)  # Forbidden
                 return
 
@@ -107,7 +118,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                 pass
             order_instance = cached_state
         else:
-            order_instance = await sync_to_async(OrderService.recalculate_order_totals)(order)
+            order_instance = await sync_to_async(OrderCalculationService.recalculate_order_totals)(order)
 
         serialize_start = time.monotonic()
         serialized_order = await self.serialize_order(order_instance)
@@ -203,8 +214,8 @@ class OrderConsumer(AsyncWebsocketConsumer):
                     f"OrderConsumer: FORCE OVERRIDE - Adding {product.name} despite stock validation failure"
                 )
 
-                # Add the item without stock validation using OrderService
-                await sync_to_async(OrderService.add_item_to_order)(
+                # Add the item without stock validation using OrderItemService
+                await sync_to_async(OrderItemService.add_item_to_order)(
                     order=order,
                     product=product,
                     quantity=quantity,
@@ -254,7 +265,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
                 order = await sync_to_async(get_order)()
                 product = await sync_to_async(get_product)()
-                await sync_to_async(OrderService.add_item_to_order)(
+                await sync_to_async(OrderItemService.add_item_to_order)(
                     order=order, product=product, quantity=quantity, selected_modifiers=selected_modifiers
                 )
                 # Use recalculate_and_cache_order for consistency with other operations
@@ -305,6 +316,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
         price = payload.get("price")
         quantity = payload.get("quantity", 1)
         notes = payload.get("notes", "")
+        tax_exempt = payload.get("tax_exempt", False)
 
         try:
             from decimal import Decimal
@@ -314,12 +326,14 @@ class OrderConsumer(AsyncWebsocketConsumer):
             price_decimal = Decimal(str(price))
 
             # Add the custom item using OrderService
-            await sync_to_async(OrderService.add_custom_item_to_order)(
+            await sync_to_async(OrderItemService.add_custom_item_to_order)(
                 order=order,
                 name=name,
                 price=price_decimal,
                 quantity=quantity,
-                notes=notes
+                notes=notes,
+                tax_exempt=tax_exempt,
+                applied_by=self.user
             )
             await self.recalculate_and_cache_order(order)
 
@@ -475,7 +489,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         
                         # Create new individual items (cloning the original modifiers)
                         for i in range(additional_quantity):
-                            await sync_to_async(OrderService.add_item_to_order)(
+                            await sync_to_async(OrderItemService.add_item_to_order)(
                                 order=order,
                                 product=product,
                                 quantity=1,
@@ -511,7 +525,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
                         await self.recalculate_and_cache_order(order_obj)
                     else:
                         # Regular items: use service method for policy-aware validation
-                        await sync_to_async(OrderService.update_item_quantity)(item, new_quantity)
+                        await sync_to_async(OrderItemService.update_item_quantity)(item, new_quantity)
                         order_obj = await sync_to_async(lambda i: i.order)(item)
                         await self.recalculate_and_cache_order(order_obj)
 
@@ -588,7 +602,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             await sync_to_async(item.delete)()
 
             # Add new item with updated modifiers
-            await sync_to_async(OrderService.add_item_to_order)(
+            await sync_to_async(OrderItemService.add_item_to_order)(
                 order=order,
                 product=product,
                 quantity=quantity,
@@ -617,6 +631,16 @@ class OrderConsumer(AsyncWebsocketConsumer):
         item = await sync_to_async(OrderItem.objects.get)(id=item_id)
         order = await sync_to_async(lambda i: i.order)(item)
         await sync_to_async(item.delete)()
+
+        # If no items left in the cart, remove order-level discounts and adjustments
+        def cleanup_empty_cart(order):
+            if not order.items.exists():
+                # Remove order-level discounts (not item-level)
+                order.discounts.all().delete()
+                # Remove order-level adjustments (not item-level)
+                order.adjustments.filter(order_item__isnull=True).delete()
+
+        await sync_to_async(cleanup_empty_cart)(order)
         await self.recalculate_and_cache_order(order)
 
     async def apply_discount(self, payload):
@@ -636,9 +660,27 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            await sync_to_async(OrderService.apply_discount_to_order_by_id)(
-                order=order, discount_id=discount_id
+            result = await sync_to_async(OrderDiscountService.apply_discount_to_order_by_id)(
+                order=order, discount_id=discount_id, user=self.user
             )
+
+            # Check if approval is required
+            if result and result.get('status') == 'pending_approval':
+                # Send approval_required message to frontend
+                await self.send(text_data=json.dumps({
+                    "type": "approval_required",
+                    "approval_request_id": result['approval_request_id'],
+                    "message": result['message'],
+                    "discount_name": result['discount_name'],
+                    "discount_value": result['discount_value'],
+                    "action_type": "DISCOUNT",
+                }))
+                logging.info(
+                    f"OrderConsumer: Approval required for discount {discount_id} on order {self.order_id}"
+                )
+                return  # Don't recalculate or send full order state
+
+            # Discount applied successfully
             await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount {discount_id} to order {self.order_id}"
@@ -663,9 +705,27 @@ class OrderConsumer(AsyncWebsocketConsumer):
 
         order = await sync_to_async(get_order)()
         try:
-            await sync_to_async(OrderService.apply_discount_to_order_by_code)(
-                order=order, code=code
+            result = await sync_to_async(OrderDiscountService.apply_discount_to_order_by_code)(
+                order=order, code=code, user=self.user
             )
+
+            # Check if approval is required
+            if result and result.get('status') == 'pending_approval':
+                # Send approval_required message to frontend
+                await self.send(text_data=json.dumps({
+                    "type": "approval_required",
+                    "approval_request_id": result['approval_request_id'],
+                    "message": result['message'],
+                    "discount_name": result['discount_name'],
+                    "discount_value": result['discount_value'],
+                    "action_type": "DISCOUNT",
+                }))
+                logging.info(
+                    f"OrderConsumer: Approval required for discount code '{code}' on order {self.order_id}"
+                )
+                return  # Don't recalculate or send full order state
+
+            # Discount applied successfully
             await self.recalculate_and_cache_order(order)
             logging.info(
                 f"OrderConsumer: Applied discount with code {code} to order {self.order_id}"
@@ -682,7 +742,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
         try:
-            await sync_to_async(OrderService.remove_discount_from_order_by_id)(
+            await sync_to_async(OrderDiscountService.remove_discount_from_order_by_id)(
                 order=order, discount_id=discount_id
             )
             await self.recalculate_and_cache_order(order)
@@ -700,7 +760,7 @@ class OrderConsumer(AsyncWebsocketConsumer):
             )
             return
         order = await sync_to_async(Order.objects.get)(id=self.order_id, tenant=self.tenant)
-        await sync_to_async(OrderService.clear_order_items)(order)
+        await sync_to_async(OrderItemService.clear_order_items)(order)
         await self.recalculate_and_cache_order(order)
 
     async def send_full_order_state(self, order=None):

@@ -1,105 +1,18 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, OrderDiscount, OrderItemModifier
-from users.serializers import UnifiedUserSerializer
-from discounts.models import Discount
-from products.serializers import ProductSerializer
-from .services import OrderService
-from products.models import Product, ModifierOption
-from django.db import transaction
-from discounts.serializers import DiscountSerializer
+from orders.models import Order, OrderItem, OrderDiscount, OrderItemModifier, OrderAdjustment
 from core_backend.base import BaseModelSerializer
 from core_backend.base.serializers import FieldsetMixin, TenantFilteredSerializerMixin
+from django.db import transaction
+
+from users.serializers import UnifiedUserSerializer
+from products.serializers import ProductSerializer
+from discounts.serializers import DiscountSerializer
 from django.db.models import Prefetch
 
-
-# OrderItemProductSerializer is now replaced by ProductSerializer with view_mode='order_item'
-# See products.serializers.ProductSerializer fieldsets['order_item']
-# This eliminates duplicate code and uses the unified serializer pattern
-
-
-class OrderItemModifierSerializer(BaseModelSerializer):
-    class Meta:
-        model = OrderItemModifier
-        fields = ["modifier_set_name", "option_name", "price_at_sale", "quantity"]
-
-
-class OrderItemSerializer(BaseModelSerializer):
-    # Use unified ProductSerializer with 'order_item' fieldset
-    product = serializers.SerializerMethodField()
-    selected_modifiers_snapshot = OrderItemModifierSerializer(many=True, read_only=True)
-    total_modifier_price = serializers.SerializerMethodField()
-    display_name = serializers.SerializerMethodField()
-    display_price = serializers.SerializerMethodField()
-
-    class Meta:
-        model = OrderItem
-        fields = "__all__"
-        select_related_fields = ["product", "order"]
-        prefetch_related_fields = [
-            "selected_modifiers_snapshot"
-        ]  # Fix: prefetch for modifier calculations
-
-    def get_product(self, obj):
-        """
-        Return product using unified ProductSerializer with appropriate fieldset.
-        This replaces the old OrderItemProductSerializer.
-
-        For websocket context, uses 'websocket_item' fieldset with minimal fields
-        needed by frontend: id, name, price, image_url, modifier_groups.
-        """
-        if obj.product:
-            # Use unified ProductSerializer with appropriate view mode
-            context = self.context.copy() if self.context else {}
-
-            # Optimize for websocket: use minimal fieldset with only frontend-needed fields
-            parent_view_mode = self.context.get("view_mode")
-            if parent_view_mode == "websocket":
-                # Lightweight: id, name, price, image_url, modifier_groups (frontend needs these)
-                context["view_mode"] = "websocket_item"
-            else:
-                # Full representation with all fields
-                context["view_mode"] = "order_item"
-
-            return ProductSerializer(obj.product, context=context).data
-        return None
-
-    def get_display_name(self, obj):
-        """Return the item name, handling both product and custom items"""
-        if obj.product:
-            return obj.product.name
-        return obj.custom_name or "Custom Item"
-
-    def get_display_price(self, obj):
-        """Return the item price, handling both product and custom items"""
-        return str(obj.price_at_sale)
-
-    def get_total_modifier_price(self, obj):
-        """Calculate total price impact from modifiers using prefetched data"""
-        # Use prefetched data to avoid N+1 queries
-        if (
-            hasattr(obj, "_prefetched_objects_cache")
-            and "selected_modifiers_snapshot" in obj._prefetched_objects_cache
-        ):
-            # Use the prefetched data
-            modifiers = obj._prefetched_objects_cache["selected_modifiers_snapshot"]
-            return sum(
-                modifier.price_at_sale * modifier.quantity for modifier in modifiers
-            )
-        elif hasattr(obj, "selected_modifiers_snapshot"):
-            # Fallback to direct query if prefetch not available
-            return sum(
-                modifier.price_at_sale * modifier.quantity
-                for modifier in obj.selected_modifiers_snapshot.all()
-            )
-        return 0
-
-
-class OrderDiscountSerializer(BaseModelSerializer):
-    discount = DiscountSerializer(read_only=True)
-
-    class Meta:
-        model = OrderDiscount
-        fields = "__all__"
+# Import sibling serializers
+from .order_item_serializers import OrderItemSerializer, OrderItemModifierSerializer
+from .discount_serializers import OrderDiscountSerializer
+from .adjustment_serializers import OrderAdjustmentSerializer
 
 
 class UnifiedOrderSerializer(
@@ -136,6 +49,7 @@ class UnifiedOrderSerializer(
     cashier = UnifiedUserSerializer(read_only=True)
     customer = UnifiedUserSerializer(read_only=True)
     applied_discounts = OrderDiscountSerializer(many=True, read_only=True)
+    adjustments = OrderAdjustmentSerializer(many=True, read_only=True)
 
     # SerializerMethodFields (lazy imports for circular dependency)
     payment_details = serializers.SerializerMethodField()
@@ -171,6 +85,7 @@ class UnifiedOrderSerializer(
             "payment_status",
             "subtotal",
             "total_discounts_amount",
+            "total_adjustments_amount",
             "tax_total",
             "grand_total",
             "created_at",
@@ -213,7 +128,7 @@ class UnifiedOrderSerializer(
             # Only includes fields actively used by frontend (electron-app/src/domains/pos/store/cartSlice.js)
             # Analysis: cartSocket.js setCartFromSocket() only reads:
             #   - items, id, order_number, status, grand_total, subtotal, tax_total,
-            #     total_discounts_amount, applied_discounts, guest_first_name, dining_preference
+            #     total_discounts_amount, total_adjustments_amount, applied_discounts, adjustments, guest_first_name, dining_preference
             "websocket": [
                 # Core fields (used by cartSlice.js)
                 "id",                      # → orderId
@@ -224,10 +139,12 @@ class UnifiedOrderSerializer(
                 "subtotal",                # → subtotal
                 "tax_total",               # → taxAmount
                 "total_discounts_amount",  # → totalDiscountsAmount
+                "total_adjustments_amount",# → totalAdjustmentsAmount
                 "grand_total",             # → total
                 # Relationships (used by cart UI)
                 "items",                   # → items array
                 "applied_discounts",       # → appliedDiscounts
+                "adjustments",             # → adjustments array (one-off discounts, price overrides)
                 # Customer info (used in resumeCart)
                 "guest_first_name",        # → used when resuming order
             ],
@@ -245,6 +162,7 @@ class UnifiedOrderSerializer(
                 "subtotal",
                 "tax_total",
                 "total_discounts_amount",
+                "total_adjustments_amount",
                 "surcharges_total",
                 "grand_total",
                 "total_with_tip",
@@ -257,6 +175,7 @@ class UnifiedOrderSerializer(
                 "cashier",
                 "items",
                 "applied_discounts",
+                "adjustments",
                 "payment_details",
                 "store_location_details",
                 # Customer info
@@ -285,6 +204,10 @@ class UnifiedOrderSerializer(
             "applied_discounts": (
                 OrderDiscountSerializer,
                 {"source": "applied_discounts", "many": True},
+            ),
+            "adjustments": (
+                OrderAdjustmentSerializer,
+                {"source": "adjustments", "many": True},
             ),
             # payment_details and store_location_details use lazy imports via SerializerMethodFields
         }
@@ -383,204 +306,3 @@ class UnifiedOrderSerializer(
             return obj.payment_details.total_collected
         return 0.00
 
-
-class OrderCustomerInfoSerializer(BaseModelSerializer):
-    """
-    Serializer specifically for updating an order's customer information,
-    for both guest and authenticated users.
-    """
-
-    guest_first_name = serializers.CharField(
-        required=False, allow_blank=True, max_length=150
-    )
-    guest_last_name = serializers.CharField(
-        required=False, allow_blank=True, max_length=150
-    )
-    guest_email = serializers.EmailField(required=False, allow_blank=True)
-    guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
-
-    class Meta:
-        model = Order
-        fields = [
-            "guest_first_name",
-            "guest_last_name",
-            "guest_email",
-            "guest_phone",
-        ]
-
-
-# --- Service-driven Serializers ---
-
-
-class OrderCreateSerializer(TenantFilteredSerializerMixin, BaseModelSerializer):
-    from settings.models import StoreLocation
-
-    guest_first_name = serializers.CharField(
-        required=False, allow_blank=True, max_length=150
-    )
-    guest_last_name = serializers.CharField(
-        required=False, allow_blank=True, max_length=150
-    )
-    guest_email = serializers.EmailField(required=False, allow_blank=True)
-    guest_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
-
-    # TenantFilteredSerializerMixin will automatically filter this queryset by tenant
-    store_location = serializers.PrimaryKeyRelatedField(
-        queryset=StoreLocation.objects.all(),  # Mixin auto-filters by tenant
-        required=True,
-        help_text="Store location where this order is placed (REQUIRED)",
-    )
-
-    class Meta:
-        model = Order
-        fields = [
-            "order_type",
-            "dining_preference",
-            "customer",
-            "store_location",
-            "guest_first_name",
-            "guest_last_name",
-            "guest_email",
-            "guest_phone",
-        ]
-
-
-class AddItemSerializer(serializers.Serializer):
-    product_id = serializers.IntegerField()
-    quantity = serializers.IntegerField(min_value=1)
-    notes = serializers.CharField(required=False, allow_blank=True)
-    selected_modifiers = serializers.ListField(
-        child=serializers.DictField(), required=False, default=list
-    )
-
-    def validate_product_id(self, value):
-        """
-        Check that the product exists and is active.
-        """
-        try:
-            product = Product.objects.get(id=value)
-            if not product.is_active:
-                raise serializers.ValidationError(
-                    "This product is not available for sale."
-                )
-        except Product.DoesNotExist:
-            raise serializers.ValidationError("Product not found.")
-        return value
-
-    def save(self, **kwargs):
-        """
-        Custom save method to pass the order context to the service.
-        The 'order' is passed in the kwargs from the view.
-        """
-        order = kwargs.get("order")
-        if not order:
-            raise TypeError("The 'order' keyword argument is required.")
-
-        product = Product.objects.get(id=self.validated_data["product_id"])
-        return OrderService.add_item_to_order(
-            order=order,
-            product=product,
-            quantity=self.validated_data["quantity"],
-            selected_modifiers=self.validated_data.get("selected_modifiers", []),
-            notes=self.validated_data.get("notes", ""),
-        )
-
-
-class UpdateOrderItemSerializer(BaseModelSerializer):
-    """
-    Serializer for updating just the quantity of an order item with policy-aware stock validation.
-    """
-
-    class Meta:
-        model = OrderItem
-        fields = ["quantity"]
-
-    def validate_quantity(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Quantity must be a positive integer.")
-        return value
-
-    def update(self, instance, validated_data):
-        """
-        Update the order item quantity using the service layer for consistent stock validation.
-        """
-        new_quantity = validated_data.get("quantity", instance.quantity)
-
-        try:
-            from .services import OrderService
-
-            OrderService.update_item_quantity(instance, new_quantity)
-            return instance
-        except ValueError as e:
-            raise serializers.ValidationError(str(e))
-
-
-class UpdateOrderStatusSerializer(serializers.Serializer):
-    """
-    Serializer specifically for validating and updating an order's status.
-    """
-
-    status = serializers.ChoiceField(choices=Order.OrderStatus.choices)
-
-    def validate_status(self, value):
-        """
-        Add any business logic for status transitions here.
-        For example, a 'COMPLETED' order cannot be moved back to 'PENDING'.
-        """
-        # Example validation:
-        # if self.instance and self.instance.status == Order.OrderStatus.COMPLETED:
-        #     if value != Order.OrderStatus.VOID:
-        #         raise serializers.ValidationError("A completed order cannot be changed, only voided.")
-        return value
-
-
-class ApplyDiscountSerializer(serializers.Serializer):
-    """
-    Serializer for applying a discount to an order.
-    """
-
-    discount_code = serializers.CharField(max_length=100)
-
-    def validate_discount_code(self, value):
-        """
-        Check if the discount code is valid and active.
-        """
-        try:
-            discount = Discount.objects.get(code__iexact=value, is_active=True)
-        except Discount.DoesNotExist:
-            raise serializers.ValidationError("Invalid or inactive discount code.")
-        return discount
-
-    def save(self, **kwargs):
-        """
-        Custom save method to apply the discount to the order.
-        """
-        order = kwargs.get("order")
-        discount = self.validated_data["discount_code"]
-        return OrderService.apply_discount_to_order(order=order, discount=discount)
-
-
-class RemoveDiscountSerializer(serializers.Serializer):
-    """
-    Serializer for removing a discount from an order.
-    """
-
-    discount_id = serializers.IntegerField()
-
-    def validate_discount_id(self, value):
-        """
-        Check if the discount exists.
-        """
-        try:
-            discount = Discount.objects.get(id=value)
-        except Discount.DoesNotExist:
-            raise serializers.ValidationError("Discount not found.")
-        return discount
-
-    def save(self, **kwargs):
-        """
-        Custom save method to remove the discount from the order.
-        """
-        order = kwargs.get("order")
-        discount = self.validated_data["discount_id"]
-        return OrderService.remove_discount_from_order(order=order, discount=discount)

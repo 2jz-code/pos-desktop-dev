@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
@@ -34,6 +35,7 @@ import {
 	Download,
 	Activity,
 	RotateCw,
+	ShieldOff,
 } from "lucide-react";
 
 // Clean Transaction Display Component
@@ -448,14 +450,58 @@ const OrderDetailsPage = () => {
 											</tr>
 										</thead>
 										<tbody className="divide-y divide-border/40">
-											{items.map((item) => (
-												<tr key={item.id} className="hover:bg-muted/20 transition-colors">
-													<td className="px-4 py-3">
-														<div>
-															<div className="font-medium text-foreground mb-1">
-																{item.product.name}
-															</div>
-															{item.product.barcode && (
+											{items.map((item) => {
+												// Find adjustments for this specific item
+												const priceOverride = order.adjustments?.find(
+													(adj) => adj.adjustment_type === "PRICE_OVERRIDE" && adj.order_item === item.id
+												);
+												const itemDiscounts = order.adjustments?.filter(
+													(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
+												) || [];
+												const taxExemption = order.adjustments?.find(
+													(adj) => adj.adjustment_type === "TAX_EXEMPT" && adj.order_item === item.id
+												);
+
+												// Calculate effective price
+												const basePrice = parseFloat(item.price_at_sale);
+												const totalItemDiscount = itemDiscounts.reduce((sum, disc) => sum + parseFloat(disc.amount || 0), 0);
+												const hasItemDiscount = itemDiscounts.length > 0;
+												const effectivePricePerUnit = hasItemDiscount
+													? basePrice + (totalItemDiscount / item.quantity)
+													: basePrice;
+
+												const hasOriginalPrice = priceOverride && item.product?.price;
+												const originalPrice = hasOriginalPrice ? parseFloat(item.product.price) : null;
+
+												const isCustomItem = !item.product;
+												const itemName = isCustomItem
+													? (item.custom_name || item.display_name || "Custom Item")
+													: item.product.name;
+
+												return (
+													<tr key={item.id} className="hover:bg-muted/20 transition-colors">
+														<td className="px-4 py-3">
+															<div>
+																<div className="flex items-center gap-2 mb-1">
+																	<span className="font-medium text-foreground">
+																		{itemName}
+																	</span>
+																	{isCustomItem && (
+																		<Badge variant="outline" className="text-xs shrink-0">
+																			Custom
+																		</Badge>
+																	)}
+																	{taxExemption && (
+																		<Badge
+																			variant="outline"
+																			className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 flex items-center gap-1 shrink-0"
+																		>
+																			<ShieldOff className="h-3 w-3" />
+																			No Tax
+																		</Badge>
+																	)}
+																</div>
+															{!isCustomItem && item.product.barcode && (
 																<div className="mt-1">
 																	<span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-xs font-mono text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
 																		<svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -477,6 +523,76 @@ const OrderDetailsPage = () => {
 																	))}
 																</div>
 															)}
+
+															{/* Adjustment Badges */}
+															{(priceOverride || itemDiscounts.length > 0) && (
+																<div className="flex flex-wrap gap-1 mt-2">
+																	{priceOverride && (
+																		<HoverCard>
+																			<HoverCardTrigger asChild>
+																				<Badge
+																					variant="outline"
+																					className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-help"
+																				>
+																					Override
+																				</Badge>
+																			</HoverCardTrigger>
+																			<HoverCardContent className="w-80" side="top">
+																				<div className="space-y-2">
+																					<div className="text-sm">
+																						<span className="font-semibold">Reason:</span>
+																						<p className="text-muted-foreground mt-1">{priceOverride.reason}</p>
+																					</div>
+																					{priceOverride.approved_by_name && (
+																						<div className="text-xs text-muted-foreground border-t pt-2">
+																							Approved by {priceOverride.approved_by_name}
+																						</div>
+																					)}
+																					<div className="text-xs text-muted-foreground border-t pt-2">
+																						{priceOverride.original_price && (
+																							<div>Original: {formatCurrency(priceOverride.original_price)}</div>
+																						)}
+																						<div>New: {formatCurrency(priceOverride.new_price)}</div>
+																					</div>
+																				</div>
+																			</HoverCardContent>
+																		</HoverCard>
+																	)}
+																	{itemDiscounts.map((discount) => {
+																		let discountLabel = "";
+																		if (discount.discount_type === "PERCENTAGE") {
+																			discountLabel = `${discount.discount_value}% off`;
+																		} else {
+																			discountLabel = `${formatCurrency(discount.discount_value)} off`;
+																		}
+																		return (
+																			<HoverCard key={discount.id}>
+																				<HoverCardTrigger asChild>
+																					<Badge
+																						variant="outline"
+																						className="text-xs px-1.5 py-0 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 cursor-help"
+																					>
+																						{discountLabel}
+																					</Badge>
+																				</HoverCardTrigger>
+																				<HoverCardContent className="w-80" side="top">
+																					<div className="space-y-2">
+																						<div className="text-sm">
+																							<span className="font-semibold">Reason:</span>
+																							<p className="text-muted-foreground mt-1">{discount.reason}</p>
+																						</div>
+																						{discount.approved_by_name && (
+																							<div className="text-xs text-muted-foreground border-t pt-2">
+																								Approved by {discount.approved_by_name}
+																							</div>
+																						)}
+																					</div>
+																				</HoverCardContent>
+																			</HoverCard>
+																		);
+																	})}
+																</div>
+															)}
 														</div>
 													</td>
 													<td className="px-4 py-3 text-center">
@@ -484,14 +600,38 @@ const OrderDetailsPage = () => {
 															{item.quantity}
 														</span>
 													</td>
-													<td className="px-4 py-3 text-right text-sm text-muted-foreground">
-														{formatCurrency(item.price_at_sale)}
+													<td className="px-4 py-3 text-right">
+														<div className="flex flex-col items-end gap-1">
+															{(hasOriginalPrice || hasItemDiscount) && (
+																<span className="text-xs text-muted-foreground line-through">
+																	{formatCurrency(hasOriginalPrice ? originalPrice : basePrice)}
+																</span>
+															)}
+															<span className={`text-sm font-medium ${
+																priceOverride
+																	? "text-orange-600 dark:text-orange-400"
+																	: hasItemDiscount
+																	? "text-emerald-600 dark:text-emerald-400"
+																	: "text-muted-foreground"
+															}`}>
+																{formatCurrency(effectivePricePerUnit)}
+															</span>
+														</div>
 													</td>
-													<td className="px-4 py-3 text-right font-semibold text-foreground">
-														{formatCurrency(item.price_at_sale * item.quantity)}
+													<td className="px-4 py-3 text-right">
+														<span className={`font-semibold ${
+															priceOverride
+																? "text-orange-600 dark:text-orange-400"
+																: hasItemDiscount
+																? "text-emerald-600 dark:text-emerald-400"
+																: "text-foreground"
+														}`}>
+															{formatCurrency(item.quantity * effectivePricePerUnit)}
+														</span>
 													</td>
 												</tr>
-											))}
+											);
+											})}
 										</tbody>
 									</table>
 								</div>
@@ -504,6 +644,56 @@ const OrderDetailsPage = () => {
 										<span className="text-muted-foreground">Subtotal</span>
 										<span className="font-medium text-foreground">{formatCurrency(subtotal)}</span>
 									</div>
+
+									{/* Order-Level One-Off Discounts */}
+									{order.adjustments?.filter(
+										(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && !adj.order_item
+									).map((discount) => {
+										let discountLabel = "One-Off Discount";
+										if (discount.discount_type === "PERCENTAGE") {
+											discountLabel = `${discount.discount_value}% Discount`;
+										} else if (discount.discount_value) {
+											discountLabel = `${formatCurrency(discount.discount_value)} Discount`;
+										}
+										return (
+											<div key={discount.id} className="flex justify-between items-center text-sm">
+												<div className="flex items-center gap-2">
+													<Tag className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+													<span className="text-emerald-600 dark:text-emerald-400 font-medium">
+														{discountLabel}
+													</span>
+													<HoverCard>
+														<HoverCardTrigger asChild>
+															<Badge
+																variant="outline"
+																className="text-xs px-1.5 py-0 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 cursor-help"
+															>
+																{discount.discount_type === "PERCENTAGE" ? `${discount.discount_value}%` : formatCurrency(discount.discount_value)}
+															</Badge>
+														</HoverCardTrigger>
+														<HoverCardContent className="w-80" side="top">
+															<div className="space-y-2">
+																<div className="text-sm">
+																	<span className="font-semibold">Reason:</span>
+																	<p className="text-muted-foreground mt-1">{discount.reason}</p>
+																</div>
+																{discount.approved_by_name && (
+																	<div className="text-xs text-muted-foreground border-t pt-2">
+																		Approved by {discount.approved_by_name}
+																	</div>
+																)}
+															</div>
+														</HoverCardContent>
+													</HoverCard>
+												</div>
+												<span className="font-medium text-emerald-600 dark:text-emerald-400">
+													-{formatCurrency(Math.abs(parseFloat(discount.amount || 0)))}
+												</span>
+											</div>
+										);
+									})}
+
+									{/* Applied code-based discounts */}
 									{total_discounts_amount > 0 && (
 										<div className="space-y-2">
 											{applied_discounts.length > 0 ? (
@@ -525,21 +715,53 @@ const OrderDetailsPage = () => {
 														<span className="font-medium">-{formatCurrency(orderDiscount.amount)}</span>
 													</div>
 												))
-											) : (
-												<div className="flex justify-between text-sm text-red-600 dark:text-red-400">
-													<div className="flex items-center gap-2">
-														<Tag className="h-3.5 w-3.5" />
-														<span>Discounts</span>
-													</div>
-													<span className="font-medium">-{formatCurrency(total_discounts_amount)}</span>
-												</div>
-											)}
+											) : null}
 										</div>
 									)}
-									<div className="flex justify-between text-sm">
-										<span className="text-muted-foreground">Tax</span>
-										<span className="font-medium text-foreground">{formatCurrency(tax_total)}</span>
-									</div>
+									{/* Show either Tax OR Tax Exemption */}
+									{(() => {
+										const taxExemption = order.adjustments?.find((adj) => adj.adjustment_type === "TAX_EXEMPT" && !adj.order_item);
+										return taxExemption ? (
+											<div className="flex justify-between items-center text-sm">
+												<div className="flex items-center gap-2">
+													<span className="text-orange-600 dark:text-orange-400 font-medium">Tax Exemption</span>
+													{taxExemption.reason && (
+														<HoverCard>
+															<HoverCardTrigger asChild>
+																<Badge
+																	variant="outline"
+																	className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-help"
+																>
+																	Info
+																</Badge>
+															</HoverCardTrigger>
+															<HoverCardContent className="w-80" side="top">
+																<div className="space-y-2">
+																	<div className="text-sm">
+																		<span className="font-semibold">Reason:</span>
+																		<p className="text-muted-foreground mt-1">{taxExemption.reason}</p>
+																	</div>
+																	{taxExemption.approved_by_name && (
+																		<div className="text-xs text-muted-foreground border-t pt-2">
+																			Approved by {taxExemption.approved_by_name}
+																		</div>
+																	)}
+																</div>
+															</HoverCardContent>
+														</HoverCard>
+													)}
+												</div>
+												<span className="text-orange-600 dark:text-orange-400 font-medium">Applied</span>
+											</div>
+										) : (
+											<div className="flex justify-between text-sm">
+												<span className="text-muted-foreground">Tax</span>
+												<span className="font-medium text-foreground">{formatCurrency(tax_total)}</span>
+											</div>
+										);
+									})()}
+
+									{/* Show surcharges if any */}
 									{order.total_surcharges > 0 && (
 										<div className="flex justify-between text-sm">
 											<span className="text-muted-foreground">Surcharges</span>
@@ -548,6 +770,44 @@ const OrderDetailsPage = () => {
 											</span>
 										</div>
 									)}
+
+									{/* Show fee exemption if applied */}
+									{(() => {
+										const feeExemption = order.adjustments?.find((adj) => adj.adjustment_type === "FEE_EXEMPT" && !adj.order_item);
+										return feeExemption ? (
+											<div className="flex justify-between items-center text-sm">
+												<div className="flex items-center gap-2">
+													<span className="text-blue-600 dark:text-blue-400 font-medium">Fee Exemption</span>
+													{feeExemption.reason && (
+														<HoverCard>
+															<HoverCardTrigger asChild>
+																<Badge
+																	variant="outline"
+																	className="text-xs px-1.5 py-0 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 cursor-help"
+																>
+																	Info
+																</Badge>
+															</HoverCardTrigger>
+															<HoverCardContent className="w-80" side="top">
+																<div className="space-y-2">
+																	<div className="text-sm">
+																		<span className="font-semibold">Reason:</span>
+																		<p className="text-muted-foreground mt-1">{feeExemption.reason}</p>
+																	</div>
+																	{feeExemption.approved_by_name && (
+																		<div className="text-xs text-muted-foreground border-t pt-2">
+																			Approved by {feeExemption.approved_by_name}
+																		</div>
+																	)}
+																</div>
+															</HoverCardContent>
+														</HoverCard>
+													)}
+												</div>
+												<span className="text-blue-600 dark:text-blue-400 font-medium">Applied</span>
+											</div>
+										) : null;
+									})()}
 									{order.total_tips > 0 && (
 										<div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
 											<span>Tip</span>

@@ -30,9 +30,9 @@ def handle_order_recalculation(sender, **kwargs):
     order = kwargs.get("order")
     if order:
         # Import here to avoid circular imports
-        from .services import OrderService
+        from .services import OrderCalculationService
 
-        OrderService.recalculate_order_totals(order)
+        OrderCalculationService.recalculate_order_totals(order)
 
 
 @receiver(payment_completed)

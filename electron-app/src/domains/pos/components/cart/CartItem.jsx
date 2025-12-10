@@ -5,18 +5,22 @@ import { usePosStore } from "@/domains/pos/store/posStore";
 import { shallow } from "zustand/shallow";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { X, Plus, Minus, Edit3, ChevronDown, ChevronUp, Loader2, ShieldOff } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import ProductModifierSelector from "../ProductModifierSelector";
+import { removeAdjustment } from "@/domains/orders/services/orderService";
+import { toast } from "@/shared/components/ui/use-toast";
 
 export default function CartItem({ item }) {
-	const { removeItemViaSocket, updateItemQuantityViaSocket, updateItemViaSocket, isUpdating } =
+	const { removeItemViaSocket, updateItemQuantityViaSocket, updateItemViaSocket, isUpdating, adjustments, orderId } =
 		usePosStore(
 			(state) => ({
 				removeItemViaSocket: state.removeItemViaSocket,
 				updateItemQuantityViaSocket: state.updateItemQuantityViaSocket,
 				updateItemViaSocket: state.updateItemViaSocket,
 				isUpdating: state.updatingItems?.includes(item.id) ?? false,
+				adjustments: state.adjustments,
+				orderId: state.orderId,
 			}),
 			shallow
 		);
@@ -63,6 +67,23 @@ export default function CartItem({ item }) {
 		});
 	};
 
+	const handleRemoveAdjustment = async (adjustmentId, e) => {
+		if (e) e.stopPropagation(); // Prevent triggering parent click handlers
+		if (!orderId) return;
+
+		try {
+			await removeAdjustment(orderId, adjustmentId);
+			// Cart will update automatically via WebSocket
+		} catch (error) {
+			console.error("Error removing adjustment:", error);
+			toast({
+				title: "Error",
+				description: error.message || "Failed to remove price override. Please try again.",
+				variant: "destructive",
+			});
+		}
+	};
+
 	// Handle custom items (no product reference)
 	const isCustomItem = !item.product;
 	const itemName = isCustomItem ? (item.custom_name || item.display_name) : item.product?.name;
@@ -72,6 +93,34 @@ export default function CartItem({ item }) {
 	const hasModifiers = item.selected_modifiers_snapshot && item.selected_modifiers_snapshot.length > 0;
 	const hasModifierGroups = !isCustomItem && item.product?.modifier_groups && item.product.modifier_groups.length > 0;
 	const modifierTotalPrice = item.total_modifier_price ? parseFloat(item.total_modifier_price) : 0;
+
+	// Find price override for this specific item
+	const priceOverride = adjustments?.find(
+		(adj) => adj.adjustment_type === "PRICE_OVERRIDE" && adj.order_item === item.id
+	);
+
+	const hasOriginalPrice = priceOverride && item.product?.price;
+	const originalPrice = hasOriginalPrice ? parseFloat(item.product.price) : null;
+
+	// Find item-level one-off discounts for this specific item
+	const itemDiscounts = adjustments?.filter(
+		(adj) => adj.adjustment_type === "ONE_OFF_DISCOUNT" && adj.order_item === item.id
+	) || [];
+
+	// Calculate total item-level discount amount
+	const totalItemDiscount = itemDiscounts.reduce((sum, disc) => sum + parseFloat(disc.amount || 0), 0);
+	const hasItemDiscount = itemDiscounts.length > 0;
+
+	// Find tax exemption for this specific item
+	const taxExemption = adjustments?.find(
+		(adj) => adj.adjustment_type === "TAX_EXEMPT" && adj.order_item === item.id
+	);
+
+	// Calculate effective price per unit (including discounts)
+	const basePrice = parseFloat(item.price_at_sale);
+	const effectivePricePerUnit = hasItemDiscount
+		? basePrice + (totalItemDiscount / item.quantity)  // discount.amount is negative
+		: basePrice;
 
 	return (
 		<li
@@ -123,6 +172,17 @@ export default function CartItem({ item }) {
 							</Badge>
 						)}
 
+						{/* Tax Exempt Badge */}
+						{taxExemption && (
+							<Badge
+								variant="outline"
+								className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 flex items-center gap-1"
+							>
+								<ShieldOff className="h-3 w-3" />
+								No Tax
+							</Badge>
+						)}
+
 						{/* Modifier Indicator - Clean visual cue */}
 						{hasModifiers && (
 							<div className="flex items-center gap-1">
@@ -135,10 +195,55 @@ export default function CartItem({ item }) {
 					</div>
 
 					{/* Price Breakdown - Compact and clear */}
-					<div className="flex items-center gap-3 mt-0.5">
-						<span className="text-sm text-slate-600 dark:text-slate-400">
-							${itemPrice.toFixed(2)}
+					<div className="flex items-center gap-2 mt-0.5 flex-wrap">
+						{/* Show original price if overridden or discounted */}
+						{(hasOriginalPrice || hasItemDiscount) && (
+							<span className="text-sm text-slate-400 dark:text-slate-500 line-through">
+								${(hasOriginalPrice ? originalPrice : basePrice).toFixed(2)}
+							</span>
+						)}
+						<span className={`text-sm ${
+							hasOriginalPrice
+								? "text-orange-600 dark:text-orange-400 font-medium"
+								: hasItemDiscount
+								? "text-green-600 dark:text-green-400 font-medium"
+								: "text-slate-600 dark:text-slate-400"
+						}`}>
+							${effectivePricePerUnit.toFixed(2)}
 						</span>
+						{/* Price Override Badge */}
+						{priceOverride && (
+							<Badge
+								variant="outline"
+								className="text-xs px-1.5 py-0 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-950/20 transition-colors flex items-center gap-1"
+								onClick={(e) => handleRemoveAdjustment(priceOverride.id, e)}
+								title="Click to remove price override"
+							>
+								Override
+								<X className="h-3 w-3" />
+							</Badge>
+						)}
+						{/* Item-Level One-Off Discounts */}
+						{itemDiscounts.map((discount) => {
+							let discountLabel = "";
+							if (discount.discount_type === "PERCENTAGE") {
+								discountLabel = `${discount.discount_value}% off`;
+							} else {
+								discountLabel = `$${discount.discount_value} off`;
+							}
+							return (
+								<Badge
+									key={discount.id}
+									variant="outline"
+									className="text-xs px-1.5 py-0 border-green-300 dark:border-green-700 text-green-600 dark:text-green-400 cursor-pointer hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors flex items-center gap-1"
+									onClick={(e) => handleRemoveAdjustment(discount.id, e)}
+									title="Click to remove discount"
+								>
+									{discountLabel}
+									<X className="h-3 w-3" />
+								</Badge>
+							);
+						})}
 						{modifierTotalPrice !== 0 && (
 							<span className="text-sm text-blue-600 dark:text-blue-400">
 								{modifierTotalPrice >= 0 ? '+' : ''}${modifierTotalPrice.toFixed(2)}
@@ -206,7 +311,7 @@ export default function CartItem({ item }) {
 				{/* Total Price - Prominent */}
 				<div className="w-16 text-right">
 					<p className="font-semibold text-slate-900 dark:text-slate-100">
-						${(displayQuantity * item.price_at_sale).toFixed(2)}
+						${(displayQuantity * effectivePricePerUnit).toFixed(2)}
 					</p>
 				</div>
 

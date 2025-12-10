@@ -525,11 +525,19 @@ class PaymentService:
 
         currency_code = (getattr(order, "currency", None) or "USD").upper()
         surcharge = Decimal("0.00")
+
+        # Check if there's a fee exemption on the order
+        from orders.models import OrderAdjustment
+        has_fee_exemption = order.adjustments.filter(
+            adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT
+        ).exists()
+
         if method in [
             PaymentTransaction.PaymentMethod.CARD_TERMINAL,
             PaymentTransaction.PaymentMethod.CARD_ONLINE,
-        ]:
+        ] and not has_fee_exemption:
             # Use centralized surcharge calculation with banker's rounding
+            # Only apply surcharge if there's no fee exemption
             surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # Extract tip from kwargs if provided
@@ -620,14 +628,26 @@ class PaymentService:
         """
         Creates a payment intent for a terminal transaction.
         The surcharge is now calculated on the backend to prevent double-counting.
+        Checks for fee exemptions before applying surcharges.
         """
+        from orders.models import OrderAdjustment
+
         active_strategy = PaymentService._get_active_terminal_strategy()
 
         payment = PaymentService.initiate_payment_attempt(order=order)
 
         currency_code = (getattr(order, "currency", None) or "USD").upper()
-        # Calculate surcharge on the backend based on the base amount of the transaction.
-        surcharge = PaymentService.calculate_surcharge(amount, currency_code)
+
+        # Check if there's a fee exemption on the order
+        has_fee_exemption = order.adjustments.filter(
+            adjustment_type=OrderAdjustment.AdjustmentType.FEE_EXEMPT
+        ).exists()
+
+        # Calculate surcharge only if there's no fee exemption
+        if has_fee_exemption:
+            surcharge = Decimal("0.00")
+        else:
+            surcharge = PaymentService.calculate_surcharge(amount, currency_code)
 
         # The strategy is responsible for creating the transaction and handling the tip
         return active_strategy.create_payment_intent(
@@ -1119,6 +1139,90 @@ class PaymentService:
         # The method now returns the original transaction. The UI will have to wait
         # for the webhook to deliver the updated state (except for cash which is updated above).
         return original_transaction
+
+    @staticmethod
+    @transaction.atomic
+    def refund_order_payment(order: Order, reason: str = "Order voided") -> bool:
+        """
+        Refunds all successful payment transactions for an order.
+        Used when voiding an order to reverse all payments.
+
+        Args:
+            order: Order instance to refund payments for
+            reason: Reason for the refund
+
+        Returns:
+            bool: True if any refunds were processed, False otherwise
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Get the payment record for the order
+        try:
+            payment = order.payment_details
+        except Payment.DoesNotExist:
+            logger.warning(f"No payment record found for order {order.order_number}. Cannot process refund.")
+            return False
+
+        # Only refund if payment was actually made
+        if payment.status == Payment.PaymentStatus.UNPAID:
+            logger.info(f"Order {order.order_number} has no payments to refund (status: UNPAID)")
+            return False
+
+        # Get all successful transactions
+        successful_transactions = payment.transactions.filter(
+            status=PaymentTransaction.TransactionStatus.SUCCESSFUL
+        )
+
+        if not successful_transactions.exists():
+            logger.warning(f"No successful transactions found for order {order.order_number}. Cannot process refund.")
+            return False
+
+        refund_processed = False
+        payment_service = PaymentService(payment)
+
+        # Refund each successful transaction
+        for transaction in successful_transactions:
+            # Calculate amount to refund (total - already refunded)
+            total_transaction_amount = (
+                transaction.amount +
+                transaction.tip +
+                transaction.surcharge
+            )
+            amount_to_refund = total_transaction_amount - transaction.refunded_amount
+
+            if amount_to_refund <= 0:
+                logger.info(f"Transaction {transaction.id} already fully refunded. Skipping.")
+                continue
+
+            try:
+                payment_service.refund_transaction_with_provider(
+                    transaction_id=transaction.id,
+                    amount_to_refund=amount_to_refund,
+                    reason=reason
+                )
+                logger.info(
+                    f"Refunded ${amount_to_refund} for transaction {transaction.id} "
+                    f"(order {order.order_number})"
+                )
+                refund_processed = True
+
+            except ValueError as ve:
+                # Validation error - log but continue with other transactions
+                logger.error(
+                    f"Validation error refunding transaction {transaction.id} "
+                    f"for order {order.order_number}: {ve}"
+                )
+
+            except Exception as e:
+                # Unexpected error - log but continue with other transactions
+                logger.error(
+                    f"Failed to refund transaction {transaction.id} "
+                    f"for order {order.order_number}: {e}",
+                    exc_info=True
+                )
+
+        return refund_processed
 
     @staticmethod
     @transaction.atomic

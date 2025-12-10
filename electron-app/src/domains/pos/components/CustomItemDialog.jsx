@@ -11,7 +11,8 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { DollarSign, Package, Hash, FileText } from "lucide-react";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import { DollarSign, Package, Hash, FileText, ShieldOff } from "lucide-react";
 
 export function CustomItemDialog({ open, onClose, onAdd }) {
   const [formData, setFormData] = useState({
@@ -19,6 +20,7 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
     price: "",
     quantity: "1",
     notes: "",
+    taxExempt: false,
   });
 
   const [errors, setErrors] = useState({});
@@ -49,6 +51,7 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
       price: parseFloat(formData.price),
       quantity: parseInt(formData.quantity),
       notes: formData.notes.trim(),
+      taxExempt: formData.taxExempt,
     });
 
     // Reset form
@@ -57,6 +60,7 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
       price: "",
       quantity: "1",
       notes: "",
+      taxExempt: false,
     });
     setErrors({});
     onClose();
@@ -68,6 +72,7 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
       price: "",
       quantity: "1",
       notes: "",
+      taxExempt: false,
     });
     setErrors({});
     onClose();
@@ -165,6 +170,26 @@ export function CustomItemDialog({ open, onClose, onAdd }) {
               onChange={(e) => handleInputChange("notes", e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="flex items-center space-x-2 rounded-lg border border-border p-4 bg-muted/20">
+            <Checkbox
+              id="taxExempt"
+              checked={formData.taxExempt}
+              onCheckedChange={(checked) => handleInputChange("taxExempt", checked)}
+            />
+            <div className="flex-1">
+              <Label
+                htmlFor="taxExempt"
+                className="flex items-center gap-2 cursor-pointer font-medium"
+              >
+                <ShieldOff className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                Tax Exempt
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                No tax will be calculated for this custom item
+              </p>
+            </div>
           </div>
 
           {formData.price && formData.quantity && (

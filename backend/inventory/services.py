@@ -640,6 +640,109 @@ class InventoryService:
                 logger.warning(f"Inventory deduction warning for order {order.id}: {e}")
 
     @staticmethod
+    @transaction.atomic
+    def restore_order_inventory(order):
+        """
+        Restore inventory for a voided order.
+        Reverses the deductions made during order completion.
+        Handles both regular products and menu items with recipes.
+        """
+        from settings.models import StockActionReasonConfig
+
+        # Get the inventory location from the order's store location
+        if not order.store_location:
+            logger.error(f"Order {order.order_number} has no store_location set. Cannot restore inventory.")
+            return
+
+        inventory_location = order.store_location.default_inventory_location
+        if not inventory_location:
+            logger.warning(f"Store location {order.store_location.name} has no default_inventory_location set. Skipping inventory restoration for order {order.order_number}.")
+            return
+
+        # Get global system reason for void/restoration (tenant=NULL)
+        try:
+            void_restoration_reason = StockActionReasonConfig.objects.get(
+                name="System Order Void",
+                is_system_reason=True,
+                is_active=True,
+                tenant__isnull=True
+            )
+        except StockActionReasonConfig.DoesNotExist:
+            # Fallback to any system reason
+            void_restoration_reason = StockActionReasonConfig.objects.filter(
+                category="SYSTEM",
+                is_active=True
+            ).first()
+
+            if not void_restoration_reason:
+                logger.warning("No active system reason configuration found for void restoration")
+                void_restoration_reason = None
+
+        # Restore inventory for each item in the order
+        for item in order.items.all():
+            try:
+                # Check product type's inventory behavior to determine if we should track inventory
+                product = item.product
+                product_type = product.product_type
+
+                if not product_type:
+                    logger.warning(f"Product {product.name} has no product_type set. Skipping inventory restoration.")
+                    continue
+
+                # Get inventory behavior from product type
+                from products.models import ProductType
+                inventory_behavior = product_type.inventory_behavior
+
+                # Skip if inventory is not tracked for this product type
+                if inventory_behavior == ProductType.InventoryBehavior.NONE:
+                    logger.debug(f"Skipping inventory restoration for {product.name} - product type '{product_type.name}' does not track inventory")
+                    continue
+
+                # Handle based on inventory behavior
+                if inventory_behavior == ProductType.InventoryBehavior.RECIPE:
+                    # Recipe-based tracking - restore recipe ingredients
+                    if hasattr(product, 'recipe') and product.recipe:
+                        recipe = product.recipe
+                        quantity = Decimal(str(item.quantity))
+
+                        for recipe_item in recipe.recipeitem_set.all():
+                            total_to_restore = recipe_item.quantity * quantity
+
+                            InventoryService.add_stock(
+                                recipe_item.product,
+                                inventory_location,
+                                total_to_restore,
+                                reason_config=void_restoration_reason,
+                                detailed_reason=f"Void order #{order.order_number or order.id} - restore recipe ingredient for {product.name}",
+                                legacy_reason="Order void - recipe ingredient restoration",
+                                reference_id=f"order_{order.id}_void"
+                            )
+
+                        logger.info(f"Restored recipe ingredients for {product.name} x{item.quantity} from voided order {order.order_number}")
+                    else:
+                        logger.warning(f"Product {product.name} has RECIPE inventory behavior but no recipe defined. Skipping restoration.")
+
+                elif inventory_behavior == ProductType.InventoryBehavior.QUANTITY:
+                    # Quantity-based tracking - restore the product directly
+                    InventoryService.add_stock(
+                        product,
+                        inventory_location,
+                        item.quantity,
+                        reason_config=void_restoration_reason,
+                        detailed_reason=f"Void order #{order.order_number or order.id}",
+                        legacy_reason="Order void",
+                        reference_id=f"order_{order.id}_void"
+                    )
+
+                    logger.info(f"Restored inventory for {product.name} x{item.quantity} from voided order {order.order_number}")
+
+            except ValueError as e:
+                # Log inventory restoration failures but don't block void
+                logger.warning(f"Inventory restoration warning for order {order.id}, item {product.name}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error restoring inventory for order {order.id}, item {product.name}: {e}", exc_info=True)
+
+    @staticmethod
     def get_stock_level(product: Product, location: Location) -> Decimal:
         """
         Get the current stock level for a product at a location.

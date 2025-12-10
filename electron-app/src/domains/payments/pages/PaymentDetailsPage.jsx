@@ -524,16 +524,19 @@ const PaymentDetailsPage = () => {
 												</CardDescription>
 											</div>
 										</div>
-										<Button
-											onClick={handleOpenRefundDialog}
-											variant="outline"
-											size="sm"
-											disabled={isRefunding || !payment.order?.items?.some(
-												(item) => (item.quantity - (item.refunded_quantity || 0)) > 0
-											)}
-										>
-											Refund Items
-										</Button>
+										{/* Only show refund button if payment is not fully refunded */}
+										{payment.status !== "REFUNDED" && (
+											<Button
+												onClick={handleOpenRefundDialog}
+												variant="outline"
+												size="sm"
+												disabled={isRefunding || !payment.order?.items?.some(
+													(item) => (item.quantity - (item.refunded_quantity || 0)) > 0
+												)}
+											>
+												Refund Items
+											</Button>
+										)}
 									</div>
 								</CardHeader>
 								<CardContent>

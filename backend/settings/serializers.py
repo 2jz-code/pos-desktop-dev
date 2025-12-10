@@ -364,6 +364,9 @@ class UnifiedStoreLocationSerializer(FieldsetMixin, TenantFilteredSerializerMixi
             "web_order_lead_time_minutes",
             "web_order_settings",
 
+            # Manager approvals
+            "manager_approvals_enabled",
+
             # Receipt customization
             "receipt_header",
             "receipt_footer",
@@ -413,6 +416,7 @@ class UnifiedStoreLocationSerializer(FieldsetMixin, TenantFilteredSerializerMixi
                 'accepts_web_orders',
                 'web_order_lead_time_minutes',
                 'web_order_settings',  # Lightweight - effective values only
+                'manager_approvals_enabled',
                 'low_stock_threshold',
                 'expiration_threshold',
                 'default_inventory_location',

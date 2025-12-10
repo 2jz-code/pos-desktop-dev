@@ -66,11 +66,13 @@ export const defaultCartState = {
 	total: 0,
 	taxAmount: 0,
 	totalDiscountsAmount: 0,
+	totalAdjustmentsAmount: 0,
 	tip: 0, // Keep tip for now, might be used later
 	isSocketConnected: false,
 	addingItemId: null,
 	updatingItems: [],
 	appliedDiscounts: [],
+	adjustments: [],
 	customerFirstName: "",
 	diningPreference: "TAKE_OUT", // Default to take-out
 	pendingOperations: new Set(), // Track pending WebSocket operations
@@ -83,6 +85,14 @@ export const defaultCartState = {
 		itemId: null,
 		currentQuantity: null,
 		requestedQuantity: null,
+	},
+	approvalRequest: {
+		show: false,
+		approvalRequestId: null,
+		message: "",
+		actionType: null, // DISCOUNT, REFUND, VOID, etc.
+		discountName: null,
+		discountValue: null,
 	},
 };
 
@@ -99,7 +109,7 @@ export const createCartSlice = (set, get) => {
 		...initialState,
 
 		addCustomItem: async (customItemData) => {
-			const { name, price, quantity, notes } = customItemData;
+			const { name, price, quantity, notes, taxExempt } = customItemData;
 
 			// Store original state for rollback
 			const originalItems = [...get().items];
@@ -157,6 +167,7 @@ export const createCartSlice = (set, get) => {
 						price,
 						quantity,
 						notes,
+						tax_exempt: taxExempt || false,
 					},
 				});
 
@@ -229,7 +240,7 @@ export const createCartSlice = (set, get) => {
 					// For subsequent items, do optimistic update since socket is already synced
 					const existingItemIndex = get().items.findIndex(
 						(item) =>
-							item.product.id === product.id &&
+							item.product && product && item.product.id === product.id &&
 							!item.id.toString().startsWith("temp-")
 					);
 					let optimisticItems = [...get().items];
@@ -523,8 +534,28 @@ export const createCartSlice = (set, get) => {
 			});
 		},
 
+		// Manager approval request methods
+		setApprovalRequest: (requestState) => {
+			set({ approvalRequest: requestState });
+		},
+
+		cancelApprovalRequest: () => {
+			set({
+				approvalRequest: {
+					show: false,
+					approvalRequestId: null,
+					message: "",
+					actionType: null,
+					discountName: null,
+					discountValue: null,
+				},
+			});
+		},
+
 		setCartFromSocket: (orderData) => {
 			console.log(`⏱️ [TIMING] WebSocket update received, reconciling cart state (${orderData.items?.length || 0} items)`);
+			console.log('📊 Adjustments from backend:', orderData.adjustments);
+			console.log('📊 Total adjustments amount:', orderData.total_adjustments_amount);
 			set({
 				items: orderData.items || [],
 				orderId: orderData.id,
@@ -534,7 +565,9 @@ export const createCartSlice = (set, get) => {
 				subtotal: safeParseFloat(orderData.subtotal),
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
+				totalAdjustmentsAmount: safeParseFloat(orderData.total_adjustments_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
+				adjustments: orderData.adjustments || [],
 				addingItemId: null,
 				updatingItems: [],
 				isSyncing: false,
@@ -765,6 +798,7 @@ export const createCartSlice = (set, get) => {
 				taxAmount: safeParseFloat(orderData.tax_total),
 				totalDiscountsAmount: safeParseFloat(orderData.total_discounts_amount),
 				appliedDiscounts: orderData.applied_discounts || [],
+				adjustments: orderData.adjustments || [],
 				customerFirstName: orderData.guest_first_name || "",
 				diningPreference: orderData.dining_preference || "TAKE_OUT",
 				isLoadingCart: false,

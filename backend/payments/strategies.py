@@ -319,6 +319,7 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
 
         Args:
             amount: The TOTAL refund amount including tip + surcharge + base amount
+            reason: Custom reason string (will be stored in metadata, not Stripe's reason field)
         """
         if not transaction.transaction_id or not transaction.transaction_id.startswith(
             "pi_"
@@ -351,12 +352,22 @@ class StripeTerminalStrategy(TerminalPaymentStrategy):
                     f"Payment Intent {payment_intent_id} has no successful charge to refund."
                 )
 
+            # Build metadata with custom details
+            refund_metadata = {
+                "original_transaction_id": str(transaction.id),
+                "order_number": transaction.payment.order.order_number,
+            }
+            if reason:
+                refund_metadata["refund_reason"] = reason
+
             # Create the refund using the correct Charge ID.
             # Amount already includes tip + surcharge from the refund calculation
+            # Use Stripe's standard reason enum: requested_by_customer
             return stripe.Refund.create(
                 charge=charge_id_to_refund,
                 amount=to_minor(currency_code, amount),
-                reason=reason,
+                reason="requested_by_customer",  # Valid Stripe enum value
+                metadata=refund_metadata,
             )
         except stripe.error.StripeError as e:
             logger.error(
@@ -608,6 +619,7 @@ class StripeOnlineStrategy(PaymentStrategy):
 
         Args:
             amount: The TOTAL refund amount including tip + surcharge + base amount
+            reason: Custom reason string (will be stored in metadata, not Stripe's reason field)
 
         Returns:
             stripe.Refund object from the API call
@@ -622,8 +634,17 @@ class StripeOnlineStrategy(PaymentStrategy):
         # Amount already includes tip + surcharge from the refund calculation
         amount_cents = to_minor(currency_code, amount)
 
+        # Build metadata with custom details
+        refund_metadata = {
+            "original_transaction_id": str(transaction.id),
+            "order_number": transaction.payment.order.order_number,
+        }
+        if reason:
+            refund_metadata["refund_reason"] = reason
+
         try:
             # Create the refund - webhook will handle database updates
+            # Use Stripe's standard reason enum: requested_by_customer
             return stripe.Refund.create(
                 payment_intent=(
                     transaction.transaction_id
@@ -636,8 +657,8 @@ class StripeOnlineStrategy(PaymentStrategy):
                     else None
                 ),
                 amount=amount_cents,
-                reason=reason,
-                metadata={"original_transaction_id": str(transaction.id)},
+                reason="requested_by_customer",  # Valid Stripe enum value
+                metadata=refund_metadata,
             )
         except stripe.error.StripeError as e:
             logger.error(f"Stripe refund error for transaction {transaction.id}: {e}")
