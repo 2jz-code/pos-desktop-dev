@@ -268,32 +268,68 @@ class OfflineSyncService {
 	}
 
 	/**
+	 * Generic paginated sync helper
+	 * Loops until has_more=false to fetch all records
+	 *
+	 * @param {string} endpoint - API endpoint (e.g., "/sync/catalog/")
+	 * @param {string} datasetName - Local cache table name (e.g., "products")
+	 * @param {string} versionKey - Key in datasetVersions (e.g., "products")
+	 */
+	async syncDatasetWithPagination(endpoint, datasetName, versionKey) {
+		let since = this.datasetVersions[versionKey] || null;
+		let totalRecords = 0;
+		let totalDeleted = 0;
+		let pageCount = 0;
+		let hasMore = true;
+
+		while (hasMore) {
+			pageCount++;
+			const body = since ? { since } : {};
+			const response = await apiClient.post(endpoint, body);
+
+			const { data, next_version, deleted_ids, has_more } = response.data;
+
+			console.log(`📦 ${datasetName} page ${pageCount}: ${data.length} records`);
+
+			// Cache records
+			if (data && data.length > 0) {
+				await window.offlineAPI.cacheDataset(datasetName, data, next_version);
+				totalRecords += data.length;
+			}
+
+			// Apply deletions (only on first page to avoid duplicates)
+			if (pageCount === 1 && deleted_ids && deleted_ids.length > 0) {
+				await window.offlineAPI.deleteRecords(datasetName, deleted_ids);
+				totalDeleted = deleted_ids.length;
+			}
+
+			// Update version tracking for next page/sync
+			this.datasetVersions[versionKey] = next_version;
+			since = next_version;
+
+			// Check if more pages exist
+			hasMore = has_more === true;
+		}
+
+		return { totalRecords, totalDeleted, pageCount };
+	}
+
+	/**
 	 * Sync products dataset
 	 */
 	async syncProducts() {
 		try {
-			const since = this.datasetVersions.products || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/catalog/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/catalog/",
+				"products",
+				"products"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Products sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			// Cache products
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("products", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('products');
 			}
 
-			// Apply deletions
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("products", deleted_ids);
-			}
-
-			// Update version tracking
-			this.datasetVersions.products = next_version;
-
-			console.log(`✅ Products cached (version: ${next_version})`);
+			console.log(`✅ Products cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync products:", error);
 			throw error;
@@ -305,31 +341,17 @@ class OfflineSyncService {
 	 */
 	async syncCategories() {
 		try {
-			const since = this.datasetVersions.categories || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/categories/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/categories/",
+				"categories",
+				"categories"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Categories sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("categories", data, next_version);
-			}
-
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("categories", deleted_ids);
-			}
-
-			// Track if this dataset was updated
-			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
-			if (hasUpdates) {
+			if (totalRecords > 0 || totalDeleted > 0) {
 				this.updatedDatasets.push('categories');
 			}
 
-			this.datasetVersions.categories = next_version;
-
-			console.log(`✅ Categories cached (version: ${next_version})`);
+			console.log(`✅ Categories cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync categories:", error);
 			throw error;
@@ -341,25 +363,17 @@ class OfflineSyncService {
 	 */
 	async syncModifiers() {
 		try {
-			const since = this.datasetVersions.modifier_sets || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/modifiers/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/modifiers/",
+				"modifier_sets",
+				"modifier_sets"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Modifiers sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("modifier_sets", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('modifier_sets');
 			}
 
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("modifier_sets", deleted_ids);
-			}
-
-			this.datasetVersions.modifier_sets = next_version;
-
-			console.log(`✅ Modifiers cached (version: ${next_version})`);
+			console.log(`✅ Modifiers cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync modifiers:", error);
 			throw error;
@@ -371,25 +385,17 @@ class OfflineSyncService {
 	 */
 	async syncDiscounts() {
 		try {
-			const since = this.datasetVersions.discounts || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/discounts/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/discounts/",
+				"discounts",
+				"discounts"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Discounts sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("discounts", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('discounts');
 			}
 
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("discounts", deleted_ids);
-			}
-
-			this.datasetVersions.discounts = next_version;
-
-			console.log(`✅ Discounts cached (version: ${next_version})`);
+			console.log(`✅ Discounts cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync discounts:", error);
 			throw error;
@@ -401,31 +407,17 @@ class OfflineSyncService {
 	 */
 	async syncTaxes() {
 		try {
-			const since = this.datasetVersions.taxes || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/taxes/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/taxes/",
+				"taxes",
+				"taxes"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Taxes sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("taxes", data, next_version);
-			}
-
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("taxes", deleted_ids);
-			}
-
-			// Track if this dataset was updated
-			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
-			if (hasUpdates) {
+			if (totalRecords > 0 || totalDeleted > 0) {
 				this.updatedDatasets.push('taxes');
 			}
 
-			this.datasetVersions.taxes = next_version;
-
-			console.log(`✅ Taxes cached (version: ${next_version})`);
+			console.log(`✅ Taxes cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync taxes:", error);
 			throw error;
@@ -437,31 +429,17 @@ class OfflineSyncService {
 	 */
 	async syncProductTypes() {
 		try {
-			const since = this.datasetVersions.product_types || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/product-types/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/product-types/",
+				"product_types",
+				"product_types"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Product types sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("product_types", data, next_version);
-			}
-
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("product_types", deleted_ids);
-			}
-
-			// Track if this dataset was updated
-			const hasUpdates = (data && data.length > 0) || (deleted_ids && deleted_ids.length > 0);
-			if (hasUpdates) {
+			if (totalRecords > 0 || totalDeleted > 0) {
 				this.updatedDatasets.push('product_types');
 			}
 
-			this.datasetVersions.product_types = next_version;
-
-			console.log(`✅ Product types cached (version: ${next_version})`);
+			console.log(`✅ Product types cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync product types:", error);
 			throw error;
@@ -473,25 +451,17 @@ class OfflineSyncService {
 	 */
 	async syncUsers() {
 		try {
-			const since = this.datasetVersions.users || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/users/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/users/",
+				"users",
+				"users"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Users sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("users", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('users');
 			}
 
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("users", deleted_ids);
-			}
-
-			this.datasetVersions.users = next_version;
-
-			console.log(`✅ Users cached (version: ${next_version})`);
+			console.log(`✅ Users cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync users:", error);
 			throw error;
@@ -503,25 +473,17 @@ class OfflineSyncService {
 	 */
 	async syncInventory() {
 		try {
-			const since = this.datasetVersions.inventory_stocks || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/inventory/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/inventory/",
+				"inventory_stocks",
+				"inventory_stocks"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Inventory stocks sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("inventory_stocks", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('inventory_stocks');
 			}
 
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("inventory_stocks", deleted_ids);
-			}
-
-			this.datasetVersions.inventory_stocks = next_version;
-
-			console.log(`✅ Inventory stocks cached (version: ${next_version})`);
+			console.log(`✅ Inventory stocks cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync inventory:", error);
 			throw error;
@@ -533,25 +495,17 @@ class OfflineSyncService {
 	 */
 	async syncInventoryLocations() {
 		try {
-			const since = this.datasetVersions.inventory_locations || null;
-			const body = since ? { since } : {};
-			const response = await apiClient.post("/sync/inventory-locations/", body);
+			const { totalRecords, totalDeleted, pageCount } = await this.syncDatasetWithPagination(
+				"/sync/inventory-locations/",
+				"inventory_locations",
+				"inventory_locations"
+			);
 
-			const { data, next_version, deleted_ids } = response.data;
-
-			console.log(`📦 Inventory locations sync: ${data.length} records, ${deleted_ids?.length || 0} deletions`);
-
-			if (data && data.length > 0) {
-				await window.offlineAPI.cacheDataset("inventory_locations", data, next_version);
+			if (totalRecords > 0 || totalDeleted > 0) {
+				this.updatedDatasets.push('inventory_locations');
 			}
 
-			if (deleted_ids && deleted_ids.length > 0) {
-				await window.offlineAPI.deleteRecords("inventory_locations", deleted_ids);
-			}
-
-			this.datasetVersions.inventory_locations = next_version;
-
-			console.log(`✅ Inventory locations cached (version: ${next_version})`);
+			console.log(`✅ Inventory locations cached: ${totalRecords} records, ${totalDeleted} deletions (${pageCount} page(s))`);
 		} catch (error) {
 			console.error("❌ Failed to sync inventory locations:", error);
 			throw error;
@@ -859,7 +813,6 @@ class OfflineSyncService {
 					last_sync_success: this.lastSyncSuccess,
 					last_flush_success: this.lastFlushSuccess,
 				},
-				limits: stats.limits
 			};
 		} catch (error) {
 			console.error("Failed to get sync status:", error);

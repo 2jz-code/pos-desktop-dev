@@ -126,8 +126,13 @@ class BaseSyncView(APIView):
             "next_version": "2025-02-15T14:30:22.123Z",
             "deleted_ids": [...],
             "dataset": "products",
-            "synced_at": "2025-02-15T14:30:22.123Z"
+            "synced_at": "2025-02-15T14:30:22.123Z",
+            "has_more": false
         }
+
+        Note: has_more=true indicates more records are available.
+        Client should continue fetching with the returned next_version
+        until has_more=false.
         """
         terminal = request.auth  # TerminalRegistration instance
         since_param = request.data.get('since')
@@ -145,30 +150,31 @@ class BaseSyncView(APIView):
 
         # Only active records (soft delete support)
         if hasattr(self.model, 'is_active'):
-            # Get active records for data
-            active_records = queryset.filter(is_active=True).order_by('updated_at')[:limit]
+            # Get active records for data - fetch limit+1 to detect has_more
+            active_queryset = queryset.filter(is_active=True).order_by('updated_at')
+            active_records = list(active_queryset[:limit + 1])
+            has_more = len(active_records) > limit
+            active_records = active_records[:limit]  # Trim to actual limit
             # Get deleted IDs
             deleted_ids = self.get_deleted_ids(self.get_queryset(terminal), since)
         else:
-            active_records = queryset.order_by('updated_at')[:limit]
+            ordered_queryset = queryset.order_by('updated_at')
+            active_records = list(ordered_queryset[:limit + 1])
+            has_more = len(active_records) > limit
+            active_records = active_records[:limit]  # Trim to actual limit
             deleted_ids = []
 
         # Serialize data
         serializer = self.serializer_class(active_records, many=True)
 
-        # Calculate next_version using latest updated_at across active + archived records
-        all_records = self.get_queryset(terminal)
-        if hasattr(all_records, 'with_archived'):
-            all_records = all_records.with_archived()
-        if since:
-            all_records = all_records.filter(updated_at__gte=since)
-
-        latest_update = all_records.order_by('-updated_at').values_list('updated_at', flat=True).first()
-
-        if latest_update:
-            # Bump by 1 microsecond to avoid re-sending the same records on next sync
-            next_version = (latest_update + timedelta(microseconds=1)).isoformat()
+        # Calculate next_version from the LAST record in the returned page
+        # This ensures proper pagination - next sync will start from where we left off
+        if active_records:
+            # Get the last record's updated_at and bump by 1 microsecond
+            last_record = active_records[-1]
+            next_version = (last_record.updated_at + timedelta(microseconds=1)).isoformat()
         else:
+            # No records returned - use current time or since param
             next_version = (since or timezone.now()).isoformat()
 
         # Return response
@@ -178,6 +184,7 @@ class BaseSyncView(APIView):
             'deleted_ids': deleted_ids,
             'dataset': self.dataset_name,
             'synced_at': timezone.now().isoformat(),
+            'has_more': has_more,
         })
 
 

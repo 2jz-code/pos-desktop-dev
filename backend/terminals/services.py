@@ -106,12 +106,7 @@ class TerminalPairingService:
                 'location_id': terminal.store_location.id if terminal.store_location else None,
                 'location_name': terminal.store_location.name if terminal.store_location else None,
                 'offline_enabled': terminal.offline_enabled,
-                'offline_limits': {
-                    'transaction_limit': str(terminal.offline_transaction_limit),
-                    'daily_limit': str(terminal.offline_daily_limit),
-                    'transaction_count_limit': terminal.offline_transaction_count_limit,
-                    'capture_window_hours': terminal.offline_capture_window_hours,
-                }
+                'offline_capture_window_hours': terminal.offline_capture_window_hours,
             })
 
         return ('pending', None)

@@ -303,12 +303,7 @@ class TerminalRegistrationViewSet(BaseViewSet):
                 'reader_id': terminal.reader_id,
                 'signing_secret': terminal.signing_secret,
                 'offline_enabled': terminal.offline_enabled,
-                'offline_limits': {
-                    'transaction_limit': str(terminal.offline_transaction_limit),
-                    'daily_limit': str(terminal.offline_daily_limit),
-                    'transaction_count_limit': terminal.offline_transaction_count_limit,
-                    'capture_window_hours': terminal.offline_capture_window_hours,
-                },
+                'offline_capture_window_hours': terminal.offline_capture_window_hours,
                 'last_seen': terminal.last_seen
             })
 

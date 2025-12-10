@@ -72,7 +72,6 @@ import {
 	getOfflineExposure,
 	getNetworkStatus as getDBNetworkStatus,
 	getSyncStatus,
-	checkLimitExceeded,
 	getCompleteStats,
 	// Terminal pairing operations
 	storePairingInfo,
@@ -1399,19 +1398,7 @@ ipcMain.handle("offline:get-complete-stats", async () => {
 	}
 });
 
-ipcMain.handle("offline:check-limit", async (event, type, amount) => {
-	try {
-		const db = getDatabase();
-		// Get limits from settings (you may need to adjust this based on your settings structure)
-		const settings = getSettings(db);
-		const limits = settings.length > 0 ? settings[0] : null;
-
-		return checkLimitExceeded(db, limits, type, amount);
-	} catch (error) {
-		console.error("[Offline DB] Error checking limit:", error);
-		throw error;
-	}
-});
+// Offline spending limits removed - no limits enforced per product decision
 
 // Database operations
 ipcMain.handle("offline:get-db-stats", async () => {

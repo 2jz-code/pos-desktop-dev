@@ -567,6 +567,11 @@ SESSION_COOKIE_AGE = 3600 * 8  # 8 hours
 CACHE_VERSION = os.getenv("CACHE_VERSION", 1)
 
 # Logging configuration
+# File logging disabled by default; enable with LOG_TO_FILE=true for local dev
+# In Docker/production, logs go to stdout only (captured by container logging)
+_enable_file_logging = os.getenv("LOG_TO_FILE", "false").lower() == "true"
+_log_handlers = ["console", "file"] if _enable_file_logging else ["console"]
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -586,51 +591,52 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "simple",
         },
-        "file": {
+        # File handler only defined when LOG_TO_FILE=true to avoid permission errors in containers
+        **({"file": {
             "level": "DEBUG",
             "class": "logging.FileHandler",
             "filename": "logs.md",
             "formatter": "verbose",
-        },
+        }} if _enable_file_logging else {}),
     },
     "root": {
-        "handlers": ["console", "file"],
+        "handlers": _log_handlers,
         "level": "INFO",
     },
     "loggers": {
         "django": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "reports": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "DEBUG",
             "propagate": False,
         },
         "reports.services_new": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "DEBUG",
             "propagate": False,
         },
         "reports.services_new.sales_service": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "DEBUG",
             "propagate": False,
         },
         # Disable cache invalidation logs
         "core_backend.infrastructure.cache": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "WARNING",  # Only show warnings and errors, not INFO
             "propagate": False,
         },
         "core_backend.infrastructure.cache_utils": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "WARNING",
             "propagate": False,
         },
         "reports.signals": {
-            "handlers": ["console", "file"],
+            "handlers": _log_handlers,
             "level": "WARNING",  # This will hide the "invalidated related caches" logs
             "propagate": False,
         },

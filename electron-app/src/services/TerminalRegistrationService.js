@@ -339,7 +339,7 @@ class TerminalRegistrationService {
 			reader_id: response.data.reader_id,
 			signing_secret: response.data.signing_secret,
 			offline_enabled: response.data.offline_enabled,
-			offline_limits: response.data.offline_limits
+			offline_capture_window_hours: response.data.offline_capture_window_hours,
 		};
 	}
 

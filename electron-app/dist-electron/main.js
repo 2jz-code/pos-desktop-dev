@@ -1783,25 +1783,12 @@ function getAllMetadata(db2) {
   }
   return meta2;
 }
-function incrementOfflineCounter(db2, type, amount) {
-  const countKey = `offline_${type}_total`;
-  const currentValue = parseFloat(getMetadata(db2, countKey) || "0");
-  const newValue = currentValue + amount;
-  setMetadata(db2, countKey, newValue.toFixed(2));
-  const countValue = parseInt(getMetadata(db2, "offline_transaction_count") || "0", 10);
-  setMetadata(db2, "offline_transaction_count", String(countValue + 1));
-}
-function resetOfflineCounters(db2) {
-  setMetadata(db2, "offline_transaction_count", "0");
-  setMetadata(db2, "offline_cash_total", "0");
-  setMetadata(db2, "offline_card_total", "0");
-}
 function getOfflineExposure$1(db2) {
   return {
-    transaction_count: parseInt(getMetadata(db2, "offline_transaction_count") || "0", 10),
-    cash_total: parseFloat(getMetadata(db2, "offline_cash_total") || "0"),
-    card_total: parseFloat(getMetadata(db2, "offline_card_total") || "0"),
-    total_exposure: parseFloat(getMetadata(db2, "offline_cash_total") || "0") + parseFloat(getMetadata(db2, "offline_card_total") || "0")
+    transaction_count: 0,
+    cash_total: 0,
+    card_total: 0,
+    total_exposure: 0
   };
 }
 function updateNetworkStatus$1(db2, isOnline) {
@@ -1840,70 +1827,7 @@ function getSyncStatus$1(db2) {
     minutes_since_last_sync: lastSuccess ? Math.floor((Date.now() - new Date(lastSuccess).getTime()) / 1e3 / 60) : null
   };
 }
-function checkLimitExceeded$1(db2, limits, type, amount) {
-  if (!limits) {
-    return { exceeded: false };
-  }
-  const exposure = getOfflineExposure$1(db2);
-  if (limits.offline_transaction_count_limit && exposure.transaction_count >= limits.offline_transaction_count_limit) {
-    return {
-      exceeded: true,
-      reason: `Transaction limit reached (${limits.offline_transaction_count_limit} transactions)`
-    };
-  }
-  if (type === "card" && limits.offline_transaction_limit && amount > limits.offline_transaction_limit) {
-    return {
-      exceeded: true,
-      reason: `Single transaction limit exceeded ($${limits.offline_transaction_limit})`
-    };
-  }
-  if (limits.offline_daily_limit) {
-    const newTotal = exposure.total_exposure + amount;
-    if (newTotal > limits.offline_daily_limit) {
-      return {
-        exceeded: true,
-        reason: `Daily offline limit would be exceeded ($${limits.offline_daily_limit})`
-      };
-    }
-  }
-  return { exceeded: false };
-}
-function getOfflineLimitsStatus(db2, limits) {
-  const exposure = getOfflineExposure$1(db2);
-  if (!limits) {
-    return {
-      transaction_count: { current: exposure.transaction_count, limit: null, percentage: 0 },
-      cash_total: { current: exposure.cash_total, limit: null, percentage: 0 },
-      card_total: { current: exposure.card_total, limit: null, percentage: 0 },
-      daily_total: { current: exposure.total_exposure, limit: null, percentage: 0 }
-    };
-  }
-  return {
-    transaction_count: {
-      current: exposure.transaction_count,
-      limit: limits.offline_transaction_count_limit || null,
-      percentage: limits.offline_transaction_count_limit ? exposure.transaction_count / limits.offline_transaction_count_limit * 100 : 0
-    },
-    cash_total: {
-      current: exposure.cash_total,
-      limit: null,
-      // No specific cash limit
-      percentage: 0
-    },
-    card_total: {
-      current: exposure.card_total,
-      limit: null,
-      // Tracked but no separate limit
-      percentage: 0
-    },
-    daily_total: {
-      current: exposure.total_exposure,
-      limit: limits.offline_daily_limit || null,
-      percentage: limits.offline_daily_limit ? exposure.total_exposure / limits.offline_daily_limit * 100 : 0
-    }
-  };
-}
-function getCompleteStats$1(db2, limits = null) {
+function getCompleteStats$1(db2) {
   const queueStats = db2.prepare(`
     SELECT
       COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending,
@@ -1918,10 +1842,9 @@ function getCompleteStats$1(db2, limits = null) {
       COUNT(CASE WHEN status = 'CONFLICT' THEN 1 END) as conflicts
     FROM offline_orders
   `).get();
-  const exposure = getOfflineExposure$1(db2);
+  const exposure = getOfflineExposure$1();
   const networkStatus = getNetworkStatus$1(db2);
   const syncStatus = getSyncStatus$1(db2);
-  const limitsStatus = getOfflineLimitsStatus(db2, limits);
   return {
     queue: {
       pending_operations: queueStats.pending,
@@ -1933,8 +1856,7 @@ function getCompleteStats$1(db2, limits = null) {
     },
     exposure,
     network: networkStatus,
-    sync: syncStatus,
-    limits: limitsStatus
+    sync: syncStatus
   };
 }
 function storePairingInfo$1(db2, { terminal_id, tenant_id, tenant_slug, location_id, signing_secret }) {
@@ -1985,19 +1907,15 @@ function isPaired$1(db2) {
 }
 const meta = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
-  checkLimitExceeded: checkLimitExceeded$1,
   clearPairingInfo: clearPairingInfo$1,
   getAllMetadata,
   getCompleteStats: getCompleteStats$1,
   getMetadata,
   getNetworkStatus: getNetworkStatus$1,
   getOfflineExposure: getOfflineExposure$1,
-  getOfflineLimitsStatus,
   getPairingInfo: getPairingInfo$1,
   getSyncStatus: getSyncStatus$1,
-  incrementOfflineCounter,
   isPaired: isPaired$1,
-  resetOfflineCounters,
   setMetadata,
   storePairingInfo: storePairingInfo$1,
   updateNetworkStatus: updateNetworkStatus$1,
@@ -2190,7 +2108,6 @@ const {
   getNetworkStatus,
   updateSyncTimestamp,
   getSyncStatus,
-  checkLimitExceeded,
   getCompleteStats,
   // Terminal pairing operations
   storePairingInfo,
@@ -2200,7 +2117,6 @@ const {
 } = meta;
 const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
-  checkLimitExceeded,
   clearAllPendingData,
   clearPairingInfo,
   closeDatabase,
@@ -3480,17 +3396,6 @@ ipcMain.handle("offline:get-complete-stats", async () => {
     return getCompleteStats(db2);
   } catch (error) {
     console.error("[Offline DB] Error getting complete stats:", error);
-    throw error;
-  }
-});
-ipcMain.handle("offline:check-limit", async (event, type, amount) => {
-  try {
-    const db2 = getDatabase();
-    const settings = getSettings(db2);
-    const limits = settings.length > 0 ? settings[0] : null;
-    return checkLimitExceeded(db2, limits, type, amount);
-  } catch (error) {
-    console.error("[Offline DB] Error checking limit:", error);
     throw error;
   }
 });

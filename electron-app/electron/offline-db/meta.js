@@ -2,10 +2,10 @@
  * Device metadata management
  *
  * Handles:
- * - Offline transaction limits and counters
  * - Network status tracking
  * - Sync timestamps
  * - Device state
+ * - Terminal pairing info
  */
 
 /**
@@ -54,41 +54,15 @@ export function getAllMetadata(db) {
 }
 
 /**
- * Increment offline counter
- * @param {import('better-sqlite3').Database} db
- * @param {string} type - 'cash' or 'card'
- * @param {number} amount - Amount to add
- */
-export function incrementOfflineCounter(db, type, amount) {
-  const countKey = `offline_${type}_total`;
-  const currentValue = parseFloat(getMetadata(db, countKey) || '0');
-  const newValue = currentValue + amount;
-
-  setMetadata(db, countKey, newValue.toFixed(2));
-
-  // Also increment transaction count
-  const countValue = parseInt(getMetadata(db, 'offline_transaction_count') || '0', 10);
-  setMetadata(db, 'offline_transaction_count', String(countValue + 1));
-}
-
-/**
- * Reset offline counters (typically done daily or when synced)
- */
-export function resetOfflineCounters(db) {
-  setMetadata(db, 'offline_transaction_count', '0');
-  setMetadata(db, 'offline_cash_total', '0');
-  setMetadata(db, 'offline_card_total', '0');
-}
-
-/**
- * Get offline exposure (totals + counts)
+ * Get offline exposure stats (for telemetry/ops visibility, not limit enforcement)
+ * Returns zeros since we don't track offline totals anymore - limits removed
  */
 export function getOfflineExposure(db) {
   return {
-    transaction_count: parseInt(getMetadata(db, 'offline_transaction_count') || '0', 10),
-    cash_total: parseFloat(getMetadata(db, 'offline_cash_total') || '0'),
-    card_total: parseFloat(getMetadata(db, 'offline_card_total') || '0'),
-    total_exposure: parseFloat(getMetadata(db, 'offline_cash_total') || '0') + parseFloat(getMetadata(db, 'offline_card_total') || '0')
+    transaction_count: 0,
+    cash_total: 0,
+    card_total: 0,
+    total_exposure: 0
   };
 }
 
@@ -159,98 +133,12 @@ export function getSyncStatus(db) {
   };
 }
 
-/**
- * Check if offline limit would be exceeded
- * @param {import('better-sqlite3').Database} db
- * @param {Object} limits - Terminal limits from backend
- * @param {string} type - 'cash' or 'card'
- * @param {number} amount - Proposed transaction amount
- * @returns {Object} { exceeded: boolean, reason: string }
- */
-export function checkLimitExceeded(db, limits, type, amount) {
-  if (!limits) {
-    return { exceeded: false };
-  }
-
-  const exposure = getOfflineExposure(db);
-
-  // Check transaction count limit
-  if (limits.offline_transaction_count_limit && exposure.transaction_count >= limits.offline_transaction_count_limit) {
-    return {
-      exceeded: true,
-      reason: `Transaction limit reached (${limits.offline_transaction_count_limit} transactions)`
-    };
-  }
-
-  // Check single transaction limit (for cards)
-  if (type === 'card' && limits.offline_transaction_limit && amount > limits.offline_transaction_limit) {
-    return {
-      exceeded: true,
-      reason: `Single transaction limit exceeded ($${limits.offline_transaction_limit})`
-    };
-  }
-
-  // Check daily total limit
-  if (limits.offline_daily_limit) {
-    const newTotal = exposure.total_exposure + amount;
-    if (newTotal > limits.offline_daily_limit) {
-      return {
-        exceeded: true,
-        reason: `Daily offline limit would be exceeded ($${limits.offline_daily_limit})`
-      };
-    }
-  }
-
-  return { exceeded: false };
-}
-
-/**
- * Get offline limits status
- */
-export function getOfflineLimitsStatus(db, limits) {
-  const exposure = getOfflineExposure(db);
-
-  if (!limits) {
-    return {
-      transaction_count: { current: exposure.transaction_count, limit: null, percentage: 0 },
-      cash_total: { current: exposure.cash_total, limit: null, percentage: 0 },
-      card_total: { current: exposure.card_total, limit: null, percentage: 0 },
-      daily_total: { current: exposure.total_exposure, limit: null, percentage: 0 }
-    };
-  }
-
-  return {
-    transaction_count: {
-      current: exposure.transaction_count,
-      limit: limits.offline_transaction_count_limit || null,
-      percentage: limits.offline_transaction_count_limit
-        ? (exposure.transaction_count / limits.offline_transaction_count_limit) * 100
-        : 0
-    },
-    cash_total: {
-      current: exposure.cash_total,
-      limit: null, // No specific cash limit
-      percentage: 0
-    },
-    card_total: {
-      current: exposure.card_total,
-      limit: null, // Tracked but no separate limit
-      percentage: 0
-    },
-    daily_total: {
-      current: exposure.total_exposure,
-      limit: limits.offline_daily_limit || null,
-      percentage: limits.offline_daily_limit
-        ? (exposure.total_exposure / limits.offline_daily_limit) * 100
-        : 0
-    }
-  };
-}
+// Offline spending limits removed - no limits enforced per product decision
 
 /**
  * Get complete queue statistics including metadata
  */
-export function getCompleteStats(db, limits = null) {
+export function getCompleteStats(db) {
   // Get queue stats
   const queueStats = db.prepare(`
     SELECT
@@ -271,7 +159,6 @@ export function getCompleteStats(db, limits = null) {
   const exposure = getOfflineExposure(db);
   const networkStatus = getNetworkStatus(db);
   const syncStatus = getSyncStatus(db);
-  const limitsStatus = getOfflineLimitsStatus(db, limits);
 
   return {
     queue: {
@@ -284,8 +171,7 @@ export function getCompleteStats(db, limits = null) {
     },
     exposure,
     network: networkStatus,
-    sync: syncStatus,
-    limits: limitsStatus
+    sync: syncStatus
   };
 }
 

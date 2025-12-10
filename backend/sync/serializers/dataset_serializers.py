@@ -438,9 +438,6 @@ class SyncTerminalRegistrationSerializer(serializers.ModelSerializer):
             'is_active',
             # Offline mode settings
             'offline_enabled',
-            'offline_transaction_limit',
-            'offline_daily_limit',
-            'offline_transaction_count_limit',
             'offline_capture_window_hours',
         ]
 

@@ -895,14 +895,21 @@ class OfflineOrderIngestService:
                         store_location=terminal.store_location
                     ).first()
 
+                # Handle missing stock row
+                if not stock:
+                    logger.warning(
+                        f"Inventory stock not found for product {delta['product_id']} "
+                        f"at location {delta.get('location_id')} - skipping delta"
+                    )
+                    continue
+
                 # Apply delta
                 stock.quantity += Decimal(str(delta['quantity_change']))
                 stock.save(update_fields=['quantity', 'updated_at'])
 
-            except InventoryStock.DoesNotExist:
-                logger.warning(
-                    f"Inventory stock not found for product {delta['product_id']} "
-                    f"at location {delta['location_id']}"
+            except Exception as e:
+                logger.error(
+                    f"Error processing inventory delta for product {delta['product_id']}: {e}"
                 )
 
     @staticmethod
