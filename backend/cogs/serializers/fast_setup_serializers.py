@@ -55,9 +55,13 @@ class FastSetupRequestSerializer(serializers.Serializer):
     Request serializer for fast setup endpoint.
 
     POST /api/cogs/menu-items/:id/fast-setup/
+
+    store_location is optional here - can also be provided via X-Store-Location header.
     """
     store_location = serializers.IntegerField(
-        help_text="ID of the store location to set up costs for."
+        required=False,
+        allow_null=True,
+        help_text="ID of the store location to set up costs for. Can also use X-Store-Location header."
     )
     ingredients = FastSetupIngredientSerializer(
         many=True,

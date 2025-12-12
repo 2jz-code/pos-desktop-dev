@@ -26,6 +26,7 @@ import { SettingsPage } from "@/pages/settings/SettingsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
 import PaymentDetailsPage from "@/pages/payments/PaymentDetailsPage";
 import { DiscountsPage } from "@/pages/discounts/DiscountsPage";
+import { COGSPage, COGSDetailPage } from "@/pages/cogs";
 import { TerminalActivatePage } from "@/pages/terminals/ActivatePage";
 import { TerminalsPage } from "@/pages/terminals/TerminalsPage";
 import { Layout } from "@/components/layout/Layout";
@@ -288,6 +289,34 @@ const AppRoutes = () => {
 									requiredPermission={(p: any) => p.canAccessDiscounts()}
 								>
 									<DiscountsPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="cogs"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessReports()}
+								>
+									<COGSPage />
+								</RoleProtectedRoute>
+							</Layout>
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="cogs/:menuItemId"
+					element={
+						<ProtectedRoute>
+							<Layout>
+								<RoleProtectedRoute
+									requiredPermission={(p: any) => p.canAccessReports()}
+								>
+									<COGSDetailPage />
 								</RoleProtectedRoute>
 							</Layout>
 						</ProtectedRoute>

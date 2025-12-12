@@ -119,3 +119,16 @@ export interface Terminal {
 	nickname: string;
 	// Add other terminal fields as needed
 }
+
+// COGS Types - re-exported from cogsService for convenience
+export type {
+	Unit,
+	UnitConversion,
+	IngredientConfig,
+	ItemCostSource,
+	IngredientCostResult,
+	MenuItemCostBreakdown,
+	MenuItemCOGSSummary,
+	FastSetupIngredient,
+	FastSetupData,
+} from "../services/api/cogsService";

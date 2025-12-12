@@ -20,6 +20,7 @@ import {
 	FileText,
 	Shield,
 	Monitor,
+	Calculator,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -57,6 +58,10 @@ export function useNavigationRoutes(): NavigationRoute[] {
 			excludeParams: true
 		}),
 		createRoutePattern(new RegExp(`^/${tenantSlug}/discounts$`), "Discounts", Percent),
+		createRoutePattern(new RegExp(`^/${tenantSlug}/cogs$`), "COGS", Calculator, {
+			subPattern: new RegExp(`^/${tenantSlug}/cogs/([^/]+)$`),
+			excludeParams: true
+		}),
 		createRoutePattern(new RegExp(`^/${tenantSlug}/reports$`), "Reports", FileText, {
 			subPattern: new RegExp(`^/${tenantSlug}/reports/([^/]+)$`),
 			excludeParams: true
@@ -82,6 +87,7 @@ export function useNavigationRoutes(): NavigationRoute[] {
 		`/${tenantSlug}/inventory/stock-history`,
 		`/${tenantSlug}/reports`,
 		`/${tenantSlug}/discounts`,
+		`/${tenantSlug}/cogs`,
 		`/${tenantSlug}/audit`,
 		`/${tenantSlug}/terminals`,
 		`/${tenantSlug}/terminals/activate`,

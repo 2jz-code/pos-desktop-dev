@@ -33,13 +33,24 @@ class MenuItemCOGSPagination(PageNumberPagination):
     max_page_size = 100
 
 
+def get_store_location_id(request):
+    """
+    Get store location ID from query param or header.
+    Prefers explicit query param, falls back to X-Store-Location header.
+    """
+    store_location_id = request.query_params.get('store_location')
+    if not store_location_id:
+        store_location_id = request.headers.get('X-Store-Location')
+    return store_location_id
+
+
 class MenuItemCOGSListView(APIView):
     """
     List menu items with COGS summary.
 
     GET /api/cogs/menu-items/
     Query params:
-    - store_location: Store location ID (required)
+    - store_location: Store location ID (optional if X-Store-Location header is set)
     - page: Page number
     - page_size: Items per page
     - category: Filter by category ID
@@ -49,10 +60,10 @@ class MenuItemCOGSListView(APIView):
     permission_classes = [IsAuthenticated, CanViewCOGS]
 
     def get(self, request):
-        store_location_id = request.query_params.get('store_location')
+        store_location_id = get_store_location_id(request)
         if not store_location_id:
             return Response(
-                {'error': 'store_location is required.'},
+                {'error': 'store_location is required (query param or X-Store-Location header).'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -118,15 +129,15 @@ class MenuItemCOGSDetailView(APIView):
 
     GET /api/cogs/menu-items/:id/
     Query params:
-    - store_location: Store location ID (required)
+    - store_location: Store location ID (optional if X-Store-Location header is set)
     """
     permission_classes = [IsAuthenticated, CanViewCOGS]
 
     def get(self, request, pk):
-        store_location_id = request.query_params.get('store_location')
+        store_location_id = get_store_location_id(request)
         if not store_location_id:
             return Response(
-                {'error': 'store_location is required.'},
+                {'error': 'store_location is required (query param or X-Store-Location header).'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -170,6 +181,10 @@ class MenuItemFastSetupView(APIView):
     - Creates IngredientConfig for each ingredient
     - Creates/updates ItemCostSource for each ingredient with cost
     - Creates/updates RecipeItem for each ingredient
+
+    Store location can be provided via:
+    - store_location in request body
+    - X-Store-Location header
     """
     permission_classes = [IsAuthenticated, CanManageCOGS]
 
@@ -190,10 +205,18 @@ class MenuItemFastSetupView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Get store location from body or header
+        store_location_id = data.get('store_location') or request.headers.get('X-Store-Location')
+        if not store_location_id:
+            return Response(
+                {'error': 'store_location is required (in body or X-Store-Location header).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Tenant-scoped lookup for store location
         try:
             store_location = StoreLocation.objects.get(
-                id=data['store_location'],
+                id=store_location_id,
                 tenant=request.tenant
             )
         except StoreLocation.DoesNotExist:
