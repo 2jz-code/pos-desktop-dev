@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     "notifications",
     "reports",
     "sync",
+    "cogs",  # Cost of Goods Sold system
     "core_backend.apps.CoreBackendConfig",
 ]
 

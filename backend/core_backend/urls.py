@@ -68,6 +68,7 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path("api/reports/", include("reports.urls")),
     path("api/business-hours/", include("business_hours.urls")),
+    path("api/cogs/", include("cogs.urls")),
 ]
 
 if settings.DEBUG:
