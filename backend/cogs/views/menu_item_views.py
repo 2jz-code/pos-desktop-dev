@@ -16,7 +16,7 @@ from rest_framework.pagination import PageNumberPagination
 from products.models import Product, ProductType
 from inventory.models import Recipe, RecipeItem
 from settings.models import StoreLocation
-from cogs.models import Unit, IngredientConfig, ItemCostSource
+from cogs.models import IngredientConfig, ItemCostSource
 from cogs.serializers import (
     MenuItemCostBreakdownSerializer,
     MenuItemCostSummarySerializer,
@@ -395,7 +395,8 @@ class MenuItemFastSetupView(APIView):
             product=product,
             defaults={
                 'quantity': quantity,
-                'unit': unit_string,
+                'unit': unit,  # Now a FK to Unit
+                'unit_legacy': unit_string,  # Keep legacy string for reference
             }
         )
 

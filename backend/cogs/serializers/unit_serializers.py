@@ -3,28 +3,22 @@ Unit and UnitConversion serializers.
 """
 from rest_framework import serializers
 
-from cogs.models import Unit, UnitConversion, UnitCategory
+from measurements.models import Unit, UnitCategory
+from cogs.models import UnitConversion
 
 
 class UnitSerializer(serializers.ModelSerializer):
-    """Serializer for Unit model - read operations."""
+    """
+    Serializer for Unit model - read-only.
+
+    Units are GLOBAL reference data seeded on deployment.
+    No create/update/delete operations are allowed via the API.
+    """
 
     class Meta:
         model = Unit
         fields = ['id', 'code', 'name', 'category']
-        read_only_fields = ['id']
-
-
-class UnitCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating Unit records."""
-
-    class Meta:
-        model = Unit
-        fields = ['code', 'name', 'category']
-
-    def validate_code(self, value):
-        # Normalize code to lowercase
-        return value.strip().lower()
+        read_only_fields = ['id', 'code', 'name', 'category']
 
 
 class UnitConversionSerializer(serializers.ModelSerializer):

@@ -3,12 +3,8 @@ from django.utils.translation import gettext_lazy as _
 from core_backend.utils.archiving import SoftDeleteMixin
 from tenant.managers import TenantManager, TenantSoftDeleteManager
 
-
-class UnitCategory(models.TextChoices):
-    """Categories for measurement units."""
-    WEIGHT = "weight", _("Weight")
-    VOLUME = "volume", _("Volume")
-    COUNT = "count", _("Count")
+# Import Unit from measurements app - it's the canonical source
+from measurements.models import Unit
 
 
 class CostSourceType(models.TextChoices):
@@ -16,45 +12,6 @@ class CostSourceType(models.TextChoices):
     MANUAL = "manual", _("Manual Entry")
     DEFAULT = "default", _("Default")
     INVOICE = "invoice", _("Invoice")  # Phase 2+
-
-
-class Unit(models.Model):
-    """
-    Measurement unit for COGS calculations.
-
-    Units are GLOBAL (not tenant-scoped) because a gram is a gram everywhere.
-    Tenant-specific behavior comes from UnitConversion (product-specific conversions)
-    and IngredientConfig (per-tenant ingredient settings).
-
-    No soft-delete for units - they're global reference data that shouldn't be archived.
-
-    Examples: gram (g), kilogram (kg), ounce (oz), pound (lb), each, piece, case
-    """
-    code = models.CharField(
-        max_length=20,
-        unique=True,
-        help_text=_("Short code for the unit, e.g., 'g', 'kg', 'oz', 'lb', 'each'")
-    )
-    name = models.CharField(
-        max_length=50,
-        help_text=_("Full name of the unit, e.g., 'gram', 'kilogram', 'ounce'")
-    )
-    category = models.CharField(
-        max_length=20,
-        choices=UnitCategory.choices,
-        help_text=_("Category of the unit: weight, volume, or count")
-    )
-
-    class Meta:
-        verbose_name = _("Unit")
-        verbose_name_plural = _("Units")
-        indexes = [
-            models.Index(fields=['code']),
-            models.Index(fields=['category']),
-        ]
-
-    def __str__(self):
-        return f"{self.name} ({self.code})"
 
 
 class UnitConversion(SoftDeleteMixin):

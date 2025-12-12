@@ -5,6 +5,7 @@ from datetime import timedelta
 from products.models import Product
 from core_backend.utils.archiving import SoftDeleteMixin
 from tenant.managers import TenantManager, TenantSoftDeleteManager
+from measurements.models import Unit
 
 
 class Location(SoftDeleteMixin):
@@ -284,9 +285,16 @@ class RecipeItem(SoftDeleteMixin):
         decimal_places=4,
         help_text=_("Quantity of the product needed for the recipe."),
     )
-    unit = models.CharField(
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name='recipe_items',
+        help_text=_("Unit of measure for the quantity."),
+    )
+    unit_legacy = models.CharField(
         max_length=50,
-        help_text=_("Unit of measure, e.g., 'grams', 'oz', 'slices', 'each'."),
+        blank=True,
+        help_text=_("Legacy unit string (deprecated - use unit FK)."),
     )
 
     objects = TenantSoftDeleteManager()
@@ -301,8 +309,9 @@ class RecipeItem(SoftDeleteMixin):
         ]
 
     def __str__(self):
+        unit_display = self.unit.code if self.unit else self.unit_legacy
         return (
-            f"{self.quantity} {self.unit} of {self.product.name} for {self.recipe.name}"
+            f"{self.quantity} {unit_display} of {self.product.name} for {self.recipe.name}"
         )
 
 

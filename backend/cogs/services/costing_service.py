@@ -10,7 +10,8 @@ import pytz
 
 from django.utils import timezone
 
-from cogs.models import ItemCostSource, IngredientConfig, Unit
+from measurements.models import Unit
+from cogs.models import ItemCostSource, IngredientConfig
 from cogs.exceptions import MissingCostError, RecipeNotFoundError
 from cogs.services.conversion_service import ConversionService
 
@@ -150,7 +151,7 @@ class CostingService:
 
         return None
 
-    def _get_or_create_ingredient_config(self, product, recipe_unit_string: str) -> Optional[IngredientConfig]:
+    def _get_or_create_ingredient_config(self, product, recipe_unit: Unit) -> Optional[IngredientConfig]:
         """
         Get or create an IngredientConfig for a product.
 
@@ -158,7 +159,7 @@ class CostingService:
 
         Args:
             product: The Product instance.
-            recipe_unit_string: The unit string from the recipe.
+            recipe_unit: The Unit instance from the recipe.
 
         Returns:
             IngredientConfig instance, or None if unit cannot be resolved.
@@ -168,20 +169,19 @@ class CostingService:
         except IngredientConfig.DoesNotExist:
             pass
 
-        # Need to create - resolve the unit first
-        unit = self._conversion_service.map_string_to_unit(recipe_unit_string)
-        if not unit:
+        # Need to create - use the recipe unit as base
+        if not recipe_unit:
             # Try to use "each" as default
-            unit = self._conversion_service.get_unit_by_code("each")
+            recipe_unit = self._conversion_service.get_unit_by_code("each")
 
-        if not unit:
+        if not recipe_unit:
             return None
 
         # Create the config
         config = IngredientConfig.objects.create(
             tenant=self.tenant,
             product=product,
-            base_unit=unit
+            base_unit=recipe_unit
         )
         return config
 
@@ -234,12 +234,12 @@ class CostingService:
         for recipe_item in recipe_items:
             ingredient = recipe_item.product
             recipe_quantity = recipe_item.quantity
-            recipe_unit_string = recipe_item.unit
+            recipe_unit = recipe_item.unit  # Now a FK to Unit
 
             # Get or create ingredient config
             ingredient_config = self._get_or_create_ingredient_config(
                 ingredient,
-                recipe_unit_string
+                recipe_unit
             )
 
             ingredient_result = IngredientCostResult(
@@ -247,8 +247,8 @@ class CostingService:
                 product_name=ingredient.name,
                 quantity=recipe_quantity,
                 quantity_display=recipe_quantity,
-                unit_code=recipe_unit_string,
-                unit_display=recipe_unit_string,
+                unit_code=recipe_unit.code,
+                unit_display=recipe_unit.name,
                 unit_cost=None,
                 extended_cost=None,
                 has_cost=False
@@ -270,8 +270,7 @@ class CostingService:
 
             # Convert recipe quantity to base unit
             try:
-                recipe_unit = self._conversion_service.map_string_to_unit(recipe_unit_string)
-                if recipe_unit and recipe_unit.id != base_unit.id:
+                if recipe_unit.id != base_unit.id:
                     normalized_quantity = self._conversion_service.convert(
                         recipe_quantity,
                         recipe_unit,

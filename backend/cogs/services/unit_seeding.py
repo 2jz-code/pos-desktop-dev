@@ -1,11 +1,15 @@
 """
 Unit seeding service for COGS.
 
-- Units are GLOBAL (not per-tenant), seeded once on deployment.
+- Units are GLOBAL (not per-tenant), seeded via measurements.services.seed_units()
 - UnitConversions are TENANT-LOCAL, seeded per tenant when they're created.
+
+This module is kept for backward compatibility and for seeding tenant-specific conversions.
+For unit seeding, use measurements.services.seed_units() instead.
 """
 from decimal import Decimal
-from cogs.models import Unit, UnitConversion, UnitCategory
+from measurements.models import Unit, UnitCategory
+from cogs.models import UnitConversion
 
 
 # Default units - these are global and shared by all tenants
@@ -56,22 +60,14 @@ def seed_global_units():
     """
     Seed global units (run once on deployment, not per tenant).
 
+    DEPRECATED: Use measurements.services.seed_units() instead.
+    This function is kept for backward compatibility.
+
     Returns:
         dict: A mapping of unit codes to Unit instances.
     """
-    unit_map = {}
-
-    for unit_data in DEFAULT_UNITS:
-        unit, _ = Unit.objects.get_or_create(
-            code=unit_data["code"],
-            defaults={
-                "name": unit_data["name"],
-                "category": unit_data["category"],
-            }
-        )
-        unit_map[unit.code] = unit
-
-    return unit_map
+    from measurements.services import seed_units
+    return seed_units()
 
 
 def seed_conversions_for_tenant(tenant):

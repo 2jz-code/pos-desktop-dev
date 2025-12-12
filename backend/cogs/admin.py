@@ -1,21 +1,11 @@
 """
 Django admin configuration for COGS models.
+
+Note: Unit admin is in measurements.admin - Unit model lives there now.
 """
 from django.contrib import admin
 from core_backend.admin.mixins import TenantAdminMixin, ArchivingAdminMixin
-from cogs.models import Unit, UnitConversion, IngredientConfig, ItemCostSource
-
-
-@admin.register(Unit)
-class UnitAdmin(admin.ModelAdmin):
-    """
-    Admin for Unit model.
-    Units are GLOBAL (not tenant-scoped), so no TenantAdminMixin needed.
-    """
-    list_display = ['code', 'name', 'category']
-    list_filter = ['category']
-    search_fields = ['code', 'name']
-    ordering = ['category', 'code']
+from cogs.models import UnitConversion, IngredientConfig, ItemCostSource
 
 
 @admin.register(UnitConversion)

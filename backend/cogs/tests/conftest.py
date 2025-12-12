@@ -11,7 +11,8 @@ from users.models import User
 from products.models import Product, ProductType, Category
 from settings.models import StoreLocation
 from inventory.models import Recipe, RecipeItem
-from cogs.models import Unit, UnitConversion, IngredientConfig, ItemCostSource, UnitCategory
+from measurements.models import Unit, UnitCategory
+from cogs.models import UnitConversion, IngredientConfig, ItemCostSource
 
 
 @pytest.fixture
@@ -222,7 +223,7 @@ def pizza_recipe_items(
         recipe=pizza_recipe,
         product=cheese_ingredient,
         quantity=Decimal("150"),
-        unit="g",
+        unit=default_units["g"],
     ))
 
     # 100g tomato sauce
@@ -231,7 +232,7 @@ def pizza_recipe_items(
         recipe=pizza_recipe,
         product=tomato_ingredient,
         quantity=Decimal("100"),
-        unit="g",
+        unit=default_units["g"],
     ))
 
     # 1 piece dough
@@ -240,7 +241,7 @@ def pizza_recipe_items(
         recipe=pizza_recipe,
         product=dough_ingredient,
         quantity=Decimal("1"),
-        unit="each",
+        unit=default_units["each"],
     ))
 
     return items

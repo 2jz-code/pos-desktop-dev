@@ -6,77 +6,10 @@ Handles converting quantities between units, including product-specific conversi
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
-from cogs.models import Unit, UnitConversion
+from measurements.models import Unit
+from measurements.services import UNIT_STRING_MAPPINGS
+from cogs.models import UnitConversion
 from cogs.exceptions import ConversionError, UnitMappingError
-
-
-# Mapping of common unit string variations to canonical codes
-UNIT_STRING_MAPPINGS = {
-    # Weight - grams
-    "g": "g",
-    "gram": "g",
-    "grams": "g",
-    "gr": "g",
-    # Weight - kilograms
-    "kg": "kg",
-    "kilogram": "kg",
-    "kilograms": "kg",
-    "kilo": "kg",
-    "kilos": "kg",
-    # Weight - ounces
-    "oz": "oz",
-    "ounce": "oz",
-    "ounces": "oz",
-    # Weight - pounds
-    "lb": "lb",
-    "lbs": "lb",
-    "pound": "lb",
-    "pounds": "lb",
-    # Volume - milliliters
-    "ml": "ml",
-    "milliliter": "ml",
-    "milliliters": "ml",
-    "millilitre": "ml",
-    "millilitres": "ml",
-    # Volume - liters
-    "l": "l",
-    "liter": "l",
-    "liters": "l",
-    "litre": "l",
-    "litres": "l",
-    # Volume - fluid ounces
-    "fl_oz": "fl_oz",
-    "fl oz": "fl_oz",
-    "fluid ounce": "fl_oz",
-    "fluid ounces": "fl_oz",
-    "floz": "fl_oz",
-    # Volume - cups
-    "cup": "cup",
-    "cups": "cup",
-    # Volume - gallons
-    "gal": "gal",
-    "gallon": "gal",
-    "gallons": "gal",
-    # Count - each
-    "each": "each",
-    "ea": "each",
-    "unit": "each",
-    "units": "each",
-    # Count - piece
-    "piece": "piece",
-    "pieces": "piece",
-    "pc": "piece",
-    "pcs": "piece",
-    # Count - slice
-    "slice": "slice",
-    "slices": "slice",
-    # Count - case
-    "case": "case",
-    "cases": "case",
-    # Count - dozen
-    "dozen": "dozen",
-    "dz": "dozen",
-}
 
 
 class ConversionService:

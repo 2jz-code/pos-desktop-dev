@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Location, InventoryStock, Recipe, RecipeItem, StockHistoryEntry
 from products.models import Product
 from products.serializers import ProductSerializer
+from measurements.models import Unit
 from .services import InventoryService
 from core_backend.base import BaseModelSerializer
 from core_backend.base.serializers import (
@@ -182,6 +183,13 @@ class UnifiedInventoryStockSerializer(FieldsetMixin, TenantFilteredSerializerMix
         return InventoryStock.objects.create(**validated_data)
 
 
+class UnitSerializer(serializers.ModelSerializer):
+    """Simple serializer for Unit in recipe items."""
+    class Meta:
+        model = Unit
+        fields = ['id', 'code', 'name', 'category']
+
+
 class UnifiedRecipeItemSerializer(FieldsetMixin, TenantFilteredSerializerMixin, BaseModelSerializer):
     """
     Unified serializer for RecipeItem model with fieldset support.
@@ -203,6 +211,10 @@ class UnifiedRecipeItemSerializer(FieldsetMixin, TenantFilteredSerializerMixin, 
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product", write_only=True
     )
+    unit = UnitSerializer(read_only=True)
+    unit_id = serializers.PrimaryKeyRelatedField(
+        queryset=Unit.objects.all(), source="unit", write_only=True
+    )
 
     def get_product(self, obj):
         """Return product with 'reference' view mode"""
@@ -211,8 +223,8 @@ class UnifiedRecipeItemSerializer(FieldsetMixin, TenantFilteredSerializerMixin, 
     class Meta:
         model = RecipeItem
         fields = '__all__'
-        read_only_fields = ['tenant', 'recipe']  # Set via create method
-        select_related_fields = ["product__category", "product__product_type"]
+        read_only_fields = ['tenant', 'recipe', 'unit_legacy']  # Set via create method
+        select_related_fields = ["product__category", "product__product_type", "unit"]
 
         fieldsets = {
             'simple': [

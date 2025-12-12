@@ -5,7 +5,6 @@ COGS serializers package - modular serializer layer.
 # Unit serializers
 from .unit_serializers import (
     UnitSerializer,
-    UnitCreateSerializer,
     UnitConversionSerializer,
     UnitConversionCreateSerializer,
 )
@@ -38,7 +37,6 @@ from .fast_setup_serializers import (
 __all__ = [
     # Units
     'UnitSerializer',
-    'UnitCreateSerializer',
     'UnitConversionSerializer',
     'UnitConversionCreateSerializer',
     # Ingredients
