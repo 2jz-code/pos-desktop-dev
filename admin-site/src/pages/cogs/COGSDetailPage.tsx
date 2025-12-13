@@ -17,7 +17,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { TableCell } from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
 	Select,
 	SelectContent,
@@ -43,6 +43,7 @@ import {
 	Package,
 	Save,
 	RefreshCw,
+	Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import cogsService, {
@@ -50,6 +51,7 @@ import cogsService, {
 	type IngredientCostResult,
 	type Unit,
 } from "@/services/api/cogsService";
+import { IngredientCostDrawer } from "@/components/cogs/IngredientCostDrawer";
 
 export const COGSDetailPage = () => {
 	const { menuItemId } = useParams<{ menuItemId: string }>();
@@ -64,6 +66,10 @@ export const COGSDetailPage = () => {
 	const [fastSetupData, setFastSetupData] = useState<
 		Record<number, { unit_cost: string; unit_code: string }>
 	>({});
+
+	// Ingredient cost drawer state
+	const [selectedIngredient, setSelectedIngredient] = useState<IngredientCostResult | null>(null);
+	const [showIngredientDrawer, setShowIngredientDrawer] = useState(false);
 
 	// Fetch units for fast setup
 	const { data: units = [] } = useQuery<Unit[]>({
@@ -131,18 +137,19 @@ export const COGSDetailPage = () => {
 	};
 
 	// Get margin badge color
+	// UX Plan: >50% green (good), 20-50% yellow (low margin), <20% red (poor/negative)
 	const getMarginBadge = (marginPercent: string | null, size: "sm" | "lg" = "sm") => {
 		if (!marginPercent) return null;
 		const margin = parseFloat(marginPercent);
 		const className = size === "lg" ? "text-lg px-3 py-1" : "";
 
-		if (margin >= 70) {
+		if (margin >= 50) {
 			return (
 				<Badge className={`bg-green-500/15 text-green-600 border-green-500/30 ${className}`}>
 					{margin.toFixed(1)}%
 				</Badge>
 			);
-		} else if (margin >= 50) {
+		} else if (margin >= 20) {
 			return (
 				<Badge className={`bg-yellow-500/15 text-yellow-600 border-yellow-500/30 ${className}`}>
 					{margin.toFixed(1)}%
@@ -163,6 +170,17 @@ export const COGSDetailPage = () => {
 			return <CheckCircle2 className="h-4 w-4 text-green-500" />;
 		}
 		return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+	};
+
+	// Handle opening ingredient cost drawer
+	const handleIngredientClick = (ingredient: IngredientCostResult) => {
+		setSelectedIngredient(ingredient);
+		setShowIngredientDrawer(true);
+	};
+
+	// Handle cost updated from drawer
+	const handleCostUpdated = () => {
+		refetch();
 	};
 
 	if (isLoading) {
@@ -216,10 +234,10 @@ export const COGSDetailPage = () => {
 						<ArrowLeft className="h-4 w-4 mr-2" />
 						Back
 					</Button>
-					{breakdown.has_recipe && !breakdown.is_complete && (
+					{breakdown.has_recipe && (
 						<Button size="sm" onClick={handleOpenFastSetup}>
 							<DollarSign className="h-4 w-4 mr-2" />
-							Quick Setup Costs
+							{breakdown.is_complete ? "Edit Costs" : "Set Up Costs"}
 						</Button>
 					)}
 				</div>
@@ -326,7 +344,7 @@ export const COGSDetailPage = () => {
 					<CardHeader>
 						<CardTitle className="text-lg">Ingredient Costs</CardTitle>
 						<CardDescription>
-							Cost breakdown by ingredient based on recipe quantities
+							Cost breakdown by ingredient based on recipe quantities. Click a row to edit costs.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -340,12 +358,24 @@ export const COGSDetailPage = () => {
 							]}
 							data={breakdown.ingredients}
 							emptyMessage="No ingredients in recipe"
+							onRowClick={(ingredient: IngredientCostResult) => handleIngredientClick(ingredient)}
 							renderRow={(ingredient: IngredientCostResult) => (
 								<>
 									<TableCell>{getIngredientStatusIcon(ingredient)}</TableCell>
 									<TableCell>
 										<div className="flex flex-col">
-											<span className="font-medium">{ingredient.product_name}</span>
+											<div className="flex items-center gap-2">
+												<span className="font-medium">{ingredient.product_name}</span>
+												{ingredient.cost_type === "computed" && (
+													<Badge
+														variant="outline"
+														className="border-blue-500/30 text-blue-600 text-[10px] px-1 py-0"
+													>
+														<Zap className="h-3 w-3 mr-0.5" />
+														Recipe
+													</Badge>
+												)}
+											</div>
 											{ingredient.error && (
 												<span className="text-xs text-orange-500">
 													{ingredient.error}
@@ -373,91 +403,113 @@ export const COGSDetailPage = () => {
 				</Card>
 			)}
 
-			{/* Fast Setup Dialog */}
+			{/* Edit COGS Dialog - Shows ALL ingredients for editing */}
 			<Dialog open={showFastSetup} onOpenChange={setShowFastSetup}>
-				<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+				<DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
 					<DialogHeader>
-						<DialogTitle>Quick Cost Setup</DialogTitle>
+						<DialogTitle className="text-xl">{breakdown?.menu_item_name}</DialogTitle>
 						<DialogDescription>
-							Enter costs for ingredients missing pricing data. Costs will be
-							effective immediately.
+							Edit ingredient costs. Changes take effect immediately.
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="space-y-4 py-4">
-						{breakdown?.ingredients
-							.filter((ing) => !ing.has_cost)
-							.map((ingredient) => (
+					{/* Live-updating summary header */}
+					{breakdown && (
+						<div className="flex items-center gap-6 p-4 rounded-lg bg-muted/50 border">
+							<div>
+								<p className="text-sm text-muted-foreground">Price</p>
+								<p className="text-lg font-bold">{formatCurrency(parseFloat(breakdown.price))}</p>
+							</div>
+							<div>
+								<p className="text-sm text-muted-foreground">Est. Cost</p>
+								<p className="text-lg font-bold">
+									{breakdown.total_cost ? formatCurrency(parseFloat(breakdown.total_cost)) : "—"}
+								</p>
+							</div>
+							<div>
+								<p className="text-sm text-muted-foreground">Margin</p>
+								<div className="flex items-center gap-2">
+									<p className="text-lg font-bold">
+										{breakdown.margin_amount ? formatCurrency(parseFloat(breakdown.margin_amount)) : "—"}
+									</p>
+									{breakdown.margin_percent && getMarginBadge(breakdown.margin_percent)}
+								</div>
+							</div>
+							<div className="ml-auto">
+								{breakdown.is_complete ? (
+									<Badge className="bg-green-500/15 text-green-600 border-green-500/30">
+										<CheckCircle2 className="w-3 h-3 mr-1" />
+										Complete
+									</Badge>
+								) : (
+									<Badge className="bg-orange-500/15 text-orange-600 border-orange-500/30">
+										<AlertTriangle className="w-3 h-3 mr-1" />
+										{breakdown.missing_products.length} missing
+									</Badge>
+								)}
+							</div>
+						</div>
+					)}
+
+					{/* Ingredients table */}
+					<div className="space-y-3 py-4">
+						<div className="grid grid-cols-[1fr,80px,80px,100px,100px] gap-2 px-3 text-xs font-medium text-muted-foreground">
+							<span>Ingredient</span>
+							<span className="text-right">Qty</span>
+							<span>Unit</span>
+							<span>Unit Cost</span>
+							<span className="text-right">Line Cost</span>
+						</div>
+						{breakdown?.ingredients.map((ingredient) => {
+							const hasEditedCost = fastSetupData[ingredient.product_id]?.unit_cost;
+							const displayUnitCost = hasEditedCost || ingredient.unit_cost || "";
+							const lineCost = displayUnitCost && parseFloat(displayUnitCost) > 0
+								? (parseFloat(ingredient.quantity) * parseFloat(displayUnitCost)).toFixed(2)
+								: null;
+
+							return (
 								<div
 									key={ingredient.product_id}
-									className="flex items-center gap-4 p-3 rounded-lg border"
+									className={`grid grid-cols-[1fr,80px,80px,100px,100px] gap-2 items-center p-3 rounded-lg border ${
+										!ingredient.has_cost && !hasEditedCost ? "border-orange-500/30 bg-orange-500/5" : ""
+									}`}
 								>
-									<div className="flex-1">
-										<p className="font-medium">{ingredient.product_name}</p>
-										<p className="text-sm text-muted-foreground">
-											Recipe uses: {ingredient.quantity_display}{" "}
-											{ingredient.unit_display}
-										</p>
-									</div>
 									<div className="flex items-center gap-2">
-										<div className="w-24">
-											<Label className="sr-only">Cost</Label>
-											<Input
-												type="number"
-												step="0.01"
-												min="0"
-												placeholder="0.00"
-												value={
-													fastSetupData[ingredient.product_id]?.unit_cost || ""
-												}
-												onChange={(e) =>
-													setFastSetupData((prev) => ({
-														...prev,
-														[ingredient.product_id]: {
-															...prev[ingredient.product_id],
-															unit_cost: e.target.value,
-														},
-													}))
-												}
-											/>
-										</div>
-										<span className="text-muted-foreground">per</span>
-										<Select
-											value={
-												fastSetupData[ingredient.product_id]?.unit_code ||
-												ingredient.unit_code
-											}
-											onValueChange={(value) =>
+										{ingredient.has_cost || hasEditedCost ? (
+											<CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+										) : (
+											<AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
+										)}
+										<span className="font-medium truncate">{ingredient.product_name}</span>
+									</div>
+									<span className="text-right tabular-nums">{ingredient.quantity_display}</span>
+									<span className="text-muted-foreground">{ingredient.unit_display}</span>
+									<div className="flex items-center gap-1">
+										<span className="text-muted-foreground">$</span>
+										<Input
+											type="number"
+											step="0.0001"
+											min="0"
+											placeholder="0.00"
+											className="h-8 w-20"
+											value={fastSetupData[ingredient.product_id]?.unit_cost ?? ingredient.unit_cost ?? ""}
+											onChange={(e) =>
 												setFastSetupData((prev) => ({
 													...prev,
 													[ingredient.product_id]: {
-														...prev[ingredient.product_id],
-														unit_code: value,
+														unit_cost: e.target.value,
+														unit_code: prev[ingredient.product_id]?.unit_code || ingredient.unit_code,
 													},
 												}))
 											}
-										>
-											<SelectTrigger className="w-24">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												{units.map((unit) => (
-													<SelectItem key={unit.code} value={unit.code}>
-														{unit.code}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
+										/>
 									</div>
+									<span className="text-right font-medium tabular-nums">
+										{lineCost ? formatCurrency(parseFloat(lineCost)) : "—"}
+									</span>
 								</div>
-							))}
-
-						{breakdown?.ingredients.filter((ing) => !ing.has_cost).length ===
-							0 && (
-							<p className="text-center text-muted-foreground py-4">
-								All ingredients have costs set!
-							</p>
-						)}
+							);
+						})}
 					</div>
 
 					<DialogFooter>
@@ -483,6 +535,16 @@ export const COGSDetailPage = () => {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Ingredient Cost Drawer - for editing individual ingredient costs */}
+			<IngredientCostDrawer
+				open={showIngredientDrawer}
+				onOpenChange={setShowIngredientDrawer}
+				ingredient={selectedIngredient}
+				productId={selectedIngredient?.product_id || null}
+				productName={selectedIngredient?.product_name || null}
+				onCostUpdated={handleCostUpdated}
+			/>
 		</DomainPageLayout>
 	);
 };

@@ -396,6 +396,36 @@ class Product(SoftDeleteMixin):
         default=False,
         help_text=_("Whether this product has modifier sets configured."),
     )
+
+    # =========================================================================
+    # Product Role Flags (identity/capability layer)
+    # These are orthogonal - a product can have multiple roles
+    # =========================================================================
+    is_sellable = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=_(
+            "Whether this product appears in menu/POS and can be sold to customers. "
+            "COGS list shows only sellable products."
+        ),
+    )
+    is_purchasable = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=_(
+            "Whether this product can be received from suppliers (ingredients, beverages, supplies). "
+            "Used for purchasing/receiving workflows."
+        ),
+    )
+    is_producible = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=_(
+            "Whether this product can have a recipe and be produced in-house (prep items like dough, sauces). "
+            "Enables sub-recipe costing."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -437,6 +467,12 @@ class Product(SoftDeleteMixin):
             models.Index(fields=['product_type']),
             models.Index(fields=['price']),
             models.Index(fields=['created_at']),
+            # Product role indexes (for COGS, purchasing, production queries)
+            models.Index(fields=['tenant', 'is_sellable'], name='product_sellable_idx'),
+            models.Index(fields=['tenant', 'is_purchasable'], name='product_purchasable_idx'),
+            models.Index(fields=['tenant', 'is_producible'], name='product_producible_idx'),
+            # Composite index for ingredient picker (purchasable OR producible)
+            models.Index(fields=['tenant', 'is_active', 'is_purchasable', 'is_producible'], name='product_ingredient_idx'),
         ]
 
     def __str__(self):

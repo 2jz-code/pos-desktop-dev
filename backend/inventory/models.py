@@ -17,17 +17,15 @@ class Location(SoftDeleteMixin):
     """
 
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='inventory_locations'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="inventory_locations"
     )
     store_location = models.ForeignKey(
-        'settings.StoreLocation',
+        "settings.StoreLocation",
         on_delete=models.PROTECT,
-        related_name='inventory_locations',
+        related_name="inventory_locations",
         null=True,  # Temporarily null for migration - will be required after data migration
         blank=True,
-        help_text=_("The store this storage location belongs to.")
+        help_text=_("The store this storage location belongs to."),
     )
     name = models.CharField(
         max_length=100, help_text=_("Name of the inventory location.")
@@ -40,12 +38,16 @@ class Location(SoftDeleteMixin):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text=_("Default low stock threshold for this location. If not set, uses global default."),
+        help_text=_(
+            "Default low stock threshold for this location. If not set, uses global default."
+        ),
     )
     expiration_threshold = models.PositiveIntegerField(
         null=True,
         blank=True,
-        help_text=_("Default number of days before expiration to warn about expiring stock for this location. If not set, uses global default."),
+        help_text=_(
+            "Default number of days before expiration to warn about expiring stock for this location. If not set, uses global default."
+        ),
     )
 
     # Timestamps
@@ -59,13 +61,15 @@ class Location(SoftDeleteMixin):
         verbose_name_plural = _("Locations")
         constraints = [
             models.UniqueConstraint(
-                fields=['tenant', 'name'],
-                name='unique_location_name_per_tenant'
+                fields=["tenant", "name"], name="unique_location_name_per_tenant"
             ),
         ]
         indexes = [
-            models.Index(fields=['tenant', 'name']),
-            models.Index(fields=['tenant', 'store_location'], name='inventory_loc_tenant_store_idx'),
+            models.Index(fields=["tenant", "name"]),
+            models.Index(
+                fields=["tenant", "store_location"],
+                name="inventory_loc_tenant_store_idx",
+            ),
         ]
 
     def __str__(self):
@@ -112,17 +116,15 @@ class InventoryStock(SoftDeleteMixin):
     """
 
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='inventory_stocks'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="inventory_stocks"
     )
     store_location = models.ForeignKey(
-        'settings.StoreLocation',
+        "settings.StoreLocation",
         on_delete=models.PROTECT,
-        related_name='inventory_stocks',
+        related_name="inventory_stocks",
         null=True,  # Nullable initially for migration, will be required after backfill
         blank=True,
-        help_text=_('Denormalized from location.store_location for fast queries')
+        help_text=_("Denormalized from location.store_location for fast queries"),
     )
     product = models.ForeignKey(
         Product, on_delete=models.PROTECT, related_name="stock_levels"
@@ -146,12 +148,16 @@ class InventoryStock(SoftDeleteMixin):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text=_("Threshold below which stock is considered low. If not set, uses global default."),
+        help_text=_(
+            "Threshold below which stock is considered low. If not set, uses global default."
+        ),
     )
     expiration_threshold = models.PositiveIntegerField(
         null=True,
         blank=True,
-        help_text=_("Number of days before expiration to warn about expiring stock. If not set, uses global default."),
+        help_text=_(
+            "Number of days before expiration to warn about expiring stock. If not set, uses global default."
+        ),
     )
     low_stock_notified = models.BooleanField(
         default=False,
@@ -201,7 +207,7 @@ class InventoryStock(SoftDeleteMixin):
         """Returns True if the expiration date is within the effective expiration threshold days."""
         if not self.expiration_date:
             return False
-        
+
         today = timezone.now().date()
         threshold_date = today + timedelta(days=self.effective_expiration_threshold)
         return self.expiration_date <= threshold_date
@@ -214,11 +220,23 @@ class InventoryStock(SoftDeleteMixin):
         verbose_name_plural = _("Inventory Stocks")
         unique_together = ("product", "location")
         indexes = [
-            models.Index(fields=['tenant', 'product', 'location'], name='inventory_tenant_prod_loc_idx'),
-            models.Index(fields=['tenant', 'quantity'], name='inventory_tenant_qty_idx'),
-            models.Index(fields=['tenant', 'expiration_date'], name='inventory_tenant_exp_idx'),
-            models.Index(fields=['tenant', 'store_location'], name='invstock_ten_store_idx'),
-            models.Index(fields=['tenant', 'store_location', 'product'], name='invstock_ten_store_prod_idx'),
+            models.Index(
+                fields=["tenant", "product", "location"],
+                name="inventory_tenant_prod_loc_idx",
+            ),
+            models.Index(
+                fields=["tenant", "quantity"], name="inventory_tenant_qty_idx"
+            ),
+            models.Index(
+                fields=["tenant", "expiration_date"], name="inventory_tenant_exp_idx"
+            ),
+            models.Index(
+                fields=["tenant", "store_location"], name="invstock_ten_store_idx"
+            ),
+            models.Index(
+                fields=["tenant", "store_location", "product"],
+                name="invstock_ten_store_prod_idx",
+            ),
         ]
 
     def __str__(self):
@@ -231,9 +249,7 @@ class Recipe(SoftDeleteMixin):
     """
 
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='recipes'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="recipes"
     )
     menu_item = models.OneToOneField(
         Product,
@@ -257,7 +273,7 @@ class Recipe(SoftDeleteMixin):
         verbose_name = _("Recipe")
         verbose_name_plural = _("Recipes")
         indexes = [
-            models.Index(fields=['tenant', 'menu_item']),
+            models.Index(fields=["tenant", "menu_item"]),
         ]
 
     def __str__(self):
@@ -270,9 +286,7 @@ class RecipeItem(SoftDeleteMixin):
     """
 
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='recipe_items'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="recipe_items"
     )
     recipe = models.ForeignKey(Recipe, on_delete=models.PROTECT)
     product = models.ForeignKey(
@@ -288,7 +302,7 @@ class RecipeItem(SoftDeleteMixin):
     unit = models.ForeignKey(
         Unit,
         on_delete=models.PROTECT,
-        related_name='recipe_items',
+        related_name="recipe_items",
         help_text=_("Unit of measure for the quantity."),
     )
     unit_legacy = models.CharField(
@@ -305,14 +319,12 @@ class RecipeItem(SoftDeleteMixin):
         verbose_name_plural = _("Recipe Items")
         unique_together = ("recipe", "product")
         indexes = [
-            models.Index(fields=['tenant', 'recipe', 'product']),
+            models.Index(fields=["tenant", "recipe", "product"]),
         ]
 
     def __str__(self):
         unit_display = self.unit.code if self.unit else self.unit_legacy
-        return (
-            f"{self.quantity} {unit_display} of {self.product.name} for {self.recipe.name}"
-        )
+        return f"{self.quantity} {unit_display} of {self.product.name} for {self.recipe.name}"
 
 
 class StockHistoryEntry(models.Model):
@@ -321,115 +333,107 @@ class StockHistoryEntry(models.Model):
     """
 
     OPERATION_CHOICES = [
-        ('CREATED', _('Stock Created')),
-        ('ADJUSTED_ADD', _('Stock Added')),
-        ('ADJUSTED_SUBTRACT', _('Stock Subtracted')),
-        ('TRANSFER_FROM', _('Transfer Out')),
-        ('TRANSFER_TO', _('Transfer In')),
-        ('ORDER_DEDUCTION', _('Order Deduction')),
-        ('BULK_ADJUSTMENT', _('Bulk Adjustment')),
-        ('BULK_TRANSFER', _('Bulk Transfer')),
+        ("CREATED", _("Stock Created")),
+        ("ADJUSTED_ADD", _("Stock Added")),
+        ("ADJUSTED_SUBTRACT", _("Stock Subtracted")),
+        ("TRANSFER_FROM", _("Transfer Out")),
+        ("TRANSFER_TO", _("Transfer In")),
+        ("ORDER_DEDUCTION", _("Order Deduction")),
+        ("BULK_ADJUSTMENT", _("Bulk Adjustment")),
+        ("BULK_TRANSFER", _("Bulk Transfer")),
     ]
 
     tenant = models.ForeignKey(
-        'tenant.Tenant',
-        on_delete=models.CASCADE,
-        related_name='stock_history_entries'
+        "tenant.Tenant", on_delete=models.CASCADE, related_name="stock_history_entries"
     )
     store_location = models.ForeignKey(
-        'settings.StoreLocation',
+        "settings.StoreLocation",
         on_delete=models.PROTECT,
-        related_name='stock_history_entries',
+        related_name="stock_history_entries",
         null=True,  # Nullable initially for migration, will be required after backfill
         blank=True,
-        help_text=_('Denormalized from location.store_location for fast audit queries')
+        help_text=_("Denormalized from location.store_location for fast audit queries"),
     )
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
         related_name="stock_history",
-        help_text=_("Product involved in the stock operation")
+        help_text=_("Product involved in the stock operation"),
     )
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,
         related_name="stock_history",
-        help_text=_("Location where the stock operation occurred")
+        help_text=_("Location where the stock operation occurred"),
     )
     user = models.ForeignKey(
-        'users.User', 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name="stock_operations",
-        help_text=_("User who performed the operation")
+        help_text=_("User who performed the operation"),
     )
-    
+
     operation_type = models.CharField(
         max_length=20,
         choices=OPERATION_CHOICES,
-        help_text=_("Type of stock operation performed")
+        help_text=_("Type of stock operation performed"),
     )
     quantity_change = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        help_text=_("Change in quantity (positive for additions, negative for subtractions)")
+        help_text=_(
+            "Change in quantity (positive for additions, negative for subtractions)"
+        ),
     )
     previous_quantity = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text=_("Quantity before the operation")
+        max_digits=10, decimal_places=2, help_text=_("Quantity before the operation")
     )
     new_quantity = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text=_("Quantity after the operation")
+        max_digits=10, decimal_places=2, help_text=_("Quantity after the operation")
     )
-    
+
     # New structured reason system
     reason_config = models.ForeignKey(
-        'settings.StockActionReasonConfig',
+        "settings.StockActionReasonConfig",
         on_delete=models.PROTECT,
         null=True,  # Temporary for migration
         blank=True,
-        help_text=_("Structured reason for the stock operation")
+        help_text=_("Structured reason for the stock operation"),
     )
     detailed_reason = models.TextField(
-        blank=True,
-        help_text=_("Optional detailed explanation for the stock operation")
+        blank=True, help_text=_("Optional detailed explanation for the stock operation")
     )
-    
+
     # Legacy reason field (will be removed after migration)
     reason = models.CharField(
         max_length=255,
         blank=True,
-        help_text=_("Legacy reason for the stock operation (will be migrated)")
+        help_text=_("Legacy reason for the stock operation (will be migrated)"),
     )
     notes = models.TextField(
-        blank=True,
-        help_text=_("Additional notes about the operation")
+        blank=True, help_text=_("Additional notes about the operation")
     )
     reference_id = models.CharField(
         max_length=100,
         blank=True,
-        help_text=_("Reference ID to link related operations (e.g., transfer operations, bulk operations)")
+        help_text=_(
+            "Reference ID to link related operations (e.g., transfer operations, bulk operations)"
+        ),
     )
-    
+
     timestamp = models.DateTimeField(
-        auto_now_add=True,
-        help_text=_("When the operation was performed")
+        auto_now_add=True, help_text=_("When the operation was performed")
     )
-    
+
     # Additional metadata
     ip_address = models.GenericIPAddressField(
         null=True,
         blank=True,
-        help_text=_("IP address where the operation was initiated")
+        help_text=_("IP address where the operation was initiated"),
     )
-    user_agent = models.TextField(
-        blank=True,
-        help_text=_("User agent information")
-    )
+    user_agent = models.TextField(blank=True, help_text=_("User agent information"))
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -437,16 +441,37 @@ class StockHistoryEntry(models.Model):
     class Meta:
         verbose_name = _("Stock History Entry")
         verbose_name_plural = _("Stock History Entries")
-        ordering = ['-timestamp']
+        ordering = ["-timestamp"]
         indexes = [
-            models.Index(fields=['tenant', 'product', 'timestamp'], name='stock_hist_ten_prod_time_idx'),
-            models.Index(fields=['tenant', 'location', 'timestamp'], name='stock_hist_ten_loc_time_idx'),
-            models.Index(fields=['tenant', 'user', 'timestamp'], name='stock_hist_ten_user_time_idx'),
-            models.Index(fields=['tenant', 'operation_type'], name='stock_hist_ten_operation_idx'),
-            models.Index(fields=['tenant', 'timestamp'], name='stock_hist_ten_timestamp_idx'),
-            models.Index(fields=['tenant', 'reference_id'], name='stock_hist_ten_reference_idx'),
-            models.Index(fields=['tenant', 'store_location', 'timestamp'], name='stock_hist_ten_store_time_idx'),
-            models.Index(fields=['tenant', 'store_location', 'operation_type'], name='stock_hist_ten_store_op_idx'),
+            models.Index(
+                fields=["tenant", "product", "timestamp"],
+                name="stock_hist_ten_prod_time_idx",
+            ),
+            models.Index(
+                fields=["tenant", "location", "timestamp"],
+                name="stock_hist_ten_loc_time_idx",
+            ),
+            models.Index(
+                fields=["tenant", "user", "timestamp"],
+                name="stock_hist_ten_user_time_idx",
+            ),
+            models.Index(
+                fields=["tenant", "operation_type"], name="stock_hist_ten_operation_idx"
+            ),
+            models.Index(
+                fields=["tenant", "timestamp"], name="stock_hist_ten_timestamp_idx"
+            ),
+            models.Index(
+                fields=["tenant", "reference_id"], name="stock_hist_ten_reference_idx"
+            ),
+            models.Index(
+                fields=["tenant", "store_location", "timestamp"],
+                name="stock_hist_ten_store_time_idx",
+            ),
+            models.Index(
+                fields=["tenant", "store_location", "operation_type"],
+                name="stock_hist_ten_store_op_idx",
+            ),
         ]
 
     def __str__(self):
@@ -455,8 +480,10 @@ class StockHistoryEntry(models.Model):
     @property
     def operation_display(self):
         """Returns human-readable operation type."""
-        return dict(self.OPERATION_CHOICES).get(self.operation_type, self.operation_type)
-    
+        return dict(self.OPERATION_CHOICES).get(
+            self.operation_type, self.operation_type
+        )
+
     @property
     def get_reason_display(self):
         """Returns the reason display for backward compatibility and migration."""
@@ -471,7 +498,7 @@ class StockHistoryEntry(models.Model):
             return self.reason
         else:
             return "No reason provided"
-    
+
     @property
     def get_full_reason(self):
         """Returns the complete reason including both structured and detailed parts."""
@@ -481,77 +508,125 @@ class StockHistoryEntry(models.Model):
                 parts.append(self.detailed_reason)
             return " - ".join(parts)
         return self.reason or "No reason provided"
-    
+
     @property
     def reason_category(self):
         """Categorizes the reason based on structured reason config or operation type and reason text."""
         # Use structured reason category if available
         if self.reason_config:
             return self.reason_config.category
-        
+
         # Fall back to legacy categorization logic
         # System-generated operations
-        if self.operation_type in ['ORDER_DEDUCTION']:
-            return 'SYSTEM'
-        
+        if self.operation_type in ["ORDER_DEDUCTION"]:
+            return "SYSTEM"
+
         # Transfer operations
-        if self.operation_type in ['TRANSFER_FROM', 'TRANSFER_TO', 'BULK_TRANSFER']:
-            return 'TRANSFER'
-        
+        if self.operation_type in ["TRANSFER_FROM", "TRANSFER_TO", "BULK_TRANSFER"]:
+            return "TRANSFER"
+
         # Bulk operations
-        if self.operation_type in ['BULK_ADJUSTMENT']:
-            return 'BULK'
-        
+        if self.operation_type in ["BULK_ADJUSTMENT"]:
+            return "BULK"
+
         # Check legacy reason text for common patterns
         if self.reason:
             reason_lower = self.reason.lower()
-            
+
             # Corrections/fixes
-            if any(word in reason_lower for word in ['error', 'mistake', 'correction', 'fix', 'wrong']):
-                return 'CORRECTION'
-            
+            if any(
+                word in reason_lower
+                for word in ["error", "mistake", "correction", "fix", "wrong"]
+            ):
+                return "CORRECTION"
+
             # Inventory counts
-            if any(word in reason_lower for word in ['count', 'inventory', 'audit', 'recount']):
-                return 'INVENTORY'
-            
+            if any(
+                word in reason_lower
+                for word in ["count", "inventory", "audit", "recount"]
+            ):
+                return "INVENTORY"
+
             # Waste/shrinkage
-            if any(word in reason_lower for word in ['waste', 'expired', 'damaged', 'shrinkage', 'spoiled']):
-                return 'WASTE'
-            
+            if any(
+                word in reason_lower
+                for word in ["waste", "expired", "damaged", "shrinkage", "spoiled"]
+            ):
+                return "WASTE"
+
             # Restocking
-            if any(word in reason_lower for word in ['restock', 'delivery', 'shipment', 'received']):
-                return 'RESTOCK'
-        
+            if any(
+                word in reason_lower
+                for word in ["restock", "delivery", "shipment", "received"]
+            ):
+                return "RESTOCK"
+
         # Default for manual adjustments
-        if self.operation_type in ['CREATED', 'ADJUSTED_ADD', 'ADJUSTED_SUBTRACT']:
-            return 'MANUAL'
-        
-        return 'OTHER'
-    
+        if self.operation_type in ["CREATED", "ADJUSTED_ADD", "ADJUSTED_SUBTRACT"]:
+            return "MANUAL"
+
+        return "OTHER"
+
     @property
     def reason_category_display(self):
         """Returns display information for reason category."""
         categories = {
-            'SYSTEM': {'label': 'System', 'color': 'gray', 'description': 'Automatic system operation'},
-            'MANUAL': {'label': 'Manual', 'color': 'blue', 'description': 'Manual adjustment'},
-            'TRANSFER': {'label': 'Transfer', 'color': 'purple', 'description': 'Location transfer'},
-            'CORRECTION': {'label': 'Correction', 'color': 'orange', 'description': 'Error correction'},
-            'INVENTORY': {'label': 'Inventory', 'color': 'green', 'description': 'Inventory count'},
-            'WASTE': {'label': 'Waste', 'color': 'red', 'description': 'Waste/shrinkage'},
-            'RESTOCK': {'label': 'Restock', 'color': 'emerald', 'description': 'Incoming stock'},
-            'BULK': {'label': 'Bulk', 'color': 'indigo', 'description': 'Bulk operation'},
-            'OTHER': {'label': 'Other', 'color': 'slate', 'description': 'Other operation'},
+            "SYSTEM": {
+                "label": "System",
+                "color": "gray",
+                "description": "Automatic system operation",
+            },
+            "MANUAL": {
+                "label": "Manual",
+                "color": "blue",
+                "description": "Manual adjustment",
+            },
+            "TRANSFER": {
+                "label": "Transfer",
+                "color": "purple",
+                "description": "Location transfer",
+            },
+            "CORRECTION": {
+                "label": "Correction",
+                "color": "orange",
+                "description": "Error correction",
+            },
+            "INVENTORY": {
+                "label": "Inventory",
+                "color": "green",
+                "description": "Inventory count",
+            },
+            "WASTE": {
+                "label": "Waste",
+                "color": "red",
+                "description": "Waste/shrinkage",
+            },
+            "RESTOCK": {
+                "label": "Restock",
+                "color": "emerald",
+                "description": "Incoming stock",
+            },
+            "BULK": {
+                "label": "Bulk",
+                "color": "indigo",
+                "description": "Bulk operation",
+            },
+            "OTHER": {
+                "label": "Other",
+                "color": "slate",
+                "description": "Other operation",
+            },
         }
-        return categories.get(self.reason_category, categories['OTHER'])
-    
+        return categories.get(self.reason_category, categories["OTHER"])
+
     @property
     def truncated_reason(self):
         """Returns truncated reason text for table display."""
         if not self.reason and not self.notes:
             return None
-        
+
         full_text = self.reason or self.notes or ""
         if len(full_text) <= 30:
             return full_text
-        
+
         return full_text[:30] + "..."

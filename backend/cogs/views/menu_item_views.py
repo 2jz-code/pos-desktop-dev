@@ -80,14 +80,12 @@ class MenuItemCOGSListView(APIView):
             )
 
         # Get menu items - Product.objects already tenant-scoped via TenantSoftDeleteManager
+        # Filter to sellable products (menu items that can be sold to customers)
+        # This is more semantic than filtering by ProductType.inventory_behavior
         queryset = Product.objects.filter(
-            is_active=True
+            is_active=True,
+            is_sellable=True,  # Only show products marked as sellable
         ).select_related('category', 'product_type').order_by('name')
-
-        # Filter to menu items (those with RECIPE inventory behavior)
-        queryset = queryset.filter(
-            product_type__inventory_behavior=ProductType.InventoryBehavior.RECIPE
-        )
 
         # Apply filters
         category_id = request.query_params.get('category')
@@ -353,6 +351,7 @@ class MenuItemFastSetupView(APIView):
                     price=Decimal('0.00'),  # Ingredients don't have a selling price
                     is_public=False,  # Not visible to customers
                     track_inventory=True,
+                    is_purchasable=True,  # Ingredients are purchasable from suppliers
                 )
 
         # 2. Resolve the unit (tenant-scoped via conversion_service)

@@ -1,12 +1,18 @@
 """
 Ingredient configuration and cost views.
 """
-from rest_framework import viewsets, status
+from decimal import Decimal, InvalidOperation
+
+from rest_framework import viewsets, status, serializers
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from django_filters import rest_framework as filters
 
+from products.models import Product
+from settings.models import StoreLocation
+from measurements.models import Unit
 from cogs.models import IngredientConfig, ItemCostSource
 from cogs.serializers import (
     IngredientConfigSerializer,
@@ -16,6 +22,35 @@ from cogs.serializers import (
     ItemCostSourceUpdateSerializer,
 )
 from cogs.permissions import CanManageCOGS, CanViewCOGS
+from cogs.services import CostingService
+
+
+class PackCostCalculatorSerializer(serializers.Serializer):
+    """Serializer for pack cost calculator input."""
+    product_id = serializers.IntegerField(help_text="Product to set pack cost for")
+    store_location_id = serializers.IntegerField(help_text="Store location for the cost")
+    pack_unit_id = serializers.IntegerField(help_text="Pack unit (e.g., case, box)")
+    base_unit_id = serializers.IntegerField(help_text="Base unit (e.g., each, lb)")
+    units_per_pack = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        help_text="How many base units in one pack (e.g., 48)"
+    )
+    pack_cost = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Total cost of one pack (e.g., 24.00)"
+    )
+
+    def validate_units_per_pack(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Units per pack must be greater than 0")
+        return value
+
+    def validate_pack_cost(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Pack cost cannot be negative")
+        return value
 
 
 class IngredientConfigFilter(filters.FilterSet):
@@ -172,3 +207,111 @@ class ItemCostSourceViewSet(viewsets.ModelViewSet):
 
         serializer = ItemCostSourceSerializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class PackCostCalculatorView(APIView):
+    """
+    Calculate and save pack-based costs for ingredients.
+
+    Example: A case of 48 cans for $24 → $0.50 per can
+
+    POST /api/cogs/pack-calculator/
+    {
+        "product_id": 123,
+        "store_location_id": 1,
+        "pack_unit_id": 5,     // "case" unit
+        "base_unit_id": 1,     // "each" unit
+        "units_per_pack": 48,
+        "pack_cost": "24.00"
+    }
+
+    Creates:
+    1. Product-specific UnitConversion (case → each = 48)
+    2. ItemCostSource for pack (case @ $24.00)
+    3. ItemCostSource for base unit (each @ $0.50)
+    """
+    permission_classes = [IsAuthenticated, CanManageCOGS]
+
+    def post(self, request):
+        serializer = PackCostCalculatorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+
+        # Fetch related objects
+        try:
+            product = Product.objects.get(
+                id=data['product_id'],
+                tenant=request.tenant
+            )
+        except Product.DoesNotExist:
+            return Response(
+                {'error': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            store_location = StoreLocation.objects.get(
+                id=data['store_location_id'],
+                tenant=request.tenant
+            )
+        except StoreLocation.DoesNotExist:
+            return Response(
+                {'error': 'Store location not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            pack_unit = Unit.objects.get(id=data['pack_unit_id'])
+        except Unit.DoesNotExist:
+            return Response(
+                {'error': 'Pack unit not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            base_unit = Unit.objects.get(id=data['base_unit_id'])
+        except Unit.DoesNotExist:
+            return Response(
+                {'error': 'Base unit not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Validate units are different
+        if pack_unit.id == base_unit.id:
+            return Response(
+                {'error': 'Pack unit and base unit must be different.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create the pack cost via CostingService
+        costing_service = CostingService(
+            tenant=request.tenant,
+            store_location=store_location
+        )
+
+        result = costing_service.create_pack_cost(
+            product=product,
+            pack_unit=pack_unit,
+            base_unit=base_unit,
+            units_per_pack=data['units_per_pack'],
+            pack_cost=data['pack_cost'],
+            user=request.user
+        )
+
+        # Add derived cost per base unit to response
+        derived_cost = (data['pack_cost'] / data['units_per_pack']).quantize(
+            Decimal("0.0001")
+        )
+
+        return Response({
+            'success': True,
+            'product_id': product.id,
+            'product_name': product.name,
+            'pack_unit': pack_unit.name,
+            'base_unit': base_unit.name,
+            'pack_cost': str(data['pack_cost']),
+            'units_per_pack': str(data['units_per_pack']),
+            'derived_base_unit_cost': str(derived_cost),
+            'details': result
+        }, status=status.HTTP_201_CREATED)

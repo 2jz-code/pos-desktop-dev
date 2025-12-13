@@ -12,6 +12,7 @@ from cogs.views import (
     MenuItemCOGSListView,
     MenuItemCOGSDetailView,
     MenuItemFastSetupView,
+    PackCostCalculatorView,
 )
 
 # Create router for ViewSets
@@ -29,4 +30,7 @@ urlpatterns = [
     path('menu-items/', MenuItemCOGSListView.as_view(), name='menu-item-cogs-list'),
     path('menu-items/<int:pk>/', MenuItemCOGSDetailView.as_view(), name='menu-item-cogs-detail'),
     path('menu-items/<int:pk>/fast-setup/', MenuItemFastSetupView.as_view(), name='menu-item-fast-setup'),
+
+    # Pack calculator
+    path('pack-calculator/', PackCostCalculatorView.as_view(), name='pack-cost-calculator'),
 ]

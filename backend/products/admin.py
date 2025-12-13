@@ -136,12 +136,44 @@ class TaxAdmin(TenantAdminMixin, admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "product_type", "price", "category", "is_active", "is_public")
-    list_filter = ("is_active", "is_public", "category", "product_type")
-    search_fields = ("name", "description")
-    list_editable = ("price", "is_public")  # Removed is_active from editable fields
-    autocomplete_fields = ("category", "taxes")
-    inlines = [ProductModifierSetInline]
+    list_display = (
+        "id",
+        "name",
+        "barcode",
+        "category",
+        "is_active",
+        "is_sellable",
+        "is_purchasable",
+        "is_producible",
+    )
+    list_filter = ("category", "is_active", "is_sellable", "is_purchasable", "is_producible")
+    search_fields = ("name", "barcode", "description")
+    ordering = ("name",)
+    fieldsets = (
+        (None, {"fields": ("name", "barcode", "description", "category", "image")}),
+        (
+            "Flags",
+            {
+                "fields": (
+                    "is_active",
+                    "is_public",
+                    "is_sellable",
+                    "is_purchasable",
+                    "is_producible",
+                )
+            },
+        ),
+        (
+            "Pricing & Inventory",
+            {
+                "fields": (
+                    "price",
+                    "product_type",
+                    "track_inventory",
+                )
+            },
+        ),
+    )
 
     def get_queryset(self, request):
         """Optimize admin queryset - show all tenants with optimizations"""
@@ -153,6 +185,29 @@ class ProductAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
         ).prefetch_related(
             'modifier_sets__options'
         )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Filter FK dropdowns to same tenant as the product being edited."""
+        # Get the product's tenant from the URL (object_id is in the path)
+        tenant_id = None
+        if request.resolver_match and request.resolver_match.kwargs.get('object_id'):
+            try:
+                product = Product.all_objects.get(pk=request.resolver_match.kwargs['object_id'])
+                tenant_id = product.tenant_id
+            except Product.DoesNotExist:
+                pass
+
+        if db_field.name == "product_type":
+            qs = ProductType.all_objects.all()
+            if tenant_id:
+                qs = qs.filter(tenant_id=tenant_id)
+            kwargs["queryset"] = qs
+        elif db_field.name == "category":
+            qs = Category.all_objects.all()
+            if tenant_id:
+                qs = qs.filter(tenant_id=tenant_id)
+            kwargs["queryset"] = qs
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_actions(self, request):
         """Combine archiving actions with custom product actions."""

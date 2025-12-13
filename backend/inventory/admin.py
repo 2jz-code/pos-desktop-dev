@@ -68,6 +68,34 @@ class RecipeAdmin(TenantAdminMixin, ArchivingAdminMixin, admin.ModelAdmin):
             "tenant", "menu_item"
         )
 
+    # Use soft-delete instead of hard delete to avoid FK protection errors on RecipeItem
+    def delete_model(self, request, obj):
+        obj.archive(archived_by=request.user)
+
+    def delete_queryset(self, request, queryset):
+        # Bulk archive; fall back to per-object if queryset lacks archive()
+        if hasattr(queryset, "archive"):
+            queryset.archive(archived_by=request.user)
+        else:
+            for obj in queryset:
+                obj.archive(archived_by=request.user)
+
+
+@admin.register(RecipeItem)
+class RecipeItemAdmin(TenantAdminMixin, admin.ModelAdmin):
+    """
+    Dedicated admin for recipe ingredients so they can be managed/removed
+    before deleting a recipe (FK is PROTECT).
+    """
+
+    list_display = ("recipe", "product", "quantity", "unit")
+    search_fields = ("recipe__name", "product__name")
+    autocomplete_fields = ("recipe", "product")
+
+    def get_queryset(self, request):
+        """Show all tenants in Django admin with optimized queries."""
+        return RecipeItem.all_objects.select_related("tenant", "recipe", "product", "unit")
+
 
 @admin.register(StockHistoryEntry)
 class StockHistoryEntryAdmin(TenantAdminMixin, admin.ModelAdmin):

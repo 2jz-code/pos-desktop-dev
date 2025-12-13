@@ -6,7 +6,11 @@ COGS views package.
 from .unit_views import UnitViewSet, UnitConversionViewSet
 
 # Ingredient views
-from .ingredient_views import IngredientConfigViewSet, ItemCostSourceViewSet
+from .ingredient_views import (
+    IngredientConfigViewSet,
+    ItemCostSourceViewSet,
+    PackCostCalculatorView,
+)
 
 # Menu item views
 from .menu_item_views import (
@@ -22,6 +26,7 @@ __all__ = [
     # Ingredients
     'IngredientConfigViewSet',
     'ItemCostSourceViewSet',
+    'PackCostCalculatorView',
     # Menu items
     'MenuItemCOGSListView',
     'MenuItemCOGSDetailView',

@@ -15,6 +15,11 @@ class IngredientCostSerializer(serializers.Serializer):
     unit_cost = serializers.DecimalField(max_digits=10, decimal_places=4, allow_null=True)
     extended_cost = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
     has_cost = serializers.BooleanField()
+    cost_type = serializers.ChoiceField(
+        choices=["manual", "computed", "missing"],
+        default="missing",
+        help_text="How the cost was resolved: manual (direct cost entry), computed (from sub-recipe), or missing"
+    )
     error = serializers.CharField(allow_null=True, required=False)
 
 
@@ -46,9 +51,13 @@ class MenuItemCostBreakdownSerializer(serializers.Serializer):
 
 class MenuItemCostSummarySerializer(serializers.Serializer):
     """
-    Summary cost info for a menu item.
+    Summary cost info for a sellable item.
 
     Used in GET /api/cogs/menu-items/ (list view).
+
+    setup_mode determines how costs are configured:
+    - "recipe": Menu items that are produced (is_producible=True) - costs come from recipes
+    - "direct": Retail items that are purchased (is_purchasable=True, is_producible=False) - direct cost entry
     """
     menu_item_id = serializers.IntegerField()
     name = serializers.CharField()
@@ -61,3 +70,9 @@ class MenuItemCostSummarySerializer(serializers.Serializer):
     has_missing_costs = serializers.BooleanField()
     missing_count = serializers.IntegerField()
     ingredient_count = serializers.IntegerField()
+    # New field to distinguish recipe-based vs direct-cost items
+    setup_mode = serializers.ChoiceField(
+        choices=["recipe", "direct"],
+        default="recipe",
+        help_text="'recipe' for producible items (menu items), 'direct' for purchasable retail items"
+    )

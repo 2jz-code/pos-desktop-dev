@@ -68,6 +68,7 @@ export interface IngredientCostResult {
 	unit_cost: string | null;
 	extended_cost: string | null;
 	has_cost: boolean;
+	cost_type: "manual" | "computed" | "missing";
 	error: string | null;
 }
 
@@ -101,16 +102,73 @@ export interface MenuItemCOGSSummary {
 	has_missing_costs: boolean;
 	missing_count: number;
 	ingredient_count: number;
+	/** 'recipe' for producible items (menu items), 'direct' for purchasable retail items */
+	setup_mode: "recipe" | "direct";
 }
 
+/**
+ * Ingredient data for fast setup endpoint.
+ * - For existing ingredients: include ingredient_id
+ * - For new ingredients: just include name (backend will match/create)
+ */
 export interface FastSetupIngredient {
-	product_id: number;
-	unit_cost: string;
-	unit_code: string;
+	ingredient_id?: number;    // ID of existing product (optional)
+	name: string;              // Ingredient name (for matching or creating)
+	quantity: string;          // Quantity needed
+	unit: string;              // Unit code (e.g., 'g', 'kg', 'oz')
+	unit_cost?: string;        // Cost per unit (optional)
 }
 
 export interface FastSetupData {
 	ingredients: FastSetupIngredient[];
+	store_location?: number;   // Optional, can use X-Store-Location header instead
+}
+
+/**
+ * Pack cost calculator input - for setting up case/pack based pricing.
+ */
+export interface PackCostCalculatorInput {
+	product_id: number;
+	store_location_id: number;
+	pack_unit_id: number;
+	base_unit_id: number;
+	units_per_pack: string;
+	pack_cost: string;
+}
+
+/**
+ * Pack cost calculator response - shows what was created.
+ */
+export interface PackCostCalculatorResult {
+	success: boolean;
+	product_id: number;
+	product_name: string;
+	pack_unit: string;
+	base_unit: string;
+	pack_cost: string;
+	units_per_pack: string;
+	derived_base_unit_cost: string;
+	details: {
+		conversion: {
+			id: number;
+			created: boolean;
+			from_unit: string;
+			to_unit: string;
+			multiplier: string;
+		};
+		pack_cost: {
+			id: number;
+			created: boolean;
+			unit: string;
+			unit_cost: string;
+		};
+		base_unit_cost: {
+			id: number;
+			created: boolean;
+			unit: string;
+			unit_cost: string;
+		};
+	};
 }
 
 // ============================================================================
@@ -290,6 +348,21 @@ const fastSetupMenuItemCosts = async (
 };
 
 // ============================================================================
+// Pack Cost Calculator API
+// ============================================================================
+
+/**
+ * Calculate and save pack-based costs for an ingredient.
+ * Example: "Case of 48 cans for $24" → derives $0.50 per can
+ */
+const calculatePackCost = async (
+	data: PackCostCalculatorInput
+): Promise<PackCostCalculatorResult> => {
+	const response = await apiClient.post("/cogs/pack-calculator/", data);
+	return response.data;
+};
+
+// ============================================================================
 // Export
 // ============================================================================
 
@@ -321,6 +394,9 @@ const cogsService = {
 	getMenuItemsCOGS,
 	getMenuItemCOGSDetail,
 	fastSetupMenuItemCosts,
+
+	// Pack Calculator
+	calculatePackCost,
 };
 
 export default cogsService;

@@ -2,10 +2,18 @@
 Costing service for COGS.
 
 Core service for resolving ingredient costs and computing menu item theoretical costs.
+
+Cost Resolution Order (per plan):
+1. If direct cost source exists → use it
+2. Else if product has a recipe → compute cost recursively from ingredients
+3. Else → missing cost (return None, flag, don't crash)
+
+Supports sub-recipes (e.g., dough as an ingredient in mana'eesh, where dough
+itself has a recipe of flour, water, yeast).
 """
 from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, List
+from typing import Optional, List, Set
 import pytz
 
 from django.utils import timezone
@@ -14,6 +22,11 @@ from measurements.models import Unit
 from cogs.models import ItemCostSource, IngredientConfig
 from cogs.exceptions import MissingCostError, RecipeNotFoundError
 from cogs.services.conversion_service import ConversionService
+
+
+class CyclicRecipeError(Exception):
+    """Raised when a cyclic dependency is detected in recipes."""
+    pass
 
 
 @dataclass
@@ -28,6 +41,7 @@ class IngredientCostResult:
     unit_cost: Optional[Decimal]  # Cost per base unit
     extended_cost: Optional[Decimal]  # quantity * unit_cost
     has_cost: bool
+    cost_type: str = "missing"  # "manual" | "computed" | "missing"
     error: Optional[str] = None
 
 
@@ -53,7 +67,15 @@ class CostingService:
 
     Phase 1: Theoretical costing only - uses recipes and ingredient costs.
     No inventory movements or WAC calculations.
+
+    Cost Resolution Order:
+    1. Direct cost source exists → use it (cost_type="manual")
+    2. Product has a recipe → compute recursively (cost_type="computed")
+    3. Neither → missing cost (cost_type="missing")
     """
+
+    # Maximum recursion depth for sub-recipes
+    MAX_RECURSION_DEPTH = 10
 
     def __init__(self, tenant, store_location):
         self.tenant = tenant
@@ -107,49 +129,184 @@ class CostingService:
         self,
         product,
         target_unit: Unit,
-        as_of=None
-    ) -> Optional[Decimal]:
+        as_of=None,
+        _visited: Optional[Set[int]] = None,
+        _depth: int = 0
+    ) -> tuple[Optional[Decimal], str]:
         """
         Get the unit cost for a product in a specific unit.
 
-        Converts the stored cost to the target unit if needed.
+        Resolution order:
+        1. Direct cost source exists → use it
+        2. Product has a recipe → compute recursively from ingredients
+        3. Neither → return None
 
         Args:
             product: The Product instance.
             target_unit: The unit to express the cost in.
             as_of: Optional datetime to resolve cost as of.
+            _visited: Set of product IDs already visited (cycle detection).
+            _depth: Current recursion depth.
 
         Returns:
-            Cost per target_unit, or None if no cost found.
+            Tuple of (cost_per_unit, cost_type) where cost_type is
+            "manual", "computed", or "missing".
         """
+        # Initialize cycle detection
+        if _visited is None:
+            _visited = set()
+
+        # Check for cycles
+        if product.id in _visited:
+            raise CyclicRecipeError(
+                f"Cyclic recipe dependency detected: product {product.name} (ID: {product.id})"
+            )
+
+        # Check recursion depth
+        if _depth > self.MAX_RECURSION_DEPTH:
+            return None, "missing"
+
+        # Mark as visited
+        _visited = _visited | {product.id}  # Create new set to not affect other branches
+
+        # STEP 1: Try direct cost source first
         cost_source = self.resolve_product_cost(product, as_of)
-        if not cost_source:
-            return None
+        if cost_source:
+            unit_cost = self._convert_cost_to_target_unit(
+                cost_source.unit_cost,
+                cost_source.unit,
+                target_unit,
+                product
+            )
+            if unit_cost is not None:
+                return unit_cost, "manual"
 
-        # If cost is already in target unit, return directly
-        if cost_source.unit_id == target_unit.id:
-            return cost_source.unit_cost
+        # STEP 2: Try to compute from recipe (sub-recipe costing)
+        recipe_cost = self._compute_product_recipe_cost(
+            product,
+            target_unit,
+            as_of,
+            _visited,
+            _depth + 1
+        )
+        if recipe_cost is not None:
+            return recipe_cost, "computed"
 
-        # Convert cost to target unit
-        # If cost is $10/kg and target is g: $10/kg = $0.01/g
-        # We need to convert 1 target_unit to cost_unit and multiply
+        # STEP 3: No cost available
+        return None, "missing"
+
+    def _convert_cost_to_target_unit(
+        self,
+        unit_cost: Decimal,
+        from_unit: Unit,
+        target_unit: Unit,
+        product
+    ) -> Optional[Decimal]:
+        """
+        Convert a unit cost from one unit to another.
+
+        If cost is $10/kg and target is g: $10/kg = $0.01/g
+
+        Args:
+            unit_cost: The cost per from_unit.
+            from_unit: The unit the cost is expressed in.
+            target_unit: The target unit.
+            product: The product (for product-specific conversions).
+
+        Returns:
+            Cost per target_unit, or None if conversion not possible.
+        """
+        # If already in target unit, return directly
+        if from_unit.id == target_unit.id:
+            return unit_cost
+
         try:
-            # How many target_units in one cost_unit?
+            # How many target_units in one from_unit?
             # E.g., 1 kg = 1000 g, so if cost is per kg, cost per g = cost_per_kg / 1000
             conversion_factor = self._conversion_service.convert(
                 Decimal("1"),
-                cost_source.unit,
+                from_unit,
                 target_unit,
                 product=product
             )
-            # conversion_factor is how many target_units = 1 cost_unit
-            # So cost_per_target = cost_per_cost_unit / conversion_factor
             if conversion_factor and conversion_factor != 0:
-                return cost_source.unit_cost / conversion_factor
+                return unit_cost / conversion_factor
         except Exception:
             pass
 
         return None
+
+    def _compute_product_recipe_cost(
+        self,
+        product,
+        target_unit: Unit,
+        as_of,
+        _visited: Set[int],
+        _depth: int
+    ) -> Optional[Decimal]:
+        """
+        Compute the cost of a product from its recipe (sub-recipe costing).
+
+        This enables ingredients like "dough" to have their cost computed
+        from their own recipes (flour, water, yeast, etc.).
+
+        Args:
+            product: The product to compute cost for.
+            target_unit: The unit to express the cost in.
+            as_of: Datetime to resolve costs as of.
+            _visited: Set of product IDs already visited (cycle detection).
+            _depth: Current recursion depth.
+
+        Returns:
+            Cost per target_unit computed from recipe, or None if not possible.
+        """
+        # Check if product has a recipe
+        try:
+            recipe = product.recipe
+        except Exception:
+            return None
+
+        # Get recipe items
+        recipe_items = recipe.recipeitem_set.filter(is_active=True).select_related(
+            'product', 'unit'
+        )
+
+        if not recipe_items.exists():
+            return None
+
+        # Compute total cost from all ingredients
+        total_cost = Decimal("0")
+        total_yield_quantity = Decimal("1")  # Assume recipe yields 1 unit for now
+
+        # Get the recipe's yield unit (we'll use the target unit for now)
+        # TODO: In Phase 2, recipes should have explicit yield quantity + unit
+
+        for recipe_item in recipe_items:
+            ingredient = recipe_item.product
+            ingredient_quantity = recipe_item.quantity
+            ingredient_unit = recipe_item.unit
+
+            # Recursively get ingredient cost
+            ingredient_cost, cost_type = self.get_product_unit_cost(
+                ingredient,
+                ingredient_unit,
+                as_of,
+                _visited,
+                _depth
+            )
+
+            if ingredient_cost is None:
+                # Can't compute cost if any ingredient is missing
+                return None
+
+            # Extended cost for this ingredient
+            extended_cost = ingredient_quantity * ingredient_cost
+            total_cost += extended_cost
+
+        # Cost per target unit
+        # For now, assume recipe produces 1 unit in the target unit
+        # This is a simplification - Phase 2 should support explicit yields
+        return total_cost.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     def _get_or_create_ingredient_config(self, product, recipe_unit: Unit) -> Optional[IngredientConfig]:
         """
@@ -291,11 +448,24 @@ class CostingService:
                 breakdown.ingredients.append(ingredient_result)
                 continue
 
-            # Get cost in base unit
-            unit_cost = self.get_product_unit_cost(ingredient, base_unit, as_of)
+            # Get cost in base unit (now returns tuple: (cost, cost_type))
+            try:
+                unit_cost, cost_type = self.get_product_unit_cost(ingredient, base_unit, as_of)
+            except CyclicRecipeError as e:
+                ingredient_result.error = f"Cyclic dependency: {str(e)}"
+                ingredient_result.cost_type = "missing"
+                breakdown.missing_products.append({
+                    "product_id": ingredient.id,
+                    "product_name": ingredient.name,
+                    "reason": "cyclic_dependency"
+                })
+                breakdown.is_complete = False
+                breakdown.ingredients.append(ingredient_result)
+                continue
 
             if unit_cost is None:
                 ingredient_result.error = "No cost data"
+                ingredient_result.cost_type = "missing"
                 breakdown.missing_products.append({
                     "product_id": ingredient.id,
                     "product_name": ingredient.name,
@@ -317,6 +487,7 @@ class CostingService:
             )
             ingredient_result.extended_cost = extended_cost
             ingredient_result.has_cost = True
+            ingredient_result.cost_type = cost_type  # "manual" or "computed"
 
             total_cost += extended_cost
             breakdown.ingredients.append(ingredient_result)
@@ -388,32 +559,206 @@ class CostingService:
         as_of=None
     ) -> List[dict]:
         """
-        Compute cost summaries for multiple menu items.
+        Compute cost summaries for multiple sellable items.
+
+        Branches based on product type:
+        - is_producible=True: Recipe-based menu items (use compute_menu_item_cost)
+        - is_producible=False: Retail items (use compute_retail_cost_summary)
 
         Args:
             menu_items: Queryset or list of Product instances.
             as_of: Optional datetime to resolve costs as of.
 
         Returns:
-            List of summary dicts for each menu item.
+            List of summary dicts for each item.
         """
         summaries = []
 
-        for menu_item in menu_items:
-            breakdown = self.compute_menu_item_cost(menu_item, as_of)
-
-            summaries.append({
-                "menu_item_id": breakdown.menu_item_id,
-                "name": breakdown.menu_item_name,
-                "price": breakdown.price,
-                "cost": breakdown.total_cost,
-                "margin_amount": breakdown.margin_amount,
-                "margin_percent": breakdown.margin_percent,
-                "is_cost_complete": breakdown.is_complete,
-                "has_recipe": breakdown.has_recipe,
-                "has_missing_costs": len(breakdown.missing_products) > 0,
-                "missing_count": len(breakdown.missing_products),
-                "ingredient_count": len(breakdown.ingredients),
-            })
+        for item in menu_items:
+            # Branch based on whether item is producible (recipe-based) or not (retail)
+            if getattr(item, 'is_producible', True):
+                # Recipe-based menu item
+                breakdown = self.compute_menu_item_cost(item, as_of)
+                summaries.append({
+                    "menu_item_id": breakdown.menu_item_id,
+                    "name": breakdown.menu_item_name,
+                    "price": breakdown.price,
+                    "cost": breakdown.total_cost,
+                    "margin_amount": breakdown.margin_amount,
+                    "margin_percent": breakdown.margin_percent,
+                    "is_cost_complete": breakdown.is_complete,
+                    "has_recipe": breakdown.has_recipe,
+                    "has_missing_costs": len(breakdown.missing_products) > 0,
+                    "missing_count": len(breakdown.missing_products),
+                    "ingredient_count": len(breakdown.ingredients),
+                    "setup_mode": "recipe",
+                })
+            else:
+                # Retail item - direct cost entry
+                summary = self.compute_retail_cost_summary(item, as_of)
+                summaries.append(summary)
 
         return summaries
+
+    def compute_retail_cost_summary(
+        self,
+        product,
+        as_of=None
+    ) -> dict:
+        """
+        Compute cost summary for a retail (non-producible) item.
+
+        For retail items, cost completeness is simply:
+        "Does this product have a cost source?"
+
+        No recipe needed - just direct cost entry or pack calculator.
+
+        Args:
+            product: The Product instance.
+            as_of: Optional datetime to resolve costs as of.
+
+        Returns:
+            Summary dict for the retail item.
+        """
+        cost_source = self.resolve_product_cost(product, as_of)
+
+        # Calculate margin if we have cost
+        cost = None
+        margin_amount = None
+        margin_percent = None
+        is_complete = False
+
+        if cost_source:
+            cost = cost_source.unit_cost
+            is_complete = True
+
+            if product.price and product.price > 0:
+                net_price = self._get_net_price(product)
+                margin_amount = (net_price - cost).quantize(
+                    Decimal("0.01"),
+                    rounding=ROUND_HALF_UP
+                )
+                if net_price > 0:
+                    margin_percent = (
+                        (margin_amount / net_price) * 100
+                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        return {
+            "menu_item_id": product.id,
+            "name": product.name,
+            "price": product.price,
+            "cost": cost,
+            "margin_amount": margin_amount,
+            "margin_percent": margin_percent,
+            "is_cost_complete": is_complete,
+            "has_recipe": False,  # Retail items don't have recipes
+            "has_missing_costs": not is_complete,
+            "missing_count": 0 if is_complete else 1,  # Just the item itself
+            "ingredient_count": 0,  # No ingredients for retail
+            "setup_mode": "direct",
+        }
+
+    def create_pack_cost(
+        self,
+        product,
+        pack_unit: Unit,
+        base_unit: Unit,
+        units_per_pack: Decimal,
+        pack_cost: Decimal,
+        user=None
+    ) -> dict:
+        """
+        Create a pack-based cost entry for a product.
+
+        This is used for items like "case of 48 for $24" where:
+        - pack_unit = "case"
+        - base_unit = "each"
+        - units_per_pack = 48
+        - pack_cost = $24
+
+        Creates:
+        1. Product-specific UnitConversion (pack_unit → base_unit = units_per_pack)
+        2. ItemCostSource (unit=pack_unit, unit_cost=pack_cost)
+
+        The system then derives cost per base_unit automatically:
+        $24/case ÷ 48 each/case = $0.50/each
+
+        Args:
+            product: The Product instance.
+            pack_unit: The pack unit (e.g., "case").
+            base_unit: The base unit (e.g., "each").
+            units_per_pack: How many base units in one pack (e.g., 48).
+            pack_cost: Total cost of one pack (e.g., $24).
+            user: The user creating this entry (optional).
+
+        Returns:
+            Dict with created conversion and cost source.
+        """
+        from cogs.models import UnitConversion, ItemCostSource
+
+        # Create or update the product-specific conversion
+        conversion, conv_created = UnitConversion.objects.update_or_create(
+            tenant=self.tenant,
+            product=product,
+            from_unit=pack_unit,
+            to_unit=base_unit,
+            defaults={
+                'multiplier': units_per_pack,
+                'is_active': True,
+            }
+        )
+
+        # Create or update the cost source (cost per pack)
+        cost_source, cost_created = ItemCostSource.objects.update_or_create(
+            tenant=self.tenant,
+            store_location=self.store_location,
+            product=product,
+            unit=pack_unit,
+            defaults={
+                'unit_cost': pack_cost,
+                'source_type': 'manual',
+                'effective_at': timezone.now(),
+                'created_by': user,
+            }
+        )
+
+        # Also create/update base unit cost for convenience
+        # This makes direct cost lookup faster
+        base_unit_cost = (pack_cost / units_per_pack).quantize(
+            Decimal("0.0001"),
+            rounding=ROUND_HALF_UP
+        )
+        base_cost_source, base_created = ItemCostSource.objects.update_or_create(
+            tenant=self.tenant,
+            store_location=self.store_location,
+            product=product,
+            unit=base_unit,
+            defaults={
+                'unit_cost': base_unit_cost,
+                'source_type': 'manual',
+                'effective_at': timezone.now(),
+                'created_by': user,
+            }
+        )
+
+        return {
+            'conversion': {
+                'id': conversion.id,
+                'created': conv_created,
+                'from_unit': pack_unit.code,
+                'to_unit': base_unit.code,
+                'multiplier': str(units_per_pack),
+            },
+            'pack_cost': {
+                'id': cost_source.id,
+                'created': cost_created,
+                'unit': pack_unit.code,
+                'unit_cost': str(pack_cost),
+            },
+            'base_unit_cost': {
+                'id': base_cost_source.id,
+                'created': base_created,
+                'unit': base_unit.code,
+                'unit_cost': str(base_unit_cost),
+            }
+        }
